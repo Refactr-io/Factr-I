@@ -1,0 +1,878 @@
+use super::*;
+
+/// Verify the default system prompt does NOT identify as "Claude Code"
+/// It's fine to say "powered by Claude" but not "Claude Code" (Anthropic's product)
+#[test]
+fn test_default_system_prompt_no_claude_code_identity() {
+    let prompt = DEFAULT_SYSTEM_PROMPT.to_lowercase();
+
+    assert!(
+        !prompt.contains("claude code"),
+        "DEFAULT_SYSTEM_PROMPT should NOT identify as 'Claude Code'. Found in system_prompt.md"
+    );
+    assert!(
+        !prompt.contains("claude-code"),
+        "DEFAULT_SYSTEM_PROMPT should NOT contain 'claude-code'. Found in system_prompt.md"
+    );
+}
+
+#[test]
+fn mermaid_prompt_module_follows_capability() {
+    let (enabled, _) = build_system_prompt_split_with_capabilities(
+        None,
+        &[],
+        false,
+        None,
+        None,
+        PromptCapabilities { mermaid: true },
+    );
+    assert!(enabled.static_part.contains(MERMAID_PROMPT));
+
+    let (disabled, _) = build_system_prompt_split_with_capabilities(
+        None,
+        &[],
+        false,
+        None,
+        None,
+        PromptCapabilities { mermaid: false },
+    );
+    assert!(!disabled.static_part.contains("Mermaid diagrams"));
+    assert!(!disabled.static_part.contains("fenced `mermaid` code block"));
+}
+
+#[test]
+fn recursive_repl_guidance_is_not_in_the_base_prompt() {
+    // The agent adds it only where the REPL can run (`append_repl_guidance`).
+    let (prompt, _) = build_system_prompt_split(None, &[], false, None, None);
+    assert!(!prompt.static_part.contains("Recursive REPL"));
+    assert!(!prompt.static_part.contains("llm_query"));
+}
+
+/// Verify skill prompts don't accidentally introduce "Claude Code" identity
+#[test]
+fn test_skill_prompt_integration() {
+    // Test that a skill prompt is properly appended and doesn't break anything
+    let skill_prompt = "You are helping with a debugging task.";
+    let prompt = build_system_prompt(Some(skill_prompt), &[]);
+
+    // The prompt should contain our default system prompt
+    // Identity line: the base prompt shares the Factr-I persona name.
+    assert!(prompt.contains("You are Factr-I."));
+
+    // The prompt should contain the skill prompt
+    assert!(prompt.contains(skill_prompt));
+
+    // The base prompt parts (excluding user-provided instruction files) should NOT contain
+    // "Claude Code". We check DEFAULT_SYSTEM_PROMPT separately since user files may
+    // legitimately contain it.
+    let default_lower = DEFAULT_SYSTEM_PROMPT.to_lowercase();
+    assert!(
+        !default_lower.contains("claude code"),
+        "DEFAULT_SYSTEM_PROMPT should NOT identify as 'Claude Code'"
+    );
+}
+
+#[test]
+fn skill_description_collapses_whitespace_without_clipping_short_text() {
+    assert_eq!(
+        clip_skill_description("  Build\n\tand   test the project.  "),
+        "Build and test the project."
+    );
+}
+
+#[test]
+fn skill_description_clips_to_the_character_limit_with_ellipsis() {
+    let clipped = clip_skill_description(&"a".repeat(SKILL_DESC_MAX_CHARS + 20));
+
+    assert_eq!(clipped.chars().count(), SKILL_DESC_MAX_CHARS);
+    assert!(clipped.ends_with('…'));
+}
+
+#[test]
+fn skill_description_clipping_is_utf8_safe() {
+    let clipped = clip_skill_description(&"ж".repeat(SKILL_DESC_MAX_CHARS + 20));
+
+    assert_eq!(clipped.chars().count(), SKILL_DESC_MAX_CHARS);
+    assert_eq!(
+        clipped
+            .chars()
+            .filter(|character| *character == 'ж')
+            .count(),
+        SKILL_DESC_MAX_CHARS - 1
+    );
+    assert!(clipped.ends_with('…'));
+}
+
+#[test]
+fn full_and_split_prompt_builders_use_the_same_one_line_skill_descriptions() {
+    let skills = vec![SkillInfo {
+        name: "example".to_string(),
+        description: format!("First line\n\t{}", "д".repeat(SKILL_DESC_MAX_CHARS + 20)),
+    }];
+    let expected = build_available_skills_section(&skills).expect("skills section");
+
+    let (full, full_info) = build_system_prompt_full(None, &skills, false, None, None);
+    let (split, split_info) = build_system_prompt_split(None, &skills, false, None, None);
+
+    assert!(full.contains(&expected));
+    assert!(split.static_part.contains(&expected));
+    assert_eq!(full_info.skills_chars, expected.len());
+    assert_eq!(split_info.skills_chars, expected.len());
+    assert!(expected.contains("First line "));
+    assert!(!expected.contains("First line\n"));
+    let entry = expected
+        .lines()
+        .find(|line| line.starts_with("- `/example `"))
+        .expect("example skill entry");
+    assert!(entry.ends_with('…'));
+}
+
+#[test]
+fn test_load_agents_md_files_uses_sandboxed_global_files() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("FACTR_HOME");
+    let temp = tempfile::TempDir::new().unwrap();
+    crate::env::set_var("FACTR_HOME", temp.path());
+    std::fs::create_dir_all(temp.path().join("external")).unwrap();
+
+    std::fs::write(
+        temp.path().join("external/AGENTS.md"),
+        "sandboxed global agents instructions",
+    )
+    .unwrap();
+
+    let project_dir = tempfile::TempDir::new().unwrap();
+    let (content, info) = load_agents_md_files_from_dir(Some(project_dir.path()));
+
+    assert!(info.has_global_agents_md);
+    let content = content.expect("global instructions content");
+    assert!(content.contains("# Global Instructions (~/AGENTS.md)"));
+    assert!(!content.contains("~/.AGENTS.md"));
+    assert!(content.contains("sandboxed global agents instructions"));
+
+    let sandboxed_home = temp.path().join("external");
+    let (content, info) = load_agents_md_files_from_dir(Some(&sandboxed_home));
+    let content = content.expect("deduplicated home instructions");
+    assert!(info.has_project_agents_md);
+    assert!(!info.has_global_agents_md);
+    assert!(content.contains("# Project Instructions (AGENTS.md)"));
+    assert!(!content.contains("# Global Instructions (~/AGENTS.md)"));
+    assert_eq!(
+        content
+            .matches("sandboxed global agents instructions")
+            .count(),
+        1
+    );
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("FACTR_HOME", prev_home);
+    } else {
+        crate::env::remove_var("FACTR_HOME");
+    }
+}
+
+#[test]
+fn agents_md_same_canonical_file_is_loaded_only_as_project_instructions() {
+    let project_dir = tempfile::TempDir::new().unwrap();
+    let agents_md = project_dir.path().join("AGENTS.md");
+    std::fs::write(&agents_md, "shared instructions").unwrap();
+
+    let (content, info) = load_agents_md_files_from_dirs(project_dir.path(), Some(&agents_md));
+    let content = content.expect("project instructions");
+
+    assert!(info.has_project_agents_md);
+    assert!(!info.has_global_agents_md);
+    assert!(content.contains("# Project Instructions (AGENTS.md)"));
+    assert!(!content.contains("# Global Instructions (~/AGENTS.md)"));
+    assert_eq!(content.matches("shared instructions").count(), 1);
+}
+
+#[test]
+fn agents_md_distinct_project_and_global_files_are_both_loaded() {
+    let project_dir = tempfile::TempDir::new().unwrap();
+    let global_dir = tempfile::TempDir::new().unwrap();
+    let global_agents_md = global_dir.path().join("AGENTS.md");
+    std::fs::write(project_dir.path().join("AGENTS.md"), "project instructions").unwrap();
+    std::fs::write(&global_agents_md, "global instructions").unwrap();
+
+    let (content, info) =
+        load_agents_md_files_from_dirs(project_dir.path(), Some(&global_agents_md));
+    let content = content.expect("project and global instructions");
+
+    assert!(info.has_project_agents_md);
+    assert!(info.has_global_agents_md);
+    assert!(content.contains("project instructions"));
+    assert!(content.contains("global instructions"));
+}
+
+#[test]
+fn captured_agents_md_keeps_split_prompt_stable_after_file_write() {
+    let project_dir = tempfile::TempDir::new().unwrap();
+    let agents_md = project_dir.path().join("AGENTS.md");
+    std::fs::write(&agents_md, "original session instructions").unwrap();
+    let snapshot = PromptSnapshot {
+        agents_md: load_agents_md_files_from_dirs(project_dir.path(), None),
+        ..Default::default()
+    };
+
+    let (before, _) = build_system_prompt_split_with_snapshot(
+        None,
+        None,
+        false,
+        None,
+        Some(project_dir.path()),
+        snapshot.clone(),
+    );
+    std::fs::write(&agents_md, "instructions written during the session").unwrap();
+    let (after, _) = build_system_prompt_split_with_snapshot(
+        None,
+        None,
+        false,
+        None,
+        Some(project_dir.path()),
+        snapshot,
+    );
+
+    assert_eq!(before.static_part, after.static_part);
+    assert!(after.static_part.contains("original session instructions"));
+    assert!(
+        !after
+            .static_part
+            .contains("instructions written during the session")
+    );
+
+    // A new session/workspace boundary captures a fresh snapshot rather than
+    // pinning the old instructions forever.
+    let fresh_snapshot = PromptSnapshot {
+        agents_md: load_agents_md_files_from_dirs(project_dir.path(), None),
+        ..Default::default()
+    };
+    let (next_session, _) = build_system_prompt_split_with_snapshot(
+        None,
+        None,
+        false,
+        None,
+        Some(project_dir.path()),
+        fresh_snapshot,
+    );
+    assert!(
+        next_session
+            .static_part
+            .contains("instructions written during the session")
+    );
+    assert_ne!(before.static_part, next_session.static_part);
+}
+
+#[test]
+fn agents_md_missing_global_file_keeps_project_instructions() {
+    let project_dir = tempfile::TempDir::new().unwrap();
+    let global_dir = tempfile::TempDir::new().unwrap();
+    let missing_global_agents_md = global_dir.path().join("missing-AGENTS.md");
+    std::fs::write(project_dir.path().join("AGENTS.md"), "project only").unwrap();
+
+    let (content, info) =
+        load_agents_md_files_from_dirs(project_dir.path(), Some(&missing_global_agents_md));
+    let content = content.expect("project instructions");
+
+    assert!(info.has_project_agents_md);
+    assert!(!info.has_global_agents_md);
+    assert!(content.contains("project only"));
+    assert!(!content.contains("# Global Instructions (~/AGENTS.md)"));
+}
+
+#[cfg(unix)]
+#[test]
+fn agents_md_symlink_alias_is_deduplicated_by_canonical_file_path() {
+    use std::os::unix::fs::symlink;
+
+    let project_dir = tempfile::TempDir::new().unwrap();
+    let global_dir = tempfile::TempDir::new().unwrap();
+    let global_agents_md = global_dir.path().join("AGENTS.md");
+    std::fs::write(&global_agents_md, "symlinked instructions").unwrap();
+    symlink(&global_agents_md, project_dir.path().join("AGENTS.md")).unwrap();
+
+    let (content, info) =
+        load_agents_md_files_from_dirs(project_dir.path(), Some(&global_agents_md));
+    let content = content.expect("project instructions through symlink");
+
+    assert!(info.has_project_agents_md);
+    assert!(!info.has_global_agents_md);
+    assert_eq!(content.matches("symlinked instructions").count(), 1);
+}
+
+#[test]
+fn test_session_context_includes_time_timezone_and_system_info() {
+    let context = build_session_context(None);
+    assert!(context.contains("# Session Context"));
+    assert!(context.contains("Time: "));
+    assert!(context.contains("Timezone: "));
+    assert!(context.contains("OS: "));
+    assert!(context.contains("Architecture: "));
+    assert!(context.contains("Factr-I version: "));
+    assert!(!context.contains("Working directory: "));
+    assert!(!context.contains("Git:"));
+}
+
+#[test]
+fn session_datetime_uses_the_supplied_local_date_time_and_offset() {
+    use chrono::TimeZone;
+
+    let local = chrono::FixedOffset::east_opt(5 * 60 * 60 + 30 * 60)
+        .unwrap()
+        .with_ymd_and_hms(2026, 8, 23, 0, 10, 9)
+        .unwrap();
+
+    assert_eq!(
+        format_session_datetime(local),
+        ["Date: 2026-08-23", "Time: 00:10:09", "Timezone: +05:30",]
+    );
+}
+
+#[test]
+fn session_datetime_formats_utc_fallback_deterministically() {
+    use chrono::TimeZone;
+
+    let utc = chrono::Utc
+        .with_ymd_and_hms(2026, 8, 22, 18, 40, 6)
+        .unwrap();
+
+    assert_eq!(
+        format_session_datetime(utc),
+        ["Date: 2026-08-22", "Time: 18:40:06", "Timezone: UTC"]
+    );
+}
+
+#[test]
+fn test_split_prompt_does_not_inject_session_context_per_turn() {
+    let (split, _info) = build_system_prompt_split(None, &[], false, None, None);
+    assert!(!split.dynamic_part.contains("# Session Context"));
+    assert!(!split.dynamic_part.contains("Time: "));
+    assert!(!split.dynamic_part.contains("Timezone: UTC"));
+}
+
+#[test]
+fn test_prompt_overlay_files_are_loaded_from_project_and_global_factr_dirs() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("FACTR_HOME");
+    let temp = tempfile::TempDir::new().unwrap();
+    crate::env::set_var("FACTR_HOME", temp.path());
+    std::fs::create_dir_all(temp.path()).unwrap();
+    std::fs::write(
+        temp.path().join("prompt-overlay.md"),
+        "global prompt overlay instructions",
+    )
+    .unwrap();
+
+    let project_dir = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(project_dir.path().join(".factr/engine")).unwrap();
+    std::fs::write(
+        project_dir.path().join(".factr/engine/prompt-overlay.md"),
+        "project prompt overlay instructions",
+    )
+    .unwrap();
+
+    let direct = load_prompt_overlay_files_from_dir(Some(project_dir.path()));
+
+    assert!(direct.0.is_some(), "expected prompt overlay content");
+    let direct_content = direct.0.unwrap();
+    assert!(
+        direct_content.contains("project prompt overlay instructions"),
+        "expected project prompt overlay content"
+    );
+    assert!(
+        direct_content.contains("global prompt overlay instructions"),
+        "expected global prompt overlay content"
+    );
+
+    let (prompt, info) = build_system_prompt_full(None, &[], false, None, Some(project_dir.path()));
+    assert!(prompt.contains("project prompt overlay instructions"));
+    assert!(prompt.contains("global prompt overlay instructions"));
+    assert!(info.prompt_overlay_chars > 0);
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("FACTR_HOME", prev_home);
+    } else {
+        crate::env::remove_var("FACTR_HOME");
+    }
+}
+
+#[test]
+fn test_preferred_tools_files_are_loaded_from_project_and_global_factr_dirs() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("FACTR_HOME");
+    let temp = tempfile::TempDir::new().unwrap();
+    crate::env::set_var("FACTR_HOME", temp.path());
+    std::fs::create_dir_all(temp.path()).unwrap();
+    std::fs::write(
+        temp.path().join("preferred-tools.md"),
+        "global preferred tools instructions",
+    )
+    .unwrap();
+
+    let project_dir = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(project_dir.path().join(".factr/engine")).unwrap();
+    std::fs::write(
+        project_dir.path().join(".factr/engine/preferred-tools.md"),
+        "project preferred tools instructions",
+    )
+    .unwrap();
+
+    let direct = load_preferred_tools_files_from_dir(Some(project_dir.path()));
+
+    assert!(direct.0.is_some(), "expected preferred tools content");
+    let direct_content = direct.0.unwrap();
+    assert!(
+        direct_content.contains("Project Preferred Tools (.factr/engine/preferred-tools.md)"),
+        "expected project preferred tools section heading"
+    );
+    assert!(
+        direct_content.contains("project preferred tools instructions"),
+        "expected project preferred tools content"
+    );
+    assert!(
+        direct_content.contains("Global Preferred Tools (~/.factr/engine/preferred-tools.md)"),
+        "expected global preferred tools section heading"
+    );
+    assert!(
+        direct_content.contains("global preferred tools instructions"),
+        "expected global preferred tools content"
+    );
+
+    let (prompt, info) = build_system_prompt_full(None, &[], false, None, Some(project_dir.path()));
+    assert!(prompt.contains("project preferred tools instructions"));
+    assert!(prompt.contains("global preferred tools instructions"));
+    assert!(info.preferred_tools_chars > 0);
+
+    let (split, split_info) =
+        build_system_prompt_split(None, &[], false, None, Some(project_dir.path()));
+    assert!(
+        split
+            .static_part
+            .contains("project preferred tools instructions")
+    );
+    assert!(
+        split
+            .static_part
+            .contains("global preferred tools instructions")
+    );
+    assert!(split_info.preferred_tools_chars > 0);
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("FACTR_HOME", prev_home);
+    } else {
+        crate::env::remove_var("FACTR_HOME");
+    }
+}
+
+#[test]
+fn test_swarm_prompt_prefers_project_then_global_then_default() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("FACTR_HOME");
+    let temp = tempfile::TempDir::new().unwrap();
+    crate::env::set_var("FACTR_HOME", temp.path());
+    std::fs::create_dir_all(temp.path()).unwrap();
+
+    let project_dir = tempfile::TempDir::new().unwrap();
+
+    // No override files: built-in default.
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, DEFAULT_SWARM_PROMPT.trim());
+
+    // Global override wins over the default.
+    std::fs::write(temp.path().join("swarm-prompt.md"), "global swarm routing").unwrap();
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, "global swarm routing");
+
+    // Project override wins over global.
+    std::fs::create_dir_all(project_dir.path().join(".factr/engine")).unwrap();
+    std::fs::write(
+        project_dir.path().join(".factr/engine/swarm-prompt.md"),
+        "project swarm routing",
+    )
+    .unwrap();
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, "project swarm routing");
+
+    // A blank project file falls through to global instead of going empty.
+    std::fs::write(project_dir.path().join(".factr/engine/swarm-prompt.md"), "   \n").unwrap();
+    let prompt = load_swarm_prompt(Some(project_dir.path()));
+    assert_eq!(prompt, "global swarm routing");
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("FACTR_HOME", prev_home);
+    } else {
+        crate::env::remove_var("FACTR_HOME");
+    }
+}
+
+#[test]
+fn test_default_swarm_prompt_mentions_model_and_list_models() {
+    assert!(DEFAULT_SWARM_PROMPT.contains("list_models"));
+    assert!(DEFAULT_SWARM_PROMPT.contains("model"));
+    assert!(DEFAULT_SWARM_PROMPT.contains("effort"));
+    assert!(DEFAULT_SWARM_PROMPT.contains("only the root session may spawn agents"));
+    assert!(DEFAULT_SWARM_PROMPT.contains("swarm-deep"));
+}
+
+#[test]
+fn test_non_selfdev_prompt_leaves_selfdev_guidance_to_the_tool_schema() {
+    let prompt = build_system_prompt(None, &[]);
+    assert!(!prompt.contains("Self-Development Access"));
+    assert!(!prompt.contains("You have access to the `selfdev` tool in all sessions"));
+    assert!(!prompt.contains("You are working on the factr codebase itself."));
+}
+
+#[test]
+fn split_prompt_estimated_tokens_is_positive_when_populated() {
+    let (split, _info) = build_system_prompt_split(None, &[], false, None, None);
+    assert!(split.chars() > 0);
+    assert!(split.estimated_tokens() > 0);
+}
+
+#[test]
+fn swarm_effort_directive_is_appended_only_for_swarm_sentinel() {
+    assert!(is_swarm_effort("swarm"));
+    assert!(is_swarm_effort("  Swarm "));
+    assert!(!is_swarm_effort("xhigh"));
+
+    let mut split = SplitSystemPrompt {
+        static_part: "base".to_string(),
+        dynamic_part: String::new(),
+    };
+    append_swarm_effort_directive(&mut split, Some("xhigh"));
+    assert!(!split.static_part.contains("Swarm Effort"));
+
+    append_swarm_effort_directive(&mut split, Some("swarm"));
+    assert!(split.static_part.contains("# Swarm Effort"));
+    assert!(split.static_part.contains("swarm` tool"));
+
+    // None / empty effort should not inject.
+    let mut other = SplitSystemPrompt::default();
+    append_swarm_effort_directive(&mut other, None);
+    assert!(other.static_part.is_empty());
+}
+
+#[test]
+fn swarm_deep_effort_injects_task_graph_directive() {
+    use crate::prompt::is_deep_swarm_effort;
+
+    assert!(is_swarm_effort("swarm-deep"));
+    assert!(is_deep_swarm_effort("swarm-deep"));
+    assert!(is_deep_swarm_effort("  Swarm-Deep "));
+    assert!(!is_deep_swarm_effort("swarm"));
+    assert!(!is_deep_swarm_effort("xhigh"));
+
+    // Deep sentinel injects the DAG-first task-graph directive, not the light one.
+    let mut split = SplitSystemPrompt::default();
+    append_swarm_effort_directive(&mut split, Some("swarm-deep"));
+    assert!(split.static_part.contains("# Deep Task Graph"));
+    assert!(split.static_part.contains("swarm task_graph"));
+    assert!(!split.static_part.contains("# Swarm Effort"));
+
+    // Light sentinel still injects the fan-out directive, not the deep one.
+    let mut light = SplitSystemPrompt::default();
+    append_swarm_effort_directive(&mut light, Some("swarm"));
+    assert!(light.static_part.contains("# Swarm Effort"));
+    assert!(!light.static_part.contains("# Deep Task Graph"));
+}
+
+#[test]
+fn classify_effort_distinguishes_reasoning_from_swarm_modes() {
+    use crate::prompt::{EffortKind, classify_effort, is_swarm_mode_effort};
+
+    // Plain reasoning levels are not swarm modes.
+    for level in ["none", "minimal", "low", "medium", "high", "xhigh", "max"] {
+        assert_eq!(classify_effort(level), EffortKind::Reasoning, "{level}");
+        assert!(!is_swarm_mode_effort(level), "{level}");
+    }
+
+    assert_eq!(classify_effort("swarm"), EffortKind::SwarmLight);
+    assert_eq!(classify_effort("swarm-deep"), EffortKind::SwarmDeep);
+    assert!(is_swarm_mode_effort("swarm"));
+    assert!(is_swarm_mode_effort("  Swarm-Deep "));
+    assert!(EffortKind::SwarmLight.is_swarm_mode());
+    assert!(EffortKind::SwarmDeep.is_swarm_mode());
+    assert!(!EffortKind::Reasoning.is_swarm_mode());
+}
+
+#[test]
+fn project_system_prompt_file_replaces_default_base_prompt() {
+    use crate::prompt::load_base_system_prompt;
+
+    let dir = std::env::temp_dir().join(format!("factr-sysprompt-{}", std::process::id()));
+    let factr_dir = dir.join(".factr/engine");
+    std::fs::create_dir_all(&factr_dir).unwrap();
+    std::fs::write(
+        factr_dir.join("system-prompt.md"),
+        "You are a custom agent.\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        load_base_system_prompt(Some(&dir)),
+        "You are a custom agent."
+    );
+
+    let (prompt, _info) = build_system_prompt_full(None, &[], false, None, Some(&dir));
+    assert!(prompt.contains("You are a custom agent."));
+    assert!(!prompt.contains("is open source"));
+
+    // Empty override falls back to the built-in default.
+    std::fs::write(factr_dir.join("system-prompt.md"), "   \n").unwrap();
+    assert_eq!(load_base_system_prompt(Some(&dir)), DEFAULT_SYSTEM_PROMPT);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+// Restore FACTR_HOME even when a regression assertion panics.
+fn with_prompt_guidance_home(test: impl FnOnce(&Path)) {
+    let _guard = crate::storage::lock_test_env();
+    struct RestoreHome(Option<std::ffi::OsString>);
+    impl Drop for RestoreHome {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => crate::env::set_var("FACTR_HOME", value),
+                None => crate::env::remove_var("FACTR_HOME"),
+            }
+        }
+    }
+    let _restore = RestoreHome(std::env::var_os("FACTR_HOME"));
+    let home = tempfile::TempDir::new().unwrap();
+    let factr_dir = home.path().join(".factr/engine");
+    std::fs::create_dir_all(&factr_dir).unwrap();
+    crate::env::set_var("FACTR_HOME", &factr_dir);
+    test(home.path());
+}
+
+#[test]
+fn prompt_guidance_same_project_and_global_paths_are_loaded_once() {
+    with_prompt_guidance_home(|home| {
+        let overlay = "shared overlay marker\n";
+        let tools = "shared preferred tools marker\n";
+        std::fs::write(home.join(".factr/engine/prompt-overlay.md"), overlay).unwrap();
+        std::fs::write(home.join(".factr/engine/preferred-tools.md"), tools).unwrap();
+
+        let (full, full_info) = build_system_prompt_full(None, &[], false, None, Some(home));
+        let (split, split_info) = build_system_prompt_split(None, &[], false, None, Some(home));
+        for prompt in [&full, &split.static_part] {
+            assert_eq!(prompt.matches(overlay.trim()).count(), 1);
+            assert_eq!(prompt.matches(tools.trim()).count(), 1);
+            assert!(prompt.contains("Project Prompt Overlay"));
+            assert!(prompt.contains("Project Preferred Tools"));
+            assert!(!prompt.contains("Global Prompt Overlay"));
+            assert!(!prompt.contains("Global Preferred Tools"));
+        }
+        for info in [full_info, split_info] {
+            assert_eq!(info.prompt_overlay_chars, overlay.len());
+            assert_eq!(info.preferred_tools_chars, tools.len());
+        }
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn prompt_guidance_symlink_aliases_are_loaded_once() {
+    with_prompt_guidance_home(|home| {
+        let project = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(project.path().join(".factr/engine")).unwrap();
+        for name in ["prompt-overlay.md", "preferred-tools.md"] {
+            let global = home.join(".factr/engine").join(name);
+            std::fs::write(&global, "shared symlink guidance").unwrap();
+            std::os::unix::fs::symlink(&global, project.path().join(".factr/engine").join(name)).unwrap();
+        }
+        for (content, size) in [
+            load_prompt_overlay_files_from_dir(Some(project.path())),
+            load_preferred_tools_files_from_dir(Some(project.path())),
+        ] {
+            let content = content.unwrap();
+            assert_eq!(content.matches("shared symlink guidance").count(), 1);
+            assert!(content.starts_with("# Project"));
+            assert!(!content.contains("# Global"));
+            assert_eq!(size, "shared symlink guidance".len());
+        }
+    });
+}
+
+#[test]
+fn prompt_guidance_distinct_files_with_identical_contents_are_both_loaded() {
+    with_prompt_guidance_home(|home| {
+        let project = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(project.path().join(".factr/engine")).unwrap();
+        for name in ["prompt-overlay.md", "preferred-tools.md"] {
+            for root in [home, project.path()] {
+                std::fs::write(root.join(".factr/engine").join(name), "identical guidance").unwrap();
+            }
+        }
+        for (content, size) in [
+            load_prompt_overlay_files_from_dir(Some(project.path())),
+            load_preferred_tools_files_from_dir(Some(project.path())),
+        ] {
+            let content = content.unwrap();
+            assert_eq!(content.matches("identical guidance").count(), 2);
+            assert!(content.find("# Project").unwrap() < content.find("# Global").unwrap());
+            assert_eq!(size, 2 * "identical guidance".len());
+        }
+    });
+}
+
+#[test]
+fn prompt_guidance_missing_or_unreadable_project_keeps_global_content() {
+    with_prompt_guidance_home(|home| {
+        let project = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir_all(project.path().join(".factr/engine")).unwrap();
+        for name in ["prompt-overlay.md", "preferred-tools.md"] {
+            std::fs::write(home.join(".factr/engine").join(name), "global only").unwrap();
+        }
+        for unreadable in [false, true] {
+            if unreadable {
+                for name in ["prompt-overlay.md", "preferred-tools.md"] {
+                    std::fs::write(project.path().join(".factr/engine").join(name), [0xff]).unwrap();
+                }
+            }
+            for (content, size) in [
+                load_prompt_overlay_files_from_dir(Some(project.path())),
+                load_preferred_tools_files_from_dir(Some(project.path())),
+            ] {
+                let content = content.unwrap();
+                assert_eq!(content.matches("global only").count(), 1);
+                assert!(content.starts_with("# Global"));
+                assert!(!content.contains("# Project"));
+                assert_eq!(size, "global only".len());
+            }
+        }
+    });
+}
+
+/// M5.2: skill bodies must stay out of the static system prompt. The prompt
+/// should carry only name + one-line description per skill (small, roughly
+/// constant per skill); the full SKILL.md body loads lazily on demand via the
+/// skill tool, not eagerly here. This measures the "before" (a naive eager
+/// inclusion of every skill's full body) vs the "after" (today's lazy
+/// name+description-only section) prompt byte cost with 20 installed skills,
+/// and asserts lazy is far smaller.
+#[test]
+fn skills_section_is_lazy_summary_not_full_bodies_with_20_skills() {
+    let skill_body = "Full instructions body.\n".repeat(200); // ~4.6KB, representative of a real SKILL.md
+    let skills: Vec<SkillInfo> = (0..20)
+        .map(|i| SkillInfo {
+            name: format!("skill-{i}"),
+            description: format!("Does thing number {i} reliably and repeatably."),
+        })
+        .collect();
+
+    // "after": today's actual behavior — lazy summary section.
+    let lazy_section = build_available_skills_section(&skills).expect("section");
+    let lazy_bytes = lazy_section.len();
+
+    // "before": hypothetical eager inclusion of every skill's full body inline.
+    let mut eager_bytes = lazy_bytes;
+    for _ in &skills {
+        eager_bytes += skill_body.len();
+    }
+
+    // Lazy stays small and roughly linear in (name + description) only, not body size.
+    assert!(
+        lazy_bytes < 4_000,
+        "lazy skills section should be a few hundred bytes for 20 skills, got {lazy_bytes}"
+    );
+    assert!(
+        eager_bytes > lazy_bytes * 20,
+        "eager-body baseline ({eager_bytes}) should dwarf the lazy summary ({lazy_bytes})"
+    );
+
+    // Full body text must never leak into the static section.
+    assert!(!lazy_section.contains("Full instructions body"));
+}
+
+#[test]
+fn prompt_tells_model_to_process_large_inputs_in_code() {
+    let line = DEFAULT_SYSTEM_PROMPT
+        .lines()
+        .find(|l| l.starts_with("Inputs over ~20K characters"))
+        .expect("large-input rule present");
+    assert!(line.len() <= 220, "rule must stay short: {}", line.len());
+}
+
+/// A learned skill is only used if the model is told it may load a matching skill by itself: the
+/// index used to say the *user* invokes skills, so a new chat grepped the workspace instead.
+#[test]
+fn the_skill_index_tells_the_model_to_load_a_matching_skill_itself() {
+    let skills = vec![SkillInfo { name: "project-codeword".into(), description: "The project codeword is MARIGOLD-7".into() }];
+    let section = build_available_skills_section(&skills).expect("section");
+    assert!(section.contains("`/project-codeword `") && section.contains("MARIGOLD-7"), "{section}");
+    assert!(section.contains("`skill_manage`") && section.contains("action `load`"), "{section}");
+    assert!(section.contains("before searching the workspace"), "{section}");
+    // skill_manage is a deferred tool: the model is told how to get it, not left to answer "unknown".
+    assert!(section.contains("`load_tools`") && section.contains("\"skill_manage\""), "{section}");
+}
+
+fn skill_infos(count: usize, description_chars: usize) -> Vec<SkillInfo> {
+    (0..count)
+        .map(|i| SkillInfo {
+            name: format!("skill-{i:03}"),
+            description: "d".repeat(description_chars),
+        })
+        .collect()
+}
+
+#[test]
+fn the_skills_index_stays_within_its_token_budget_and_points_at_the_rest() {
+    // 129 skills with long descriptions: the size that cost ~3.5K tokens on every request.
+    let skills = skill_infos(129, 300);
+    let section = build_available_skills_section(&skills).unwrap();
+    let tokens = crate::util::estimate_tokens(&section);
+    eprintln!("skills index for 129 skills: {} chars, {tokens} tokens", section.len());
+    assert!(tokens <= SKILLS_INDEX_TOKEN_BUDGET, "{tokens} tokens");
+    // The order given decides who is listed: the head, not the tail.
+    assert!(section.contains("`/skill-000 `") && !section.contains("`/skill-128 `"));
+    let listed = section.matches("\n- `/").count();
+    assert!(listed < 129 && section.contains(&format!("{} more skills are not listed", 129 - listed)));
+    assert!(section.contains("`skill_manage` with action `list`"));
+}
+
+#[test]
+fn a_short_skills_index_lists_everything_without_a_pointer() {
+    let section = build_available_skills_section(&skill_infos(5, 40)).unwrap();
+    assert_eq!(section.matches("\n- `/").count(), 5);
+    assert!(!section.contains("more skills are not listed"));
+}
+
+#[test]
+fn guidance_files_are_cut_at_their_token_budget() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let file = dir.path().join("overlay.md");
+    let max_chars = GUIDANCE_FILE_TOKEN_BUDGET * crate::util::APPROX_CHARS_PER_TOKEN;
+    std::fs::write(&file, "x".repeat(max_chars * 3)).unwrap();
+    let (section, size) = load_guidance_file(&file, "Overlay").unwrap();
+    assert!(section.len() <= max_chars + 200 && size == max_chars * 3);
+    assert!(section.contains(&format!("[cut here: {} more characters", max_chars * 2)));
+    std::fs::write(&file, "short").unwrap();
+    assert_eq!(load_guidance_file(&file, "Overlay").unwrap().0, "# Overlay\n\nshort");
+}
+
+#[test]
+fn overlays_and_preferred_tools_written_mid_session_do_not_reach_the_captured_prompt() {
+    let _guard = crate::storage::lock_test_env();
+    let prev_home = std::env::var_os("FACTR_HOME");
+    let home = tempfile::TempDir::new().unwrap();
+    crate::env::set_var("FACTR_HOME", home.path());
+    let project = tempfile::TempDir::new().unwrap();
+    std::fs::create_dir_all(project.path().join(".factr/engine")).unwrap();
+    let overlay = project.path().join(".factr/engine/prompt-overlay.md");
+    std::fs::write(&overlay, "first overlay").unwrap();
+    let snapshot = PromptSnapshot::load(Some(project.path()));
+    std::fs::write(&overlay, "second overlay").unwrap();
+    std::fs::write(project.path().join(".factr/engine/preferred-tools.md"), "late tools").unwrap();
+    let (split, _) = build_system_prompt_split_with_snapshot(None, None, false, None, Some(project.path()), snapshot);
+    assert!(split.static_part.contains("first overlay"));
+    assert!(!split.static_part.contains("second overlay") && !split.static_part.contains("late tools"));
+    // The legacy harness prompt file is no longer read.
+    std::fs::create_dir_all(home.path().join("harness")).unwrap();
+    std::fs::write(home.path().join("harness/prompt.md"), "legacy harness text").unwrap();
+    let (split, _) = build_system_prompt_split(None, &[], false, None, Some(project.path()));
+    assert!(!split.static_part.contains("legacy harness text"));
+    match prev_home {
+        Some(prev) => crate::env::set_var("FACTR_HOME", prev),
+        None => crate::env::remove_var("FACTR_HOME"),
+    }
+}

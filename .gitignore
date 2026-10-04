@@ -1,0 +1,30 @@
+target/
+node_modules/
+__pycache__/
+*.egg-info/
+.venv/
+dist/
+desktop/app/build/
+desktop/app/release/
+test-results/
+.DS_Store
+
+# secrets and local config
+.env*
+!.env.example
+auth.json
+*.pem
+*.p12
+*.p8
+*.key
+
+# build and test output
+coverage/
+target-*/
+release/
+*.pyc
+test_durations.json
+
+# editors
+.idea
+.vscode

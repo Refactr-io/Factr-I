@@ -1,0 +1,9 @@
+[package]
+name = "factr-swarm-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+factr-plan = { path = "../factr-plan" }
+serde = { version = "1", features = ["derive"] }

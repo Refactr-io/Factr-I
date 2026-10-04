@@ -1,0 +1,242 @@
+[package]
+name = "factr-cli"
+version = "0.0.0"
+description = "Factr-I engine: agent runtime and desktop gateway"
+edition = "2024"
+autobins = false
+
+[workspace]
+members = [
+    ".",
+    "crates/factr-agent-runtime",
+    "crates/factr-app-core",
+    "crates/factr-base",
+    "crates/factr-build-meta",
+    "crates/factr-auth-types",
+    "crates/factr-import-core",
+    "crates/factr-pdf",
+    "crates/factr-logging",
+    "crates/factr-background-types",
+    "crates/factr-batch-types",
+    "crates/factr-build-support",
+    "crates/factr-compaction-core",
+    "crates/factr-config-types",
+    "crates/factr-command-risk",
+    "crates/factr-core",
+    "crates/factr-harness-api",
+    "crates/factr-harness-api-server",
+    "crates/factr-gateway",
+    "crates/factr-learn",
+    "crates/factr-memory-types",
+    "crates/factr-message-types",
+    "crates/factr-plan",
+    "crates/factr-swarm-core",
+    "crates/factr-protocol",
+    "crates/factr-session-types",
+    "crates/factr-storage",
+    "crates/factr-azure-auth",
+    "crates/factr-provider-metadata",
+    "crates/factr-provider-env",
+    "crates/factr-provider-core",
+    "crates/factr-schema-dialect",
+    "crates/factr-provider-bedrock",
+    "crates/factr-provider-anthropic",
+    "crates/factr-provider-copilot",
+    "crates/factr-provider-openrouter",
+    "crates/factr-provider-openai",
+    "crates/factr-provider-gemini",
+    "crates/factr-provider-gemini-runtime",
+    "crates/factr-provider-cursor-runtime",
+    "crates/factr-provider-copilot-runtime",
+    "crates/factr-provider-openrouter-runtime",
+    "crates/factr-provider-anthropic-runtime",
+    "crates/factr-provider-openai-runtime",
+    "crates/factr-provider-grok-build-runtime",
+    "crates/factr-usage-types",
+    "crates/factr-task-types",
+    "crates/factr-transport",
+    "crates/factr-tool-core",
+    "crates/factr-tool-types",
+    "crates/factr-terminal-launch",
+    "crates/factr-render-core",
+]
+
+[lib]
+name = "factr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "factr"
+path = "src/bin/factr.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+signal-hook = "0.3"
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+
+# Serialization
+serde_json = { version = "1", features = ["raw_value"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# File operations
+
+# Utilities
+dirs = "5"
+anyhow = "1"
+libc = "0.2"             # Unix system calls (flock)
+
+# Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
+
+factr-app-core = { path = "crates/factr-app-core", default-features = false }
+# Gemini provider runtime; sits downstream of factr-base so gemini edits do
+# not rebuild the base -> app-core -> tui spine. Registered with the external
+# provider registry at startup (src/cli/startup.rs).
+factr-provider-gemini-runtime = { path = "crates/factr-provider-gemini-runtime" }
+factr-provider-cursor-runtime = { path = "crates/factr-provider-cursor-runtime" }
+factr-provider-copilot-runtime = { path = "crates/factr-provider-copilot-runtime" }
+factr-provider-openrouter-runtime = { path = "crates/factr-provider-openrouter-runtime" }
+factr-provider-anthropic-runtime = { path = "crates/factr-provider-anthropic-runtime" }
+factr-provider-openai-runtime = { path = "crates/factr-provider-openai-runtime" }
+factr-provider-grok-build-runtime = { path = "crates/factr-provider-grok-build-runtime" }
+
+# Factr desktop HTTP/WS front door + Factr feature backend. Needed on
+# Windows too (named pipes for the legacy harness socket).
+factr-gateway = { path = "crates/factr-gateway" }
+factr-learn = { path = "crates/factr-learn" }
+
+[features]
+# Memory recall needs no local inference stack.
+default = ["pdf", "bedrock"]
+jemalloc = [
+    "factr-app-core/jemalloc",
+]
+jemalloc-prof = [
+    "factr-app-core/jemalloc-prof",
+]
+# Live AWS Bedrock support (the AWS SDK stack) lives in factr-provider-bedrock;
+# forwards down through factr-app-core -> factr-base.
+bedrock = ["factr-app-core/bedrock"]
+pdf = ["factr-app-core/pdf"]
+
+[profile.release]
+opt-level = 1
+debug = 0
+codegen-units = 256
+incremental = true
+
+[profile.release-lto]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = false
+
+[profile.dev]
+debug = 0
+incremental = true
+
+[profile.dev.package."*"]
+opt-level = 0
+
+# Keep the idle-animation math kernels fully optimized even in debug-style
+# builds. This crate is pure, dependency-free numeric code (the trig-heavy 3D
+# samplers that otherwise dominate idle CPU). Pinning it to opt-level = 3 here
+# means the optimized object is compiled once and reused across iterative
+# dev/selfdev rebuilds, since it only recompiles when the animation code itself
+# changes. The "*" glob above sets the default for dependencies; these explicit
+# package entries take precedence for this one crate in each profile.
+
+
+
+# unicode-width/unicode-segmentation are still hot for non-TUI text handling
+# (truncation, width-aware formatting); keep them optimized even in
+# dev/selfdev/test builds.
+
+[profile.dev.package.unicode-width]
+opt-level = 3
+[profile.test.package.unicode-width]
+opt-level = 3
+
+[profile.dev.package.unicode-segmentation]
+opt-level = 3
+[profile.test.package.unicode-segmentation]
+opt-level = 3
+
+[profile.dev.package.ttf-parser]
+opt-level = 3
+[profile.test.package.ttf-parser]
+opt-level = 3
+
+# Keep the raster image pipeline optimized in dev/selfdev/test builds.
+#
+# Inline transcript images decode (png/zune-jpeg/fdeflate/miniz_oxide), resize
+# (image), and base64-encode (kitty transmit) at draw time; at opt-level 0 a
+# single screenshot costs 100-200ms per decode/resize, which reads as input
+# lag. These are pure pixel crates with no factr logic, so optimizing them
+# does not hurt rebuild times for our own code.
+[profile.dev.package.image]
+opt-level = 3
+[profile.test.package.image]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+[profile.test.package.png]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.test.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.test.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.test.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.base64]
+opt-level = 3
+[profile.test.package.base64]
+opt-level = 3
+
+# session_search scans multi-megabyte session files with memchr-based
+# case-insensitive matching; keep the SIMD scanner optimized everywhere.
+[profile.dev.package.memchr]
+opt-level = 3
+[profile.test.package.memchr]
+opt-level = 3
+
+[profile.test]
+debug = 0
+incremental = true
+codegen-units = 256
+
+[dev-dependencies]
+async-stream = "0.3"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+tempfile = "3"
+factr-harness-api = { path = "crates/factr-harness-api" }
+factr-harness-api-server = { path = "crates/factr-harness-api-server" }
+# Used by tests/context_window_matrix.rs to assert the shared context-window
+# resolution invariants directly, without going through a live provider.
+factr-provider-core = { path = "crates/factr-provider-core" }
+# Enables the downstream test-support helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, the
+# ExternalAuthReviewCandidate read accessors) for the root crate's own cli test
+# target. Feature unification applies this only to test/bench/example builds,
+# never to a normal `cargo build`/release binary.
+factr-app-core = { path = "crates/factr-app-core", default-features = false, features = ["test-support"] }
+
+[build-dependencies]

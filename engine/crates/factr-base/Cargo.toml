@@ -1,0 +1,151 @@
+[package]
+name = "factr-base"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Foundational layer of the factr application core: the downward-closed set of
+# modules (provider, auth, config, session, message, memory, telemetry, ...)
+# that the server/tool/agent layer depends on. Split out of `factr-app-core` so
+# the two halves compile as separate rustc units, halving peak compile memory.
+# `factr-app-core` re-exports this crate (`pub use factr_base::*`) so that every
+# existing `crate::<module>` path keeps resolving unchanged.
+
+[lib]
+name = "factr_base"
+path = "src/lib.rs"
+
+[dependencies]
+# Memory allocator (reduces fragmentation for long-running server)
+tikv-jemalloc-ctl = { version = "0.6", optional = true }
+tikv-jemalloc-sys = { version = "0.6", optional = true }
+
+# Async runtime
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "blocking", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+serde_yaml = "0.9"
+toml = "0.8"
+
+# File operations
+
+# Utilities
+dirs = "5"               # home directory
+anyhow = "1"
+libc = "0.2"             # Unix system calls (flock)
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+urlencoding = "2"        # URL encoding for web search
+uuid = { version = "1", features = ["v4", "v5"] }
+proctitle = "0.1"
+
+# Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
+factr-import-core = { path = "../factr-import-core" }
+factr-logging = { path = "../factr-logging" }
+
+# OAuth
+base64 = "0.22"
+sha2 = "0.10"
+factr-transport = { path = "../factr-transport" }
+rand = "0.9.3"
+hex = "0.4"
+url = "2"
+open = "5"               # Open URLs in browser
+factr-auth-types = { path = "../factr-auth-types" }
+factr-azure-auth = { path = "../factr-azure-auth" }
+factr-agent-runtime = { path = "../factr-agent-runtime" }
+factr-provider-metadata = { path = "../factr-provider-metadata" }
+factr-provider-env = { path = "../factr-provider-env" }
+factr-provider-core = { path = "../factr-provider-core" }
+# default-features=false so this crate's `bedrock` feature (below) controls the
+# AWS SDK stack; the pure model-metadata/credential-detection layer is always on.
+factr-provider-bedrock = { path = "../factr-provider-bedrock", default-features = false }
+factr-provider-copilot = { path = "../factr-provider-copilot" }
+factr-provider-openai = { path = "../factr-provider-openai" }
+factr-provider-openrouter = { path = "../factr-provider-openrouter" }
+factr-provider-gemini = { path = "../factr-provider-gemini" }
+# NOTE: this foundation layer intentionally does NOT depend on any `factr-tui-*`
+# crate. The two pure-data/string symbols it used to reach for (`ResumeTarget`,
+# `reasoning_line_markup`) were moved to `factr-session-types` and
+# `factr-render-core` respectively, so the layering inversion (foundation
+# depending on presentation) is gone.
+factr-render-core = { path = "../factr-render-core" }
+factr-terminal-launch = { path = "../factr-terminal-launch" }
+factr-usage-types = { path = "../factr-usage-types" }
+
+# Native microphone input is opt-in so CLI builds need no audio development libraries.
+
+# Streaming
+
+# Terminal I/O (event stream for interactive auth/secret prompts). NOTE: the
+# heavier presentation deps (ratatui widgets, arboard clipboard) were dropped
+# from this foundation layer; they are unused here and live only in `factr-tui`.
+crossterm = { version = "0.29", features = ["event-stream"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }  # Only PNG/JPEG (skip avif/rav1e, exr, gif, tiff, etc)
+
+# NOTE: PDF text extraction (factr-pdf) lives in the upper factr-app-core crate
+# (tool/read.rs), not here.
+factr-background-types = { path = "../factr-background-types" }
+factr-batch-types = { path = "../factr-batch-types" }
+factr-build-meta = { path = "../factr-build-meta" }
+factr-compaction-core = { path = "../factr-compaction-core" }
+factr-config-types = { path = "../factr-config-types" }
+factr-core = { path = "../factr-core" }
+factr-memory-types = { path = "../factr-memory-types" }
+factr-message-types = { path = "../factr-message-types" }
+factr-plan = { path = "../factr-plan" }
+factr-protocol = { path = "../factr-protocol" }
+factr-session-types = { path = "../factr-session-types" }
+factr-selfdev-types = { path = "../factr-selfdev-types" }
+factr-storage = { path = "../factr-storage" }
+factr-task-types = { path = "../factr-task-types" }
+factr-tool-core = { path = "../factr-tool-core" }
+factr-tool-types = { path = "../factr-tool-types" }
+
+# Gzip/deflate decoding (provider import helpers)
+flate2 = "1"
+tempfile = "3"
+qrcode = { version = "0.14.1", default-features = false }
+
+[features]
+default = ["bedrock"]
+# Compiles the in-crate test helpers (storage::lock_test_env,
+# auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, ...) as
+# `pub` so downstream crates' test targets can reach them. Enabled as a
+# dev-dependency feature by factr-app-core / factr / etc.; never in normal
+# (non-test) builds.
+test-support = []
+jemalloc = [
+    "dep:tikv-jemalloc-ctl",
+    "dep:tikv-jemalloc-sys",
+    "tikv-jemalloc-ctl/stats",
+]
+jemalloc-prof = [
+    "jemalloc",
+    "tikv-jemalloc-ctl/profiling",
+]
+# Live AWS Bedrock support (the ~20-crate AWS SDK stack) lives in
+# factr-provider-bedrock (aws-sdk); forward there. Without it the Bedrock
+# provider still compiles but live calls return an explanatory error.
+bedrock = ["factr-provider-bedrock/aws-sdk"]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_Threading"] }
+
+[dev-dependencies]
+# Dev-only cycle (cargo permits dev-dependencies on dependents): base's
+# MultiProvider routing tests exercise the real OpenRouter/OpenAI-compatible
+# runtime through the composition-root registry, exactly like the binary.
+factr-provider-openrouter-runtime = { path = "../factr-provider-openrouter-runtime" }
+# Paused-time (auto-advancing virtual clock) tests for the background stall watchdog.
+tokio = { version = "1", features = ["test-util"] }

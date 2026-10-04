@@ -1,0 +1,22 @@
+[package]
+name = "factr-provider-grok-build-runtime"
+version = "0.1.0"
+edition = "2024"
+description = "Grok Build subscription runtime for factr over the Grok CLI chat proxy (direct HTTPS)"
+
+[lib]
+name = "factr_provider_grok_build_runtime"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+futures = "0.3"
+# default-features = false: see factr-provider-openrouter-runtime/Cargo.toml.
+factr-base = { path = "../factr-base", default-features = false }
+factr-message-types = { path = "../factr-message-types" }
+factr-provider-core = { path = "../factr-provider-core" }
+factr-provider-openrouter-runtime = { path = "../factr-provider-openrouter-runtime" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

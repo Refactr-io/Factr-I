@@ -1,0 +1,115 @@
+bot_relay.deliver: bot_relay.* has no native engine implementation; the Python backend serves it
+bot_relay.outbox.drain: bot_relay.* has no native engine implementation; the Python backend serves it
+bot_relay.reply: bot_relay.* has no native engine implementation; the Python backend serves it
+browser.controller.detach: browser.* has no native engine implementation; the Python backend serves it
+browser.controller.heartbeat: browser.* has no native engine implementation; the Python backend serves it
+browser.controller.register: browser.* has no native engine implementation; the Python backend serves it
+browser.controller.result: browser.* has no native engine implementation; the Python backend serves it
+browser.manage: browser.* has no native engine implementation; the Python backend serves it
+clarify.lock: clarify.* has no native engine implementation; the Python backend serves it
+command.resolve: command.* has no native engine implementation; the Python backend serves it
+config.show: config.* has no native engine implementation; the Python backend serves it
+connection.respond: connection.* has no native engine implementation; the Python backend serves it
+connectors.operation.status: connectors.* has no native engine implementation; the Python backend serves it
+connectors.operation.wake: connectors.* has no native engine implementation; the Python backend serves it
+cron.manage: cron scheduler lives in the Python backend
+display.install: display.* has no native engine implementation; the Python backend serves it
+display.lease.acquire: display.* has no native engine implementation; the Python backend serves it
+display.lease.release: display.* has no native engine implementation; the Python backend serves it
+display.observe: display.* has no native engine implementation; the Python backend serves it
+display.start: display.* has no native engine implementation; the Python backend serves it
+display.status: display.* has no native engine implementation; the Python backend serves it
+display.stop: display.* has no native engine implementation; the Python backend serves it
+display.thumbnail: display.* has no native engine implementation; the Python backend serves it
+groups.approve: groups.* has no native engine implementation; the Python backend serves it
+groups.create: groups.* has no native engine implementation; the Python backend serves it
+groups.demote: groups.* has no native engine implementation; the Python backend serves it
+groups.disband: groups.* has no native engine implementation; the Python backend serves it
+groups.log: groups.* has no native engine implementation; the Python backend serves it
+groups.peer.invite: groups.* has no native engine implementation; the Python backend serves it
+groups.peer.register: groups.* has no native engine implementation; the Python backend serves it
+groups.peer.revoke: groups.* has no native engine implementation; the Python backend serves it
+groups.promote: groups.* has no native engine implementation; the Python backend serves it
+groups.rename: groups.* has no native engine implementation; the Python backend serves it
+groups.replica_state: groups.* has no native engine implementation; the Python backend serves it
+groups.replicate: groups.* has no native engine implementation; the Python backend serves it
+groups.retry: groups.* has no native engine implementation; the Python backend serves it
+groups.send: groups.* has no native engine implementation; the Python backend serves it
+groups.state: groups.* has no native engine implementation; the Python backend serves it
+groups.stop: groups.* has no native engine implementation; the Python backend serves it
+handoff.fail: handoff.* has no native engine implementation; the Python backend serves it
+handoff.request: handoff.* has no native engine implementation; the Python backend serves it
+handoff.state: handoff.* has no native engine implementation; the Python backend serves it
+image.generate: image.* has no native engine implementation; the Python backend serves it
+mcp.catalog: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.add: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.list: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.oauth.callback: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.oauth.cancel: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.oauth.poll: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.oauth.start: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.remove: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.set_api_key: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.status: mcp.* has no native engine implementation; the Python backend serves it
+mcp.servers.test: mcp.* has no native engine implementation; the Python backend serves it
+model.disconnect: model.* has no native engine implementation; the Python backend serves it
+model.save_key: model.* has no native engine implementation; the Python backend serves it
+onboarding.ensure_setup_profile: onboarding.* has no native engine implementation; the Python backend serves it
+onboarding.reset_setup_profile: onboarding.* has no native engine implementation; the Python backend serves it
+paste.collapse: paste.* has no native engine implementation; the Python backend serves it
+pet.cancel: pets are served by the Python backend
+pet.cells: pets are served by the Python backend
+pet.disable: pets are served by the Python backend
+pet.export: pets are served by the Python backend
+pet.gallery: pets are served by the Python backend
+pet.generate.status: pets are served by the Python backend
+pet.generate: pets are served by the Python backend
+pet.hatch: pets are served by the Python backend
+pet.remove: pets are served by the Python backend
+pet.rename: pets are served by the Python backend
+pet.scale: pets are served by the Python backend
+pet.select: pets are served by the Python backend
+pet.thumb: pets are served by the Python backend
+plugins.list: plugins.* has no native engine implementation; the Python backend serves it
+plugins.manage: plugins.* has no native engine implementation; the Python backend serves it
+profiles.configure: multi-profile management is served by the Python backend
+profiles.create: multi-profile management is served by the Python backend
+profiles.describe: multi-profile management is served by the Python backend
+profiles.get_asset: multi-profile management is served by the Python backend
+profiles.remember_onboarding: multi-profile management is served by the Python backend
+profiles.set_asset: multi-profile management is served by the Python backend
+project.facts: project.* has no native engine implementation; the Python backend serves it
+projects.add_folder: projects.* has no native engine implementation; the Python backend serves it
+projects.archive: projects.* has no native engine implementation; the Python backend serves it
+projects.create: projects.* has no native engine implementation; the Python backend serves it
+projects.delete: projects.* has no native engine implementation; the Python backend serves it
+projects.discover_repos: projects.* has no native engine implementation; the Python backend serves it
+projects.for_cwd: projects.* has no native engine implementation; the Python backend serves it
+projects.get: projects.* has no native engine implementation; the Python backend serves it
+projects.remove_folder: projects.* has no native engine implementation; the Python backend serves it
+projects.set_active: projects.* has no native engine implementation; the Python backend serves it
+projects.set_primary: projects.* has no native engine implementation; the Python backend serves it
+projects.update: projects.* has no native engine implementation; the Python backend serves it
+reload.env: reload.* has no native engine implementation; the Python backend serves it
+reload.mcp: reload.* has no native engine implementation; the Python backend serves it
+request.answer: request.* has no native engine implementation; the Python backend serves it
+skills.manage: skills hub is served by the Python backend
+skills.reload: skills hub is served by the Python backend
+system.battery: system.* has no native engine implementation; the Python backend serves it
+terminal.resize: terminal.* has no native engine implementation; the Python backend serves it
+vault.add: vault.* has no native engine implementation; the Python backend serves it
+vault.list: vault.* has no native engine implementation; the Python backend serves it
+vault.lock: vault.* has no native engine implementation; the Python backend serves it
+vault.remove: vault.* has no native engine implementation; the Python backend serves it
+vault.source.set: vault.* has no native engine implementation; the Python backend serves it
+vault.sources: vault.* has no native engine implementation; the Python backend serves it
+vault.unlock: vault.* has no native engine implementation; the Python backend serves it
+verification.status: verification.* has no native engine implementation; the Python backend serves it
+voice.record: voice pipeline is served by the Python backend
+voice.toggle: voice pipeline is served by the Python backend
+voice.tts: voice pipeline is served by the Python backend
+wake.feed: wake.* has no native engine implementation; the Python backend serves it
+wake.pause: wake.* has no native engine implementation; the Python backend serves it
+wake.resume: wake.* has no native engine implementation; the Python backend serves it
+wake.start: wake.* has no native engine implementation; the Python backend serves it
+wake.stop: wake.* has no native engine implementation; the Python backend serves it

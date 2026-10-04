@@ -1,0 +1,20 @@
+[package]
+name = "factr-protocol"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+factr-batch-types = { path = "../factr-batch-types" }
+factr-config-types = { path = "../factr-config-types" }
+factr-message-types = { path = "../factr-message-types" }
+factr-plan = { path = "../factr-plan" }
+factr-provider-core = { path = "../factr-provider-core" }
+factr-selfdev-types = { path = "../factr-selfdev-types" }
+factr-session-types = { path = "../factr-session-types" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+anyhow = "1"
+rand = "0.9"

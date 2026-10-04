@@ -1,0 +1,27 @@
+/target
+__pycache__/
+ios_simulator_screenshot.png
+/.wrangler/
+/tmp/
+# Local onboarding sandbox + auth fixtures. May contain REAL OAuth tokens copied
+# from $HOME (see scripts/onboarding_sandbox.sh seed-real-logins). Never commit.
+/.tmp/
+/.factr/engine/generated-images/
+/telemetry-worker/backups/
+target-ttest/
+target-ttest*/
+
+# Local capture artefacts are not committed baselines.
+captures/
+
+# Stray experiment/debug artifacts at the repo root. Real assets live under
+# assets/, docs/, ios/, and tests/ and are committed explicitly.
+/*.log
+/*.avif
+/*.mp4
+/*.png
+
+# scripts/bench/{abeval,polyglot}.mjs output (sandboxes, throwaway homes,
+# meta.jsonl, proxy calls). Never a committed baseline; scripts/bench/
+# polyglot-exercises.json (the fixed-seed exercise selection) IS committed.
+/bench-results/

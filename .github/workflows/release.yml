@@ -1,0 +1,124 @@
+name: release
+
+# Tag vMAJOR.MINOR.PATCH to build unsigned installers and attach them to a GitHub
+# Release. See docs/RELEASING.md. macOS signing/notarization and Windows code
+# signing are NOT configured; builds are unsigned.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Tag must match the version in every manifest
+        run: |
+          python3 - <<'PY'
+          import json, os, re, sys, tomllib
+          tag = os.environ["GITHUB_REF_NAME"]
+          if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+              sys.exit(f"tag {tag} is not vMAJOR.MINOR.PATCH")
+          want = tag[1:]
+          found = {
+              "engine/Cargo.toml": tomllib.load(open("engine/Cargo.toml", "rb"))["package"]["version"],
+              "backend/pyproject.toml": tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"],
+              "desktop/app/package.json": json.load(open("desktop/app/package.json"))["version"],
+          }
+          bad = {k: v for k, v in found.items() if v != want}
+          print(found)
+          if bad:
+              sys.exit(f"version mismatch with tag {tag}: {bad}")
+          PY
+
+  build:
+    name: build (${{ matrix.name }})
+    needs: verify-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mac-arm64
+            os: macos-14
+            dist: npm run dist:mac
+          - name: win-x64
+            os: windows-latest
+            dist: npm run dist:win:nsis
+          - name: linux-x64
+            os: ubuntu-latest
+            dist: npm run build && npm run builder -- --linux AppImage
+    env:
+      FACTR_RELEASE_BUILD: '1'
+      # Builds are unsigned on purpose.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch head
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: engine
+      - uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
+        if: runner.os == 'Windows'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+
+      - name: Engine
+        working-directory: engine
+        shell: bash
+        run: |
+          export FACTR_BUILD_SEMVER="${GITHUB_REF_NAME#v}"
+          cargo build --release --locked -p factr-cli
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Stage bundled Python
+        working-directory: desktop/app
+        run: npm run stage:backend-python
+
+      - name: Package
+        working-directory: desktop/app
+        shell: bash
+        run: ${{ matrix.dist }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: factr-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            desktop/app/release/Factr-I-*.dmg
+            desktop/app/release/Factr-I-*.zip
+            desktop/app/release/Factr-I-*.exe
+            desktop/app/release/Factr-I-*.AppImage
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          body: |
+            Unsigned builds: macOS Gatekeeper and Windows SmartScreen will warn.
+            Code signing and notarization are not configured yet.

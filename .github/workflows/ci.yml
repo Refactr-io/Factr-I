@@ -1,0 +1,125 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  engine:
+    name: engine (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch head
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: engine
+      # aws-lc-sys needs NASM on Windows MSVC (CMake is preinstalled on all runners).
+      - uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
+        if: runner.os == 'Windows'
+      - name: Build
+        run: cargo build --locked -p factr-cli
+      - name: Test
+        run: cargo test --workspace --locked
+        # Some engine tests use sh/bash and /dev/zero and have not been checked on
+        # Windows yet, so a Windows failure is reported without failing the run.
+        continue-on-error: ${{ runner.os == 'Windows' }}
+      - name: Windows non-blocking note
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "Windows test steps in this job are non-blocking until verified on Windows. Check the step log for failures." >> "$GITHUB_STEP_SUMMARY"
+
+  desktop:
+    name: desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm --workspace app run typecheck
+      - name: Unit tests
+        run: npm --workspace app test
+        # The "electron" vitest project includes scripts written for macOS/Linux
+        # (for example the update script test); not yet checked on Windows.
+        continue-on-error: ${{ runner.os == 'Windows' }}
+      - name: Windows non-blocking note
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "Windows test steps in this job are non-blocking until verified on Windows. Check the step log for failures." >> "$GITHUB_STEP_SUMMARY"
+      - name: Repository checks
+        if: runner.os == 'Linux'
+        run: npm --workspace tests-js test
+
+  backend:
+    name: backend smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    # The Windows leg is informational: these tests were only run on macOS, and some
+    # backend code paths assume POSIX behaviour. A Windows failure is reported in the
+    # job summary without failing the run.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - run: uv sync --locked --extra dev --python 3.12
+      - name: Smoke tests
+        run: >-
+          uv run --no-sync pytest -q -p no:cacheprovider
+          tests/test_base_url_hostname.py
+          tests/test_atomic_replace_symlinks.py
+          tests/test_atomic_json_writers_unified.py
+          tests/test_atomic_write_fsync_dir_target.py
+          tests/factr_backend/test_plugin_manifest_v2.py
+          tests/factr_backend/test_api_mode_aliases.py
+      - name: Job summary
+        if: always() && runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "Backend smoke tests on Windows are non-blocking (not yet verified on Windows). Status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+
+  name-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - run: bash scripts/gate-names.sh

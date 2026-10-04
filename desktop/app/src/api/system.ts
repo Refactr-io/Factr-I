@@ -1,0 +1,210 @@
+import type {
+  ActionResponse,
+  ActionStatusResponse,
+  AudioSpeakResponse,
+  AudioTranscriptionResponse,
+  AudioTtsLeaseResponse,
+  BackendUpdateCheckResponse,
+  DebugShareResponse,
+  ElevenLabsVoicesResponse,
+  MemoryStatusResponse
+} from '@/types/factr'
+
+import { capabilityScoped, factrApi, type OwnerScope, ownerScoped, type ProfileScope, profileScoped } from './client'
+
+export const AUDIO_SPEAK_MIN_REQUEST_TIMEOUT_MS = 180_000
+export const AUDIO_SPEAK_MAX_REQUEST_TIMEOUT_MS = 600_000
+const AUDIO_SPEAK_TIMEOUT_MS_PER_CHAR = 35
+
+export function audioSpeakRequestTimeoutMs(text: string): number {
+  const estimated = Math.max(
+    AUDIO_SPEAK_MIN_REQUEST_TIMEOUT_MS,
+    Math.ceil(String(text || '').length * AUDIO_SPEAK_TIMEOUT_MS_PER_CHAR)
+  )
+
+  return Math.min(AUDIO_SPEAK_MAX_REQUEST_TIMEOUT_MS, estimated)
+}
+
+export const AUDIO_TRANSCRIBE_MIN_REQUEST_TIMEOUT_MS = 180_000
+export const AUDIO_TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS = 600_000
+// The transcribe payload is the base64 audio data URL itself, so its string
+// length tracks clip size. ~0.1ms/char keeps short clips at the floor while
+// letting multi-minute recordings scale toward the cap (a base64 char is
+// ~0.75 bytes, so at 128kbps ≈ 21k chars/s of audio this budgets ~2s of
+// timeout per 1s of audio before the cap clamps it).
+const AUDIO_TRANSCRIBE_TIMEOUT_MS_PER_CHAR = 0.1
+
+export function audioTranscribeRequestTimeoutMs(dataUrl: string): number {
+  const estimated = Math.max(
+    AUDIO_TRANSCRIBE_MIN_REQUEST_TIMEOUT_MS,
+    Math.ceil(String(dataUrl || '').length * AUDIO_TRANSCRIBE_TIMEOUT_MS_PER_CHAR)
+  )
+
+  return Math.min(AUDIO_TRANSCRIBE_MAX_REQUEST_TIMEOUT_MS, estimated)
+}
+
+// ---------------------------------------------------------------------------
+// Memory data (parity with `factr memory`).
+// ---------------------------------------------------------------------------
+
+export function getMemoryStatus(): Promise<MemoryStatusResponse> {
+  return factrApi<MemoryStatusResponse>({
+    ...profileScoped(),
+    path: '/api/memory'
+  })
+}
+
+export function resetMemory(target: 'all' | 'memory' | 'user'): Promise<{ ok: boolean; deleted: string[] }> {
+  return factrApi<{ ok: boolean; deleted: string[] }>({
+    ...profileScoped(),
+    path: '/api/memory/reset',
+    method: 'POST',
+    body: { target }
+  })
+}
+
+export function restartGateway(): Promise<ActionResponse> {
+  return factrApi<ActionResponse>({
+    ...profileScoped(),
+    path: '/api/gateway/restart',
+    method: 'POST'
+  })
+}
+
+export function updateFactr(): Promise<ActionResponse> {
+  return factrApi<ActionResponse>({
+    ...profileScoped(),
+    path: '/api/factr/update',
+    method: 'POST'
+  })
+}
+
+/** Query the connected backend's own update state. In remote mode this is the
+ *  authoritative source for the backend's behind-count + "what's changed",
+ *  distinct from the Electron client clone's git state. */
+export function checkFactrUpdate(force = false): Promise<BackendUpdateCheckResponse> {
+  return factrApi<BackendUpdateCheckResponse>({
+    ...profileScoped(),
+    path: `/api/factr/update/check${force ? '?force=true' : ''}`
+  })
+}
+
+export function getActionStatus(name: string, lines = 200, profile?: ProfileScope): Promise<ActionStatusResponse> {
+  return window.factrDesktop.api<ActionStatusResponse>({
+    ...capabilityScoped(profile),
+    path: `/api/actions/${encodeURIComponent(name)}/status?lines=${Math.max(1, lines)}`
+  })
+}
+
+export function transcribeAudio(dataUrl: string, mimeType?: string): Promise<AudioTranscriptionResponse> {
+  return factrApi<AudioTranscriptionResponse>({
+    path: '/api/audio/transcribe',
+    method: 'POST',
+    ...profileScoped(),
+    body: {
+      data_url: dataUrl,
+      mime_type: mimeType
+    },
+    // Transcription blocks until provider STT, file handling, and response
+    // encoding finish. Remote providers and long clips regularly exceed the
+    // default 15s Electron backend timeout.
+    timeoutMs: audioTranscribeRequestTimeoutMs(dataUrl)
+  })
+}
+
+// `owner` = the speaking session's (connection, profile) — a Bot's own TTS
+// voice on its own gateway; omitted halves → the active scope.
+export function speakText(text: string, owner?: OwnerScope): Promise<AudioSpeakResponse> {
+  return factrApi<AudioSpeakResponse>({
+    ...ownerScoped(owner),
+    path: '/api/audio/speak',
+    method: 'POST',
+    body: { text },
+    // TTS blocks until provider synthesis, file read, and base64 encoding
+    // finish. Remote providers and large messages regularly exceed the
+    // default 15s Electron backend timeout.
+    timeoutMs: audioSpeakRequestTimeoutMs(text)
+  })
+}
+
+// Acquiring a lease pre-loads the configured TTS engine. For local engines
+// that is a model load and, on a fresh install, a voice download — well past
+// the default 15s Electron backend timeout.
+export const AUDIO_TTS_LEASE_REQUEST_TIMEOUT_MS = 180_000
+
+/**
+ * Tell the backend a speech-output toggle flipped so it can warm the TTS engine
+ * (`active: true`) or release it once no surface needs it (`active: false`).
+ * `lease` names the toggle — `desktop:read-aloud`, `desktop:conversation`.
+ */
+export function setTtsLease(lease: string, active: boolean): Promise<AudioTtsLeaseResponse> {
+  return factrApi<AudioTtsLeaseResponse>({
+    ...profileScoped(),
+    path: '/api/audio/tts-lease',
+    method: 'POST',
+    body: { active, lease },
+    timeoutMs: AUDIO_TTS_LEASE_REQUEST_TIMEOUT_MS
+  })
+}
+
+export function getElevenLabsVoices(profile?: null | string): Promise<ElevenLabsVoicesResponse> {
+  return factrApi<ElevenLabsVoicesResponse>({
+    path: '/api/audio/elevenlabs/voices',
+    ...profileScoped(profile)
+  })
+}
+
+/** `gh` CLI presence + auth state, for the composer's GitHub skill pill
+ *  (GitHub is deliberately not an MCP — the github/* skills are the
+ *  integration). Backend caches for 5 minutes; `refresh` bypasses. */
+export function getGhAuthStatus(refresh = false): Promise<{ available: boolean; authenticated: boolean }> {
+  return factrApi<{ available: boolean; authenticated: boolean }>({
+    ...profileScoped(),
+    path: `/api/git/gh-auth${refresh ? '?refresh=true' : ''}`
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance operations (parity with `factr doctor` / `factr security
+// audit` / `factr backup` / `factr debug share` and the dashboard System
+// page). All except debug share are spawn-based background actions tailed via
+// getActionStatus().
+//
+// Every one carries the ambient profile: Electron pins the whole /api/ops
+// family to the shared primary backend (connection-config's
+// LOCAL_PRIMARY_SCOPED_ROUTES), so an unprofiled call acts on that backend's
+// LAUNCH profile — and debug share uploads a home's logs and config.
+// ---------------------------------------------------------------------------
+
+export function runDoctor(): Promise<ActionResponse> {
+  return factrApi<ActionResponse>({ ...profileScoped(), path: '/api/ops/doctor', method: 'POST', body: {} })
+}
+
+export function runSecurityAudit(): Promise<ActionResponse> {
+  return factrApi<ActionResponse>({
+    ...profileScoped(),
+    path: '/api/ops/security-audit',
+    method: 'POST',
+    body: {}
+  })
+}
+
+export function runBackup(): Promise<ActionResponse & { archive?: string }> {
+  return factrApi<ActionResponse & { archive?: string }>({
+    ...profileScoped(),
+    path: '/api/ops/backup',
+    method: 'POST',
+    body: {}
+  })
+}
+
+export function runDebugShare(): Promise<DebugShareResponse> {
+  return factrApi<DebugShareResponse>({
+    ...profileScoped(),
+    path: '/api/ops/debug-share',
+    method: 'POST',
+    body: {},
+    // Synchronous upload of report + logs to the paste service.
+    timeoutMs: 120_000
+  })
+}

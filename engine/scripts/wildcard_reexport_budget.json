@@ -1,0 +1,22 @@
+{
+  "total": 17,
+  "files": {
+    "crates/factr-app-core/src/lib.rs": 1,
+    "crates/factr-app-core/src/setup_hints.rs": 1,
+    "crates/factr-base/src/env.rs": 1,
+    "crates/factr-base/src/id.rs": 1,
+    "crates/factr-base/src/lib.rs": 1,
+    "crates/factr-base/src/logging.rs": 1,
+    "crates/factr-base/src/memory_types.rs": 1,
+    "crates/factr-base/src/plan.rs": 1,
+    "crates/factr-base/src/protocol.rs": 1,
+    "crates/factr-base/src/provider_catalog.rs": 1,
+    "crates/factr-base/src/stdin_detect.rs": 1,
+    "crates/factr-base/src/storage.rs": 1,
+    "crates/factr-base/src/transport/mod.rs": 1,
+    "crates/factr-base/src/util.rs": 1,
+    "crates/factr-tui/src/lib.rs": 1,
+    "crates/factr-tui/src/tui/mod.rs": 1,
+    "src/lib.rs": 1
+  }
+}

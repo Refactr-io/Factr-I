@@ -1,0 +1,8 @@
+approvals.mode
+fast
+learning.enabled
+model
+project
+reasoning
+voice.voice_chat_mode
+yolo

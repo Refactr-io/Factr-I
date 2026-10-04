@@ -1,0 +1,274 @@
+//! Client-to-server requests: the curated stable surface.
+
+use serde::{Deserialize, Serialize};
+
+/// A session-local tool executed by the client, or an effective tool description.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionToolDefinition {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema for the input. Must be a JSON object.
+    pub parameters: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Replacement tool configuration for a live session, not a patch.
+/// Reconfigure after daemon restart or loading a persisted session. Custom
+/// tools execute on the configuring client's connection.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ToolConfiguration {
+    /// Omitted/null inherits defaults. Empty disables all built-in/MCP tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled: Vec<String>,
+    /// Additive custom tools, overriding a built-in/MCP tool with the same name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom: Vec<SessionToolDefinition>,
+}
+
+/// Curated request surface. Internally-tagged on `"req"`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "req", rename_all = "snake_case")]
+pub enum ApiRequest {
+    /// Version negotiation. Must be the first frame on a connection.
+    Hello {
+        min_version: u32,
+        max_version: u32,
+        /// Client name and version, e.g. "external-client/0.1.0".
+        client: String,
+    },
+
+    /// List sessions visible to this client.
+    ListSessions {
+        /// Include sessions the user archived through this API.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        include_archived: bool,
+        /// Return at most this many most-recently modified persisted sessions.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
+    },
+
+    /// Reversibly hide a session from the default list. Its transcript remains
+    /// on disk and can be restored at any time.
+    ArchiveSession { session_id: String },
+    /// Permanently delete a session's stored transcript. Refused by callers
+    /// while the session is live.
+    DeleteSession { session_id: String },
+
+    /// Put an archived session back in the default list.
+    RestoreSession { session_id: String },
+
+    /// Configure automatic archival of inactive sessions. `None` disables it.
+    SetRetentionPolicy {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        archive_after_days: Option<u32>,
+    },
+
+    /// Create a new session (optionally in a working directory) and attach.
+    CreateSession {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        working_dir: Option<String>,
+        /// Replace the complete assembled system prompt for this session.
+        /// An empty string is an explicit empty override.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        system_prompt: Option<String>,
+    },
+
+    /// Attach to an existing session and subscribe to its event stream.
+    AttachSession { session_id: String },
+
+    /// Clone an attached session's transcript into a new, idle session.
+    ForkSession { session_id: String },
+
+    /// Detach from the currently attached session.
+    DetachSession { session_id: String },
+
+    /// Send a user message to the attached session.
+    SendMessage {
+        session_id: String,
+        content: String,
+        /// Hidden recovery/context instruction, not a user transcript message.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        system_reminder: Option<String>,
+        /// (media_type, base64_data) pairs.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<(String, String)>,
+        /// Persist the message as context without starting a model turn.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        no_reply: bool,
+    },
+
+    /// Replace the attached session's tool configuration.
+    ConfigureTools {
+        session_id: String,
+        tools: ToolConfiguration,
+    },
+
+    /// List the effective tools available to the attached session.
+    ListTools { session_id: String },
+
+    /// Complete a client-executed custom tool call. Acknowledged with `Ok`.
+    ToolResult {
+        session_id: String,
+        call_id: String,
+        output: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+
+    /// Cancel the in-flight generation.
+    Cancel { session_id: String },
+
+    /// Inject a message at the next safe point without cancelling.
+    SoftInterrupt {
+        session_id: String,
+        content: String,
+        /// (media_type, base64_data) pairs.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<(String, String)>,
+        #[serde(default)]
+        urgent: bool,
+    },
+
+    /// Fetch conversation history.
+    GetHistory { session_id: String },
+
+    /// Fetch the tail of *any* session's conversation, attached or not.
+    ///
+    /// `GetHistory` can only answer for the session this connection is
+    /// attached to, because it is routed through the daemon's attachment.
+    /// A client showing several sessions at once (a switcher, an overview, a
+    /// dashboard) needs a glance at the others without attaching to each in
+    /// turn, which would disturb the very sessions it is trying to preview.
+    /// Served from the stored record and capped to the last `limit` messages.
+    PeekSession {
+        session_id: String,
+        /// Messages to return from the end. Defaults to a small tail.
+        #[serde(default)]
+        limit: Option<u32>,
+    },
+
+    /// Clear conversation history.
+    Clear { session_id: String },
+
+    /// Rewind history to the given 1-based message index.
+    Rewind {
+        session_id: String,
+        message_index: usize,
+    },
+
+    /// Reply to a `PermissionRequest` event.
+    PermissionResponse {
+        session_id: String,
+        request_id: String,
+        decision: PermissionDecision,
+    },
+
+    /// List the models this session can switch to.
+    ///
+    /// A client that cannot enumerate models cannot offer a model picker, so
+    /// it is stuck on whatever the daemon defaulted to. Served from the
+    /// catalog the daemon already reports on attach.
+    ListModels { session_id: String },
+
+    /// Provider routes and active runtime identity for the attached session.
+    GetRuntimeInfo { session_id: String },
+
+    /// Reload provider credentials already saved in the credential store (the Factr `.env` and
+    /// `auth.json`). No tokens or callback input travel in this request.
+    NotifyAuthChanged { provider: String },
+
+    /// Drop the daemon's cached quota and quota cooldown for one subscription
+    /// login after the client redeemed a banked usage reset out of band.
+    /// `provider` is `claude` or `openai`. `account_label: None` is the default
+    /// login. This never redeems a reset and carries no credentials.
+    InvalidateUsage {
+        provider: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_label: Option<String>,
+    },
+
+    /// Read one UTF-8 file under the session working directory.
+    ReadFile {
+        session_id: String,
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_bytes: Option<u64>,
+    },
+
+    /// Find files by case-insensitive path substring under the session root.
+    FindFiles {
+        session_id: String,
+        query: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
+    },
+
+    /// Search UTF-8 files for a literal text string.
+    SearchText {
+        session_id: String,
+        query: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        limit: Option<u32>,
+    },
+
+    /// Read safe filesystem metadata for a path under the session root.
+    FileStatus { session_id: String, path: String },
+
+    /// Switch the session to a different model.
+    ///
+    /// `model` is an id from `ListModels`, e.g. `claude-opus-5`. A route
+    /// suffix like `claude-opus-4-6[1m]` selects a specific context variant.
+    SetModel { session_id: String, model: String },
+
+    /// Set how much the model deliberates before answering.
+    ///
+    /// The cost/quality dial: `minimal`, `low`, `medium`, `high`, `xhigh`, or
+    /// `max`, depending on what the provider supports. Providers that do not
+    /// support it answer with an error rather than silently ignoring it.
+    SetReasoningEffort { session_id: String, effort: String },
+
+    /// Summarize the transcript so far, freeing context.
+    ///
+    /// Without this a long-lived client eventually hits the context limit and
+    /// has no recourse but to clear the conversation and lose everything.
+    Compact { session_id: String },
+
+    /// Set a session's title, or clear it to restore the generated one.
+    RenameSession {
+        session_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
+
+    SetWorkingDir { session_id: String, working_dir: String },
+
+    /// Restore the history that the last `Rewind` removed.
+    ///
+    /// `Rewind` is destructive, so without an undo a client cannot offer it
+    /// safely: a mis-click costs the user their conversation.
+    RewindUndo { session_id: String },
+
+    /// Drop soft interrupts that have been queued but not yet delivered.
+    ///
+    /// The counterpart to `SoftInterrupt`: a client that lets a user queue a
+    /// follow-up must also let them take it back before it lands.
+    CancelSoftInterrupts { session_id: String },
+
+    /// Liveness check.
+    Ping,
+
+    /// Forward-compatibility catch-all. Servers reply with an error frame.
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionDecision {
+    Allow,
+    AllowAlways,
+    Deny,
+}

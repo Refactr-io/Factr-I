@@ -1,0 +1,28 @@
+[package]
+name = "factr-harness-api-server"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Harness API endpoint: bridges versioned API clients onto the internal factr protocol"
+
+[dependencies]
+anyhow = "1"
+# For the allocator release (`process_memory`), owned in one place. The bridge runs inside the
+# factr gateway, which links factr-base anyway; only the standalone bridge binary grows.
+factr-base = { path = "../factr-base", default-features = false }
+factr-harness-api = { path = "../factr-harness-api" }
+factr-transport = { path = "../factr-transport" }
+serde = "1"
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["net", "io-util", "io-std", "rt-multi-thread", "macros", "sync", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+factr-background-types = { path = "../factr-background-types" }
+
+[[bin]]
+name = "factr-api-bridge"
+path = "src/bin/bridge.rs"

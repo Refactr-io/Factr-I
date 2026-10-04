@@ -1,0 +1,18 @@
+[package]
+name = "factr-provider-env"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "factr_provider_env"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+factr-core = { path = "../factr-core" }
+factr-logging = { path = "../factr-logging" }
+factr-provider-metadata = { path = "../factr-provider-metadata" }
+factr-storage = { path = "../factr-storage" }
+
+[dev-dependencies]
+tempfile = "3"

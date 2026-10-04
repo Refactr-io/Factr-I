@@ -1,0 +1,19 @@
+name: langfuse
+version: "1.0.0"
+description: "Optional Langfuse observability for Factr — traces conversations, LLM calls, and tool usage. Opt-in via `factr plugins enable observability/langfuse` or `factr tools → Langfuse Observability`."
+author: Factr-I contributors
+requires_env:
+  - FACTR_LANGFUSE_PUBLIC_KEY
+  - FACTR_LANGFUSE_SECRET_KEY
+provides_hooks:
+  - pre_api_request
+  - post_api_request
+  - api_request_error
+  - pre_llm_call
+  - post_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - on_session_finalize
+  - on_session_end
+  - subagent_start
+  - subagent_stop

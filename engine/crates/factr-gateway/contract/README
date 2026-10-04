@@ -1,0 +1,3 @@
+gateway-contract.openrpc.json is copied verbatim from factr-backend
+(apps/shared/src/gateway-contract.openrpc.json).
+Refresh it when the desktop app updates its gateway contract.

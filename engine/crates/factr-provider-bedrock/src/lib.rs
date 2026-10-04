@@ -1,0 +1,2352 @@
+#[cfg(feature = "aws-sdk")]
+use anyhow::Context;
+use anyhow::Result;
+use async_trait::async_trait;
+#[cfg(feature = "aws-sdk")]
+use aws_config::BehaviorVersion;
+#[cfg(feature = "aws-sdk")]
+use aws_credential_types::Token;
+#[cfg(feature = "aws-sdk")]
+use aws_sdk_bedrock::Client as BedrockControlClient;
+#[cfg(feature = "aws-sdk")]
+use aws_sdk_bedrockruntime::Client as BedrockRuntimeClient;
+#[cfg(feature = "aws-sdk")]
+use aws_sdk_bedrockruntime::types::{
+    CachePointBlock, CachePointType, ContentBlock, ContentBlockDelta, ContentBlockStart,
+    ConversationRole, ConverseStreamOutput,
+    ImageBlock, ImageFormat, ImageSource, InferenceConfiguration, Message,
+    ReasoningContentBlockDelta, SystemContentBlock, Tool, ToolConfiguration, ToolInputSchema,
+    ToolSpecification,
+};
+#[cfg(feature = "aws-sdk")]
+use aws_smithy_types::Blob;
+#[cfg(feature = "aws-sdk")]
+use base64::Engine;
+#[cfg(feature = "aws-sdk")]
+use base64::engine::general_purpose::STANDARD as BASE64;
+#[cfg(feature = "aws-sdk")]
+use factr_message_types::{ContentBlock as JContentBlock, Role as JRole, StreamEvent};
+use factr_message_types::{Message as JMessage, ToolDefinition};
+#[cfg(feature = "aws-sdk")]
+use factr_provider_core::summarize_model_catalog_refresh;
+use factr_provider_core::{
+    DEFAULT_CONTEXT_LIMIT, EventStream, ModelCatalogRefreshSummary, ModelRoute, Provider,
+    RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource,
+};
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "aws-sdk")]
+use serde_json::{Value, json};
+use std::collections::{HashMap, HashSet};
+#[cfg(feature = "aws-sdk")]
+use std::pin::Pin;
+use std::sync::{Arc, RwLock};
+#[cfg(feature = "aws-sdk")]
+use tokio::sync::mpsc;
+#[cfg(feature = "aws-sdk")]
+use tokio_stream::wrappers::ReceiverStream;
+
+const DEFAULT_MODEL: &str = "anthropic.claude-3-5-sonnet-20241022-v2:0";
+const DEFAULT_MAX_OUTPUT_TOKENS: usize = 4096;
+/// Output cap sent when FACTR_BEDROCK_MAX_TOKENS is unset. Without maxTokens
+/// Bedrock applies a small model default that truncates large file writes;
+/// 32k is within every Claude 4+ model's limit.
+const DEFAULT_REQUEST_MAX_TOKENS: usize = 32_000;
+/// Provider-level retry: total attempts, first backoff and backoff ceiling.
+const MAX_ATTEMPTS: u32 = 6;
+const BACKOFF_BASE_MS: u64 = 1_000;
+const BACKOFF_CAP_MS: u64 = 60_000;
+pub const API_KEY_ENV: &str = "AWS_BEARER_TOKEN_BEDROCK";
+pub const REGION_ENV: &str = "FACTR_BEDROCK_REGION";
+#[cfg(not(feature = "aws-sdk"))]
+const NO_AWS_SDK_SUPPORT: &str =
+    "factr was built without AWS Bedrock support (feature `bedrock` disabled)";
+
+#[derive(Debug, Clone)]
+struct BedrockModelInfo {
+    context_tokens: usize,
+    max_output_tokens: usize,
+    supports_tools: bool,
+    supports_vision: bool,
+    supports_reasoning: bool,
+    pricing: Option<(u64, u64)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedCatalog {
+    models: Vec<String>,
+    inference_profiles: Vec<String>,
+    #[serde(default)]
+    profile_required_models: Vec<String>,
+    #[serde(default)]
+    inference_profile_routes: HashMap<String, String>,
+    #[serde(default)]
+    legacy_models: Vec<String>,
+    region: Option<String>,
+    fetched_at_rfc3339: String,
+}
+
+pub struct BedrockProvider {
+    model: Arc<RwLock<String>>,
+    fetched_models: Arc<RwLock<Vec<String>>>,
+    fetched_inference_profiles: Arc<RwLock<Vec<String>>>,
+    profile_required_models: Arc<RwLock<HashSet<String>>>,
+    inference_profile_routes: Arc<RwLock<HashMap<String, String>>>,
+    legacy_models: Arc<RwLock<HashSet<String>>>,
+}
+
+impl BedrockProvider {
+    pub fn new() -> Self {
+        let model =
+            std::env::var("FACTR_BEDROCK_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        let provider = Self {
+            model: Arc::new(RwLock::new(model)),
+            fetched_models: Arc::new(RwLock::new(Vec::new())),
+            fetched_inference_profiles: Arc::new(RwLock::new(Vec::new())),
+            profile_required_models: Arc::new(RwLock::new(HashSet::new())),
+            inference_profile_routes: Arc::new(RwLock::new(HashMap::new())),
+            legacy_models: Arc::new(RwLock::new(HashSet::new())),
+        };
+        provider.seed_cached_catalog();
+        provider
+    }
+
+    pub fn has_credentials() -> bool {
+        let explicitly_enabled = std::env::var("FACTR_BEDROCK_ENABLE")
+            .ok()
+            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false);
+        if explicitly_enabled {
+            return true;
+        }
+
+        let has_region = Self::configured_region().is_some();
+        let has_credential_hint = Self::configured_bearer_token().is_some()
+            || Self::configured_profile().is_some()
+            || std::env::var_os("AWS_ACCESS_KEY_ID").is_some()
+            || std::env::var_os("AWS_WEB_IDENTITY_TOKEN_FILE").is_some()
+            || std::env::var_os("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI").is_some()
+            || std::env::var_os("AWS_CONTAINER_CREDENTIALS_FULL_URI").is_some()
+            || std::env::var_os("AWS_SHARED_CREDENTIALS_FILE").is_some()
+            || std::env::var_os("AWS_CONFIG_FILE").is_some();
+
+        has_region && has_credential_hint
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    async fn sdk_config() -> aws_types::SdkConfig {
+        let mut loader = aws_config::defaults(BehaviorVersion::latest());
+        let profile = Self::configured_profile();
+        if let Some(region) = Self::configured_region() {
+            loader = loader.region(aws_types::region::Region::new(region));
+        }
+        if let Some(profile) = profile {
+            // Pin the credential provider itself, not just the profile name.
+            // The default AWS chain checks process-wide AWS_ACCESS_KEY_ID first,
+            // which could otherwise override an explicit Factr Bedrock profile.
+            // The SDK profile provider resolves `aws login` sessions
+            // (`login_session`), SSO, and static keys natively, so no `aws` CLI
+            // subprocess is needed.
+            loader = loader.credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name(profile.clone())
+                    .build(),
+            );
+            loader = loader.profile_name(profile);
+        }
+        loader.load().await
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    async fn runtime_client() -> BedrockRuntimeClient {
+        let sdk_config = Self::sdk_config().await;
+        // The provider retries throttling/5xx/network itself (see
+        // `is_retryable_error`); disable the SDK's own 3-attempt retry so the
+        // two layers do not multiply.
+        let mut config = aws_sdk_bedrockruntime::config::Builder::from(&sdk_config)
+            .retry_config(aws_smithy_types::retry::RetryConfig::disabled());
+        if let Some(token) = Self::configured_bearer_token_for_runtime() {
+            // Configure bearer authentication on this client only. Mutating the
+            // process environment races with concurrent provider construction
+            // and can leak one account's credential choice into another route.
+            config = config.bearer_token(Token::new(token, None));
+        }
+        BedrockRuntimeClient::from_conf(config.build())
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    async fn control_client() -> BedrockControlClient {
+        let sdk_config = Self::sdk_config().await;
+        let mut config = aws_sdk_bedrock::config::Builder::from(&sdk_config);
+        if let Some(token) = Self::configured_bearer_token_for_runtime() {
+            config = config.bearer_token(Token::new(token, None));
+        }
+        BedrockControlClient::from_conf(config.build())
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    async fn validate_credentials_if_requested() -> Result<()> {
+        let validate = std::env::var("FACTR_BEDROCK_VALIDATE_STS")
+            .ok()
+            .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "no"))
+            .unwrap_or(false);
+        if !validate {
+            return Ok(());
+        }
+        let config = Self::sdk_config().await;
+        let client = aws_sdk_sts::Client::new(&config);
+        client
+            .get_caller_identity()
+            .send()
+            .await
+            .map(|_| ())
+            .map_err(|err| {
+                anyhow::anyhow!(Self::classify_error_message(&Self::sdk_error_message(&err)))
+            })
+    }
+
+    fn configured_region() -> Option<String> {
+        Self::env_or_config(REGION_ENV)
+            .or_else(|| Self::env_or_config("AWS_REGION"))
+            .or_else(|| Self::env_or_config("AWS_DEFAULT_REGION"))
+    }
+
+    fn configured_profile() -> Option<String> {
+        Self::env_or_config("FACTR_BEDROCK_PROFILE").or_else(|| Self::env_or_config("AWS_PROFILE"))
+    }
+
+    pub fn configured_bearer_token() -> Option<String> {
+        factr_provider_env::load_api_key(API_KEY_ENV)
+    }
+
+    #[cfg(any(feature = "aws-sdk", test))]
+    fn configured_bearer_token_for_runtime() -> Option<String> {
+        Self::configured_profile()
+            .is_none()
+            .then(Self::configured_bearer_token)
+            .flatten()
+    }
+
+    fn env_or_config(name: &str) -> Option<String> {
+        std::env::var(name)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .or_else(|| factr_provider_env::env_secret(name))
+    }
+
+    fn persisted_catalog_path() -> Result<std::path::PathBuf> {
+        Ok(factr_storage::app_config_dir()?.join("bedrock_models_cache.json"))
+    }
+
+    fn load_persisted_catalog() -> Option<PersistedCatalog> {
+        let path = Self::persisted_catalog_path().ok()?;
+        factr_storage::read_json(&path).ok()
+    }
+
+    // Only written from aws-sdk catalog refreshes, but kept ungated so cached
+    // catalogs behave identically in both build modes (and for tests).
+    #[cfg_attr(not(feature = "aws-sdk"), allow(dead_code))]
+    fn persist_catalog(
+        models: &[String],
+        inference_profiles: &[String],
+        profile_required_models: &HashSet<String>,
+        inference_profile_routes: &HashMap<String, String>,
+        legacy_models: &HashSet<String>,
+    ) {
+        let Ok(path) = Self::persisted_catalog_path() else {
+            return;
+        };
+        let payload = PersistedCatalog {
+            models: models.to_vec(),
+            inference_profiles: inference_profiles.to_vec(),
+            profile_required_models: profile_required_models.iter().cloned().collect(),
+            inference_profile_routes: inference_profile_routes.clone(),
+            legacy_models: legacy_models.iter().cloned().collect(),
+            region: Self::configured_region(),
+            fetched_at_rfc3339: chrono::Utc::now().to_rfc3339(),
+        };
+        if let Err(err) = factr_storage::write_json(&path, &payload) {
+            factr_logging::warn(&format!(
+                "Failed to persist Bedrock model catalog {}: {}",
+                path.display(),
+                err
+            ));
+        }
+    }
+
+    fn seed_cached_catalog(&self) {
+        if let Some(catalog) = Self::load_persisted_catalog() {
+            let configured_region = Self::configured_region();
+            if catalog.region.as_deref() != configured_region.as_deref() {
+                factr_logging::info(&format!(
+                    "Ignoring Bedrock model cache for region {:?}; configured region is {:?}",
+                    catalog.region, configured_region
+                ));
+                return;
+            }
+            let PersistedCatalog {
+                models: cached_models,
+                inference_profiles,
+                profile_required_models,
+                inference_profile_routes,
+                legacy_models,
+                ..
+            } = catalog;
+            let mut inference_profile_routes = inference_profile_routes;
+            Self::merge_profile_routes_from_profile_ids(
+                &mut inference_profile_routes,
+                inference_profiles.iter(),
+            );
+            if let Ok(mut guard) = self.fetched_models.write() {
+                *guard = cached_models;
+            }
+            if let Ok(mut profiles) = self.fetched_inference_profiles.write() {
+                *profiles = inference_profiles;
+            }
+            if let Ok(mut required) = self.profile_required_models.write() {
+                *required = profile_required_models.into_iter().collect();
+            }
+            if let Ok(mut routes) = self.inference_profile_routes.write() {
+                *routes = inference_profile_routes;
+            }
+            if let Ok(mut legacy) = self.legacy_models.write() {
+                *legacy = legacy_models.into_iter().collect();
+            }
+        }
+    }
+
+    /// One ConverseStream request, forwarding events to `tx`.
+    #[cfg(feature = "aws-sdk")]
+    async fn converse_once(
+        client: &BedrockRuntimeClient,
+        model: &str,
+        inputs: ConverseInputs,
+        tx: &mpsc::Sender<Result<StreamEvent>>,
+    ) -> std::result::Result<(), AttemptFailure> {
+        let mut req = client
+            .converse_stream()
+            .model_id(model)
+            .set_messages(Some(inputs.messages));
+        if let Some(system) = inputs.system {
+            req = req.set_system(Some(system));
+        }
+        if let Some(tool_config) = inputs.tool_config {
+            req = req.tool_config(tool_config);
+        }
+        if let Some(inference) = inputs.inference {
+            req = req.inference_config(inference);
+        }
+        let resp = req.send().await.map_err(|err| AttemptFailure {
+            message: Self::sdk_error_message(&err),
+            emitted: false,
+        })?;
+        let mut emitted = false;
+        let mut stream = resp.stream;
+        let mut in_tool = false;
+        loop {
+            let event = match stream.recv().await {
+                Ok(Some(event)) => event,
+                Ok(None) => return Ok(()),
+                Err(err) => {
+                    return Err(AttemptFailure {
+                        message: Self::sdk_error_message(&err),
+                        emitted,
+                    });
+                }
+            };
+            let out = match event {
+                ConverseStreamOutput::ContentBlockStart(start) => {
+                    if let Some(ContentBlockStart::ToolUse(tool)) = start.start {
+                        in_tool = true;
+                        Some(StreamEvent::ToolUseStart {
+                            id: tool.tool_use_id().to_string(),
+                            name: tool.name().to_string(),
+                        })
+                    } else {
+                        None
+                    }
+                }
+                ConverseStreamOutput::ContentBlockDelta(delta) => match delta.delta {
+                    Some(ContentBlockDelta::Text(text)) => Some(StreamEvent::TextDelta(text)),
+                    Some(ContentBlockDelta::ToolUse(tool_delta)) => {
+                        let input = tool_delta.input();
+                        (!input.is_empty()).then(|| StreamEvent::ToolInputDelta(input.to_string()))
+                    }
+                    Some(ContentBlockDelta::ReasoningContent(
+                        ReasoningContentBlockDelta::Text(text),
+                    )) => Some(StreamEvent::ThinkingDelta(text)),
+                    _ => None,
+                },
+                ConverseStreamOutput::ContentBlockStop(_) => {
+                    std::mem::take(&mut in_tool).then_some(StreamEvent::ToolUseEnd)
+                }
+                ConverseStreamOutput::MessageStop(stop) => Some(StreamEvent::MessageEnd {
+                    // snake_case ("end_turn", "tool_use", "max_tokens") like every
+                    // other provider; the turn loop matches on these strings.
+                    stop_reason: Some(factr_provider_core::refusal::normalize_stop_reason(
+                        stop.stop_reason().as_str().to_string(),
+                    )),
+                }),
+                ConverseStreamOutput::Metadata(meta) => meta.usage().map(|usage| {
+                    StreamEvent::TokenUsage {
+                        input_tokens: Some(usage.input_tokens() as u64),
+                        output_tokens: Some(usage.output_tokens() as u64),
+                        cache_read_input_tokens: usage
+                            .cache_read_input_tokens()
+                            .map(|v| v.max(0) as u64),
+                        cache_creation_input_tokens: usage
+                            .cache_write_input_tokens()
+                            .map(|v| v.max(0) as u64),
+                    }
+                }),
+                _ => None,
+            };
+            if let Some(out) = out {
+                emitted = true;
+                if tx.send(Ok(out)).await.is_err() {
+                    return Ok(()); // consumer gone
+                }
+            }
+        }
+    }
+
+    /// Transient failures worth retrying: throttling, 5xx / unavailable /
+    /// model timeout / model not ready, and network errors. Auth, validation,
+    /// access and missing-resource errors are never retried.
+    #[cfg_attr(not(feature = "aws-sdk"), allow(dead_code))]
+    fn is_retryable_error(raw: &str) -> bool {
+        let l = raw.to_ascii_lowercase();
+        const NEVER: [&str; 9] = [
+            "accessdenied",
+            "access denied",
+            "not authorized",
+            "unauthorized",
+            "validationexception",
+            "expired",
+            "credentials",
+            "resourcenotfound",
+            "resource not found",
+        ];
+        const TRANSIENT: [&str; 20] = [
+            "throttl",
+            "too many requests",
+            "toomanyrequests",
+            "rate exceeded",
+            "serviceunavailable",
+            "service unavailable",
+            "internalserver",
+            "internal server",
+            "modeltimeout",
+            "model timeout",
+            "modelnotready",
+            "not ready",
+            "modelstreamerror",
+            "dispatch failure",
+            "timeout",
+            "timed out",
+            "connection",
+            "io error",
+            "broken pipe",
+            "try again",
+        ];
+        !NEVER.iter().any(|n| l.contains(n)) && TRANSIENT.iter().any(|t| l.contains(t))
+    }
+
+    /// Exponential backoff for 1-based `attempt`, capped, with equal jitter
+    /// (`jitter` in [0,1)): half fixed, half random, so concurrent runs spread.
+    #[cfg_attr(not(feature = "aws-sdk"), allow(dead_code))]
+    fn backoff_delay(attempt: u32, jitter: f64) -> std::time::Duration {
+        let exp = BACKOFF_BASE_MS
+            .saturating_mul(1u64 << attempt.saturating_sub(1).min(20))
+            .min(BACKOFF_CAP_MS);
+        let half = exp / 2;
+        std::time::Duration::from_millis(half + (half as f64 * jitter.clamp(0.0, 1.0)) as u64)
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn jitter() -> f64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| f64::from(d.subsec_nanos() % 1_000_000) / 1_000_000.0)
+            .unwrap_or(0.5)
+    }
+
+    /// cachePoint is sent only to model families Bedrock documents as cacheable:
+    /// Claude 3.7 Sonnet, 3.5 Haiku, Claude 4.x and newer, and Nova. Other
+    /// Claude 3.x (incl. 3.5 Sonnet v2) and unknown models get no markers.
+    #[cfg(any(feature = "aws-sdk", test))]
+    fn supports_prompt_cache(model: &str) -> bool {
+        let id = Self::normalize_model_id(model).to_ascii_lowercase();
+        if id.contains("amazon.nova") {
+            return true;
+        }
+        let Some((_, rest)) = id.split_once("anthropic.claude-") else {
+            return false;
+        };
+        let mut nums = rest
+            .split('-')
+            .filter_map(|t| t.parse::<u32>().ok().filter(|_| t.len() <= 2));
+        match (nums.next(), nums.next()) {
+            (Some(major), _) if major >= 4 => true,
+            (Some(3), Some(7)) => true,
+            (Some(3), Some(5)) => id.contains("haiku"),
+            _ => false,
+        }
+    }
+
+    /// Any validation failure while cachePoints are on is retried once without.
+    #[cfg(any(feature = "aws-sdk", test))]
+    fn is_cache_fallback_error(message: &str) -> bool {
+        let lower = message.to_ascii_lowercase();
+        lower.contains("validation") || lower.contains("cachepoint") || lower.contains("cache_point")
+    }
+
+    // Pure string logic; only reachable from aws-sdk request paths and tests.
+    #[cfg_attr(not(feature = "aws-sdk"), allow(dead_code))]
+    fn classify_error_message(raw: &str) -> String {
+        let lower = raw.to_ascii_lowercase();
+        let is_legacy_model_error = lower.contains("marked by provider as legacy")
+            || lower.contains("model is marked") && lower.contains("legacy")
+            || lower.contains("have not been actively using the model in the last 30 days");
+        if is_legacy_model_error {
+            return format!(
+                "{} Original error: {}",
+                "This Bedrock model is marked as legacy for this account. Choose an active Bedrock model or an active inference profile instead.",
+                raw.trim()
+            );
+        } else if lower.contains("doesn't support tool use")
+            || lower.contains("does not support tool use")
+            || lower.contains("tool use in streaming mode")
+        {
+            return format!(
+                "{} Original error: {}",
+                "This Bedrock model does not support tool use with streaming. Choose a Bedrock model with tool support, such as a Claude or Nova profile, or use a no-tools Bedrock model route.",
+                raw.trim()
+            );
+        } else if lower.contains("no credentials")
+            || lower.contains("could not load credentials")
+            || lower.contains("credentials") && lower.contains("not loaded")
+        {
+            return "AWS credentials were not found. Set AWS_BEARER_TOKEN_BEDROCK, AWS_PROFILE, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, or run `aws sso login`.".to_string();
+        } else if lower.contains("expired") || lower.contains("sso") && lower.contains("token") {
+            return "AWS SSO/session credentials look expired. Run `aws sso login --profile <profile>` and retry.".to_string();
+        }
+
+        let hint = if lower.contains("accessdenied")
+            || lower.contains("access denied")
+            || lower.contains("not authorized")
+        {
+            "AWS IAM denied the Bedrock request. Ensure the principal can call bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream, bedrock:ListFoundationModels, and bedrock:ListInferenceProfiles as needed."
+        } else if lower.contains("validationexception") && lower.contains("model")
+            || lower.contains("model") && lower.contains("not found")
+            || lower.contains("resource not found")
+        {
+            "Bedrock did not recognize this model in the selected region/account. Check model ID, inference profile ID, region, and model access."
+        } else if lower.contains("throttl")
+            || lower.contains("too many requests")
+            || lower.contains("rate exceeded")
+        {
+            "Bedrock throttled the request. Retry later or request a quota increase."
+        } else if lower.contains("region") && lower.contains("missing") {
+            "AWS region is missing. Set AWS_REGION or FACTR_BEDROCK_REGION."
+        } else {
+            "Bedrock request failed. Check AWS credentials, region, model access, and IAM permissions."
+        };
+        format!("{} Original error: {}", hint, raw.trim())
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn sdk_error_message(err: &(impl std::fmt::Display + std::fmt::Debug)) -> String {
+        let display = err.to_string();
+        let trimmed = display.trim();
+        if trimmed.is_empty()
+            || trimmed.eq_ignore_ascii_case("service error")
+            || trimmed.eq_ignore_ascii_case("dispatch failure")
+        {
+            format!("{err:?}")
+        } else {
+            display
+        }
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn json_to_document(value: &serde_json::Value) -> aws_smithy_types::Document {
+        match value {
+            serde_json::Value::Null => aws_smithy_types::Document::Null,
+            serde_json::Value::Bool(v) => aws_smithy_types::Document::Bool(*v),
+            serde_json::Value::Number(n) => {
+                if let Some(v) = n.as_u64() {
+                    aws_smithy_types::Document::from(v)
+                } else if let Some(v) = n.as_i64() {
+                    aws_smithy_types::Document::from(v)
+                } else if let Some(v) = n.as_f64() {
+                    aws_smithy_types::Document::from(v)
+                } else {
+                    aws_smithy_types::Document::Null
+                }
+            }
+            serde_json::Value::String(v) => aws_smithy_types::Document::String(v.clone()),
+            serde_json::Value::Array(values) => aws_smithy_types::Document::Array(
+                values.iter().map(Self::json_to_document).collect(),
+            ),
+            serde_json::Value::Object(map) => aws_smithy_types::Document::Object(
+                map.iter()
+                    .map(|(key, value)| (key.clone(), Self::json_to_document(value)))
+                    .collect::<HashMap<_, _>>(),
+            ),
+        }
+    }
+
+    /// Bedrock Converse rejects JSON Schema combinators at a tool input
+    /// schema's top level. Preserve the common object fields and widen variant
+    /// branches into one object. Runtime deserialization remains responsible
+    /// for enforcing action-specific combinations.
+    #[cfg(feature = "aws-sdk")]
+    fn bedrock_input_schema(schema: &Value) -> Value {
+        let Value::Object(source) = schema else {
+            return json!({"type": "object", "properties": {}});
+        };
+
+        let mut output = source.clone();
+        let mut merged_properties = output
+            .get("properties")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        let mut all_of_required = Vec::new();
+
+        for keyword in ["oneOf", "anyOf", "allOf"] {
+            let Some(branches) = output
+                .remove(keyword)
+                .and_then(|value| value.as_array().cloned())
+            else {
+                continue;
+            };
+            for branch in branches {
+                let Some(branch) = branch.as_object() else {
+                    continue;
+                };
+                if let Some(properties) = branch.get("properties").and_then(Value::as_object) {
+                    for (name, property) in properties {
+                        merged_properties
+                            .entry(name.clone())
+                            .or_insert_with(|| property.clone());
+                    }
+                }
+                if keyword == "allOf"
+                    && let Some(required) = branch.get("required").and_then(Value::as_array)
+                {
+                    for name in required.iter().filter_map(Value::as_str) {
+                        if !all_of_required.iter().any(|existing| existing == name) {
+                            all_of_required.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        output.insert("type".to_string(), Value::String("object".to_string()));
+        output.insert("properties".to_string(), Value::Object(merged_properties));
+        if !all_of_required.is_empty() {
+            let required = output
+                .entry("required".to_string())
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Value::Array(required) = required {
+                for name in all_of_required {
+                    if !required
+                        .iter()
+                        .any(|existing| existing.as_str() == Some(&name))
+                    {
+                        required.push(Value::String(name));
+                    }
+                }
+            }
+        }
+        Value::Object(output)
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn image_format_for_media_type(media_type: &str) -> Option<ImageFormat> {
+        match media_type.trim().to_ascii_lowercase().as_str() {
+            "image/png" => Some(ImageFormat::Png),
+            "image/jpeg" | "image/jpg" => Some(ImageFormat::Jpeg),
+            "image/gif" => Some(ImageFormat::Gif),
+            "image/webp" => Some(ImageFormat::Webp),
+            _ => None,
+        }
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn image_block(media_type: &str, data: &str) -> Result<ImageBlock> {
+        let format = Self::image_format_for_media_type(media_type).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Bedrock image input does not support media type `{}`",
+                media_type
+            )
+        })?;
+        let bytes = BASE64.decode(data).with_context(|| {
+            format!("Failed to decode {} image payload for Bedrock", media_type)
+        })?;
+        ImageBlock::builder()
+            .format(format)
+            .source(ImageSource::Bytes(Blob::new(bytes)))
+            .build()
+            .context("Failed to build Bedrock image block")
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn to_bedrock_messages(messages: &[JMessage], allow_images: bool) -> Result<Vec<Message>> {
+        Self::merge_consecutive_roles(Self::to_bedrock_messages_unmerged(messages, allow_images)?)
+    }
+
+    /// Converse requires user/assistant alternation, but factr stores each tool
+    /// result (and injected system-reminder / memory text) as its own user
+    /// message. Merge runs of one role; tool results go first in a user turn.
+    #[cfg(feature = "aws-sdk")]
+    fn merge_consecutive_roles(messages: Vec<Message>) -> Result<Vec<Message>> {
+        let mut grouped: Vec<(ConversationRole, Vec<ContentBlock>)> = Vec::new();
+        for m in messages {
+            let role = m.role().clone();
+            let content = m.content().to_vec();
+            match grouped.last_mut() {
+                Some((r, c)) if *r == role => c.extend(content),
+                _ => grouped.push((role, content)),
+            }
+        }
+        grouped
+            .into_iter()
+            .map(|(role, mut content)| {
+                content.sort_by_key(|b| !matches!(b, ContentBlock::ToolResult(_)));
+                Message::builder()
+                    .role(role)
+                    .set_content(Some(content))
+                    .build()
+                    .map_err(|err| anyhow::anyhow!(err))
+            })
+            .collect()
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn to_bedrock_messages_unmerged(
+        messages: &[JMessage],
+        allow_images: bool,
+    ) -> Result<Vec<Message>> {
+        messages
+            .iter()
+            .filter_map(|msg| {
+                let role = match msg.role {
+                    JRole::User => ConversationRole::User,
+                    JRole::Assistant => ConversationRole::Assistant,
+                };
+                let mut content = Vec::new();
+                for block in &msg.content {
+                    match block {
+                        JContentBlock::Text { text, .. } => {
+                            // Converse rejects blank text blocks.
+                            if !text.trim().is_empty() {
+                                content.push(ContentBlock::Text(text.clone()))
+                            }
+                        }
+                        JContentBlock::Image { media_type, data } => {
+                            if !allow_images {
+                                return Some(Err(anyhow::anyhow!(
+                                    "Current Bedrock model does not advertise image input support"
+                                )));
+                            }
+                            match Self::image_block(media_type, data) {
+                                Ok(image) => content.push(ContentBlock::Image(image)),
+                                Err(err) => return Some(Err(err)),
+                            }
+                        }
+                        JContentBlock::ToolResult {
+                            tool_use_id,
+                            content: text,
+                            is_error,
+                        } => {
+                            let status = if is_error.unwrap_or(false) {
+                                aws_sdk_bedrockruntime::types::ToolResultStatus::Error
+                            } else {
+                                aws_sdk_bedrockruntime::types::ToolResultStatus::Success
+                            };
+                            let result =
+                                match aws_sdk_bedrockruntime::types::ToolResultBlock::builder()
+                                    .tool_use_id(tool_use_id)
+                                    .status(status)
+                                    .content(
+                                        aws_sdk_bedrockruntime::types::ToolResultContentBlock::Text(
+                                            if text.trim().is_empty() {
+                                                "(no output)".to_string()
+                                            } else {
+                                                text.clone()
+                                            },
+                                        ),
+                                    )
+                                    .build()
+                                {
+                                    Ok(result) => result,
+                                    Err(err) => return Some(Err(anyhow::anyhow!(err))),
+                                };
+                            content.push(ContentBlock::ToolResult(result));
+                        }
+                        JContentBlock::ToolUse {
+                            id, name, input, ..
+                        } => {
+                            let tool_use =
+                                match aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
+                                    .tool_use_id(id)
+                                    .name(name)
+                                    .input(Self::json_to_document(input))
+                                    .build()
+                                {
+                                    Ok(tool_use) => tool_use,
+                                    Err(err) => return Some(Err(anyhow::anyhow!(err))),
+                                };
+                            content.push(ContentBlock::ToolUse(tool_use));
+                        }
+                        _ => {}
+                    }
+                }
+                if content.is_empty() {
+                    return None;
+                }
+                Some(
+                    Message::builder()
+                        .role(role)
+                        .set_content(Some(content))
+                        .build()
+                        .map_err(|err| anyhow::anyhow!(err)),
+                )
+            })
+            .collect()
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn tool_config(tools: &[ToolDefinition]) -> Option<ToolConfiguration> {
+        if tools.is_empty() {
+            return None;
+        }
+        let bedrock_tools = tools
+            .iter()
+            .filter_map(|tool| {
+                let input_schema = Self::bedrock_input_schema(&tool.input_schema);
+                let schema = ToolInputSchema::Json(Self::json_to_document(&input_schema));
+                ToolSpecification::builder()
+                    .name(&tool.name)
+                    .description(tool.description.clone())
+                    .input_schema(schema)
+                    .build()
+                    .ok()
+                    .map(Tool::ToolSpec)
+            })
+            .collect::<Vec<_>>();
+        if bedrock_tools.is_empty() {
+            None
+        } else {
+            ToolConfiguration::builder()
+                .set_tools(Some(bedrock_tools))
+                .build()
+                .ok()
+        }
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn inference_config(model: &str) -> Option<InferenceConfiguration> {
+        let max_tokens = std::env::var("FACTR_BEDROCK_MAX_TOKENS")
+            .ok()
+            .and_then(|v| v.trim().parse::<i32>().ok())
+            .filter(|v| *v > 0)
+            .or_else(|| Self::default_max_tokens(model));
+        let temperature = std::env::var("FACTR_BEDROCK_TEMPERATURE")
+            .ok()
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .filter(|v| (0.0..=1.0).contains(v));
+        let top_p = std::env::var("FACTR_BEDROCK_TOP_P")
+            .ok()
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .filter(|v| (0.0..=1.0).contains(v));
+        let stop_sequences = std::env::var("FACTR_BEDROCK_STOP_SEQUENCES")
+            .ok()
+            .map(|v| {
+                v.split(',')
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|v| !v.is_empty());
+        if max_tokens.is_none()
+            && temperature.is_none()
+            && top_p.is_none()
+            && stop_sequences.is_none()
+        {
+            return None;
+        }
+        Some(
+            InferenceConfiguration::builder()
+                .set_max_tokens(max_tokens)
+                .set_temperature(temperature)
+                .set_top_p(top_p)
+                .set_stop_sequences(stop_sequences)
+                .build(),
+        )
+    }
+
+    #[cfg(any(feature = "aws-sdk", test))]
+    fn default_max_tokens(model: &str) -> Option<i32> {
+        let cap = Self::model_info(model)
+            .max_output_tokens
+            .min(DEFAULT_REQUEST_MAX_TOKENS);
+        i32::try_from(cap).ok()
+    }
+
+    fn normalize_model_id(model: &str) -> String {
+        let mut value = model.trim().to_string();
+        if let Some((_, tail)) = value.rsplit_once('/') {
+            value = tail.to_string();
+        }
+        for prefix in ["us.", "eu.", "apac.", "global."] {
+            if let Some(stripped) = value.strip_prefix(prefix) {
+                value = stripped.to_string();
+                break;
+            }
+        }
+        value
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    fn foundation_model_id_from_arn(arn: &str) -> Option<String> {
+        arn.rsplit_once("foundation-model/")
+            .map(|(_, model)| model.trim())
+            .filter(|model| !model.is_empty())
+            .map(str::to_string)
+    }
+
+    fn inference_profile_id_from_arn(arn: &str) -> Option<String> {
+        arn.rsplit_once("inference-profile/")
+            .map(|(_, profile)| profile.trim())
+            .filter(|profile| !profile.is_empty())
+            .map(str::to_string)
+    }
+
+    fn foundation_model_id_from_profile_id(profile_id: &str) -> Option<String> {
+        let id = profile_id.trim();
+        let id = Self::inference_profile_id_from_arn(id).unwrap_or_else(|| id.to_string());
+        for prefix in ["us.", "eu.", "apac.", "global."] {
+            if let Some(model) = id.strip_prefix(prefix)
+                && !model.is_empty()
+            {
+                return Some(model.to_string());
+            }
+        }
+        None
+    }
+
+    fn region_profile_prefix() -> Option<&'static str> {
+        let region = Self::configured_region()?;
+        if region.starts_with("us-") {
+            Some("us.")
+        } else if region.starts_with("eu-") {
+            Some("eu.")
+        } else if region.starts_with("ap-") {
+            Some("apac.")
+        } else {
+            None
+        }
+    }
+
+    fn inference_profile_priority(profile_id: &str) -> u8 {
+        let id = profile_id.trim().to_ascii_lowercase();
+        if let Some(prefix) = Self::region_profile_prefix()
+            && id.starts_with(prefix)
+        {
+            return 0;
+        }
+        if id.starts_with("us.") || id.starts_with("eu.") || id.starts_with("apac.") {
+            1
+        } else if id.starts_with("global.") {
+            2
+        } else {
+            3
+        }
+    }
+
+    fn insert_preferred_profile_route(
+        routes: &mut HashMap<String, String>,
+        foundation_model: &str,
+        profile_id: &str,
+    ) {
+        let foundation_model = foundation_model.trim();
+        let profile_id = profile_id.trim();
+        if foundation_model.is_empty() || profile_id.is_empty() {
+            return;
+        }
+        let should_replace = routes
+            .get(foundation_model)
+            .map(|current| {
+                Self::inference_profile_priority(profile_id)
+                    < Self::inference_profile_priority(current)
+            })
+            .unwrap_or(true);
+        if should_replace {
+            routes.insert(foundation_model.to_string(), profile_id.to_string());
+        }
+    }
+
+    fn merge_profile_routes_from_profile_ids(
+        routes: &mut HashMap<String, String>,
+        profiles: impl IntoIterator<Item = impl AsRef<str>>,
+    ) {
+        for profile in profiles {
+            let profile = profile.as_ref().trim();
+            let Some(foundation_model) = Self::foundation_model_id_from_profile_id(profile) else {
+                continue;
+            };
+            let profile_id =
+                Self::inference_profile_id_from_arn(profile).unwrap_or_else(|| profile.to_string());
+            Self::insert_preferred_profile_route(routes, &foundation_model, &profile_id);
+        }
+    }
+
+    fn profile_route_for_model(&self, model: &str) -> Option<String> {
+        let model = model.trim();
+        if model.is_empty() {
+            return None;
+        }
+
+        if let Ok(routes) = self.inference_profile_routes.read()
+            && let Some(route) = routes.get(model).cloned()
+        {
+            return Some(route);
+        }
+
+        if let Ok(profiles) = self.fetched_inference_profiles.read() {
+            let mut derived = HashMap::new();
+            Self::merge_profile_routes_from_profile_ids(&mut derived, profiles.iter());
+            if let Some(route) = derived.get(model).cloned() {
+                return Some(route);
+            }
+        }
+
+        None
+    }
+
+    pub fn is_bedrock_model_id(model: &str) -> bool {
+        let trimmed = model.trim();
+        if trimmed.is_empty() {
+            return false;
+        }
+        if trimmed.starts_with("arn:aws:bedrock:") {
+            return true;
+        }
+
+        let id = Self::normalize_model_id(trimmed).to_ascii_lowercase();
+        id.starts_with("anthropic.")
+            || id.starts_with("amazon.")
+            || id.starts_with("cohere.")
+            || id.starts_with("ai21.")
+            || id.starts_with("meta.")
+            || id.starts_with("mistral.")
+            || id.starts_with("stability.")
+            || id.starts_with("writer.")
+            || id.starts_with("deepseek.")
+            || id.starts_with("openai.")
+            || id.starts_with("qwen.")
+            || id.starts_with("moonshot.")
+            || id.starts_with("moonshotai.")
+            || id.starts_with("minimax.")
+            || id.starts_with("zai.")
+            || id.starts_with("google.")
+            || id.starts_with("nvidia.")
+    }
+
+    fn model_info(model: &str) -> BedrockModelInfo {
+        let id = Self::normalize_model_id(model).to_ascii_lowercase();
+        if id.contains("claude-opus-4") || id.contains("claude-sonnet-4") {
+            BedrockModelInfo {
+                context_tokens: 200_000,
+                max_output_tokens: 64_000,
+                supports_tools: true,
+                supports_vision: true,
+                supports_reasoning: true,
+                pricing: Some((3_000_000, 15_000_000)),
+            }
+        } else if id.contains("claude-3-7-sonnet") || id.contains("claude-3-5-sonnet") {
+            BedrockModelInfo {
+                context_tokens: 200_000,
+                max_output_tokens: 8_192,
+                supports_tools: true,
+                supports_vision: true,
+                supports_reasoning: id.contains("3-7"),
+                pricing: Some((3_000_000, 15_000_000)),
+            }
+        } else if id.contains("claude-3-5-haiku") || id.contains("claude-3-haiku") {
+            BedrockModelInfo {
+                context_tokens: 200_000,
+                max_output_tokens: 8_192,
+                supports_tools: true,
+                supports_vision: true,
+                supports_reasoning: false,
+                pricing: Some((800_000, 4_000_000)),
+            }
+        } else if id.contains("anthropic.claude") || id.contains("claude-") {
+            // Newer Claude generations (Sonnet/Opus/Haiku 4.5+, 5.x): the 3.x
+            // branches above are exact, everything else Claude is tool/vision
+            // capable. Without this they fall through to the no-tools default
+            // and the agent would run tool-less.
+            BedrockModelInfo {
+                context_tokens: 200_000,
+                max_output_tokens: 64_000,
+                supports_tools: true,
+                supports_vision: true,
+                supports_reasoning: true,
+                pricing: Some((3_000_000, 15_000_000)),
+            }
+        } else if id.contains("amazon.nova-pro") {
+            BedrockModelInfo {
+                context_tokens: 300_000,
+                max_output_tokens: 5_120,
+                supports_tools: true,
+                supports_vision: true,
+                supports_reasoning: false,
+                pricing: Some((800_000, 3_200_000)),
+            }
+        } else if id.contains("amazon.nova-2-lite") || id.contains("amazon.nova-lite") {
+            BedrockModelInfo {
+                context_tokens: 300_000,
+                max_output_tokens: 5_120,
+                supports_tools: true,
+                supports_vision: true,
+                supports_reasoning: false,
+                pricing: Some((60_000, 240_000)),
+            }
+        } else if id.contains("amazon.nova-micro") {
+            BedrockModelInfo {
+                context_tokens: 128_000,
+                max_output_tokens: 5_120,
+                supports_tools: true,
+                supports_vision: false,
+                supports_reasoning: false,
+                pricing: Some((35_000, 140_000)),
+            }
+        } else if id.starts_with("deepseek.") {
+            BedrockModelInfo {
+                context_tokens: 128_000,
+                max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: true,
+                pricing: None,
+            }
+        } else if id.contains("llama3-1-405b") || id.starts_with("meta.") {
+            BedrockModelInfo {
+                context_tokens: 128_000,
+                max_output_tokens: 4_096,
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: false,
+                pricing: Some((5_320_000, 16_000_000)),
+            }
+        } else if id.starts_with("mistral.") {
+            BedrockModelInfo {
+                context_tokens: 128_000,
+                max_output_tokens: 8_192,
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: false,
+                pricing: Some((4_000_000, 12_000_000)),
+            }
+        } else if id.starts_with("openai.")
+            || id.starts_with("qwen.")
+            || id.starts_with("moonshot.")
+            || id.starts_with("moonshotai.")
+            || id.starts_with("minimax.")
+            || id.starts_with("zai.")
+            || id.starts_with("google.")
+            || id.starts_with("nvidia.")
+            || id.starts_with("writer.")
+        {
+            BedrockModelInfo {
+                context_tokens: DEFAULT_CONTEXT_LIMIT,
+                max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: id.contains("thinking")
+                    || id.contains("reason")
+                    || id.contains("gpt-oss"),
+                pricing: None,
+            }
+        } else {
+            BedrockModelInfo {
+                context_tokens: DEFAULT_CONTEXT_LIMIT,
+                max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS,
+                supports_tools: false,
+                supports_vision: false,
+                supports_reasoning: false,
+                pricing: None,
+            }
+        }
+    }
+
+    fn route_pricing(model: &str) -> Option<RouteCheapnessEstimate> {
+        let info = Self::model_info(model);
+        info.pricing.map(|(input, output)| {
+            RouteCheapnessEstimate::metered(
+                RouteCostSource::Heuristic,
+                RouteCostConfidence::Medium,
+                input,
+                output,
+                None,
+                Some("AWS Bedrock public on-demand pricing heuristic; verify for your region/account".to_string()),
+            )
+        })
+    }
+
+    fn known_models() -> Vec<&'static str> {
+        vec![
+            "anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "anthropic.claude-3-5-haiku-20241022-v1:0",
+            "anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic.claude-opus-4-20250514-v1:0",
+            "amazon.nova-pro-v1:0",
+            "amazon.nova-lite-v1:0",
+            "amazon.nova-micro-v1:0",
+            "meta.llama3-1-405b-instruct-v1:0",
+            "mistral.mistral-large-2407-v1:0",
+        ]
+    }
+
+    fn all_display_models(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut models = Vec::new();
+        let inference_profile_routes = self
+            .inference_profile_routes
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
+        let should_hide_duplicate_foundation_model =
+            |model: &str| inference_profile_routes.contains_key(model);
+        for model in Self::known_models().into_iter().map(str::to_string) {
+            if should_hide_duplicate_foundation_model(&model) {
+                continue;
+            }
+            if seen.insert(model.clone()) {
+                models.push(model);
+            }
+        }
+        if let Ok(fetched) = self.fetched_models.read() {
+            for model in fetched.iter() {
+                if should_hide_duplicate_foundation_model(model) {
+                    continue;
+                }
+                if seen.insert(model.clone()) {
+                    models.push(model.clone());
+                }
+            }
+        }
+        if let Ok(profiles) = self.fetched_inference_profiles.read() {
+            for profile in profiles.iter() {
+                if seen.insert(profile.clone()) {
+                    models.push(profile.clone());
+                }
+            }
+        }
+        models
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    async fn refresh_catalog(&self) -> Result<(Vec<String>, Vec<String>)> {
+        let client = Self::control_client().await;
+        let mut models = Vec::new();
+        let mut profile_required_models = HashSet::new();
+        let mut legacy_models = HashSet::new();
+        let model_resp = client
+            .list_foundation_models()
+            .send()
+            .await
+            .map_err(|err| {
+                anyhow::anyhow!(Self::classify_error_message(&Self::sdk_error_message(&err)))
+            })?;
+        for summary in model_resp.model_summaries() {
+            let model_id = summary.model_id();
+            if !model_id.is_empty() {
+                models.push(model_id.to_string());
+                let inference_types = summary.inference_types_supported();
+                let supports_on_demand = inference_types
+                    .iter()
+                    .any(|kind| kind.as_str() == "ON_DEMAND");
+                let supports_inference_profile = inference_types
+                    .iter()
+                    .any(|kind| kind.as_str() == "INFERENCE_PROFILE");
+                if supports_inference_profile && !supports_on_demand {
+                    profile_required_models.insert(model_id.to_string());
+                }
+                if summary
+                    .model_lifecycle()
+                    .map(|lifecycle| lifecycle.status().as_str() == "LEGACY")
+                    .unwrap_or(false)
+                {
+                    legacy_models.insert(model_id.to_string());
+                }
+            }
+        }
+        models.sort();
+        models.dedup();
+
+        let mut profiles = Vec::new();
+        let mut inference_profile_routes = HashMap::new();
+        match client.list_inference_profiles().send().await {
+            Ok(resp) => {
+                for summary in resp.inference_profile_summaries() {
+                    let id = summary.inference_profile_id();
+                    if !id.is_empty() {
+                        profiles.push(id.to_string());
+                    }
+                    let arn = summary.inference_profile_arn();
+                    if !arn.is_empty() {
+                        profiles.push(arn.to_string());
+                    }
+                    if summary.status().as_str() == "ACTIVE" && !id.is_empty() {
+                        for model in summary.models() {
+                            if let Some(model_arn) = model.model_arn()
+                                && let Some(foundation_model) =
+                                    Self::foundation_model_id_from_arn(model_arn)
+                            {
+                                Self::insert_preferred_profile_route(
+                                    &mut inference_profile_routes,
+                                    &foundation_model,
+                                    id,
+                                );
+                            }
+                        }
+                    }
+                }
+                profiles.sort();
+                profiles.dedup();
+                Self::merge_profile_routes_from_profile_ids(
+                    &mut inference_profile_routes,
+                    profiles.iter(),
+                );
+            }
+            Err(err) => {
+                factr_logging::info(&format!(
+                    "Bedrock inference profile discovery skipped: {}",
+                    Self::classify_error_message(&Self::sdk_error_message(&err))
+                ));
+            }
+        }
+
+        if let Ok(mut guard) = self.fetched_models.write() {
+            *guard = models.clone();
+        }
+        if let Ok(mut guard) = self.fetched_inference_profiles.write() {
+            *guard = profiles.clone();
+        }
+        if let Ok(mut guard) = self.profile_required_models.write() {
+            *guard = profile_required_models.clone();
+        }
+        if let Ok(mut guard) = self.inference_profile_routes.write() {
+            *guard = inference_profile_routes.clone();
+        }
+        if let Ok(mut guard) = self.legacy_models.write() {
+            *guard = legacy_models.clone();
+        }
+        Self::persist_catalog(
+            &models,
+            &profiles,
+            &profile_required_models,
+            &inference_profile_routes,
+            &legacy_models,
+        );
+        Ok((models, profiles))
+    }
+}
+
+impl Default for BedrockProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Owned Converse request pieces, so a retry can rebuild the request.
+#[cfg(feature = "aws-sdk")]
+#[derive(Clone)]
+struct ConverseInputs {
+    messages: Vec<Message>,
+    system: Option<Vec<SystemContentBlock>>,
+    tool_config: Option<ToolConfiguration>,
+    inference: Option<InferenceConfiguration>,
+}
+
+#[cfg(feature = "aws-sdk")]
+impl ConverseInputs {
+    /// cachePoint after the system prompt, after the tool list (Claude only,
+    /// Nova rejects it there) and on the last two messages, as Factr'
+    /// `build_converse_kwargs` does (4 markers is the Bedrock maximum).
+    fn with_cache_points(mut self, tools_too: bool) -> Self {
+        let Some(point) = CachePointBlock::builder()
+            .r#type(CachePointType::Default)
+            .build()
+            .ok()
+        else {
+            return self;
+        };
+        if let Some(system) = self.system.as_mut() {
+            system.push(SystemContentBlock::CachePoint(point.clone()));
+        }
+        if tools_too
+            && let Some(cfg) = self.tool_config.take()
+        {
+            let mut tools = cfg.tools().to_vec();
+            tools.push(Tool::CachePoint(point.clone()));
+            self.tool_config = ToolConfiguration::builder()
+                .set_tools(Some(tools))
+                .set_tool_choice(cfg.tool_choice().cloned())
+                .build()
+                .ok()
+                .or(Some(cfg));
+        }
+        let n = self.messages.len();
+        for idx in n.saturating_sub(2)..n {
+            let role = self.messages[idx].role().clone();
+            let mut content = self.messages[idx].content().to_vec();
+            if content.is_empty() {
+                continue;
+            }
+            content.push(ContentBlock::CachePoint(point.clone()));
+            if let Ok(m) = Message::builder()
+                .role(role)
+                .set_content(Some(content))
+                .build()
+            {
+                self.messages[idx] = m;
+            }
+        }
+        self
+    }
+}
+
+/// One Converse attempt failed: message plus whether any event already
+/// reached the consumer (then a RetryRollback must precede the retry).
+#[cfg(feature = "aws-sdk")]
+struct AttemptFailure {
+    message: String,
+    emitted: bool,
+}
+
+#[async_trait]
+impl Provider for BedrockProvider {
+    #[cfg(feature = "aws-sdk")]
+    async fn complete(
+        &self,
+        messages: &[JMessage],
+        tools: &[ToolDefinition],
+        system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        Self::validate_credentials_if_requested().await?;
+        let model = self.model();
+        let info = Self::model_info(&model);
+        let request_messages = Self::to_bedrock_messages(messages, info.supports_vision)?;
+        let tool_config = if info.supports_tools {
+            Self::tool_config(tools)
+        } else {
+            None
+        };
+        let inference_config = Self::inference_config(&model);
+        let system_blocks = if system.trim().is_empty() {
+            None
+        } else {
+            Some(vec![SystemContentBlock::Text(system.to_string())])
+        };
+        let message_items = serde_json::to_value(messages)
+            .ok()
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default();
+        let system_value = (!system.trim().is_empty()).then(|| Value::String(system.to_string()));
+        let tools_value = if info.supports_tools && !tools.is_empty() {
+            serde_json::to_value(tools).ok()
+        } else {
+            None
+        };
+        let payload = json!({
+            "model": &model,
+            "system": system_value.as_ref(),
+            "messages": &message_items,
+            "tools": tools_value.as_ref(),
+            "supports_tools": info.supports_tools,
+            "supports_vision": info.supports_vision,
+            "inference_config_present": inference_config.is_some(),
+        });
+        factr_provider_core::log_provider_canonical_input(
+            "bedrock",
+            &model,
+            "bedrock_converse_logical",
+            &payload,
+            &message_items,
+            system_value.as_ref(),
+            tools_value.as_ref(),
+            Some(if info.supports_tools { tools.len() } else { 0 }),
+            &[
+                ("supports_tools", info.supports_tools.to_string()),
+                ("supports_vision", info.supports_vision.to_string()),
+                (
+                    "inference_config_present",
+                    inference_config.is_some().to_string(),
+                ),
+            ],
+        );
+        let (tx, rx) = mpsc::channel::<Result<StreamEvent>>(64);
+        let client = Self::runtime_client().await;
+        if client.config().region().is_none() {
+            return Err(anyhow::anyhow!(
+                "AWS region is missing. Set AWS_REGION (or FACTR_BEDROCK_REGION), or a region in the AWS profile."
+            ));
+        }
+        let plain = ConverseInputs {
+            messages: request_messages,
+            system: system_blocks,
+            tool_config,
+            inference: inference_config,
+        };
+        let mut cached = Self::supports_prompt_cache(&model).then(|| {
+            plain
+                .clone()
+                .with_cache_points(Self::normalize_model_id(&model).to_ascii_lowercase().contains("claude"))
+        });
+        tokio::spawn(async move {
+            let mut attempt = 0u32;
+            let mut emitted_before = false;
+            loop {
+                if tx.is_closed() {
+                    return;
+                }
+                attempt += 1;
+                let inputs = cached.clone().unwrap_or_else(|| plain.clone());
+                if emitted_before {
+                    let _ = tx
+                        .send(Ok(StreamEvent::RetryRollback {
+                            attempt,
+                            max: MAX_ATTEMPTS,
+                        }))
+                        .await;
+                }
+                let failure = match Self::converse_once(&client, &model, inputs, &tx).await {
+                    Ok(()) => return,
+                    Err(failure) => failure,
+                };
+                if cached.is_some() && Self::is_cache_fallback_error(&failure.message) {
+                    // Model refused the marker: resend once without caching.
+                    factr_logging::warn("Bedrock rejected cachePoint; retrying without prompt caching");
+                    cached = None;
+                    attempt -= 1;
+                    emitted_before = failure.emitted;
+                    continue;
+                }
+                if attempt < MAX_ATTEMPTS && Self::is_retryable_error(&failure.message) {
+                    let delay = Self::backoff_delay(attempt, Self::jitter());
+                    factr_logging::warn(&format!(
+                        "Bedrock transient error (attempt {attempt}/{MAX_ATTEMPTS}), retrying in {:.1}s: {}",
+                        delay.as_secs_f64(),
+                        failure.message.lines().next().unwrap_or("")
+                    ));
+                    if tx.is_closed() {
+                        return;
+                    }
+                    tokio::time::sleep(delay).await;
+                    emitted_before = failure.emitted;
+                    continue;
+                }
+                let _ = tx
+                    .send(Err(anyhow::anyhow!(Self::classify_error_message(
+                        &failure.message
+                    ))))
+                    .await;
+                return;
+            }
+        });
+        Ok(Box::pin(ReceiverStream::new(rx))
+            as Pin<
+                Box<dyn futures::Stream<Item = Result<StreamEvent>> + Send>,
+            >)
+    }
+
+    #[cfg(not(feature = "aws-sdk"))]
+    async fn complete(
+        &self,
+        _messages: &[JMessage],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        Err(anyhow::anyhow!(NO_AWS_SDK_SUPPORT))
+    }
+
+    fn name(&self) -> &str {
+        "bedrock"
+    }
+
+    fn model(&self) -> String {
+        self.model.read().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    fn supports_image_input(&self) -> bool {
+        Self::model_info(&self.model()).supports_vision
+    }
+
+    fn set_model(&self, model: &str) -> Result<()> {
+        let model = model.trim();
+        let model = self
+            .profile_route_for_model(model)
+            .unwrap_or_else(|| model.to_string());
+        *self.model.write().unwrap_or_else(|p| p.into_inner()) = model;
+        Ok(())
+    }
+
+    fn available_models(&self) -> Vec<&'static str> {
+        Self::known_models()
+    }
+
+    fn available_models_display(&self) -> Vec<String> {
+        self.all_display_models()
+    }
+
+    fn available_models_for_switching(&self) -> Vec<String> {
+        self.all_display_models()
+    }
+
+    fn model_routes(&self) -> Vec<ModelRoute> {
+        let legacy_models = self
+            .legacy_models
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
+        let profile_required_models = self
+            .profile_required_models
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
+        self.all_display_models()
+            .into_iter()
+            .map(|model| {
+                let info = Self::model_info(&model);
+                let is_legacy = legacy_models.contains(&model);
+                let profile_foundation = Self::foundation_model_id_from_profile_id(&model);
+                let missing_required_profile = profile_foundation.is_none()
+                    && profile_required_models.contains(&model)
+                    && self.profile_route_for_model(&model).is_none();
+                let mut features = Vec::new();
+                if info.supports_tools {
+                    features.push("tools");
+                } else {
+                    features.push("no tools");
+                }
+                if info.supports_vision {
+                    features.push("vision");
+                }
+                if info.supports_reasoning {
+                    features.push("reasoning");
+                }
+                ModelRoute {
+                    model: model.clone(),
+                    provider: "AWS Bedrock".to_string(),
+                    api_method: "bedrock".to_string(),
+                    available: !is_legacy && !missing_required_profile,
+                    detail: if is_legacy {
+                        "legacy Bedrock model; choose an active model or inference profile"
+                            .to_string()
+                    } else if missing_required_profile {
+                        "requires an inference profile; run /refresh-model-list or allow bedrock:ListInferenceProfiles"
+                            .to_string()
+                    } else {
+                        let mut parts = Vec::new();
+                        if let Some(foundation) = profile_foundation {
+                            parts.push(format!("inference profile for {}", foundation));
+                        }
+                        parts.push(format!("context ~{} tokens", info.context_tokens));
+                        parts.push(format!("max output ~{}", info.max_output_tokens));
+                        parts.push(features.join(", "));
+                        format!(
+                            "ConverseStream · {}",
+                            parts
+                                .into_iter()
+                                .filter(|part| !part.trim().is_empty())
+                                .collect::<Vec<_>>()
+                                .join(" · ")
+                        )
+                    },
+                    usage: None,
+                    cheapness: Self::route_pricing(&model),
+                }
+            })
+            .collect()
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    async fn prefetch_models(&self) -> Result<()> {
+        self.refresh_catalog().await.map(|_| ())
+    }
+
+    #[cfg(not(feature = "aws-sdk"))]
+    async fn prefetch_models(&self) -> Result<()> {
+        // No live catalog without the AWS SDK; cached/known models still work.
+        Ok(())
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    async fn refresh_model_catalog(&self) -> Result<ModelCatalogRefreshSummary> {
+        let before_models = self.available_models_display();
+        let before_routes = self.model_routes();
+        self.refresh_catalog().await?;
+        let after_models = self.available_models_display();
+        let after_routes = self.model_routes();
+        Ok(summarize_model_catalog_refresh(
+            before_models,
+            after_models,
+            before_routes,
+            after_routes,
+        ))
+    }
+
+    #[cfg(not(feature = "aws-sdk"))]
+    async fn refresh_model_catalog(&self) -> Result<ModelCatalogRefreshSummary> {
+        Err(anyhow::anyhow!(NO_AWS_SDK_SUPPORT))
+    }
+
+    fn context_window(&self) -> usize {
+        Self::model_info(&self.model()).context_tokens
+    }
+
+    fn supports_compaction(&self) -> bool {
+        true
+    }
+
+    fn uses_factr_compaction(&self) -> bool {
+        true
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(Self {
+            model: Arc::new(RwLock::new(self.model())),
+            fetched_models: self.fetched_models.clone(),
+            fetched_inference_profiles: self.fetched_inference_profiles.clone(),
+            profile_required_models: self.profile_required_models.clone(),
+            inference_profile_routes: self.inference_profile_routes.clone(),
+            legacy_models: self.legacy_models.clone(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::{OsStr, OsString};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    #[cfg(feature = "aws-sdk")]
+    #[test]
+    fn retry_classification_and_backoff() {
+        for t in [
+            "ThrottlingException: Too many requests, please wait",
+            "ServiceUnavailableException(...)",
+            "ModelTimeoutException",
+            "ModelNotReadyException",
+            "InternalServerException",
+            "dispatch failure: io error: connection reset",
+        ] {
+            assert!(BedrockProvider::is_retryable_error(t), "{t}");
+        }
+        for t in [
+            "AccessDeniedException: not authorized",
+            "ValidationException: input is too long",
+            "ExpiredTokenException: credentials expired",
+            "ResourceNotFoundException",
+        ] {
+            assert!(!BedrockProvider::is_retryable_error(t), "{t}");
+        }
+        let d = |a, j| BedrockProvider::backoff_delay(a, j).as_millis();
+        assert_eq!((d(1, 0.0), d(1, 1.0)), (500, 1000));
+        assert_eq!(d(3, 0.0), 2000);
+        assert_eq!(d(10, 1.0), 60_000, "capped at 60s");
+    }
+
+    #[test]
+    fn sonnet_5_5_is_tool_capable_with_32k_default_output() {
+        let id = "us.anthropic.claude-sonnet-5-5-v1:0";
+        assert!(BedrockProvider::model_info(id).supports_tools);
+        assert_eq!(BedrockProvider::default_max_tokens(id), Some(32_000));
+        assert_eq!(
+            BedrockProvider::default_max_tokens("anthropic.claude-3-5-haiku-20241022-v1:0"),
+            Some(8_192)
+        );
+        assert!(BedrockProvider::supports_prompt_cache(id));
+        assert!(!BedrockProvider::supports_prompt_cache("meta.llama3-1-70b"));
+    }
+
+    #[test]
+    fn prompt_cache_allowlist_and_fallback_error() {
+        for yes in [
+            "anthropic.claude-3-7-sonnet-20250219-v1:0",
+            "anthropic.claude-3-5-haiku-20241022-v1:0",
+            "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "anthropic.claude-opus-4-1-20250805-v1:0",
+            "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+        ] {
+            assert!(BedrockProvider::supports_prompt_cache(yes), "{yes}");
+        }
+        for no in [
+            DEFAULT_MODEL,
+            "anthropic.claude-3-sonnet-20240229-v1:0",
+            "anthropic.claude-3-haiku-20240307-v1:0",
+            "anthropic.claude-3-opus-20240229-v1:0",
+        ] {
+            assert!(!BedrockProvider::supports_prompt_cache(no), "{no}");
+        }
+        assert!(BedrockProvider::is_cache_fallback_error("ValidationException: bad request"));
+        assert!(!BedrockProvider::is_cache_fallback_error("ThrottlingException"));
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    #[test]
+    fn converse_messages_merge_roles_and_round_trip_tools() {
+        use factr_message_types::{ContentBlock as J, Message as M, Role};
+        let m = |role, content| M {
+            role,
+            content,
+            timestamp: None,
+            tool_duration_ms: None,
+        };
+        let msgs = vec![
+            m(Role::User, vec![J::Text { text: "go".into(), cache_control: None }]),
+            m(
+                Role::Assistant,
+                vec![
+                    J::ToolUse { id: "t1".into(), name: "read".into(), input: json!({"p": 1}), thought_signature: None },
+                    J::ToolUse { id: "t2".into(), name: "ls".into(), input: json!({}), thought_signature: None },
+                ],
+            ),
+            m(Role::User, vec![J::ToolResult { tool_use_id: "t1".into(), content: "a".into(), is_error: None }]),
+            m(Role::User, vec![J::Text { text: "<system-reminder>x</system-reminder>".into(), cache_control: None }]),
+            m(Role::User, vec![J::ToolResult { tool_use_id: "t2".into(), content: "".into(), is_error: Some(true) }]),
+        ];
+        let out = BedrockProvider::to_bedrock_messages(&msgs, false).unwrap();
+        assert_eq!(out.len(), 3, "alternating roles");
+        let last = out[2].content();
+        assert!(matches!(last[0], ContentBlock::ToolResult(_)));
+        assert!(matches!(last[1], ContentBlock::ToolResult(_)));
+        assert!(matches!(last[2], ContentBlock::Text(_)), "reminder after results");
+        let ContentBlock::ToolResult(r) = &last[1] else { panic!() };
+        assert_eq!(r.tool_use_id(), "t2");
+        assert!(matches!(
+            r.content()[0],
+            aws_sdk_bedrockruntime::types::ToolResultContentBlock::Text(ref t) if t == "(no output)"
+        ));
+        assert_eq!(out[1].content().len(), 2);
+    }
+
+    #[cfg(feature = "aws-sdk")]
+    #[test]
+    fn cache_points_go_on_system_tools_and_last_two_messages() {
+        let user = |t: &str| {
+            Message::builder()
+                .role(ConversationRole::User)
+                .content(ContentBlock::Text(t.into()))
+                .build()
+                .unwrap()
+        };
+        let tool = ToolSpecification::builder()
+            .name("t")
+            .input_schema(ToolInputSchema::Json(aws_smithy_types::Document::Null))
+            .build()
+            .unwrap();
+        let inputs = ConverseInputs {
+            messages: vec![user("a"), user("b"), user("c")],
+            system: Some(vec![SystemContentBlock::Text("sys".into())]),
+            tool_config: ToolConfiguration::builder().tools(Tool::ToolSpec(tool)).build().ok(),
+            inference: None,
+        }
+        .with_cache_points(true);
+        assert!(matches!(inputs.system.as_ref().unwrap()[1], SystemContentBlock::CachePoint(_)));
+        assert!(matches!(inputs.tool_config.as_ref().unwrap().tools()[1], Tool::CachePoint(_)));
+        assert_eq!(inputs.messages[0].content().len(), 1);
+        assert!(matches!(inputs.messages[1].content()[1], ContentBlock::CachePoint(_)));
+        assert!(matches!(inputs.messages[2].content()[1], ContentBlock::CachePoint(_)));
+    }
+
+    #[test]
+    fn bedrock_tool_schema_removes_top_level_combinators() {
+        let schema = json!({
+            "oneOf": [
+                {"type": "object", "properties": {"action": {"const": "list"}}},
+                {"type": "object", "properties": {"query": {"type": "string"}}}
+            ],
+            "allOf": [
+                {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}
+            ]
+        });
+
+        let normalized = BedrockProvider::bedrock_input_schema(&schema);
+        for keyword in ["oneOf", "anyOf", "allOf"] {
+            assert!(normalized.get(keyword).is_none(), "removed {keyword}");
+        }
+        assert_eq!(normalized["type"], "object");
+        assert!(normalized["properties"]["action"].is_object());
+        assert!(normalized["properties"]["query"].is_object());
+        assert!(normalized["properties"]["category"].is_object());
+        assert_eq!(normalized["required"], json!(["category"]));
+    }
+
+    fn lock_test_env() -> MutexGuard<'static, ()> {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let previous = std::env::var_os(key);
+            factr_core::env::set_var(key, value);
+            Self { key, previous }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let previous = std::env::var_os(key);
+            factr_core::env::remove_var(key);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.as_ref() {
+                factr_core::env::set_var(self.key, value);
+            } else {
+                factr_core::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[test]
+    fn detects_env_credentials_requires_region_and_credential_hint() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _factr_home = EnvVarGuard::set("FACTR_HOME", temp.path().as_os_str());
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let _removed = [
+            "FACTR_BEDROCK_ENABLE",
+            API_KEY_ENV,
+            REGION_ENV,
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "AWS_PROFILE",
+            "FACTR_BEDROCK_PROFILE",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_WEB_IDENTITY_TOKEN_FILE",
+            "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+            "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+            "AWS_SHARED_CREDENTIALS_FILE",
+            "AWS_CONFIG_FILE",
+        ]
+        .map(EnvVarGuard::remove);
+        factr_core::env::set_var(REGION_ENV, "us-east-1");
+        assert!(!BedrockProvider::has_credentials());
+        factr_core::env::set_var("AWS_PROFILE", "test");
+        assert!(BedrockProvider::has_credentials());
+    }
+
+    #[test]
+    fn explicit_enable_marks_configured_for_instance_metadata_credentials() {
+        let _guard = lock_test_env();
+        factr_core::env::set_var("FACTR_BEDROCK_ENABLE", "1");
+        assert!(BedrockProvider::has_credentials());
+        factr_core::env::remove_var("FACTR_BEDROCK_ENABLE");
+    }
+
+    #[test]
+    fn detects_bedrock_bearer_token_and_region_credentials() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _factr_home = EnvVarGuard::set("FACTR_HOME", temp.path().as_os_str());
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        for key in [
+            "FACTR_BEDROCK_ENABLE",
+            API_KEY_ENV,
+            REGION_ENV,
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "AWS_PROFILE",
+            "FACTR_BEDROCK_PROFILE",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_WEB_IDENTITY_TOKEN_FILE",
+            "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+            "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+            "AWS_SHARED_CREDENTIALS_FILE",
+            "AWS_CONFIG_FILE",
+        ] {
+            factr_core::env::remove_var(key);
+        }
+
+        assert!(!BedrockProvider::has_credentials());
+        factr_core::env::set_var(API_KEY_ENV, "test-key");
+        assert!(!BedrockProvider::has_credentials(), "a token without a region is not enough");
+
+        factr_core::env::set_var(REGION_ENV, "us-east-2");
+
+        assert_eq!(
+            BedrockProvider::configured_bearer_token().as_deref(),
+            Some("test-key")
+        );
+        assert_eq!(
+            BedrockProvider::configured_region().as_deref(),
+            Some("us-east-2")
+        );
+        assert!(BedrockProvider::has_credentials());
+    }
+
+    #[test]
+    fn configured_profile_overrides_stale_bearer_token() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _factr_home = EnvVarGuard::set("FACTR_HOME", temp.path().as_os_str());
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let _removed = [
+            "FACTR_BEDROCK_ENABLE",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "AWS_PROFILE",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SHARED_CREDENTIALS_FILE",
+            "AWS_CONFIG_FILE",
+        ]
+        .map(EnvVarGuard::remove);
+        let _configured = [
+            (API_KEY_ENV, "expired-bearer-token"),
+            (REGION_ENV, "us-east-2"),
+            ("FACTR_BEDROCK_PROFILE", "factr-operator"),
+        ]
+        .map(|(key, value)| EnvVarGuard::set(key, std::ffi::OsStr::new(value)));
+
+        assert_eq!(
+            BedrockProvider::configured_profile().as_deref(),
+            Some("factr-operator")
+        );
+        assert_eq!(
+            BedrockProvider::configured_bearer_token().as_deref(),
+            Some("expired-bearer-token")
+        );
+        assert_eq!(BedrockProvider::configured_bearer_token_for_runtime(), None);
+        assert!(BedrockProvider::has_credentials());
+    }
+
+    #[test]
+    fn switches_arbitrary_model_ids() {
+        let p = BedrockProvider::new();
+        p.set_model("us.anthropic.claude-3-5-sonnet-20241022-v2:0")
+            .unwrap();
+        assert_eq!(p.model(), "us.anthropic.claude-3-5-sonnet-20241022-v2:0");
+    }
+
+    #[test]
+    fn maps_profile_required_foundation_model_to_inference_profile() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let p = BedrockProvider::new();
+        p.profile_required_models
+            .write()
+            .unwrap()
+            .insert("amazon.nova-2-lite-v1:0".to_string());
+        p.inference_profile_routes.write().unwrap().insert(
+            "amazon.nova-2-lite-v1:0".to_string(),
+            "us.amazon.nova-2-lite-v1:0".to_string(),
+        );
+
+        p.set_model("amazon.nova-2-lite-v1:0").unwrap();
+
+        assert_eq!(p.model(), "us.amazon.nova-2-lite-v1:0");
+    }
+
+    #[test]
+    fn maps_foundation_model_from_stale_cached_profile_list() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let p = BedrockProvider::new();
+        *p.fetched_inference_profiles.write().unwrap() = vec![
+            "global.amazon.nova-2-lite-v1:0".to_string(),
+            "us.amazon.nova-2-lite-v1:0".to_string(),
+        ];
+
+        p.set_model("amazon.nova-2-lite-v1:0").unwrap();
+
+        assert_eq!(p.model(), "us.amazon.nova-2-lite-v1:0");
+    }
+
+    #[test]
+    fn hides_profile_required_foundation_model_when_profile_route_exists() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let p = BedrockProvider::new();
+        *p.fetched_models.write().unwrap() = vec!["amazon.nova-2-lite-v1:0".to_string()];
+        *p.fetched_inference_profiles.write().unwrap() =
+            vec!["us.amazon.nova-2-lite-v1:0".to_string()];
+        p.profile_required_models
+            .write()
+            .unwrap()
+            .insert("amazon.nova-2-lite-v1:0".to_string());
+        p.inference_profile_routes.write().unwrap().insert(
+            "amazon.nova-2-lite-v1:0".to_string(),
+            "us.amazon.nova-2-lite-v1:0".to_string(),
+        );
+
+        let display = p.all_display_models();
+
+        assert!(
+            !display
+                .iter()
+                .any(|model| model == "amazon.nova-2-lite-v1:0")
+        );
+        assert!(
+            display
+                .iter()
+                .any(|model| model == "us.amazon.nova-2-lite-v1:0")
+        );
+    }
+
+    #[test]
+    fn hides_foundation_model_when_profile_route_exists() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let p = BedrockProvider::new();
+        *p.fetched_models.write().unwrap() = vec!["amazon.nova-2-lite-v1:0".to_string()];
+        *p.fetched_inference_profiles.write().unwrap() =
+            vec!["us.amazon.nova-2-lite-v1:0".to_string()];
+        p.inference_profile_routes.write().unwrap().insert(
+            "amazon.nova-2-lite-v1:0".to_string(),
+            "us.amazon.nova-2-lite-v1:0".to_string(),
+        );
+
+        let display = p.all_display_models();
+
+        assert!(
+            !display
+                .iter()
+                .any(|model| model == "amazon.nova-2-lite-v1:0")
+        );
+        assert!(
+            display
+                .iter()
+                .any(|model| model == "us.amazon.nova-2-lite-v1:0")
+        );
+    }
+
+    #[test]
+    fn profile_required_foundation_model_without_profile_route_is_disabled() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let p = BedrockProvider::new();
+        *p.fetched_models.write().unwrap() = vec!["amazon.nova-2-lite-v1:0".to_string()];
+        p.profile_required_models
+            .write()
+            .unwrap()
+            .insert("amazon.nova-2-lite-v1:0".to_string());
+
+        let route = p
+            .model_routes()
+            .into_iter()
+            .find(|route| route.model == "amazon.nova-2-lite-v1:0")
+            .expect("profile-required foundation model should be listed with a reason");
+
+        assert!(!route.available);
+        assert!(route.detail.contains("requires an inference profile"));
+    }
+
+    #[test]
+    fn global_inference_profiles_use_foundation_capabilities_and_detail() {
+        let p = BedrockProvider::new();
+        *p.fetched_inference_profiles.write().unwrap() =
+            vec!["global.amazon.nova-2-lite-v1:0".to_string()];
+
+        let route = p
+            .model_routes()
+            .into_iter()
+            .find(|route| route.model == "global.amazon.nova-2-lite-v1:0")
+            .expect("global inference profile should be listed");
+
+        assert!(route.available);
+        assert!(
+            route
+                .detail
+                .contains("inference profile for amazon.nova-2-lite-v1:0")
+        );
+        assert!(route.detail.contains("tools"));
+        assert!(!route.detail.contains("no tools"));
+    }
+
+    #[test]
+    fn ignores_persisted_bedrock_catalog_from_different_region() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        {
+            let _region = EnvVarGuard::set(REGION_ENV, "us-east-1");
+            BedrockProvider::persist_catalog(
+                &["openai.gpt-oss-120b-1:0".to_string()],
+                &[],
+                &HashSet::new(),
+                &HashMap::new(),
+                &HashSet::new(),
+            );
+        }
+        let _region = EnvVarGuard::set(REGION_ENV, "us-east-2");
+
+        let p = BedrockProvider::new();
+
+        assert!(p.fetched_models.read().unwrap().is_empty());
+    }
+
+    #[test]
+    fn prefers_region_inference_profile_over_global_profile() {
+        let _guard = lock_test_env();
+        let _region = EnvVarGuard::set(REGION_ENV, "us-east-2");
+        let mut routes = HashMap::new();
+
+        BedrockProvider::insert_preferred_profile_route(
+            &mut routes,
+            "amazon.nova-2-lite-v1:0",
+            "global.amazon.nova-2-lite-v1:0",
+        );
+        BedrockProvider::insert_preferred_profile_route(
+            &mut routes,
+            "amazon.nova-2-lite-v1:0",
+            "us.amazon.nova-2-lite-v1:0",
+        );
+
+        assert_eq!(
+            routes.get("amazon.nova-2-lite-v1:0").map(String::as_str),
+            Some("us.amazon.nova-2-lite-v1:0")
+        );
+    }
+
+    #[test]
+    fn known_context_and_vision_capabilities() {
+        let p = BedrockProvider::new();
+        p.set_model("anthropic.claude-3-5-sonnet-20241022-v2:0")
+            .unwrap();
+        assert!(p.supports_image_input());
+        assert_eq!(p.context_window(), 200_000);
+        p.set_model("amazon.nova-micro-v1:0").unwrap();
+        assert!(!p.supports_image_input());
+        assert_eq!(p.context_window(), 128_000);
+    }
+
+    #[test]
+    fn known_no_tool_models_do_not_advertise_tools() {
+        assert!(!BedrockProvider::model_info("us.deepseek.r1-v1:0").supports_tools);
+        assert!(!BedrockProvider::model_info("deepseek.v3.2").supports_tools);
+        assert!(
+            !BedrockProvider::model_info("mistral.mistral-large-3-675b-instruct").supports_tools
+        );
+        assert!(!BedrockProvider::model_info("openai.gpt-oss-120b-1:0").supports_tools);
+        assert!(BedrockProvider::model_info("us.amazon.nova-2-lite-v1:0").supports_tools);
+        assert!(BedrockProvider::model_info("us.anthropic.claude-sonnet-4-6").supports_tools);
+    }
+
+    #[test]
+    fn error_classification_mentions_model_access() {
+        let message = BedrockProvider::classify_error_message(
+            "ValidationException: The provided model identifier is invalid",
+        );
+        assert!(message.contains("model"));
+        assert!(message.contains("region"));
+    }
+
+    #[test]
+    fn error_classification_mentions_legacy_models() {
+        let message = BedrockProvider::classify_error_message(
+            "Access denied. This Model is marked by provider as Legacy and you have not been actively using the model in the last 30 days",
+        );
+        assert!(message.contains("legacy"));
+        assert!(message.contains("active"));
+        assert!(!message.starts_with("AWS IAM denied"));
+    }
+
+    #[test]
+    fn tool_use_streaming_error_is_not_classified_as_legacy_sdk_type_name() {
+        let message = BedrockProvider::classify_error_message(
+            "ValidationException: This model doesn't support tool use in streaming mode. extensions_1x: {hyper_util::client::legacy::connect::http::HttpInfo}",
+        );
+        assert!(message.contains("does not support tool use"));
+        assert!(!message.starts_with("This Bedrock model is marked as legacy"));
+    }
+
+    #[test]
+    fn expired_sso_error_is_concise_and_actionable() {
+        let message = BedrockProvider::classify_error_message(
+            "ServiceError(ServiceError { source: AccessDeniedException(AccessDeniedException { message: Some(\"Bearer Token has expired\") }) })",
+        );
+        assert_eq!(
+            message,
+            "AWS SSO/session credentials look expired. Run `aws sso login --profile <profile>` and retry."
+        );
+    }
+
+    #[test]
+    fn missing_credentials_error_omits_sdk_blob() {
+        let message = BedrockProvider::classify_error_message(
+            "CredentialsNotLoaded: could not load credentials from any provider; extensions_1x: noisy sdk internals",
+        );
+        assert!(message.contains("AWS credentials were not found"));
+        assert!(!message.contains("extensions_1x"));
+    }
+
+    #[test]
+    fn legacy_model_route_is_unavailable_with_reason() {
+        let _guard = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path().as_os_str());
+        let p = BedrockProvider::new();
+        *p.fetched_models.write().unwrap() =
+            vec!["anthropic.claude-3-haiku-20240307-v1:0".to_string()];
+        p.legacy_models
+            .write()
+            .unwrap()
+            .insert("anthropic.claude-3-haiku-20240307-v1:0".to_string());
+
+        let route = p
+            .model_routes()
+            .into_iter()
+            .find(|route| route.model == "anthropic.claude-3-haiku-20240307-v1:0")
+            .expect("legacy route should be listed");
+
+        assert!(!route.available);
+        assert!(route.detail.contains("legacy"));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AWS credentials and enabled Bedrock model access"]
+    async fn bedrock_live_smoke_test() {
+        if std::env::var("FACTR_BEDROCK_LIVE_TEST").ok().as_deref() != Some("1") {
+            return;
+        }
+        let provider = BedrockProvider::new();
+        let output = provider
+            .complete_simple("say bedrock ok and nothing else", "")
+            .await
+            .expect("live Bedrock completion");
+        assert!(output.to_ascii_lowercase().contains("bedrock ok"));
+    }
+}

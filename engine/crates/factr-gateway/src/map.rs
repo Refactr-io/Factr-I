@@ -1,0 +1,798 @@
+//! Pure translation between factr harness API frames and Factr `tui_gateway`
+//! JSON-RPC shapes. No I/O here, so every mapping is unit-testable.
+
+use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::time::Instant;
+
+/// Tool output beyond this is truncated in `tool.complete` (the full output
+/// stays in the factr transcript).
+const TOOL_RESULT_MAX_CHARS: usize = 8_000;
+
+#[derive(Default)]
+pub struct SessionState {
+    pub model: Option<String>,
+    turn: Turn,
+    usage: Usage,
+}
+
+#[derive(Default)]
+struct Turn {
+    started: bool,
+    text: String,
+    reasoning: String,
+    stop: Option<&'static str>,
+    /// The model error text of an `error` stop, for goal error handling.
+    error: String,
+    tools: HashMap<String, Tool>,
+}
+
+struct Tool {
+    name: String,
+    args: Option<Value>,
+    /// Streamed input JSON (`tool_input_delta`), parsed at `tool_exec`.
+    input: String,
+    started_at: Instant,
+    announced: bool,
+}
+
+impl Tool {
+    fn new(name: String) -> Self {
+        Self { name, args: None, input: String::new(), started_at: Instant::now(), announced: false }
+    }
+
+    fn args(&self) -> Option<Value> {
+        self.args
+            .clone()
+            .or_else(|| serde_json::from_str::<Value>(&self.input).ok())
+            .filter(Value::is_object)
+            .map(|mut v| {
+                // factr adds an `intent` field to every tool call; it is not an argument.
+                if let Some(map) = v.as_object_mut() {
+                    map.remove("intent");
+                }
+                v
+            })
+    }
+}
+
+/// Emit `tool.start` once, with the arguments known so far.
+fn announce(state: &mut SessionState, sid: &str, call_id: &str, out: &mut Vec<Out>) {
+    ensure_started(state, sid, out);
+    let Some(tool) = state.turn.tools.get_mut(call_id) else { return };
+    if tool.announced {
+        return;
+    }
+    tool.announced = true;
+    tool.started_at = Instant::now();
+    out.push(event("tool.start", sid, json!({ "tool_id": call_id, "name": tool.name, "args": tool.args() })));
+}
+
+#[derive(Default)]
+struct Usage {
+    input: u64,
+    output: u64,
+    cache_read: u64,
+    cache_write: u64,
+    calls: u64,
+}
+
+impl SessionState {
+    pub fn turn_active(&self) -> bool {
+        self.turn.started
+    }
+
+    /// Drop the in-flight turn (its link died, so `message.complete` will never come);
+    /// whether one was running.
+    pub fn end_turn(&mut self) -> bool {
+        std::mem::take(&mut self.turn).started
+    }
+
+    /// The engine says a turn is running that this connection did not see start.
+    pub fn mark_running(&mut self) {
+        self.turn.started = true;
+    }
+
+    pub fn usage_json(&self) -> Value {
+        let u = &self.usage;
+        json!({
+            "model": self.model.clone().unwrap_or_default(),
+            "input": u.input,
+            "output": u.output,
+            "reasoning": 0,
+            "prompt": u.input,
+            "completion": u.output,
+            "total": u.input + u.output,
+            "calls": u.calls,
+            "cache_read": u.cache_read,
+            "cache_write": u.cache_write,
+        })
+    }
+}
+
+/// Something the WebSocket side must do in response to one harness event.
+#[derive(Debug, PartialEq)]
+pub enum Out {
+    Event { ty: &'static str, session_id: String, payload: Value },
+    Approval { session_id: String, request_id: String, tool_name: String, description: String },
+}
+
+fn event(ty: &'static str, session_id: &str, payload: Value) -> Out {
+    Out::Event { ty, session_id: session_id.to_string(), payload }
+}
+
+fn ensure_started(state: &mut SessionState, sid: &str, out: &mut Vec<Out>) {
+    if !state.turn.started {
+        state.turn.started = true;
+        out.push(event("message.start", sid, json!({})));
+    }
+}
+
+fn truncate_chars(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((cut, _)) => format!("{}\n… [truncated]", &text[..cut]),
+        None => text.to_string(),
+    }
+}
+
+/// Translate one streaming harness event (a frame without `reply_to`).
+pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Vec<Out> {
+    let mut out = Vec::new();
+    let Some(sid) = ev["session_id"].as_str() else {
+        return out;
+    };
+    let state = sessions.entry(sid.to_string()).or_default();
+    let text = |key: &str| ev[key].as_str().unwrap_or_default().to_string();
+
+    match ev["ev"].as_str().unwrap_or_default() {
+        "text_delta" => {
+            ensure_started(state, sid, &mut out);
+            let delta = text("text");
+            state.turn.text.push_str(&delta);
+            out.push(event("message.delta", sid, json!({ "text": delta })));
+        }
+        "text_replace" => state.turn.text = text("text"),
+        "reasoning_delta" => {
+            ensure_started(state, sid, &mut out);
+            let delta = text("text");
+            state.turn.reasoning.push_str(&delta);
+            out.push(event("reasoning.delta", sid, json!({ "text": delta })));
+        }
+        "tool_call" => {
+            let call_id = text("call_id");
+            let tool = state.turn.tools.entry(call_id).or_insert_with(|| Tool::new(text("name")));
+            tool.args = Some(ev["input"].clone());
+        }
+        "tool_start" => {
+            ensure_started(state, sid, &mut out);
+            state.turn.tools.entry(text("call_id")).or_insert_with(|| Tool::new(text("name")));
+        }
+        "tool_input_delta" => {
+            let tool = state.turn.tools.entry(text("call_id")).or_insert_with(|| Tool::new(text("name")));
+            if tool.input.len() < 256 * 1024 {
+                tool.input.push_str(&text("delta"));
+            }
+        }
+        "tool_exec" => {
+            let call_id = text("call_id");
+            state.turn.tools.entry(call_id.clone()).or_insert_with(|| Tool::new(text("name")));
+            announce(state, sid, &call_id, &mut out);
+        }
+        "tool_done" => {
+            let call_id = text("call_id");
+            state.turn.tools.entry(call_id.clone()).or_insert_with(|| Tool::new(text("name")));
+            announce(state, sid, &call_id, &mut out);
+            let tool = state.turn.tools.remove(&call_id);
+            let name = tool.as_ref().map(|t| t.name.clone()).unwrap_or_else(|| text("name"));
+            let args = tool.as_ref().and_then(Tool::args);
+            let duration = tool.as_ref().map(|t| t.started_at.elapsed().as_secs_f64());
+            let result = match ev["error"].as_str() {
+                Some(err) => format!("Error: {err}\n{}", text("output")),
+                None => text("output"),
+            };
+            out.push(event(
+                "tool.complete",
+                sid,
+                json!({
+                    "tool_id": call_id,
+                    "name": name,
+                    "args": args,
+                    "duration_s": duration,
+                    // The desktop renders `result`; `result_text` is the
+                    // plain-text twin other clients read.
+                    "result": truncate_chars(&result, TOOL_RESULT_MAX_CHARS),
+                    "result_text": truncate_chars(&result, TOOL_RESULT_MAX_CHARS),
+                }),
+            ));
+        }
+        "token_usage" => {
+            let u = &mut state.usage;
+            u.input += ev["input"].as_u64().unwrap_or(0);
+            u.output += ev["output"].as_u64().unwrap_or(0);
+            u.cache_read += ev["cache_read_input"].as_u64().unwrap_or(0);
+            u.cache_write += ev["cache_creation_input"].as_u64().unwrap_or(0);
+            u.calls += 1;
+            out.push(event("session.usage", sid, json!({ "usage": state.usage_json() })));
+        }
+        "turn_stopped" => {
+            let status = match ev["reason"].as_str() {
+                Some("interrupted") => "interrupted",
+                _ => "error",
+            };
+            state.turn.stop = Some(status);
+            let message = text("message");
+            if status == "error" && !message.is_empty() {
+                state.turn.error = message.clone();
+                out.push(event("error", sid, json!({ "message": message })));
+            }
+        }
+        "turn_done" => {
+            let turn = std::mem::take(&mut state.turn);
+            let reasoning = (!turn.reasoning.is_empty()).then_some(turn.reasoning);
+            out.push(event(
+                "message.complete",
+                sid,
+                json!({
+                    "text": turn.text,
+                    "status": turn.stop.unwrap_or("complete"),
+                    "error": (!turn.error.is_empty()).then_some(turn.error),
+                    "reasoning": reasoning,
+                    "usage": state.usage_json(),
+                }),
+            ));
+        }
+        "session_renamed" => {
+            let title = text("display_title");
+            out.push(event("session.title", sid, json!({ "session_id": sid, "title": title })));
+        }
+        "notice" => {
+            let notice = text("text");
+            if !notice.is_empty() {
+                out.push(event("notification.show", sid, json!({ "text": notice, "level": "warn", "key": "turn.notice" })));
+            }
+        }
+        "compacted" => {
+            out.push(event("status.update", sid, json!({ "kind": "compress", "text": text("message") })));
+        }
+        "model_info" | "runtime_info" => {
+            if let Some(model) = ev["model"].as_str().and_then(real_model) {
+                state.model = Some(model);
+            }
+        }
+        "permission_request" => out.push(Out::Approval {
+            session_id: sid.to_string(),
+            request_id: text("request_id"),
+            tool_name: text("tool_name"),
+            description: text("description"),
+        }),
+        _ => {}
+    }
+    out
+}
+
+/// Factr approval choice → factr permission decision. Session and permanent
+/// grants are owned by [`crate::approvals::Hub`] (permanent ones in Factr's
+/// `command_allowlist`), so factr only ever gets a one-time allow.
+pub fn approval_decision(choice: &str) -> &'static str {
+    match choice {
+        "once" | "session" | "always" => "allow",
+        _ => "deny",
+    }
+}
+
+/// Title from a stored chat's first real user prompt (not the injected session context).
+fn first_prompt_title(session: &factr_base::session::Session) -> Option<String> {
+    first_prompt_text(session).and_then(|t| derive_title(None, &t))
+}
+
+/// The first real user message of a stored chat (loop and sub-agent chats included), for the list preview.
+fn first_prompt_text(session: &factr_base::session::Session) -> Option<String> {
+    session.messages.iter().filter(|m| m.role == factr_base::message::Role::User && m.display_role.is_none()).find_map(|m| {
+        m.content.iter().find_map(|b| match b {
+            factr_base::message::ContentBlock::Text { text, .. } if !text.trim_start().starts_with("<system-reminder>") && !text.trim().is_empty() => Some(display_text(text)),
+            _ => None,
+        })
+    })
+}
+
+/// Preview line for a list row: the first prompt on one line, capped.
+pub(crate) fn preview_of(session: Option<&factr_base::session::Session>) -> String {
+    let text = session.and_then(first_prompt_text).unwrap_or_default();
+    let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.chars().count() > 200 { format!("{}…", line.chars().take(200).collect::<String>()) } else { line }
+}
+
+/// factr `SessionInfo` → Factr `SessionListRow`.
+pub fn session_row(info: &Value) -> Value {
+    let id = info["session_id"].as_str().unwrap_or_default();
+    let stored = factr_base::session::Session::load(id).ok();
+    let named = info["title"].as_str().or_else(|| info["display_title"].as_str()).filter(|t| !t.trim().is_empty());
+    // A chat nobody titled (a sub-agent's, a loop's) is named by its first prompt, as a goal chat is.
+    let title = named.map(str::to_string).or_else(|| stored.as_ref().and_then(first_prompt_title)).unwrap_or_else(|| "New chat".to_string());
+    let ms = info["last_active_at_ms"].as_i64().or_else(|| info["updated_at_ms"].as_i64()).unwrap_or_else(|| stored.as_ref().map(|s| s.updated_at.timestamp_millis()).unwrap_or(0));
+    json!({
+        "id": id,
+        "resolved_id": id,
+        "title": title,
+        "preview": preview_of(stored.as_ref()),
+        "started_at": ms as f64 / 1000.0,
+        "message_count": stored.as_ref().map(|s| s.messages.iter().filter(|m| matches!(m.role, factr_base::message::Role::User | factr_base::message::Role::Assistant)).count()).unwrap_or(0),
+        "source": "desktop",
+    })
+}
+
+/// factr `SessionInfo` → desktop REST `SessionInfo` (`types/factr.ts`).
+pub fn session_info(info: &Value) -> Value {
+    let row = session_row(info);
+    let id = info["session_id"].as_str().unwrap_or_default();
+    let stored = factr_base::session::Session::load(id).ok();
+    let secs = stored.as_ref().map(|s| s.created_at.timestamp() as f64).unwrap_or_else(|| row["started_at"].as_f64().unwrap_or_default());
+    let last_active = stored.as_ref().map(|s| s.updated_at.timestamp() as f64).unwrap_or_else(|| row["started_at"].as_f64().unwrap_or_default());
+    let message_count = row["message_count"].clone();
+    let usage = stored.as_ref().map(|s| s.token_usage_totals());
+    json!({
+        "id": row["id"],
+        "title": row["title"],
+        "preview": row["preview"],
+        "source": "desktop",
+        "started_at": secs,
+        "last_active": last_active,
+        "ended_at": if info["status"] == "running" || info["status"] == "processing" { Value::Null } else { json!(last_active) },
+        "is_active": info["status"] == "running" || info["status"] == "processing",
+        "message_count": message_count,
+        "tool_call_count": stored.as_ref().map(|s| s.messages.iter().flat_map(|m| &m.content).filter(|b| matches!(b, factr_base::message::ContentBlock::ToolUse { .. })).count()),
+        "input_tokens": usage.map(|u| u.input_tokens),
+        "output_tokens": stored.as_ref().map(|s| s.token_usage_totals().output_tokens),
+        "model": stored.as_ref().and_then(|s| s.model.as_deref()).and_then(real_model),
+        "preview": row["preview"],
+        "cwd": info["working_dir"],
+        "parent_session_id": info["parent_session_id"],
+        "archived": info["archived"].as_bool().unwrap_or(false),
+        "profile": "default",
+        "is_default_profile": true,
+    })
+}
+
+/// factr history message → Factr `TranscriptMessage`.
+pub fn transcript(messages: &Value) -> Vec<Value> {
+    messages
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .map(|m| match (m["role"].as_str(), m["content"].as_str()) {
+                    (Some("user"), Some(text)) => json!({ "role": m["role"], "text": display_text(text) }),
+                    _ => json!({ "role": m["role"], "text": m["content"] }),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `SessionLiveInfo` for create/resume results.
+pub fn live_info(session_id: &str, state: Option<&SessionState>, cwd: &str, version: &str, model: &str, provider: &str) -> Value {
+    json!({
+        "model": state.and_then(|s| s.model.clone()).unwrap_or_else(|| model.to_string()),
+        "provider": provider,
+        "cwd": cwd,
+        "running": state.is_some_and(SessionState::turn_active),
+        "title": "",
+        "stored_session_id": session_id,
+        "version": version,
+        // The desktop warns below contract 8. The engine speaks the v8
+        // protocol; methods it lacks answer `not_supported_by_engine`.
+        "desktop_contract": 8,
+    })
+}
+
+/// Complete a filesystem path fragment relative to `cwd` (at most 50 items;
+/// dotfiles only when the fragment asks for them).
+pub fn complete_path(word: &str, cwd: &str) -> Vec<Value> {
+    let (dir_part, prefix) = match word.rfind('/') {
+        Some(i) => (&word[..=i], &word[i + 1..]),
+        None => ("", word),
+    };
+    let dir = if let Some(rest) = dir_part.strip_prefix("~/") {
+        factr_base::platform::user_home_dir().map(|h| h.join(rest)).unwrap_or_default()
+    } else if dir_part.starts_with('/') {
+        std::path::PathBuf::from(dir_part)
+    } else {
+        std::path::Path::new(cwd).join(dir_part)
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let mut items: Vec<(String, bool)> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let hidden_ok = !name.starts_with('.') || prefix.starts_with('.');
+            (name.starts_with(prefix) && hidden_ok).then(|| (name, e.file_type().is_ok_and(|t| t.is_dir())))
+        })
+        .collect();
+    items.sort();
+    items
+        .into_iter()
+        .take(50)
+        .map(|(name, is_dir)| {
+            let suffix = if is_dir { "/" } else { "" };
+            json!({
+                "text": format!("{dir_part}{name}{suffix}"),
+                "display": format!("{name}{suffix}"),
+                "meta": if is_dir { "dir" } else { "file" },
+                "kind": if is_dir { "dir" } else { "file" },
+            })
+        })
+        .collect()
+}
+
+/// Current git branch for `cwd` (walks up to the repository root; worktrees
+/// and `.git` files supported). Short commit id when detached. No subprocess.
+pub fn git_branch(cwd: &str) -> Option<String> {
+    let mut dir = std::path::Path::new(cwd).to_path_buf();
+    loop {
+        let dot_git = dir.join(".git");
+        let git_dir = if dot_git.is_dir() {
+            Some(dot_git)
+        } else if dot_git.is_file() {
+            let text = std::fs::read_to_string(&dot_git).ok()?;
+            let target = text.trim().strip_prefix("gitdir:")?.trim().to_string();
+            let path = std::path::Path::new(&target);
+            Some(if path.is_absolute() { path.to_path_buf() } else { dir.join(path) })
+        } else {
+            None
+        };
+        if let Some(git_dir) = git_dir {
+            let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+            let head = head.trim();
+            return Some(match head.strip_prefix("ref: refs/heads/") {
+                Some(branch) => branch.to_string(),
+                None => head.chars().take(7).collect(),
+            });
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+pub fn git_repo_root(cwd: &str) -> Option<String> {
+    let mut dir = std::path::Path::new(cwd).to_path_buf();
+    loop {
+        if dir.join(".git").exists() { return Some(dir.to_string_lossy().into_owned()); }
+        if !dir.pop() { return None; }
+    }
+}
+
+const GOAL_MARK: &str = "[Continuing toward your standing goal]";
+
+/// A goal's own text from `/goal [--turns N ...] <text>` arguments (flags dropped).
+pub fn goal_text(arg: &str) -> String {
+    let mut words = arg.split_whitespace();
+    let mut out = Vec::new();
+    while let Some(w) = words.next() {
+        match w {
+            "--budget" | "--token-budget" | "--max-tokens" | "--turns" | "--max-turns" | "--timeout-ms" | "--wall-ms" => {
+                words.next();
+            }
+            w if w.starts_with("--budget=") || w.starts_with("--turns=") => {}
+            w => out.push(w),
+        }
+    }
+    out.join(" ")
+}
+
+/// The task a model-facing scaffold (goal continuation, `/plan`, `/learn`) carries, as the short line
+/// users should see: `Goal: <text>`, `Plan: <task>`, `Learn: <request>`. `None` for ordinary text.
+pub fn scaffold_label(text: &str) -> Option<String> {
+    let t = text.trim_start();
+    if let Some(rest) = t.strip_prefix(GOAL_MARK) {
+        let goal = rest.trim_start().strip_prefix("Goal:").unwrap_or(rest).lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or_default();
+        return Some(format!("Goal: {goal}").trim_end_matches(' ').trim_end_matches(':').to_string());
+    }
+    let after = |marker: &str| t.split_once(marker).and_then(|(_, r)| r.lines().map(str::trim).find(|l| !l.is_empty())).map(str::to_string);
+    if t.starts_with("[/loop wakeup") {
+        return Some(after("Recurring task:").map_or("Loop".to_string(), |task| format!("Loop: {task}")));
+    }
+    if t.starts_with("[/heartbeat]") {
+        return Some(after("Recurring check:").map_or("Heartbeat".to_string(), |task| format!("Heartbeat: {task}")));
+    }
+    if t.starts_with("[/plan") {
+        return Some(after("Task to plan:").map_or("Plan".to_string(), |task| format!("Plan: {task}")));
+    }
+    if t.starts_with("[/learn]") {
+        return Some(after("THE REQUEST:").map_or("Learn a skill".to_string(), |req| format!("Learn: {req}")));
+    }
+    None
+}
+
+/// What the user sees for a prompt: the label of a scaffold, a typed `/goal`, `/plan` or `/learn`
+/// command without its slash, else the text unchanged.
+pub fn display_text(text: &str) -> String {
+    if let Some(label) = scaffold_label(text) {
+        return label;
+    }
+    let t = text.trim_start();
+    for (cmd, label) in [("/goal", "Goal"), ("/plan", "Plan"), ("/learn", "Learn"), ("/loop", "Loop")] {
+        if let Some(rest) = t.strip_prefix(cmd).filter(|r| r.is_empty() || r.starts_with(char::is_whitespace)) {
+            let rest = if cmd == "/goal" { goal_text(rest) } else { rest.trim().to_string() };
+            return if rest.is_empty() { text.to_string() } else { format!("{label}: {rest}") };
+        }
+    }
+    text.to_string()
+}
+
+/// Title for an untitled session from its first prompt: the desktop's
+/// `title_preview` when given, else the first non-empty line, capped at 60
+/// characters on a word boundary. No model call. Goal, plan and learn prompts are titled by their
+/// task ("Create goal_demo.py", "Plan: ..."), never by the slash command or the scaffolding.
+pub fn derive_title(preview: Option<&str>, text: &str) -> Option<String> {
+    let source = preview.filter(|p| !p.trim().is_empty()).unwrap_or(text);
+    let source = display_text(source);
+    let source = match source.strip_prefix("Goal: ") {
+        Some(goal) => {
+            let mut chars = goal.chars();
+            chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
+        }
+        None => source,
+    };
+    let line = source.lines().map(str::trim).find(|l| !l.is_empty())?;
+    if line.chars().count() <= 60 {
+        return Some(line.to_string());
+    }
+    let cut: String = line.chars().take(60).collect();
+    let trimmed = cut.rsplit_once(' ').map(|(head, _)| head).filter(|h| h.len() >= 20).unwrap_or(&cut);
+    Some(format!("{}…", trimmed.trim_end()))
+}
+
+/// Text of a `prompt.submit` `text` field, which may be a string or a list of
+/// content parts.
+pub fn prompt_text(text: &Value) -> String {
+    match text {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p.as_str().map(str::to_string).or_else(|| p["text"].as_str().map(str::to_string)))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// factr stamps `"unknown"` on a session whose model was never resolved (test
+/// providers, an interrupted start). Reported as a model, the desktop adopted
+/// it as the user's pinned pick; it is the absence of one.
+fn real_model(model: &str) -> Option<String> {
+    let model = model.trim();
+
+    (!model.is_empty() && model != "unknown").then(|| model.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(events: &[Value]) -> Vec<Out> {
+        let mut sessions = HashMap::new();
+        events.iter().flat_map(|e| map_event(e, &mut sessions)).collect()
+    }
+
+    fn types(out: &[Out]) -> Vec<&'static str> {
+        out.iter()
+            .filter_map(|o| match o {
+                Out::Event { ty, .. } => Some(*ty),
+                Out::Approval { .. } => Some("approval"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_text_turn_maps_to_start_delta_complete() {
+        let out = run(&[
+            json!({"ev":"text_delta","session_id":"s","text":"Hel"}),
+            json!({"ev":"text_delta","session_id":"s","text":"lo"}),
+            json!({"ev":"token_usage","session_id":"s","input":10,"output":2}),
+            json!({"ev":"text_done","session_id":"s"}),
+            json!({"ev":"turn_done","session_id":"s"}),
+        ]);
+        assert_eq!(types(&out), ["message.start", "message.delta", "message.delta", "session.usage", "message.complete"]);
+        let Out::Event { payload, .. } = out.last().unwrap() else { panic!() };
+        assert_eq!(payload["text"], "Hello");
+        assert_eq!(payload["status"], "complete");
+        assert_eq!(payload["usage"]["total"], 12);
+    }
+
+    #[test]
+    fn tools_carry_streamed_args_and_results() {
+        // factr's real order: start, streamed input, exec, done (no tool_call).
+        let out = run(&[
+            json!({"ev":"tool_start","session_id":"s","call_id":"c1","name":"bash"}),
+            json!({"ev":"tool_input_delta","session_id":"s","call_id":"c1","delta":"{\"command\":\"ls\","}),
+            json!({"ev":"tool_input_delta","session_id":"s","call_id":"c1","delta":"\"intent\":\"list\"}"}),
+            json!({"ev":"tool_exec","session_id":"s","call_id":"c1","name":"bash"}),
+            json!({"ev":"tool_exec","session_id":"s","call_id":"c1","name":"bash"}),
+            json!({"ev":"tool_done","session_id":"s","call_id":"c1","name":"bash","output":"a.txt","error":null}),
+        ]);
+        assert_eq!(types(&out), ["message.start", "tool.start", "tool.complete"]);
+        let Out::Event { payload, .. } = &out[1] else { panic!() };
+        assert_eq!(payload["args"]["command"], "ls");
+        assert!(payload["args"].get("intent").is_none(), "factr's intent field is not an argument");
+        let Out::Event { payload, .. } = &out[2] else { panic!() };
+        assert_eq!(payload["result_text"], "a.txt");
+        assert_eq!(payload["result"], "a.txt");
+    }
+
+    #[test]
+    fn stops_map_to_turn_status() {
+        let out = run(&[
+            json!({"ev":"text_delta","session_id":"s","text":"x"}),
+            json!({"ev":"turn_stopped","session_id":"s","reason":"failure","message":"rate limited"}),
+            json!({"ev":"turn_done","session_id":"s"}),
+        ]);
+        assert_eq!(types(&out), ["message.start", "message.delta", "error", "message.complete"]);
+        let Out::Event { payload, .. } = out.last().unwrap() else { panic!() };
+        assert_eq!(payload["status"], "error");
+        assert_eq!(payload["error"], "rate limited", "the goal driver classifies errors from this");
+
+        let out = run(&[
+            json!({"ev":"turn_stopped","session_id":"s","reason":"interrupted","message":""}),
+            json!({"ev":"turn_done","session_id":"s"}),
+        ]);
+        let Out::Event { payload, .. } = out.last().unwrap() else { panic!() };
+        assert_eq!(payload["status"], "interrupted");
+    }
+
+    #[test]
+    fn a_notice_is_a_warning_toast_and_not_a_stop() {
+        let out = run(&[json!({"ev":"notice","session_id":"s","text":"incomplete response: max_output_tokens"})]);
+        assert_eq!(types(&out), ["notification.show"]);
+        let Out::Event { payload, .. } = &out[0] else { panic!() };
+        assert_eq!((payload["level"].as_str(), payload["text"].as_str()), (Some("warn"), Some("incomplete response: max_output_tokens")));
+        assert!(types(&run(&[json!({"ev":"notice","session_id":"s","text":""})])).is_empty());
+    }
+
+    #[test]
+    fn a_new_turn_starts_fresh() {
+        let mut sessions = HashMap::new();
+        for e in [json!({"ev":"text_delta","session_id":"s","text":"one"}), json!({"ev":"turn_done","session_id":"s"})] {
+            map_event(&e, &mut sessions);
+        }
+        let out = map_event(&json!({"ev":"text_delta","session_id":"s","text":"two"}), &mut sessions);
+        assert_eq!(types(&out), ["message.start", "message.delta"]);
+    }
+
+    #[test]
+    fn permission_requests_become_approvals() {
+        let out = run(&[json!({"ev":"permission_request","session_id":"s","request_id":"r","tool_name":"bash","description":"rm -rf x"})]);
+        assert_eq!(
+            out,
+            [Out::Approval {
+                session_id: "s".into(),
+                request_id: "r".into(),
+                tool_name: "bash".into(),
+                description: "rm -rf x".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn approval_session_scope_never_widens() {
+        assert_eq!(approval_decision("once"), "allow");
+        assert_eq!(approval_decision("session"), "allow");
+        assert_eq!(approval_decision("always"), "allow");
+        assert_eq!(approval_decision("deny"), "deny");
+        assert_eq!(approval_decision("anything-else"), "deny");
+    }
+
+    #[test]
+    fn long_tool_output_is_truncated_on_a_char_boundary() {
+        let long = "é".repeat(TOOL_RESULT_MAX_CHARS + 5);
+        let t = truncate_chars(&long, TOOL_RESULT_MAX_CHARS);
+        assert!(t.ends_with("[truncated]"));
+        assert_eq!(truncate_chars("short", 10), "short");
+    }
+
+    #[test]
+    fn events_without_a_session_are_ignored() {
+        assert!(run(&[json!({"ev":"text_delta","text":"x"})]).is_empty());
+    }
+
+    #[test]
+    fn git_branch_reads_head_without_git() {
+        let root = std::env::temp_dir().join(format!("gb-{}", std::process::id()));
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::create_dir_all(root.join("src/deep")).unwrap();
+        std::fs::write(root.join(".git/HEAD"), "ref: refs/heads/feature/x\n").unwrap();
+        assert_eq!(git_branch(root.join("src/deep").to_str().unwrap()).as_deref(), Some("feature/x"));
+        std::fs::write(root.join(".git/HEAD"), "0123456789abcdef\n").unwrap();
+        assert_eq!(git_branch(root.to_str().unwrap()).as_deref(), Some("0123456"));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(git_branch("/definitely/not/a/repo"), None);
+    }
+
+    #[test]
+    fn titles_come_from_the_first_prompt() {
+        assert_eq!(derive_title(None, "\n  Fix the login bug\nmore").as_deref(), Some("Fix the login bug"));
+        assert_eq!(derive_title(Some("Preview title"), "ignored").as_deref(), Some("Preview title"));
+        let long = derive_title(None, &"word ".repeat(40)).unwrap();
+        assert!(long.ends_with('…') && long.chars().count() <= 61);
+        assert_eq!(derive_title(None, "   "), None);
+        // goal, plan and learn chats are named by the task
+        assert_eq!(derive_title(None, "/goal --turns 5 create goal_demo.py that prints hi").as_deref(), Some("Create goal_demo.py that prints hi"));
+        assert_eq!(derive_title(Some("Goal: create goal_demo.py"), "x").as_deref(), Some("Create goal_demo.py"));
+        let cont = "[Continuing toward your standing goal]\nGoal: write the parser\n\nRecent attempts:\n- x\n\nContinue working";
+        assert_eq!(derive_title(None, cont).as_deref(), Some("Write the parser"));
+        assert_eq!(display_text(cont), "Goal: write the parser");
+        let plan = "[/plan — plan mode]\n\nrules\nTask to plan:\nadd a cache\n\ncraft";
+        assert_eq!(derive_title(None, plan).as_deref(), Some("Plan: add a cache"));
+        assert_eq!(derive_title(None, "/plan add a cache").as_deref(), Some("Plan: add a cache"));
+        let learn = "[/learn] The user wants...\n\nTHE REQUEST:\nalways answer BLUEFIN-7\n\nThe request is";
+        assert_eq!(derive_title(None, learn).as_deref(), Some("Learn: always answer BLUEFIN-7"));
+        assert_eq!(derive_title(None, "/planet earth").as_deref(), Some("/planet earth"));
+        assert_eq!(display_text("hello"), "hello");
+        // loop and heartbeat wakeups are named by their task, never by the scaffold
+        let wake = "[/loop wakeup #1/2]\nRecurring task: Reply with exactly the word hello\n\nThis is an automatic wakeup";
+        assert_eq!(derive_title(None, wake).as_deref(), Some("Loop: Reply with exactly the word hello"));
+        assert_eq!(derive_title(None, "[/heartbeat]\nRecurring check: the build\n\nx").as_deref(), Some("Heartbeat: the build"));
+    }
+
+    #[test]
+    fn an_untitled_chat_is_named_by_its_first_real_prompt() {
+        use factr_base::message::{ContentBlock, Role};
+        let text = |t: &str| vec![ContentBlock::Text { text: t.into(), cache_control: None }];
+        let mut s = factr_base::session::Session::create(None, None);
+        s.add_message(Role::User, text("<system-reminder>\ncontext\n</system-reminder>"));
+        assert_eq!(first_prompt_title(&s), None);
+        s.add_message(Role::User, text("Summarise the failing tests in crates/x"));
+        s.add_message(Role::User, text("later"));
+        assert_eq!(first_prompt_title(&s).as_deref(), Some("Summarise the failing tests in crates/x"));
+        assert_eq!(preview_of(Some(&s)), "Summarise the failing tests in crates/x");
+        assert_eq!(preview_of(None), "");
+    }
+
+    #[test]
+    fn prompt_text_accepts_strings_and_parts() {
+        assert_eq!(prompt_text(&json!("hi")), "hi");
+        assert_eq!(prompt_text(&json!([{"type":"text","text":"a"}, "b"])), "a\nb");
+        assert_eq!(prompt_text(&json!(null)), "");
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::complete_path;
+
+    #[test]
+    fn completes_relative_paths_and_hides_dotfiles() {
+        let dir = std::env::temp_dir().join(format!("sov-complete-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("setup.py"), "").unwrap();
+        std::fs::write(dir.join(".secret"), "").unwrap();
+        let cwd = dir.to_string_lossy();
+        let texts: Vec<String> = complete_path("s", &cwd).iter().map(|i| i["text"].as_str().unwrap().to_string()).collect();
+        assert_eq!(texts, ["setup.py", "src/"]);
+        assert!(complete_path("", &cwd).iter().all(|i| !i["text"].as_str().unwrap().starts_with('.')));
+        assert_eq!(complete_path(".s", &cwd).len(), 1);
+        assert!(complete_path("nope/x", &cwd).is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod tool_order_tests {
+    use super::*;
+
+    #[test]
+    fn a_tool_that_never_executes_is_still_announced_before_completing() {
+        let mut sessions = HashMap::new();
+        let mut types = Vec::new();
+        for e in [
+            json!({"ev":"tool_start","session_id":"s","call_id":"c","name":"bash"}),
+            json!({"ev":"tool_done","session_id":"s","call_id":"c","name":"bash","output":"","error":"blocked"}),
+        ] {
+            for o in map_event(&e, &mut sessions) {
+                if let Out::Event { ty, .. } = o {
+                    types.push(ty);
+                }
+            }
+        }
+        assert_eq!(types, ["message.start", "tool.start", "tool.complete"]);
+    }
+}

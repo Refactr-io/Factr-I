@@ -1,0 +1,13 @@
+//! End-to-end tests for factr using a mock provider
+//!
+//! These tests verify the full flow from user input to response
+//! without making actual API calls.
+
+mod mock_provider;
+mod test_support;
+
+mod burst_spawn;
+mod disconnect;
+mod provider_behavior;
+mod session_flow;
+mod text_framing;

@@ -1,0 +1,1144 @@
+use anyhow::Result;
+use chrono::Utc;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+#[cfg(not(test))]
+use std::sync::OnceLock;
+use tokio::sync::RwLock;
+
+mod invocation;
+pub use invocation::SkillInvocation;
+
+/// Skills switched off in Settings: `skills.disabled` in `$FACTR_CONFIG_HOME/config.yaml`,
+/// the one list Factr (desktop toggle, bots, cron) reads and writes. Read fresh on
+/// every call so a toggle applies without a restart. Empty outside Factr.
+pub fn disabled_skill_names() -> std::collections::HashSet<String> {
+    match crate::factr_config::home() {
+        Some(home) => disabled_skill_names_in(&home),
+        None => Default::default(),
+    }
+}
+
+fn disabled_skill_names_in(home: &Path) -> std::collections::HashSet<String> {
+    let config: serde_yaml::Value = std::fs::read_to_string(home.join("config.yaml"))
+        .ok()
+        .and_then(|raw| serde_yaml::from_str(&raw).ok())
+        .unwrap_or_default();
+    let names: Vec<String> = match &config["skills"]["disabled"] {
+        serde_yaml::Value::Sequence(items) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_owned))
+            .collect(),
+        // `factr config set` stores a list as a quoted JSON array; a bare string is one name.
+        serde_yaml::Value::String(raw) => {
+            serde_json::from_str(raw).unwrap_or_else(|_| vec![raw.clone()])
+        }
+        _ => Vec::new(),
+    };
+    names
+        .into_iter()
+        .map(|n| n.trim().to_owned())
+        .filter(|n| !n.is_empty() && n != "factr-backend") // Factr never lets its essential skill be disabled
+        .collect()
+}
+
+/// A skill definition from SKILL.md
+#[derive(Debug, Clone)]
+pub struct Skill {
+    pub name: String,
+    pub description: String,
+    pub allowed_tools: Option<Vec<String>>,
+    pub content: String,
+    pub path: PathBuf,
+    search_text: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SkillFrontmatter {
+    name: String,
+    description: String,
+    #[serde(rename = "allowed-tools")]
+    allowed_tools: Option<AllowedTools>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum AllowedTools {
+    CommaDelimited(String),
+    Sequence(Vec<String>),
+}
+
+/// Registry of available skills
+#[derive(Debug, Default, Clone)]
+pub struct SkillRegistry {
+    skills: HashMap<String, Skill>,
+}
+
+/// Marker in `$FACTR_HOME/skills` recording the one-time migration of the old `$FACTR_CONFIG_HOME/skills`.
+const FACTR_MERGED: &str = ".factr_merged";
+
+impl SkillRegistry {
+    /// Process-wide shared mutable registry used by both `skill_manage` and
+    /// direct slash invocation paths. Keeping a single registry prevents slash
+    /// commands from seeing a stale startup-only skill snapshot after reloads.
+    ///
+    /// Holds the one skills dir (`$FACTR_HOME/skills`) and nothing else.
+    pub fn shared_registry() -> Arc<RwLock<Self>> {
+        #[cfg(test)]
+        {
+            Arc::new(RwLock::new(Self::load_global().unwrap_or_default()))
+        }
+
+        #[cfg(not(test))]
+        {
+            static SHARED: OnceLock<Arc<RwLock<SkillRegistry>>> = OnceLock::new();
+            SHARED
+                .get_or_init(|| {
+                    Arc::new(RwLock::new(
+                        SkillRegistry::load_global().unwrap_or_default(),
+                    ))
+                })
+                .clone()
+        }
+    }
+
+    /// Load and publish the current global skill set for a read-only snapshot.
+    /// Re-read disk here so Factr hub installs and removals reach new engine
+    /// sessions without restarting the engine.
+    pub fn shared_snapshot() -> Arc<Self> {
+        #[cfg(test)]
+        {
+            Arc::new(Self::load_global().unwrap_or_default())
+        }
+
+        #[cfg(not(test))]
+        {
+            let shared = Self::shared_registry();
+            if let Ok(fresh) = Self::load_global() {
+                if let Ok(mut skills) = shared.try_write() {
+                    *skills = fresh.clone();
+                }
+                return Arc::new(fresh);
+            }
+
+            shared
+                .try_read()
+                .map(|skills| Arc::new(skills.clone()))
+                .unwrap_or_else(|_| Arc::new(Self::default()))
+        }
+    }
+
+    /// Once, move Factr's old skills dir (`$FACTR_CONFIG_HOME/skills`, where Factr wrote before the engine
+    /// owned the one store) into `$FACTR_HOME/skills`: copy what the one dir lacks (never overwrite,
+    /// never touch the source), then record a marker so the old dir is never read again. Nothing else
+    /// feeds the registry: not `~/.factr`, `~/.claude`, `~/.codex`, `~/.agents` nor project dirs.
+    fn migrate_factr_skills() {
+        let (Some(home), Ok(factr)) = (crate::factr_config::home(), crate::storage::factr_dir()) else {
+            return;
+        };
+        Self::merge_factr_skills(&home.join("skills"), &factr.join("skills"));
+    }
+
+    fn merge_factr_skills(src: &Path, dst: &Path) {
+        let marker = dst.join(FACTR_MERGED);
+        if !src.is_dir() || src == dst || marker.exists() {
+            return;
+        }
+        fn merge(src: &Path, dst: &Path) -> std::io::Result<()> {
+            std::fs::create_dir_all(dst)?;
+            for entry in std::fs::read_dir(src)? {
+                let entry = entry?;
+                let name = entry.file_name();
+                // Snapshots and Factr's own marker are not skills; everything else (the curator
+                // state, the hub lock, usage telemetry) moves with them.
+                if name == ".curator_backups" || name == FACTR_MERGED {
+                    continue;
+                }
+                let to = dst.join(&name);
+                if entry.path().is_dir() {
+                    merge(&entry.path(), &to)?;
+                } else if !to.exists() {
+                    std::fs::copy(entry.path(), &to)?;
+                }
+            }
+            Ok(())
+        }
+        match merge(src, dst) {
+            Ok(()) => {
+                let _ = std::fs::write(marker, "");
+            }
+            Err(e) => crate::logging::error(&format!("Failed to merge Factr skills: {e}")),
+        }
+    }
+
+    /// Load the one skills dir, `$FACTR_HOME/skills`.
+    pub fn load() -> Result<Self> {
+        Self::load_global()
+    }
+
+    /// Load the process-wide skill set: `$FACTR_HOME/skills`, the single store Factr and the engine
+    /// share (hub installs, `skill_manage`, learned skills, bundled skills all live there).
+    pub fn load_global() -> Result<Self> {
+        Self::migrate_factr_skills();
+        let mut registry = Self::default();
+        if let Ok(factr_dir) = crate::storage::factr_dir() {
+            let factr_skills = factr_dir.join("skills");
+            if factr_skills.exists() {
+                registry.load_from_dir(&factr_skills)?;
+            }
+        }
+        Ok(registry)
+    }
+
+    /// A registry holding the skills under one directory (tests and tooling).
+    pub fn from_dir(dir: &Path) -> Result<Self> {
+        let mut registry = Self::default();
+        registry.load_from_dir(dir)?;
+        Ok(registry)
+    }
+
+    /// Load skills from a directory
+    fn load_from_dir(&mut self, dir: &Path) -> Result<()> {
+        if !dir.is_dir() {
+            return Ok(());
+        }
+
+        for skill_file in Self::skill_files(dir)? {
+            if let Ok(skill) = Self::parse_skill(&skill_file) {
+                self.skills.insert(skill.name.clone(), skill);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Hub installs may be grouped as `<skills>/<category>/<name>/SKILL.md`.
+    /// Keep normal `<skills>/<name>/SKILL.md` discovery and inspect one
+    /// category level without descending into a skill's support directories.
+    fn skill_files(dir: &Path) -> Result<Vec<PathBuf>> {
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(dir)? {
+            let path = entry?.path();
+            if !path.is_dir()
+                || path.is_symlink()
+                || path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+            {
+                continue;
+            }
+            let direct = path.join("SKILL.md");
+            if direct.is_file() {
+                files.push(direct);
+                continue;
+            }
+            let Ok(nested_entries) = std::fs::read_dir(path) else {
+                continue;
+            };
+            for nested in nested_entries.flatten() {
+                let nested = nested.path();
+                if nested.is_dir() && !nested.is_symlink() {
+                    let skill_file = nested.join("SKILL.md");
+                    if skill_file.is_file() {
+                        files.push(skill_file);
+                    }
+                }
+            }
+        }
+        Ok(files)
+    }
+
+    /// Parse a SKILL.md file
+    fn parse_skill(path: &Path) -> Result<Skill> {
+        Self::parse_skill_inner(path).map_err(|error| {
+            crate::logging::warn(&format!(
+                "Failed to parse skill file '{}': {}",
+                path.display(),
+                error
+            ));
+            error
+        })
+    }
+
+    fn parse_skill_inner(path: &Path) -> Result<Skill> {
+        let content = std::fs::read_to_string(path)?;
+
+        // Parse YAML frontmatter
+        let (frontmatter, body) = Self::parse_frontmatter(&content)?;
+
+        let SkillFrontmatter {
+            name,
+            description,
+            allowed_tools,
+        } = frontmatter;
+
+        let allowed_tools = allowed_tools.map(|tools| match tools {
+            AllowedTools::CommaDelimited(tools) => tools
+                .split(',')
+                .map(|tool| tool.trim().to_string())
+                .collect(),
+            AllowedTools::Sequence(tools) => tools,
+        });
+        let search_text = build_skill_search_text(&name, &description, &body);
+
+        Ok(Skill {
+            name,
+            description,
+            allowed_tools,
+            content: body,
+            path: path.to_path_buf(),
+            search_text,
+        })
+    }
+
+    /// Parse YAML frontmatter from markdown
+    fn parse_frontmatter(content: &str) -> Result<(SkillFrontmatter, String)> {
+        let content = content.trim();
+
+        if !content.starts_with("---") {
+            anyhow::bail!("Missing YAML frontmatter");
+        }
+
+        let rest = &content[3..];
+        let end = rest
+            .find("---")
+            .ok_or_else(|| anyhow::anyhow!("Unclosed frontmatter"))?;
+
+        let yaml = &rest[..end];
+        let body = rest[end + 3..].trim().to_string();
+
+        let frontmatter: SkillFrontmatter = serde_yaml::from_str(yaml)?;
+
+        Ok((frontmatter, body))
+    }
+
+    /// Get a skill by name
+    ///
+    /// An exact name wins. Otherwise the match is by slug (case and punctuation ignored) against
+    /// the skill's name or its directory: a learned skill is titled "Project Codeword" but lives in
+    /// `project-codeword/`, and a model that loads either spelling must reach it.
+    pub fn get(&self, name: &str) -> Option<&Skill> {
+        if let Some(skill) = self.skills.get(name) {
+            return Some(skill);
+        }
+        let key = slug(name);
+        if key.is_empty() {
+            return None;
+        }
+        let mut near: Vec<&Skill> = self
+            .skills
+            .values()
+            .filter(|s| {
+                slug(&s.name) == key
+                    || s.path.parent().and_then(|dir| dir.file_name()).is_some_and(|dir| slug(&dir.to_string_lossy()) == key)
+            })
+            .collect();
+        near.sort_by(|a, b| a.name.cmp(&b.name));
+        near.into_iter().next()
+    }
+
+    /// List all available skills.
+    ///
+    /// Sorted by skill name so the ordering is deterministic. The backing store
+    /// is a `HashMap`, whose iteration order is randomized per instance; without
+    /// this sort, two snapshots of the same skill set (e.g. the lock-contended
+    /// `self.skills.clone()` fallback in `current_skills_snapshot`) could emit
+    /// the "Available Skills" prompt section in different orders. That produces a
+    /// system prompt with identical length but different bytes, silently busting
+    /// the Anthropic strict-prefix KV cache mid-conversation.
+    pub fn list(&self) -> Vec<&Skill> {
+        let mut skills: Vec<&Skill> = self.skills.values().collect();
+        skills.sort_by(|a, b| a.name.cmp(&b.name));
+        skills
+    }
+
+    /// Skills newest first by the SKILL.md modification time (learned or edited most recently),
+    /// ties by name. The skills index lists a budgeted prefix of this order, so what is cut is the
+    /// longest untouched.
+    pub fn list_recent_first(&self) -> Vec<&Skill> {
+        let modified = |skill: &Skill| std::fs::metadata(&skill.path).and_then(|m| m.modified()).ok();
+        let mut skills = self.list();
+        skills.sort_by_cached_key(|skill| std::cmp::Reverse(modified(skill)));
+        skills
+    }
+
+    /// Reload a specific skill by name
+    pub fn reload(&mut self, name: &str) -> Result<bool> {
+        // Find the skill's path first
+        let path = self.skills.get(name).map(|s| s.path.clone());
+
+        if let Some(path) = path {
+            if path.exists() {
+                let skill = Self::parse_skill(&path)?;
+                self.skills.insert(skill.name.clone(), skill);
+                Ok(true)
+            } else {
+                // Skill file was deleted
+                self.skills.remove(name);
+                Ok(false)
+            }
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Reload all skills from all locations
+    pub fn reload_all(&mut self) -> Result<usize> {
+        self.reload_global()
+    }
+
+    /// Reload `$FACTR_HOME/skills` into this registry.
+    pub fn reload_global(&mut self) -> Result<usize> {
+        // The available-skills list is embedded in the static system prompt,
+        // so a reload that changes it legitimately invalidates warm KV cache
+        // prefixes. Document it so the miss is attributed instead of alarmed.
+        crate::cache_invalidation::record(
+            "skill reload",
+            "reloaded all skills; the skills list in the system prompt may have changed",
+        );
+        self.skills.clear();
+
+        let mut count = 0;
+
+        Self::migrate_factr_skills();
+        if let Ok(factr_dir) = crate::storage::factr_dir() {
+            let factr_skills = factr_dir.join("skills");
+            if factr_skills.exists() {
+                count += self.load_from_dir_count(&factr_skills)?;
+            }
+        }
+
+        Ok(count)
+    }
+
+    /// Load skills from a directory and return count
+    fn load_from_dir_count(&mut self, dir: &Path) -> Result<usize> {
+        if !dir.is_dir() {
+            return Ok(0);
+        }
+
+        let mut count = 0;
+        for skill_file in Self::skill_files(dir)? {
+            if let Ok(skill) = Self::parse_skill(&skill_file) {
+                self.skills.insert(skill.name.clone(), skill);
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    }
+
+    /// Parse `/skill-name` and `/skill-name prompt...` invocations.
+    ///
+    /// The trailing prompt is kept verbatim apart from surrounding whitespace.
+    /// Quotes are intentionally not interpreted as shell syntax, so incomplete
+    /// or literal quotes can never put the input path into a continuation state.
+    /// Skill command tokens are limited to identifier-like names. In particular,
+    /// path separators and filename punctuation are rejected so a terminal file
+    /// drop such as `/tmp/screenshot.png` remains ordinary user input.
+    pub fn parse_invocation(input: &str) -> Option<SkillInvocation<'_>> {
+        let trimmed = input.trim();
+        let invocation = trimmed.strip_prefix('/')?;
+        let name_end = invocation
+            .find(char::is_whitespace)
+            .unwrap_or(invocation.len());
+        let name = &invocation[..name_end];
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+        {
+            return None;
+        }
+
+        let prompt = invocation[name_end..].trim();
+        let prompt = match prompt.as_bytes() {
+            [b'"', .., b'"'] | [b'\'', .., b'\''] if prompt.len() >= 2 => {
+                &prompt[1..prompt.len() - 1]
+            }
+            _ => prompt,
+        };
+        Some(SkillInvocation {
+            name,
+            prompt: (!prompt.is_empty()).then_some(prompt),
+        })
+    }
+
+    /// Return true if a skill with the given name is currently loaded.
+    pub fn contains(&self, name: &str) -> bool {
+        self.skills.contains_key(name)
+    }
+}
+
+/// A skill recommended/curated by factr that the user may want to install.
+#[derive(Debug, Clone, Copy)]
+pub struct EndorsedSkill {
+    /// Skill name (matches the `name` field in SKILL.md and the slash command).
+    pub name: &'static str,
+    /// One-line description of what the skill does.
+    pub description: &'static str,
+    /// Grouping label used to organize the endorsed list (e.g. "factr",
+    /// "NVIDIA CUDA-X").
+    pub category: &'static str,
+    /// Where users can get the skill (repo path, URL, or short note).
+    pub source: &'static str,
+    /// Optional install command/hint shown when the skill is not installed.
+    pub install: Option<&'static str>,
+}
+
+/// Curated list of skills endorsed by factr. Used by the `/skills` command to
+/// show users which recommended skills they have installed and which they are
+/// missing. This is the single source of truth for endorsed skills.
+///
+/// The NVIDIA CUDA-X entries mirror the official NVIDIA-verified catalog at
+/// <https://github.com/NVIDIA/skills>; install them with
+/// `npx skills add nvidia/skills --skill <name> --yes`.
+pub const ENDORSED_SKILLS: &[EndorsedSkill] = &[
+    EndorsedSkill {
+        name: "optimization",
+        description: "Improve performance, latency, throughput, memory usage, or general efficiency by defining metrics, measuring, attributing bottlenecks, and prioritizing macro-optimizations.",
+        category: "factr",
+        source: "bundled in factr repo (.factr/engine/skills/optimization)",
+        install: None,
+    },
+    EndorsedSkill {
+        name: "todo-planning-skill",
+        description: "Create thorough, well-structured todo lists for long tasks, including reflection, static analysis, verification, and next-step updates.",
+        category: "factr",
+        source: "bundled with factr / Claude Code skills",
+        install: None,
+    },
+    // Anthropic official skills (github.com/anthropics/skills, Apache-2.0).
+    EndorsedSkill {
+        name: "frontend-design",
+        description: "Create distinctive, production-grade frontend interfaces with high design quality (web components, pages, apps). Generates creative, polished code that avoids generic AI aesthetics.",
+        category: "Anthropic Design",
+        source: "anthropics/skills (official Anthropic catalog)",
+        install: Some(
+            "npx skills add anthropics/skills --skill frontend-design --yes (or Claude Code: /plugin marketplace add anthropics/skills)",
+        ),
+    },
+    // NVIDIA CUDA-X / GPU accelerated-computing skills from the official
+    // NVIDIA-verified catalog (github.com/NVIDIA/skills).
+    EndorsedSkill {
+        name: "cuopt-developer",
+        description: "Modify, build, test, debug, and contribute to NVIDIA cuOpt (C++/CUDA, Python, server, CI) — solver internals, PRs, DCO, and code conventions.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-developer --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-install",
+        description: "Install NVIDIA cuOpt for Python, C, or server via pip, conda, or Docker, and verify the install.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-install --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-api-c",
+        description: "Solve LP, MILP, and QP (beta) with the cuOpt C API for embedding optimization in C/C++.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-api-c --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-api-cli",
+        description: "Solve LP, MILP, and QP (beta) with cuOpt from MPS files via the cuopt_cli command line.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-api-cli --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-api-python",
+        description: "Solve LP, MILP, and QP (beta) with the cuOpt Python API — linear/quadratic objectives, integer variables, scheduling, portfolio, and least squares.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-api-python --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-numerical-optimization-formulation",
+        description: "LP, MILP, and QP concepts and formulation patterns (parameters, constraints, decisions, objective). Concepts only; no API.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some(
+            "npx skills add nvidia/skills --skill cuopt-numerical-optimization-formulation --yes",
+        ),
+    },
+    EndorsedSkill {
+        name: "cuopt-routing-api-python",
+        description: "Solve vehicle routing (VRP, TSP, PDP) with the cuOpt Python API.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-routing-api-python --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-routing-formulation",
+        description: "Vehicle routing (VRP, TSP, PDP) problem types and data requirements. Domain concepts; no API or interface.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-routing-formulation --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-server-api-python",
+        description: "Run the cuOpt REST server — start it, call endpoints, and use Python/curl client examples.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-server-api-python --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-server-common",
+        description: "Understand what the cuOpt REST server does and how requests flow. Concepts only; no deploy or client code.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-server-common --yes"),
+    },
+    EndorsedSkill {
+        name: "cuopt-user-rules",
+        description: "Base rules for end users calling NVIDIA cuOpt (routing/LP/MILP/QP/install/server).",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cuopt-user-rules --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-install",
+        description: "Install and verify NVIDIA cuPyNumeric (NumPy/SciPy on multi-node multi-GPU) for Python — requirements, commands, and verification.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-install --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-migration-readiness",
+        description: "Assess NumPy code before porting to cuPyNumeric — which patterns scale on GPU, what must be refactored, and a READY/REFACTOR/NOT-RECOMMENDED verdict.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-migration-readiness --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-hdf5",
+        description: "Read and write large cuPyNumeric arrays to HDF5 with Legate's parallel, distributed HDF5 I/O (legate.io.hdf5), including GPUDirect Storage.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-hdf5 --yes"),
+    },
+    EndorsedSkill {
+        name: "cupynumeric-parallel-data-load",
+        description: "Load sharded on-disk datasets (.npy, Parquet/Arrow, raw binary, sharded HDF5) into a distributed cuPyNumeric ndarray via manual partition + leaf task launch.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cupynumeric-parallel-data-load --yes"),
+    },
+    EndorsedSkill {
+        name: "accelerated-computing-cudf",
+        description: "Official NVIDIA guidance for cuDF GPU DataFrames, pandas acceleration, dask-cuDF, ETL, joins, groupby, CSV/Parquet I/O, and multi-GPU DataFrame workloads.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill accelerated-computing-cudf --yes"),
+    },
+    EndorsedSkill {
+        name: "cudaq-guide",
+        description: "NVIDIA CUDA-Q (CUDA Quantum) onboarding guide for installation, test programs, GPU simulation, QPU hardware, and quantum applications.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill cudaq-guide --yes"),
+    },
+    EndorsedSkill {
+        name: "tilegym-adding-cutile-kernel",
+        description: "Add a new cuTile GPU kernel operator to NVIDIA TileGym — dispatch registration, cuTile backend implementation, exports, tests, and benchmarks.",
+        category: "NVIDIA CUDA-X",
+        source: "NVIDIA/skills (official NVIDIA-verified catalog)",
+        install: Some("npx skills add nvidia/skills --skill tilegym-adding-cutile-kernel --yes"),
+    },
+];
+
+/// Return the curated list of skills endorsed by factr.
+pub fn endorsed_skills() -> &'static [EndorsedSkill] {
+    ENDORSED_SKILLS
+}
+
+impl Skill {
+    /// Get the full prompt content for this skill
+    pub fn get_prompt(&self) -> String {
+        format!(
+            "# Skill: {}\n\n{}\n\n{}",
+            self.name, self.description, self.content
+        )
+    }
+
+    /// Load additional files from the skill directory
+    pub fn load_file(&self, filename: &str) -> Result<String> {
+        let skill_dir = self
+            .path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("No parent dir"))?;
+        let file_path = skill_dir.join(filename);
+        Ok(std::fs::read_to_string(file_path)?)
+    }
+
+    pub fn as_memory_entry(&self) -> crate::memory::MemoryEntry {
+        let now = Utc::now() - chrono::Duration::days(365);
+        let mut entry = crate::memory::MemoryEntry::new(
+            crate::memory::MemoryCategory::Custom("Skills".to_string()),
+            format!(
+                "Use skill `/{} ` when relevant.\n\n{}",
+                self.name,
+                self.get_prompt()
+            ),
+        )
+        .with_id(format!("skill:{}", self.name))
+        .with_tags(vec!["skill".to_string(), self.name.clone()])
+        .with_source("skill_registry")
+        .with_trust(crate::memory::TrustLevel::Medium)
+        .with_timestamps(now, now);
+        // Use the precomputed skill search text rather than the tag-derived one.
+        entry.search_text = self.search_text.clone();
+        entry
+    }
+}
+
+/// Lowercase alphanumerics joined by single dashes (`Project Codeword` and `project_codeword` both `project-codeword`).
+fn slug(name: &str) -> String {
+    name.trim()
+        .trim_start_matches('/')
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn build_skill_search_text(name: &str, description: &str, content: &str) -> String {
+    normalize_skill_search_text(&format!("{}\n{}\n{}", name, description, content))
+}
+
+fn normalize_skill_search_text(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c.is_whitespace() {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn merges_factr_skills_once_without_overwriting() {
+        let t = tempfile::tempdir().unwrap();
+        let (src, dst) = (t.path().join("h"), t.path().join("j"));
+        std::fs::create_dir_all(src.join("apple/findmy")).unwrap();
+        std::fs::write(src.join("apple/findmy/SKILL.md"), "factr").unwrap();
+        std::fs::create_dir_all(dst.join("apple/findmy")).unwrap();
+        std::fs::write(dst.join("apple/findmy/SKILL.md"), "mine").unwrap();
+        std::fs::create_dir_all(src.join("apple/notes")).unwrap();
+        std::fs::write(src.join("apple/notes/SKILL.md"), "n").unwrap();
+        SkillRegistry::merge_factr_skills(&src, &dst);
+        assert_eq!(std::fs::read_to_string(dst.join("apple/findmy/SKILL.md")).unwrap(), "mine");
+        assert!(dst.join("apple/notes/SKILL.md").is_file() && src.join("apple/notes/SKILL.md").is_file());
+        std::fs::remove_file(dst.join("apple/notes/SKILL.md")).unwrap();
+        SkillRegistry::merge_factr_skills(&src, &dst);
+        assert!(!dst.join("apple/notes/SKILL.md").exists(), "runs once");
+    }
+
+    #[test]
+    fn migration_carries_curator_state_and_skips_snapshots() {
+        let t = tempfile::tempdir().unwrap();
+        let (src, dst) = (t.path().join("h"), t.path().join("j"));
+        std::fs::create_dir_all(src.join(".curator_backups/x")).unwrap();
+        std::fs::write(src.join(".curator_backups/x/a"), "big").unwrap();
+        std::fs::write(src.join(".curator_state"), "{}").unwrap();
+        SkillRegistry::merge_factr_skills(&src, &dst);
+        assert!(dst.join(".curator_state").is_file());
+        assert!(!dst.join(".curator_backups").exists());
+    }
+
+    /// The registry reads `$FACTR_HOME/skills` and nothing else: not `~/.claude`, `~/.codex`, `~/.agents`, plugins or project dirs.
+    #[test]
+    fn registry_reads_only_the_one_skills_dir() {
+        let _env = crate::storage::lock_test_env();
+        let t = tempfile::tempdir().unwrap();
+        let (factr, user, project) = (t.path().join("factr"), t.path().join("user"), t.path().join("project"));
+        let put = |root: &Path, name: &str| {
+            let dir = root.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), format!("---\nname: {name}\ndescription: d {name}\n---\nbody\n")).unwrap();
+        };
+        put(&factr.join("skills"), "in-factr");
+        put(&factr.join("skills"), "legacy-factr");
+        for dir in [".claude/skills", ".codex/skills", ".agents/skills"] {
+            put(&user.join(dir), "external");
+        }
+        put(&user.join(".claude/plugins/cache/m/p/1/skills"), "plugin");
+        put(&project.join(".factr/engine/skills"), "project-local");
+        let saved = ["FACTR_HOME", "FACTR_CONFIG_HOME", "HOME"].map(|k| (k, std::env::var_os(k)));
+        // SAFETY: serialized by lock_test_env; restored below.
+        unsafe {
+            std::env::set_var("FACTR_HOME", &factr);
+            std::env::set_var("FACTR_CONFIG_HOME", &factr);
+            std::env::set_var("HOME", &user);
+        }
+        let loaded = SkillRegistry::load_global().unwrap();
+        let names: Vec<String> = loaded.list().iter().map(|s| s.name.clone()).collect();
+        // Idempotent: a skill removed from the one dir is not brought back by a second load.
+        std::fs::remove_dir_all(factr.join("skills/legacy-factr")).unwrap();
+        let again = SkillRegistry::load_global().unwrap().contains("legacy-factr");
+        for (k, v) in saved {
+            unsafe {
+                match v {
+                    Some(v) => std::env::set_var(k, v),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+        assert_eq!(names, ["in-factr", "legacy-factr"]);
+        assert!(!again, "a skill removed from the one dir is not brought back");
+    }
+
+    use super::*;
+
+    fn test_skill(name: &str, description: &str, content: &str) -> Skill {
+        Skill {
+            name: name.to_string(),
+            description: description.to_string(),
+            allowed_tools: None,
+            content: content.to_string(),
+            path: PathBuf::from(format!("/tmp/{name}/SKILL.md")),
+            search_text: build_skill_search_text(name, description, content),
+        }
+    }
+
+    #[test]
+    fn disabled_names_come_from_factr_config() {
+        let home = tempfile::tempdir().unwrap();
+        let read = |yaml: &str| {
+            std::fs::write(home.path().join("config.yaml"), yaml).unwrap();
+            let mut names: Vec<_> = disabled_skill_names_in(home.path()).into_iter().collect();
+            names.sort();
+            names
+        };
+        assert_eq!(
+            read("skills:\n  disabled: [b, a, factr-backend]\n"),
+            ["a", "b"]
+        );
+        assert_eq!(read("skills:\n  disabled: '[\"x\", \"y\"]'\n"), ["x", "y"]);
+        assert_eq!(read("skills:\n  disabled: solo\n"), ["solo"]);
+        assert!(read("model: {}\n").is_empty());
+    }
+
+    fn write_skill_file(skills_dir: &Path, name: &str, content: &str) -> PathBuf {
+        let dir = skills_dir.join(name);
+        std::fs::create_dir_all(&dir).expect("create skill dir");
+        let path = dir.join("SKILL.md");
+        std::fs::write(&path, content).expect("write skill");
+        path
+    }
+
+    #[test]
+    fn allowed_tools_accepts_legacy_string_sequence_and_absence() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let cases = [
+            (
+                "allowed-tools: bash, read, write\n",
+                Some(vec!["bash", "read", "write"]),
+            ),
+            (
+                "allowed-tools:\n  - bash\n  - read\n  - write\n",
+                Some(vec!["bash", "read", "write"]),
+            ),
+            ("", None),
+        ];
+
+        for (index, (allowed_tools, expected)) in cases.into_iter().enumerate() {
+            let path = temp.path().join(format!("skill-{index}.md"));
+            std::fs::write(
+                &path,
+                format!("---\nname: test\ndescription: Test skill\n{allowed_tools}---\n\nBody\n"),
+            )
+            .expect("write skill");
+            let skill = SkillRegistry::parse_skill_inner(&path).expect("parse skill");
+            let expected = expected.map(|tools| {
+                tools
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect::<Vec<String>>()
+            });
+            assert_eq!(skill.allowed_tools, expected);
+        }
+    }
+
+    #[test]
+    fn allowed_tools_rejects_non_string_sequence_values() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("SKILL.md");
+        std::fs::write(
+            &path,
+            "---\nname: test\ndescription: Test skill\nallowed-tools: [bash, 1]\n---\n\nBody\n",
+        )
+        .expect("write skill");
+
+        assert!(SkillRegistry::parse_skill_inner(&path).is_err());
+    }
+
+    #[test]
+    fn parse_invocation_supports_a_trailing_prompt() {
+        assert_eq!(
+            SkillRegistry::parse_invocation("/frontend-design build a settings page"),
+            Some(SkillInvocation {
+                name: "frontend-design",
+                prompt: Some("build a settings page"),
+            })
+        );
+        assert_eq!(
+            SkillRegistry::parse_invocation("  /frontend-design   \"build a settings page\"  "),
+            Some(SkillInvocation {
+                name: "frontend-design",
+                prompt: Some("build a settings page"),
+            })
+        );
+    }
+
+    #[test]
+    fn parse_invocation_handles_bare_and_incomplete_quoted_prompts_without_blocking() {
+        assert_eq!(
+            SkillRegistry::parse_invocation("/optimization"),
+            Some(SkillInvocation {
+                name: "optimization",
+                prompt: None,
+            })
+        );
+        assert_eq!(
+            SkillRegistry::parse_invocation("/optimization \"make this faster"),
+            Some(SkillInvocation {
+                name: "optimization",
+                prompt: Some("\"make this faster"),
+            })
+        );
+        assert_eq!(SkillRegistry::parse_invocation("/"), None);
+    }
+
+    #[test]
+    fn parse_invocation_rejects_terminal_file_drop_paths() {
+        for input in [
+            "/tmp/screenshot.png",
+            "/Users/example/My\\ File.txt inspect this",
+            "/home/example/project/file.rs",
+            "/.hidden-file",
+            "/network\\share\\file.txt",
+        ] {
+            assert_eq!(
+                SkillRegistry::parse_invocation(input),
+                None,
+                "filesystem path must not parse as a skill invocation: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn list_is_sorted_by_name_regardless_of_insertion_order() {
+        // The "Available Skills" system-prompt section is built from `list()`.
+        // The backing store is a HashMap (per-instance randomized iteration
+        // order), and `current_skills_snapshot` can hand back a *different*
+        // HashMap instance via its lock-contended `self.skills.clone()` fallback.
+        // If `list()` did not sort, two snapshots of the same skill set could
+        // serialize the section in different orders: a same-length but
+        // different-bytes system prompt that silently busts the KV cache.
+        let names = ["zebra", "alpha", "mango", "beta", "yak"];
+
+        let mut reg_a = SkillRegistry::default();
+        for name in names {
+            reg_a
+                .skills
+                .insert(name.to_string(), test_skill(name, "d", "c"));
+        }
+
+        // Build a second registry with the reverse insertion order to maximize
+        // the chance of a differing HashMap layout.
+        let mut reg_b = SkillRegistry::default();
+        for name in names.iter().rev() {
+            reg_b
+                .skills
+                .insert(name.to_string(), test_skill(name, "d", "c"));
+        }
+
+        let order_a: Vec<&str> = reg_a.list().iter().map(|s| s.name.as_str()).collect();
+        let order_b: Vec<&str> = reg_b.list().iter().map(|s| s.name.as_str()).collect();
+
+        assert_eq!(order_a, vec!["alpha", "beta", "mango", "yak", "zebra"]);
+        assert_eq!(
+            order_a, order_b,
+            "list() ordering must be identical across HashMap instances"
+        );
+    }
+
+    #[test]
+    fn skill_as_memory_entry_formats_invocation_and_prompt() {
+        let skill = test_skill(
+            "site-browsing",
+            "Control Firefox browser sessions and logged-in pages",
+            "Use this skill when you need to open websites, click buttons, or interact with browser pages.",
+        );
+
+        let entry = skill.as_memory_entry();
+
+        assert_eq!(entry.id, "skill:site-browsing");
+        assert!(matches!(
+            entry.category,
+            crate::memory::MemoryCategory::Custom(ref name) if name == "Skills"
+        ));
+        assert!(entry.content.contains("/site-browsing"));
+        assert!(entry.content.contains("# Skill: site-browsing"));
+        assert_eq!(entry.source.as_deref(), Some("skill_registry"));
+    }
+
+    #[test]
+    fn malformed_skill_does_not_block_directory_loaders() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let skills_dir = temp.path().join("skills");
+        write_skill_file(
+            &skills_dir,
+            "valid",
+            "---\nname: valid\ndescription: Valid skill\n---\n\nUse valid.\n",
+        );
+        write_skill_file(
+            &skills_dir,
+            "malformed",
+            "---\nname: malformed\ndescription: Triggers: invalid yaml\n---\n\nBroken.\n",
+        );
+
+        let mut registry = SkillRegistry::default();
+        registry
+            .load_from_dir(&skills_dir)
+            .expect("load skills while skipping malformed file");
+        assert!(registry.contains("valid"));
+        assert!(!registry.contains("malformed"));
+
+        let mut counted_registry = SkillRegistry::default();
+        let count = counted_registry
+            .load_from_dir_count(&skills_dir)
+            .expect("count skills while skipping malformed file");
+        assert_eq!(count, 1);
+        assert!(counted_registry.contains("valid"));
+        assert!(!counted_registry.contains("malformed"));
+    }
+
+    #[test]
+    fn loads_category_nested_factr_hub_skills() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let skills_dir = temp.path().join("skills");
+        let skill = skills_dir.join("autonomous-ai-agents").join("hub-skill");
+        std::fs::create_dir_all(&skill).expect("create categorized skill");
+        std::fs::write(
+            skill.join("SKILL.md"),
+            "---\nname: hub-skill\ndescription: Installed from Factr hub\n---\n\nUse it.\n",
+        )
+        .expect("write skill");
+
+        let mut registry = SkillRegistry::default();
+        assert_eq!(registry.load_from_dir_count(&skills_dir).expect("load"), 1);
+        assert_eq!(
+            registry.get("hub-skill").expect("hub skill").description,
+            "Installed from Factr hub"
+        );
+    }
+
+    #[test]
+    fn endorsed_skills_have_unique_nonempty_metadata() {
+        let endorsed = endorsed_skills();
+        assert!(!endorsed.is_empty(), "expected at least one endorsed skill");
+
+        let mut seen = std::collections::HashSet::new();
+        for skill in endorsed {
+            assert!(!skill.name.is_empty(), "endorsed skill name must be set");
+            assert!(
+                !skill.description.is_empty(),
+                "endorsed skill {} needs a description",
+                skill.name
+            );
+            assert!(
+                !skill.category.is_empty(),
+                "endorsed skill {} needs a category",
+                skill.name
+            );
+            assert!(
+                !skill.source.is_empty(),
+                "endorsed skill {} needs a source",
+                skill.name
+            );
+            assert!(
+                !skill.name.starts_with('/'),
+                "endorsed skill name should not include the leading slash"
+            );
+            if let Some(install) = skill.install {
+                assert!(
+                    install.contains(skill.name),
+                    "endorsed skill {} install hint should reference its name",
+                    skill.name
+                );
+            }
+            assert!(
+                seen.insert(skill.name),
+                "duplicate endorsed skill name: {}",
+                skill.name
+            );
+        }
+    }
+
+    #[test]
+    fn endorsed_skills_include_nvidia_cuda_x_catalog() {
+        let endorsed = endorsed_skills();
+        // Spot-check representative NVIDIA CUDA-X skills sourced from the
+        // official NVIDIA/skills catalog.
+        for expected in [
+            "cuopt-numerical-optimization-api-python",
+            "cupynumeric-install",
+            "accelerated-computing-cudf",
+            "cudaq-guide",
+            "tilegym-adding-cutile-kernel",
+        ] {
+            let skill = endorsed
+                .iter()
+                .find(|s| s.name == expected)
+                .unwrap_or_else(|| panic!("expected endorsed NVIDIA skill {expected}"));
+            assert_eq!(skill.category, "NVIDIA CUDA-X");
+            assert!(
+                skill
+                    .install
+                    .is_some_and(|cmd| cmd.contains("nvidia/skills")),
+                "NVIDIA skill {expected} should have an nvidia/skills install hint"
+            );
+        }
+    }
+
+    #[test]
+    fn endorsed_skills_include_anthropic_frontend_design() {
+        let skill = endorsed_skills()
+            .iter()
+            .find(|s| s.name == "frontend-design")
+            .expect("expected endorsed Anthropic frontend-design skill");
+        assert_eq!(skill.category, "Anthropic Design");
+        assert!(
+            skill.source.contains("anthropics/skills"),
+            "frontend-design should be sourced from anthropics/skills"
+        );
+        assert!(
+            skill
+                .install
+                .is_some_and(|cmd| cmd.contains("anthropics/skills")),
+            "frontend-design should have an anthropics/skills install hint"
+        );
+    }
+}

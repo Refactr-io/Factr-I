@@ -1,0 +1,18 @@
+[package]
+name = "factr-build-support"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+factr-core = { path = "../factr-core" }
+factr-selfdev-types = { path = "../factr-selfdev-types" }
+factr-storage = { path = "../factr-storage" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,1496 @@
+{
+  "total": 2306,
+  "totals_by_pattern": {
+    "dot_ok": 819,
+    "let_underscore": 797,
+    "unwrap_or_default": 690
+  },
+  "tracked_files": {
+    "crates/factr-app-core/src/agent.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/agent/auto_verify.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/agent/env_snapshot.rs": {
+      "dot_ok": 0,
+      "let_underscore": 3,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/agent/inline_tail.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/agent/interrupts.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/agent/prompting.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/agent/rewind_stack.rs": {
+      "dot_ok": 1,
+      "let_underscore": 3,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/agent/stop_nudge.rs": {
+      "dot_ok": 7,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/agent/streaming.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/agent/tool_args_repair.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/agent/tools.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/agent/turn_deadline.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/agent/turn_execution.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/agent/turn_loops.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/agent/turn_streaming_mpsc.rs": {
+      "dot_ok": 0,
+      "let_underscore": 56,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-app-core/src/agent/usage_wait.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/agent/utils.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/checkpoint.rs": {
+      "dot_ok": 3,
+      "let_underscore": 3,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-app-core/src/lib.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server.rs": {
+      "dot_ok": 1,
+      "let_underscore": 16,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-app-core/src/server/await_members_state.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/background_tasks.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/client_actions.rs": {
+      "dot_ok": 1,
+      "let_underscore": 42,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/client_comm_channels.rs": {
+      "dot_ok": 0,
+      "let_underscore": 8,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/client_comm_context.rs": {
+      "dot_ok": 0,
+      "let_underscore": 6,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-app-core/src/server/client_comm_message.rs": {
+      "dot_ok": 0,
+      "let_underscore": 8,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/server/client_lifecycle.rs": {
+      "dot_ok": 2,
+      "let_underscore": 42,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/client_lifecycle_logging.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/client_lightweight_control.rs": {
+      "dot_ok": 0,
+      "let_underscore": 5,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/client_session.rs": {
+      "dot_ok": 8,
+      "let_underscore": 11,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/client_state.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/comm_await.rs": {
+      "dot_ok": 0,
+      "let_underscore": 9,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-app-core/src/server/comm_control.rs": {
+      "dot_ok": 0,
+      "let_underscore": 35,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-app-core/src/server/comm_graph.rs": {
+      "dot_ok": 0,
+      "let_underscore": 3,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/comm_plan.rs": {
+      "dot_ok": 0,
+      "let_underscore": 19,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-app-core/src/server/comm_session.rs": {
+      "dot_ok": 3,
+      "let_underscore": 11,
+      "unwrap_or_default": 8
+    },
+    "crates/factr-app-core/src/server/comm_sync.rs": {
+      "dot_ok": 0,
+      "let_underscore": 16,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/debug.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/server/durable_state.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/file_activity.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/headless.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/lifecycle.rs": {
+      "dot_ok": 8,
+      "let_underscore": 2,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/live_turn.rs": {
+      "dot_ok": 1,
+      "let_underscore": 3,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/provider_control.rs": {
+      "dot_ok": 1,
+      "let_underscore": 30,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/server/socket.rs": {
+      "dot_ok": 1,
+      "let_underscore": 9,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/state.rs": {
+      "dot_ok": 2,
+      "let_underscore": 2,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/swarm.rs": {
+      "dot_ok": 8,
+      "let_underscore": 6,
+      "unwrap_or_default": 6
+    },
+    "crates/factr-app-core/src/server/swarm_mutation_state.rs": {
+      "dot_ok": 0,
+      "let_underscore": 2,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/swarm_persistence.rs": {
+      "dot_ok": 3,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/server/util.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/session_effort.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/agentgrep.rs": {
+      "dot_ok": 0,
+      "let_underscore": 5,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/tool/apply_patch.rs": {
+      "dot_ok": 3,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/bash.rs": {
+      "dot_ok": 17,
+      "let_underscore": 11,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-app-core/src/tool/bg.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/tool/browser.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/communicate.rs": {
+      "dot_ok": 0,
+      "let_underscore": 4,
+      "unwrap_or_default": 12
+    },
+    "crates/factr-app-core/src/tool/communicate/transport.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/config_edit_notice.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/tool/conversation_search.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/tool/delegate.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/tool/factr_bridge.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/inflight.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/ls.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/mcp.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-app-core/src/tool/media.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/memory.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/tool/memory_cap.rs": {
+      "dot_ok": 0,
+      "let_underscore": 3,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/mod.rs": {
+      "dot_ok": 0,
+      "let_underscore": 3,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-app-core/src/tool/office_text.rs": {
+      "dot_ok": 4,
+      "let_underscore": 3,
+      "unwrap_or_default": 7
+    },
+    "crates/factr-app-core/src/tool/open.rs": {
+      "dot_ok": 1,
+      "let_underscore": 3,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/patch.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/read.rs": {
+      "dot_ok": 1,
+      "let_underscore": 2,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/tool/repl.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 8
+    },
+    "crates/factr-app-core/src/tool/session_goal.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-app-core/src/tool/session_search.rs": {
+      "dot_ok": 2,
+      "let_underscore": 4,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-app-core/src/tool/session_search_index.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/tool/skill.rs": {
+      "dot_ok": 2,
+      "let_underscore": 2,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-app-core/src/tool/spill.rs": {
+      "dot_ok": 3,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/syntax_check.rs": {
+      "dot_ok": 5,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/todo.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 11
+    },
+    "crates/factr-app-core/src/tool/webfetch.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-app-core/src/tool/webfetch_net.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/tool/websearch.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-app-core/src/tool/write.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-app-core/src/turn_cancel_registry.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/auth/account_store.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/claude.rs": {
+      "dot_ok": 9,
+      "let_underscore": 3,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/codex.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/copilot.rs": {
+      "dot_ok": 5,
+      "let_underscore": 1,
+      "unwrap_or_default": 8
+    },
+    "crates/factr-base/src/auth/cursor.rs": {
+      "dot_ok": 10,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/auth/env_facts.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/external.rs": {
+      "dot_ok": 6,
+      "let_underscore": 2,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/auth/google.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/grok_build.rs": {
+      "dot_ok": 10,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/auth/lifecycle.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/login_flows.rs": {
+      "dot_ok": 0,
+      "let_underscore": 2,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/mod.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-base/src/auth/oauth.rs": {
+      "dot_ok": 4,
+      "let_underscore": 13,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-base/src/auth/refresh_state.rs": {
+      "dot_ok": 0,
+      "let_underscore": 3,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/auth/test_sandbox.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/transfer.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/auth/validation.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/background.rs": {
+      "dot_ok": 17,
+      "let_underscore": 18,
+      "unwrap_or_default": 12
+    },
+    "crates/factr-base/src/bus.rs": {
+      "dot_ok": 0,
+      "let_underscore": 2,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/checkpoint_store.rs": {
+      "dot_ok": 7,
+      "let_underscore": 19,
+      "unwrap_or_default": 19
+    },
+    "crates/factr-base/src/client_input.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/compaction.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-base/src/config.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/config/config_file.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-base/src/copilot_usage.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/external_auth.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/factr_config.rs": {
+      "dot_ok": 7,
+      "let_underscore": 0,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-base/src/factr_env.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/factr_hooks.rs": {
+      "dot_ok": 5,
+      "let_underscore": 6,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-base/src/github.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/import.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-base/src/learn_signal.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/login_qr.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/mcp/client.rs": {
+      "dot_ok": 0,
+      "let_underscore": 6,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/mcp/manager.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/mcp/protocol.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/mcp/schema_cache.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/memory.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/memory/cache.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/memory/pending.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/memory_expire.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/memory_extract.rs": {
+      "dot_ok": 8,
+      "let_underscore": 6,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/memory_quality.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/memory_store.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/message.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/message/notifications.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/migrate.rs": {
+      "dot_ok": 4,
+      "let_underscore": 5,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/model_pricing.rs": {
+      "dot_ok": 2,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/model_usage.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/obs_sink.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/platform.rs": {
+      "dot_ok": 12,
+      "let_underscore": 9,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/process_memory.rs": {
+      "dot_ok": 30,
+      "let_underscore": 6,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/process_title.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/prompt.rs": {
+      "dot_ok": 11,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/account_failover.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/provider/anthropic.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/catalog_routes.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/provider/image_clamp.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/mod.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 14
+    },
+    "crates/factr-base/src/provider/model_catalog_service.rs": {
+      "dot_ok": 6,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/models.rs": {
+      "dot_ok": 4,
+      "let_underscore": 2,
+      "unwrap_or_default": 6
+    },
+    "crates/factr-base/src/provider/openai.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/provider/openrouter.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/pricing.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/selection.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/session_provider.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider/startup.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/provider_activity.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/provider_activity_oauth.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/provider_catalog.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/python_env.rs": {
+      "dot_ok": 8,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/recent_session_index.rs": {
+      "dot_ok": 0,
+      "let_underscore": 2,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/registry.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/runtime_memory_log.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/secret_input.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/session.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/session/crash.rs": {
+      "dot_ok": 2,
+      "let_underscore": 6,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/session/load_telemetry.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/session/maintenance.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/session/persistence.rs": {
+      "dot_ok": 0,
+      "let_underscore": 3,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/session/storage_paths.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/session_metrics.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/skill.rs": {
+      "dot_ok": 3,
+      "let_underscore": 1,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-base/src/soft_interrupt_store.rs": {
+      "dot_ok": 0,
+      "let_underscore": 2,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/storage.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/todo.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-base/src/usage.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-base/src/usage/accessors.rs": {
+      "dot_ok": 2,
+      "let_underscore": 2,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/usage/anthropic_reset.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/usage/api_keys.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/usage/cache.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/usage/model.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-base/src/usage/openai_helpers.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/usage/openai_reset.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-base/src/usage/provider_fetch.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-build-meta/build.rs": {
+      "dot_ok": 12,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-build-meta/src/lib.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-build-support/src/lib.rs": {
+      "dot_ok": 2,
+      "let_underscore": 5,
+      "unwrap_or_default": 6
+    },
+    "crates/factr-build-support/src/paths.rs": {
+      "dot_ok": 18,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-build-support/src/platform_support.rs": {
+      "dot_ok": 0,
+      "let_underscore": 7,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-build-support/src/source_state.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-build-support/src/storage_helpers.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-compaction-core/src/prune.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-config-types/src/lib.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-config-types/src/serde_lenient.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-core/src/stdin_detect.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-core/src/util.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-gateway/src/approvals.rs": {
+      "dot_ok": 9,
+      "let_underscore": 7,
+      "unwrap_or_default": 10
+    },
+    "crates/factr-gateway/src/auth.rs": {
+      "dot_ok": 3,
+      "let_underscore": 1,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/boot_stubs.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-gateway/src/cron_runs.rs": {
+      "dot_ok": 11,
+      "let_underscore": 1,
+      "unwrap_or_default": 7
+    },
+    "crates/factr-gateway/src/cron_tick.rs": {
+      "dot_ok": 4,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-gateway/src/factr_env.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-gateway/src/factr_host.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-gateway/src/features.rs": {
+      "dot_ok": 11,
+      "let_underscore": 6,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/learn.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 10
+    },
+    "crates/factr-gateway/src/learning_rest.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-gateway/src/lib.rs": {
+      "dot_ok": 8,
+      "let_underscore": 3,
+      "unwrap_or_default": 21
+    },
+    "crates/factr-gateway/src/map.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 12
+    },
+    "crates/factr-gateway/src/memory_rest.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-gateway/src/observability.rs": {
+      "dot_ok": 8,
+      "let_underscore": 1,
+      "unwrap_or_default": 17
+    },
+    "crates/factr-gateway/src/observability/operations.rs": {
+      "dot_ok": 4,
+      "let_underscore": 2,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/oneshot.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/profile.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-gateway/src/rewind.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/rpc.rs": {
+      "dot_ok": 18,
+      "let_underscore": 24,
+      "unwrap_or_default": 56
+    },
+    "crates/factr-gateway/src/rpc/attach.rs": {
+      "dot_ok": 2,
+      "let_underscore": 6,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-gateway/src/rpc/driver.rs": {
+      "dot_ok": 9,
+      "let_underscore": 2,
+      "unwrap_or_default": 9
+    },
+    "crates/factr-gateway/src/rpc/local_state.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 12
+    },
+    "crates/factr-gateway/src/rpc/projects.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-gateway/src/rpc/settings.rs": {
+      "dot_ok": 4,
+      "let_underscore": 3,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-gateway/src/rpc/settings/factr_keys.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/rpc/side_agents.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 7
+    },
+    "crates/factr-gateway/src/rpc/spawn_tree.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-gateway/src/rpc/subagents.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/rpc/tools_catalog.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-gateway/src/rpc/undo_turn.rs": {
+      "dot_ok": 1,
+      "let_underscore": 2,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-gateway/src/sessions_rest.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 7
+    },
+    "crates/factr-gateway/src/skill_slash.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-gateway/src/slash_forward.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-gateway/src/surface_sessions.rs": {
+      "dot_ok": 1,
+      "let_underscore": 2,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-gateway/src/undo.rs": {
+      "dot_ok": 2,
+      "let_underscore": 2,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-harness-api-server/src/background_progress.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-harness-api-server/src/lib.rs": {
+      "dot_ok": 7,
+      "let_underscore": 4,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-harness-api-server/src/translate.rs": {
+      "dot_ok": 20,
+      "let_underscore": 10,
+      "unwrap_or_default": 37
+    },
+    "crates/factr-harness-api/src/edit_stats.rs": {
+      "dot_ok": 8,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-harness-api/src/sockets.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-harness-api/src/swarm_metadata.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-import-core/src/lib.rs": {
+      "dot_ok": 10,
+      "let_underscore": 0,
+      "unwrap_or_default": 16
+    },
+    "crates/factr-learn/src/agent_loop.rs": {
+      "dot_ok": 11,
+      "let_underscore": 4,
+      "unwrap_or_default": 11
+    },
+    "crates/factr-learn/src/agent_loop_host.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-learn/src/entries.rs": {
+      "dot_ok": 5,
+      "let_underscore": 4,
+      "unwrap_or_default": 14
+    },
+    "crates/factr-learn/src/goal_ratchet.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-learn/src/host.rs": {
+      "dot_ok": 0,
+      "let_underscore": 5,
+      "unwrap_or_default": 4
+    },
+    "crates/factr-learn/src/refine.rs": {
+      "dot_ok": 2,
+      "let_underscore": 4,
+      "unwrap_or_default": 19
+    },
+    "crates/factr-learn/src/skill_files.rs": {
+      "dot_ok": 2,
+      "let_underscore": 5,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-logging/src/lib.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-logging/src/watchdog.rs": {
+      "dot_ok": 5,
+      "let_underscore": 1,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-memory-types/src/graph.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-message-types/src/lib.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-plan/src/bridge.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-plan/src/dag/mod.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-plan/src/dag/ops.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-protocol/src/comm_format.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-protocol/src/lib.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-anthropic-runtime/src/lib.rs": {
+      "dot_ok": 8,
+      "let_underscore": 15,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-provider-bedrock/src/lib.rs": {
+      "dot_ok": 20,
+      "let_underscore": 2,
+      "unwrap_or_default": 5
+    },
+    "crates/factr-provider-copilot-runtime/src/lib.rs": {
+      "dot_ok": 5,
+      "let_underscore": 20,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-provider-core/src/attempt_tracker.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-core/src/auth_mode.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-core/src/failover.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-core/src/fingerprint.rs": {
+      "dot_ok": 1,
+      "let_underscore": 5,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-core/src/models.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-core/src/openai_schema.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-provider-core/src/pricing.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-core/src/reasoning.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-provider-core/src/retry_after.rs": {
+      "dot_ok": 5,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-core/src/usage_limit.rs": {
+      "dot_ok": 2,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-cursor-runtime/src/agent_transport.rs": {
+      "dot_ok": 3,
+      "let_underscore": 9,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-provider-cursor-runtime/src/lib.rs": {
+      "dot_ok": 3,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-env/src/lib.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-gemini-runtime/src/lib.rs": {
+      "dot_ok": 4,
+      "let_underscore": 24,
+      "unwrap_or_default": 6
+    },
+    "crates/factr-provider-metadata/src/lib.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openai-runtime/src/lib.rs": {
+      "dot_ok": 1,
+      "let_underscore": 2,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-provider-openai-runtime/src/openai_provider_impl.rs": {
+      "dot_ok": 1,
+      "let_underscore": 6,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openai-runtime/src/openai_rate_limit_format.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-provider-openai-runtime/src/openai_stream_runtime.rs": {
+      "dot_ok": 0,
+      "let_underscore": 7,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-provider-openai-runtime/src/openai_usage_recording.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openai-runtime/src/openai_websocket_prewarm.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openai/src/request.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-provider-openai/src/stream.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
+      "unwrap_or_default": 6
+    },
+    "crates/factr-provider-openrouter-runtime/src/lib.rs": {
+      "dot_ok": 20,
+      "let_underscore": 0,
+      "unwrap_or_default": 9
+    },
+    "crates/factr-provider-openrouter-runtime/src/models_catalog_parse.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openrouter-runtime/src/ollama_context.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openrouter-runtime/src/openrouter_provider_impl.rs": {
+      "dot_ok": 2,
+      "let_underscore": 4,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-provider-openrouter-runtime/src/openrouter_sse_stream.rs": {
+      "dot_ok": 1,
+      "let_underscore": 7,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openrouter/src/lib.rs": {
+      "dot_ok": 14,
+      "let_underscore": 4,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-provider-openrouter/src/request.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-schema-dialect/src/dialect.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 3
+    },
+    "crates/factr-schema-dialect/src/lib.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-schema-dialect/src/quirks.rs": {
+      "dot_ok": 2,
+      "let_underscore": 2,
+      "unwrap_or_default": 2
+    },
+    "crates/factr-session-types/src/lib.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-storage/src/active_pids.rs": {
+      "dot_ok": 24,
+      "let_underscore": 9,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-storage/src/lib.rs": {
+      "dot_ok": 1,
+      "let_underscore": 14,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-swarm-core/src/lib.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
+    "crates/factr-terminal-launch/src/lib.rs": {
+      "dot_ok": 1,
+      "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-transport/src/unix.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/factr-transport/src/windows.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "src/bin/factr.rs": {
+      "dot_ok": 5,
+      "let_underscore": 5,
+      "unwrap_or_default": 0
+    },
+    "src/cli_auth.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 5
+    },
+    "src/factr_runtime.rs": {
+      "dot_ok": 15,
+      "let_underscore": 6,
+      "unwrap_or_default": 0
+    }
+  },
+  "version": 1
+}
