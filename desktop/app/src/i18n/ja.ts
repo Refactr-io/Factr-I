@@ -1224,7 +1224,6 @@ export const ja = defineLocale({
       tasks: {
         vision: { label: 'ビジョン', hint: '画像分析' },
         compression: { label: '圧縮', hint: 'コンテキストの圧縮' },
-        skills_hub: { label: 'スキルハブ', hint: 'スキル検索' },
         approval: { label: '承認', hint: 'スマート自動承認' },
         mcp: { label: 'MCP', hint: 'MCP ツールルーティング' },
         title_generation: { label: 'タイトル生成', hint: 'セッションタイトル' },
@@ -1533,8 +1532,7 @@ export const ja = defineLocale({
     usageCount: count => `${count} 回使用`,
     provenance: {
       agent: '学習済み',
-      bundled: '組み込み',
-      hub: 'ハブ'
+      bundled: '組み込み'
     },
     emptyNoneFound: noun => `${noun} が見つかりません`,
     emptyNothingMatches: query => `「${query}」に一致するものはありません。`,
@@ -1544,9 +1542,7 @@ export const ja = defineLocale({
     edit: '編集',
     archive: 'アーカイブ',
     skillArchivedTitle: 'スキルをアーカイブしました',
-    skillArchivedMessage: 'スキルをアーカイブしました。',
-    officialCatalog: 'インストール可能',
-    officialPill: '公式'
+    skillArchivedMessage: 'スキルをアーカイブしました。'
   },
 
   starmap: {

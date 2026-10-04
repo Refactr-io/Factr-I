@@ -485,7 +485,7 @@ fn bundled_startup_request(req: &Request) -> bool {
 }
 
 /// A request only a user action produces, made while the desktop's chat is open and so without
-/// `feature=1`: the Capabilities overlay (Tools tab: toolsets, computer use; hub installs, skill
+/// `feature=1`: the Capabilities overlay (Tools tab: toolsets, computer use; skill
 /// toggles, MCP edits). Unlike a boot probe, it is the user asking for the feature, so Python may
 /// start for it, on demand. Reads of the boot-probe routes keep their native answers above.
 fn capabilities_request(req: &Request) -> bool {
@@ -496,9 +496,12 @@ fn capabilities_request(req: &Request) -> bool {
     // GET `/api/providers/oauth` stays a boot probe (the onboarding falls back to API-key setup).
     let oauth_action = path.strip_prefix("/api/providers/oauth/").is_some_and(|r| !r.is_empty());
     if read {
-        return under("/api/tools/toolsets") || under("/api/tools/computer-use") || oauth_action;
+        // `/api/actions/<name>/status` is the progress poll of a user-started action
+        // (Settings > Messaging > Restart polls gateway-restart).
+        return under("/api/tools/toolsets") || under("/api/tools/computer-use") || under("/api/actions") || oauth_action;
     }
-    under("/api/tools") || under("/api/skills") || under("/api/mcp") || under("/api/providers/oauth")
+    // `POST /api/gateway/restart` (and the other gateway actions) is the user pressing a button.
+    under("/api/gateway") || under("/api/actions") || under("/api/tools") || under("/api/skills") || under("/api/mcp") || under("/api/providers/oauth")
 }
 
 fn bundled_defaults() -> Value {
@@ -1155,9 +1158,6 @@ async fn handle(
                 }
             }
         }
-        ("GET", "/api/skills/hub/official" | "/api/skills/hub/sources") => {
-            respond(&mut stream, "200 OK", &json!([])).await
-        }
         // Boot probes never wake Python: list what the engine's MCP client loads
         // (FACTR_CONFIG_HOME/config.yaml); the approved-server catalog needs Python.
         ("GET", "/api/mcp/servers") if bundled_startup_request(&req) => {
@@ -1414,11 +1414,10 @@ async fn handle(
     }
 }
 
-/// Where each skill came from, for the Skills screen: `hub` (in the skills hub lock file),
-/// `bundled` (seeded by Factr' `.bundled_manifest` or shipped with the engine), else `agent`
-/// (created by the model through `skill_manage` or learned by refine).
+/// Where each skill came from, for the Skills screen: `bundled` (seeded by Factr' `.bundled_manifest`
+/// or shipped with the engine), else `agent` (created by the model through `skill_manage` or learned
+/// by refine).
 struct SkillOrigins {
-    hub: std::collections::HashSet<String>,
     bundled: std::collections::HashSet<String>,
 }
 
@@ -1429,15 +1428,6 @@ impl SkillOrigins {
     }
 
     fn read(skills_root: &Path, shipped: &[&str]) -> Self {
-        let mut hub = std::collections::HashSet::new();
-        if let Some(lock) = std::fs::read_to_string(skills_root.join(".hub/lock.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
-            for (name, info) in lock["installed"].as_object().into_iter().flatten() {
-                hub.insert(name.clone());
-                if let Some(path) = info["install_path"].as_str() {
-                    hub.extend(path.rsplit('/').next().map(str::to_string));
-                }
-            }
-        }
         let mut bundled: std::collections::HashSet<String> = shipped.iter().map(|s| s.to_string()).collect();
         for line in std::fs::read_to_string(skills_root.join(".bundled_manifest")).unwrap_or_default().lines() {
             let name = line.split(':').next().unwrap_or_default().trim();
@@ -1445,15 +1435,12 @@ impl SkillOrigins {
                 bundled.insert(name.to_string());
             }
         }
-        Self { hub, bundled }
+        Self { bundled }
     }
 
     fn of(&self, name: &str, path: &Path) -> &'static str {
         let dir = path.parent().and_then(|p| p.file_name()).map(|d| d.to_string_lossy().to_string()).unwrap_or_default();
-        let is = |set: &std::collections::HashSet<String>| set.contains(name) || set.contains(&dir);
-        if is(&self.hub) {
-            "hub"
-        } else if is(&self.bundled) {
+        if self.bundled.contains(name) || self.bundled.contains(&dir) {
             "bundled"
         } else {
             "agent"
@@ -1466,17 +1453,15 @@ mod skill_origin_tests {
     use super::*;
 
     #[test]
-    fn skills_report_bundled_hub_or_agent_provenance() {
+    fn skills_report_bundled_or_agent_provenance() {
         let root = std::env::temp_dir().join(format!("skill-origins-{}", std::process::id()));
-        std::fs::create_dir_all(root.join(".hub")).unwrap();
+        std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join(".bundled_manifest"), "plan:abc123\nnotes\n").unwrap();
-        std::fs::write(root.join(".hub/lock.json"), r#"{"version":1,"installed":{"web-research":{"install_path":"research/web-research"}}}"#).unwrap();
         let origin = SkillOrigins::read(&root, &["learn-goal"]);
         let at = |dir: &str| root.join(dir).join("SKILL.md");
         assert_eq!(origin.of("plan", &at("plan")), "bundled");
         assert_eq!(origin.of("Notes skill", &at("notes")), "bundled");
         assert_eq!(origin.of("learn-goal", &at("learn-goal")), "bundled");
-        assert_eq!(origin.of("web-research", &at("web-research")), "hub");
         assert_eq!(origin.of("release-codeword", &at("release-codeword")), "agent");
         std::fs::remove_dir_all(root).ok();
     }
@@ -1497,7 +1482,6 @@ mod capabilities_gate_tests {
             ("GET", "/api/tools/toolsets/web/config"),
             ("GET", "/api/tools/computer-use/status"),
             ("PUT", "/api/skills/toggle"),
-            ("POST", "/api/skills/hub/install"),
             ("POST", "/api/mcp/servers"),
             ("DELETE", "/api/mcp/servers/x"),
             ("POST", "/api/tools/terminal/backend"),
@@ -1506,6 +1490,8 @@ mod capabilities_gate_tests {
             ("POST", "/api/providers/oauth/openai-codex/submit"),
             ("DELETE", "/api/providers/oauth/sessions/sess-1"),
             ("DELETE", "/api/providers/oauth/openai-codex"),
+            ("POST", "/api/gateway/restart"),
+            ("GET", "/api/actions/gateway-restart/status"),
         ] {
             assert!(capabilities_request(&req(method, path)), "{method} {path}");
         }
@@ -1519,6 +1505,8 @@ mod capabilities_gate_tests {
             ("GET", "/api/providers/oauth"),
             ("GET", "/api/providers/oauthx/start"),
             ("POST", "/api/toolsx"),
+            ("GET", "/api/gateway/status"),
+            ("GET", "/api/actionsx/y"),
         ] {
             assert!(!capabilities_request(&req(method, path)), "{method} {path}");
         }

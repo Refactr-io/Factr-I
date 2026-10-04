@@ -5044,25 +5044,7 @@
   },
   {
    "facade": "factr_backend.web_server",
-   "name": "SkillInstallRequest",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_models"
-  },
-  {
-   "facade": "factr_backend.web_server",
    "name": "SkillToggle",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_models"
-  },
-  {
-   "facade": "factr_backend.web_server",
-   "name": "SkillUninstallRequest",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_models"
-  },
-  {
-   "facade": "factr_backend.web_server",
-   "name": "SkillsUpdateRequest",
    "kind": "moved-lazy",
    "target": "factr_backend.web_models"
   },
@@ -6034,12 +6016,6 @@
   },
   {
    "facade": "factr_backend.web_server",
-   "name": "install_skill_hub",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_routers.skills"
-  },
-  {
-   "facade": "factr_backend.web_server",
    "name": "instantiate_blueprint",
    "kind": "moved-lazy",
    "target": "factr_backend.web_routers.cron"
@@ -6142,12 +6118,6 @@
   },
   {
    "facade": "factr_backend.web_server",
-   "name": "list_skills_hub_sources",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_routers.skills"
-  },
-  {
-   "facade": "factr_backend.web_server",
    "name": "list_webhooks",
    "kind": "moved-lazy",
    "target": "factr_backend.web_routers.ops"
@@ -6241,12 +6211,6 @@
    "name": "post_plugin_visibility",
    "kind": "moved-lazy",
    "target": "factr_backend.web_routers.dashboard_ui"
-  },
-  {
-   "facade": "factr_backend.web_server",
-   "name": "preview_skill_hub",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_routers.skills"
   },
   {
    "facade": "factr_backend.web_server",
@@ -6484,21 +6448,9 @@
   },
   {
    "facade": "factr_backend.web_server",
-   "name": "scan_skill_hub",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_routers.skills"
-  },
-  {
-   "facade": "factr_backend.web_server",
    "name": "search_sessions",
    "kind": "moved-lazy",
    "target": "factr_backend.web_routers.sessions"
-  },
-  {
-   "facade": "factr_backend.web_server",
-   "name": "search_skills_hub",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_routers.skills"
   },
   {
    "facade": "factr_backend.web_server",
@@ -6712,12 +6664,6 @@
   },
   {
    "facade": "factr_backend.web_server",
-   "name": "uninstall_skill_hub",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_routers.skills"
-  },
-  {
-   "facade": "factr_backend.web_server",
    "name": "update_config",
    "kind": "moved-lazy",
    "target": "factr_backend.web_routers.config_env"
@@ -6773,12 +6719,6 @@
   {
    "facade": "factr_backend.web_server",
    "name": "update_skill_content",
-   "kind": "moved-lazy",
-   "target": "factr_backend.web_routers.skills"
-  },
-  {
-   "facade": "factr_backend.web_server",
-   "name": "update_skills_hub",
    "kind": "moved-lazy",
    "target": "factr_backend.web_routers.skills"
   },

@@ -93,8 +93,8 @@ projects.update: projects.* has no native engine implementation; the Python back
 reload.env: reload.* has no native engine implementation; the Python backend serves it
 reload.mcp: reload.* has no native engine implementation; the Python backend serves it
 request.answer: request.* has no native engine implementation; the Python backend serves it
-skills.manage: skills hub is served by the Python backend
-skills.reload: skills hub is served by the Python backend
+skills.manage: skills are served by the Python backend
+skills.reload: skills are served by the Python backend
 system.battery: system.* has no native engine implementation; the Python backend serves it
 terminal.resize: terminal.* has no native engine implementation; the Python backend serves it
 vault.add: vault.* has no native engine implementation; the Python backend serves it

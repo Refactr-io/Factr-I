@@ -137,7 +137,7 @@ If `SCRIPT` is empty, the skill is not installed yet.
 
 ## Install
 
-This is an official optional skill, so install it from the Skills Hub:
+This is an official optional skill, so install it from the bundled optional skills:
 
 ```bash
 factr skills search telephony

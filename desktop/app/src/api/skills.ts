@@ -1,13 +1,4 @@
-import type {
-  OfficialSkillInfo,
-  SkillHubPreview,
-  SkillHubScanResult,
-  SkillHubSearchResponse,
-  SkillHubSourcesResponse,
-  SkillInfo,
-  StarmapGraph
-} from '@/types/factr'
-import type { ActionResponse } from '@/types/factr'
+import type { SkillInfo, StarmapGraph } from '@/types/factr'
 
 import { capabilityScoped, factrApi, type ProfileScope, profileScoped } from './client'
 
@@ -18,7 +9,7 @@ export function getSkills(profile?: ProfileScope): Promise<SkillInfo[]> {
   })
 }
 
-/** Raw SKILL.md text (frontmatter included) for ANY skill — bundled, hub, or
+/** Raw SKILL.md text (frontmatter included) for ANY skill — bundled or
  *  learned — backing the Capabilities detail pane's full-skill view. */
 export function getSkillContent(
   name: string,
@@ -122,89 +113,5 @@ export function editLearningNode(
     path: '/api/learning/node',
     method: 'PUT',
     body: { content, id }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Skills hub — search / preview / scan / install (parity with `factr skills`
-// and the dashboard's Browse-hub tab). Installs spawn background actions whose
-// logs are tailed via getActionStatus().
-// ---------------------------------------------------------------------------
-
-const HUB_REQUEST_TIMEOUT_MS = 45_000
-
-/** The full built-in optional-skills catalog (local checkout scan — fast),
- *  with per-profile installed flags. Feeds the Capabilities Skills list's
- *  "available to install" rows. */
-export function getOfficialSkills(profile?: ProfileScope): Promise<{ skills: OfficialSkillInfo[] }> {
-  return window.factrDesktop.api<{ skills: OfficialSkillInfo[] }>({
-    ...capabilityScoped(profile),
-    path: '/api/skills/hub/official'
-  })
-}
-
-export function getSkillHubSources(profile?: null | string): Promise<SkillHubSourcesResponse> {
-  return factrApi<SkillHubSourcesResponse>({
-    ...profileScoped(profile),
-    path: '/api/skills/hub/sources',
-    timeoutMs: HUB_REQUEST_TIMEOUT_MS
-  })
-}
-
-export function searchSkillsHub(
-  query: string,
-  source = 'all',
-  limit = 20,
-  profile?: null | string
-): Promise<SkillHubSearchResponse> {
-  const params = new URLSearchParams({ q: query, source, limit: String(limit) })
-
-  return factrApi<SkillHubSearchResponse>({
-    ...profileScoped(profile),
-    path: `/api/skills/hub/search?${params.toString()}`,
-    timeoutMs: HUB_REQUEST_TIMEOUT_MS
-  })
-}
-
-export function previewSkillHub(identifier: string, profile?: ProfileScope): Promise<SkillHubPreview> {
-  return window.factrDesktop.api<SkillHubPreview>({
-    ...capabilityScoped(profile),
-    path: `/api/skills/hub/preview?identifier=${encodeURIComponent(identifier)}`,
-    timeoutMs: HUB_REQUEST_TIMEOUT_MS
-  })
-}
-
-export function scanSkillHub(identifier: string, profile?: null | string): Promise<SkillHubScanResult> {
-  return factrApi<SkillHubScanResult>({
-    ...profileScoped(profile),
-    path: `/api/skills/hub/scan?identifier=${encodeURIComponent(identifier)}`,
-    timeoutMs: HUB_REQUEST_TIMEOUT_MS
-  })
-}
-
-export function installSkillFromHub(identifier: string, profile?: ProfileScope): Promise<ActionResponse> {
-  return window.factrDesktop.api<ActionResponse>({
-    ...capabilityScoped(profile),
-    path: '/api/skills/hub/install',
-    method: 'POST',
-    body: { identifier }
-  })
-}
-
-export function uninstallSkillFromHub(name: string, profile?: ProfileScope): Promise<ActionResponse> {
-  return window.factrDesktop.api<ActionResponse>({
-    ...capabilityScoped(profile),
-    path: '/api/skills/hub/uninstall',
-    method: 'POST',
-    body: { name }
-  })
-}
-
-export function updateSkillsFromHub(profile?: ProfileScope): Promise<ActionResponse> {
-  return window.factrDesktop.api<ActionResponse>({
-    ...capabilityScoped(profile),
-    path: '/api/skills/hub/update',
-    method: 'POST',
-    body: {}
   })
 }

@@ -16,6 +16,11 @@ class TestDiscordImportSafety:
 
         # Purge the cached module so the import below actually re-runs the
         # module body with discord.py simulated-missing.
+        # The re-import also rebinds the `adapter`/`discord` attributes on the parent packages; restore it at teardown so
+        # later tests that do `from plugins.platforms.discord import adapter` don't see the discord=None copy.
+        pkg = importlib.import_module("plugins.platforms.discord")
+        monkeypatch.setattr(importlib.import_module("plugins.platforms"), "discord", pkg)
+        monkeypatch.setattr(pkg, "adapter", importlib.import_module("plugins.platforms.discord.adapter"))
         monkeypatch.delitem(sys.modules, "plugins.platforms.discord.adapter", raising=False)
         monkeypatch.delitem(sys.modules, "plugins.platforms.discord", raising=False)
         monkeypatch.setattr(builtins, "__import__", fake_import)

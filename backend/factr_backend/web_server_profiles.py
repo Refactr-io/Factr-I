@@ -3,9 +3,7 @@ the profile/config scope context managers, skills-hub and tools/analytics catalo
 """
 
 import logging
-import hashlib
 import os
-import re
 import sys
 import threading
 from contextlib import contextmanager, nullcontext
@@ -14,7 +12,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from factr_backend.config import DEFAULT_CONFIG, get_process_factr_home
 from factr_backend.web_models import MCPServerCreate
-from factr_backend.web_server_gateway import _ACTION_LOG_FILES
 from factr_backend.web_server_mcp import _normalize_mcp_server_create
 
 # Same logger the code used before extraction (record parity).
@@ -447,30 +444,3 @@ def _profile_cli_args(profile: Optional[str]) -> List[str]:
     return ["-p", profiles_mod.normalize_profile_name(requested)]
 
 
-def _hub_action_name(verb: str, key: str) -> str:
-    """Unique per-skill hub action name (+ registered log file): ``_spawn_factr_action``
-    tracks one process/log per name, so a shared "skills-install" would make concurrent
-    row-level actions overwrite each other. Slug (readable) + hash (collision-proof)."""
-    slug = re.sub(r"[^a-z0-9]+", "-", key.lower()).strip("-")[:48] or "skill"
-    digest = hashlib.sha1(key.encode()).hexdigest()[:8]
-    name = f"skills-{verb}-{slug}-{digest}"
-    _ACTION_LOG_FILES.setdefault(name, f"action-{name}.log")
-    return name
-
-
-def _installed_hub_identifiers(profile: Optional[str] = None) -> dict:
-    """identifier -> installed lock entry for hub-installed skills (UI marks installed search
-    results). Scoped to ``profile``'s skills/.hub/lock.json when given — HubLockFile takes an
-    explicit path, sidestepping the import-time LOCK_FILE binding. {} when unreadable."""
-    try:
-        from tools.skills_hub import HubLockFile
-        if _is_current_profile(profile):
-            lock = HubLockFile()
-        else:
-            profile_dir = _resolve_profile_dir(profile.strip())
-            lock = HubLockFile(profile_dir / "skills" / ".hub" / "lock.json")
-        keys = ("name", "trust_level", "scan_verdict")
-        return {entry["identifier"]: {k: entry.get(k) for k in keys}
-                for entry in lock.list_installed() if entry.get("identifier")}
-    except Exception:
-        return {}

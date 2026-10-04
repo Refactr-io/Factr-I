@@ -537,14 +537,15 @@ export function usePromptActions({
   const handoffSession = useCallback(
     async (
       platform: string,
-      options?: { onProgress?: (state: string) => void; sessionId?: string }
+      options?: { onProgress?: (state: string) => void; sessionId?: string; storedSessionId?: null | string }
     ): Promise<HandoffResult> => {
-      const sid = options?.sessionId || activeSessionIdRef.current
+      let sid = options?.sessionId || activeSessionIdRef.current
 
       if (!sid) {
         return { error: copy.sessionUnavailable, ok: false }
       }
 
+      const viewSid = sid
       const target = normalize(platform)
 
       if (!target) {
@@ -553,16 +554,35 @@ export function usePromptActions({
 
       try {
         options?.onProgress?.('pending')
-        await requestGateway<HandoffRequestResponse>('handoff.request', {
-          platform: target,
-          session_id: sid
-        })
+
+        // An idle-reaped runtime answers 4001 "session not found" even though the chat is fine. Resume and
+        // retry here so the user gets the backend's real answer (e.g. platform not configured).
+        const recovery = await withSessionNotFoundResume(
+          sid,
+          options?.storedSessionId ?? selectedStoredSessionIdRef.current,
+          liveId => requestGateway<HandoffRequestResponse>('handoff.request', { platform: target, session_id: liveId }),
+          {
+            requestGateway,
+            // Publish the binding so the retry routes to the session's owner, but leave the view on the
+            // chat's own state: switching the active runtime here shows an empty transcript until a reload,
+            // and the notice is written to the id the user is looking at.
+            onRecovered: recoveredId => {
+              const stored = options?.storedSessionId ?? selectedStoredSessionIdRef.current
+
+              if (stored) {
+                runtimeIdByStoredSessionIdRef.current.set(stored, recoveredId)
+              }
+            }
+          }
+        )
+
+        sid = recovery.sessionId
       } catch (err) {
         return { error: inlineErrorMessage(err, copy.handoff.failed(target)), ok: false }
       }
 
       const markCompleted = (): HandoffResult => {
-        appendSessionTextMessage(sid, 'system', copy.handoff.systemNote(target))
+        appendSessionTextMessage(viewSid, 'system', copy.handoff.systemNote(target))
         notify({ kind: 'success', message: copy.handoff.success(target) })
 
         return { ok: true }
@@ -617,7 +637,7 @@ export function usePromptActions({
 
       return { error: copy.handoff.timedOut, ok: false }
     },
-    [activeSessionIdRef, appendSessionTextMessage, copy, requestGateway]
+    [activeSessionIdRef, appendSessionTextMessage, copy, requestGateway, runtimeIdByStoredSessionIdRef, selectedStoredSessionIdRef]
   )
 
   const executeSlashCommand = useSlashCommand({

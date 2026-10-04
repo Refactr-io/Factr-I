@@ -36,7 +36,7 @@ for i, l in enumerate(t, 1):
 } | PAT="$PAT" python3 -c '
 import os, re, sys
 pat = re.compile(os.environ["PAT"])
-allow = ["\x68ermes-parser", "\x68ermes-estree", "\x70rimeorder", "Courier \x50rime",
+allow = ["\x68ermes-parser", "\x68ermes-estree", "\x70rimeorder",
          "\x70rime numbers", "is \x70rime", "\x70rime mixing", "\x70rime awards",
          "\x70rime-editing", "web_search_\x70rime", "web-search-\x70rime",
          "wan-3.0-\x70rime", "Wan 3.0 \x50rime", "jackal_\x70rime_cert"]

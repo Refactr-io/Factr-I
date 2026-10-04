@@ -270,6 +270,35 @@ struct Active {
     ttft_sent: bool,
 }
 
+/// The live observer's queue depth, for the shutdown flush (most recently opened observer).
+static LIVE_PENDING: Mutex<Option<Arc<AtomicUsize>>> = Mutex::new(None);
+
+/// Block until every queued observability write has reached `factr.db`: the queue is empty and stays
+/// empty for `quiet` (spans are produced a little after a reply), or `max` elapses. Called on
+/// SIGTERM/SIGINT before the process exits, which skips the writer thread's destructors.
+pub fn flush_pending(quiet: Duration, max: Duration) {
+    let pending = LIVE_PENDING.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if let Some(pending) = pending {
+        drain(&pending, quiet, max);
+    }
+}
+
+fn drain(pending: &AtomicUsize, quiet: Duration, max: Duration) {
+    let start = Instant::now();
+    let mut empty_since: Option<Instant> = None;
+    while start.elapsed() < max {
+        if pending.load(Ordering::Relaxed) == 0 {
+            let since = *empty_since.get_or_insert_with(Instant::now);
+            if since.elapsed() >= quiet {
+                return;
+            }
+        } else {
+            empty_since = None;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
 pub struct Observer {
     read_db: Mutex<Connection>,
     tx: SyncSender<Op>,
@@ -313,6 +342,7 @@ impl Observer {
         let (tx, rx) = mpsc::sync_channel(QUEUE);
         let pending = Arc::new(AtomicUsize::new(0));
         let dropped = Arc::new(AtomicU64::new(0));
+        *LIVE_PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(pending.clone());
         let observer = Arc::new(Self {
             read_db: Mutex::new(read_db),
             tx,
@@ -1779,6 +1809,24 @@ mod tests {
         let only_s2 = observer.memory(Some("s2"), 10).unwrap();
         assert_eq!(only_s2["spans"].as_array().unwrap().len(), 1);
         assert_eq!(only_s2["spans"][0]["attributes"]["approved"], false);
+        drop((observer, db));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn flush_pending_lands_every_queued_span_before_returning() {
+        use factr_base::obs_sink::Span;
+        let dir = std::env::temp_dir().join(format!("factr-flush-spans-{}", now()));
+        let observer = Observer::open(&dir, "ollama", "local", None).unwrap();
+        observer.start_turn("s1", "hello", "invoke_agent", None);
+        for i in 0..20 {
+            observer.span(Span::new("memory.write").session("s1").attr("id", format!("m{i}")));
+        }
+        // What the SIGTERM path calls: no sleeping first, the spans must already be in the db.
+        flush_pending(Duration::from_millis(50), Duration::from_secs(5));
+        let db = Connection::open(dir.join("factr.db")).unwrap();
+        let n: i64 = db.query_row("SELECT COUNT(*) FROM spans WHERE kind='memory.write'", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 20);
         drop((observer, db));
         std::fs::remove_dir_all(dir).unwrap();
     }

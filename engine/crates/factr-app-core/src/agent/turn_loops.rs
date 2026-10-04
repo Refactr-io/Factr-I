@@ -1076,7 +1076,19 @@ impl Agent {
                     continue;
                 }
 
-                self.validate_tool_allowed(&tc.name)?;
+                if let Some(error_msg) = self.tool_unavailable_message(&tc.name).await {
+                    logging::warn(&error_msg);
+                    self.add_message(
+                        Role::User,
+                        vec![ContentBlock::ToolResult {
+                            tool_use_id: tc.id,
+                            content: error_msg,
+                            is_error: Some(true),
+                        }],
+                    );
+                    tool_results_dirty = true;
+                    continue;
+                }
 
                 if let Some((blocked_msg, stop)) =
                     repeat_guard.block(&self.session.id, &tc.name, &tc.input)

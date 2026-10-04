@@ -191,6 +191,25 @@ pub(super) fn runtime_check(provider: &str, model: &str, requested: Option<&str>
     }
 }
 
+/// The session's catalog lists every route's models; a first-party row keeps only its own family's, so
+/// Claude ids never show under OpenAI (or the reverse). The served model always stays.
+fn only_own_family(d: LoginProviderDescriptor, models: Vec<String>, served: &str) -> Vec<String> {
+    use factr_provider_core::model_id::canonical;
+    let foreign = match d.target {
+        LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => factr_base::provider::known_anthropic_model_ids(),
+        LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => factr_base::provider::known_openai_model_ids(),
+        _ => return models,
+    };
+    let claude_row = matches!(d.target, LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey);
+    models
+        .into_iter()
+        .filter(|m| {
+            m == served
+                || !(foreign.iter().any(|f| canonical(f) == canonical(m)) || (!claude_row && m.to_lowercase().starts_with("claude")))
+        })
+        .collect()
+}
+
 /// Provider rows: the served one (with `current_models` when known), every provider with
 /// credentials, and with `include_unconfigured` the rest of the catalog.
 pub(super) fn model_options(provider: &str, model: &str, current_models: Vec<String>, include_unconfigured: bool, efforts: &[String], served_model: &str) -> Value {
@@ -205,7 +224,7 @@ pub(super) fn model_options(provider: &str, model: &str, current_models: Vec<Str
             }
             let models: Vec<String> = dedupe_models(
                 if is_current && !current_models.is_empty() {
-                    current_models.clone()
+                    only_own_family(*d, current_models.clone(), model)
                 } else {
                     let mut listed = catalog_models(*d);
                     if is_current && !listed.iter().any(|m| m == model) {
@@ -286,6 +305,16 @@ mod tests {
             let efforts = ["low".to_string(), "high".to_string()];
             let some = model_options("ollama", "qwen3", vec!["qwen3".into()], false, &efforts, "qwen3");
             assert_eq!(some["providers"][0]["capabilities"]["qwen3"]["reasoning"], json!(true));
+        });
+    }
+
+    #[test]
+    fn a_sessions_mixed_catalog_never_puts_claude_models_under_openai() {
+        isolated(|| {
+            let mixed = vec!["gpt-5.6-luna".to_string(), "claude-opus-5-5".to_string(), "claude-sonnet-4-6".to_string(), "gpt-5.6-sol".to_string()];
+            let options = model_options("openai", "gpt-5.6-luna", mixed, false, &[], "gpt-5.6-luna");
+            let models: Vec<&str> = options["providers"][0]["models"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+            assert_eq!(models, ["gpt-5.6-luna", "gpt-5.6-sol"]);
         });
     }
 

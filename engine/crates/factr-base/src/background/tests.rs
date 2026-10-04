@@ -885,3 +885,59 @@ async fn cancel_session_stops_the_adopted_work_not_just_its_wrapper() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert!(dropped.load(std::sync::atomic::Ordering::SeqCst), "the work was aborted, so its child is killed");
 }
+
+#[cfg(unix)]
+#[test]
+fn run_token_finds_detached_descendants_and_nothing_else() {
+    let token = format!("test-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+    // A command that detaches a long-running python with nohup (platform binaries like /bin/sleep hide
+    // their environment on macOS, so the token cannot tag them; the pgid registry covers those) and exits at once, like a model's `nohup x &`.
+    let status = std::process::Command::new("/bin/sh")
+        .args(["-c", "nohup python3 -c 'import time; time.sleep(317)' >/dev/null 2>&1 &"])
+        .env(super::RUN_TOKEN_ENV, &token)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    // An unrelated process without the token must never match.
+    let mut bystander = std::process::Command::new("sleep").arg("318").spawn().unwrap();
+    let mut found = Vec::new();
+    for _ in 0..50 {
+        found = super::pids_with_run_token(&token);
+        if !found.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert_eq!(found.len(), 1, "the detached sleep, and only it: {found:?}");
+    assert!(!found.contains(&(bystander.id() as i32)));
+    for pid in &found {
+        unsafe { libc::kill(*pid, libc::SIGKILL) };
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(super::pids_with_run_token(&token).is_empty());
+    let _ = bystander.kill();
+    let _ = bystander.wait();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_detached_member_keeps_its_group_registered_until_it_is_gone() {
+    use std::os::unix::process::CommandExt;
+    let mut child = std::process::Command::new("/bin/sh")
+        .args(["-c", "nohup sleep 319 >/dev/null 2>&1 &"])
+        .process_group(0)
+        .spawn()
+        .unwrap();
+    let pgid = child.id() as i32;
+    child.wait().unwrap(); // the leader is gone, the nohup'd sleep is not
+    assert!(super::process_group_alive(pgid));
+    super::register_process_group(pgid);
+    assert_eq!(super::kill_process_groups(&[pgid], std::time::Duration::from_millis(100)), 1);
+    for _ in 0..50 {
+        if !super::process_group_alive(pgid) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    panic!("the detached member survived its group being killed");
+}

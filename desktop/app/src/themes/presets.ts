@@ -6,7 +6,7 @@ export const DEFAULT_TYPOGRAPHY: DesktopThemeTypography = {
   fontSans:
     '"Arimo", "Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif, ' +
     EMOJI_FALLBACK,
-  fontMono: 'Menlo, Monaco, "SF Mono", "Courier Prime", monospace, ' + EMOJI_FALLBACK
+  fontMono: 'Menlo, Monaco, "SF Mono", monospace, ' + EMOJI_FALLBACK
 }
 
 /** One fixed palette with two appearances. Light values are the Perplexity DESIGN.md from styles.refero.design:

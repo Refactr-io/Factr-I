@@ -53,9 +53,8 @@ import { useDeepLinkHighlight } from '../../settings/use-deep-link-highlight'
 import { mergePluginPackages, type PackageKind, type PluginPackage } from './plugin-packages'
 import { PluginSettingsForm } from './plugin-settings-form'
 
-// The REAL Plugin Catalog page (docs site) embedded as a one-click picker —
-// the same pattern as the Skills tab's EmbeddedHubPicker. `?embed=picker`
-// hides the docs chrome and adds "+ Add to this Agent" per card, which posts
+// The REAL Plugin Catalog page (docs site) embedded as a one-click picker.
+// `?embed=picker` hides the docs chrome and adds "+ Add to this Agent" per card, which posts
 //   { type: 'factr-plugin-pick', name, repo, sha, subdir, tier, installCmd }
 // to the parent window. We validate the origin and open the shared
 // dual-target install modal (agent half → catalog-pinned install into the
@@ -65,7 +64,7 @@ import { PluginSettingsForm } from './plugin-settings-form'
 
 // Catalog viewport: persisted through the shared pane store, dragged from the
 // section's TOP edge ("pull the catalog up"), clamped so neither the catalog
-// nor the plugin list above can vanish. Same contract as EmbeddedHubPicker.
+// nor the plugin list above can vanish.
 const CATALOG_PANE_ID = 'capabilities-plugin-catalog'
 const CATALOG_DEFAULT_PX = 380
 const CATALOG_MIN_PX = 120

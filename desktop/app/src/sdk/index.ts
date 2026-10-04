@@ -1559,8 +1559,7 @@ export const host = {
 // -- react bridge -------------------------------------------------------------
 
 /** THE whole Capabilities surface (Skills / Tools / MCP tabs, installed
- *  lists, full-skill detail pane, embedded hub picker with one-click
- *  installs). For plugin dialogs pass `embedded` (tab state stays local —
+ *  lists, full-skill detail pane). For plugin dialogs pass `embedded` (tab state stays local —
  *  never touches the page router) and `fixedProfile` to pin every tab to one
  *  bot's backend; the internal profile selector hides itself. Add
  *  `fixedConnection` (registry connection id) to pin a bot living on another

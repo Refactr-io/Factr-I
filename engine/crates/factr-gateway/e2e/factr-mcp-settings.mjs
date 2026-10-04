@@ -55,7 +55,6 @@ const env = {
   FACTR_CONFIG_HOME: factrHome,
   FACTR_HOME: factrHome,
   FACTR_DASHBOARD_SESSION_TOKEN: token,
-  // Factr's skills hub uses this signal to put installs in the shared engine store.
   FACTR_ENGINE_URL: 'http://127.0.0.1:1',
   PYTHONDONTWRITEBYTECODE: '1',
 }
@@ -225,18 +224,6 @@ env.FACTR_OPENAI_COMPAT_API_BASE = 'http://127.0.0.1:11434/v1'
   })
   if (!oauthAdded.ok) throw new Error(`Factr OAuth MCP add API returned ${oauthAdded.status}: ${await oauthAdded.text()}`)
 
-  const skillName = 'agent-merge-conflict-arbiter'
-  const skillInstall = await fetch(`${base}/api/skills/hub/install`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'X-Factr-Session-Token': token },
-    body: JSON.stringify({ identifier: 'official/autonomous-ai-agents/agent-merge-conflict-arbiter' }),
-  })
-  if (!skillInstall.ok) throw new Error(`Factr skill hub install returned ${skillInstall.status}: ${await skillInstall.text()}`)
-  const skillPath = path.join(factrHome, 'skills', 'autonomous-ai-agents', skillName, 'SKILL.md')
-  const skillDeadline = Date.now() + 30_000
-  while (Date.now() < skillDeadline && !fs.existsSync(skillPath)) await new Promise(resolve => setTimeout(resolve, 100))
-  if (!fs.existsSync(skillPath)) throw new Error(`Factr skills hub did not install into the shared engine store: ${skillPath}`)
-
   const terminalToggle = await fetch(`${base}/api/tools/toolsets/terminal`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', 'X-Factr-Session-Token': token },
@@ -283,12 +270,6 @@ env.FACTR_OPENAI_COMPAT_API_BASE = 'http://127.0.0.1:11434/v1'
 
   const engine = start(engineBin, ['serve', '--host', '127.0.0.1', '--port', '0'], home, env)
   const port = await waitPort(engine, 'FACTR_BACKEND_READY')
-  const engineSkills = await fetch(`http://127.0.0.1:${port}/api/skills`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(response => response.json())
-  if (!engineSkills.some(skill => skill.name === skillName)) {
-    throw new Error(`installed hub skill is absent from the engine skill list: ${JSON.stringify(engineSkills)}`)
-  }
   ws = new WebSocket(`ws://127.0.0.1:${port}/api/ws?token=${token}`)
   const events = []
   const pending = new Map()
@@ -478,7 +459,6 @@ env.FACTR_OPENAI_COMPAT_API_BASE = 'http://127.0.0.1:11434/v1'
   await interruptCapturedTurn(highReasoningSession.session_id, reasoningMarker)
   console.log('PASS Factr API added MCP server; Rust engine chat called it and received its result')
   console.log('PASS Factr API added OAuth MCP server; Rust engine chat used the cached OAuth bearer token')
-  console.log('PASS Factr skills hub installed into FACTR_HOME/skills and the Rust engine lists it')
   console.log('PASS Factr terminal toolset toggle is persisted by Python and enforced by Rust chat')
   console.log('PASS Factr memory toggle excludes/includes the seeded memory context in Rust chat requests')
   console.log('PASS Factr model/provider and reasoning settings reach the local model request')

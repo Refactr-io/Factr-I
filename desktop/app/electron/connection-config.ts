@@ -600,14 +600,6 @@ const LOCAL_PRIMARY_SCOPED_ROUTES = new Set([
   'GET /api/skills',
   'GET /api/skills/content',
   'PUT /api/skills/toggle',
-  'POST /api/skills/hub/install',
-  'GET /api/skills/hub/official',
-  'GET /api/skills/hub/preview',
-  'GET /api/skills/hub/scan',
-  'GET /api/skills/hub/search',
-  'GET /api/skills/hub/sources',
-  'POST /api/skills/hub/uninstall',
-  'POST /api/skills/hub/update',
   // Spawns a background action polled via /api/actions/{name}/status — must
   // live on the SAME backend as that poll family (below), or the poll asks a
   // backend that never registered the dynamic action name and 404s.

@@ -3269,11 +3269,11 @@ _WORKER_BLOCKED_COMMANDS: frozenset[str] = frozenset({"snapshot", "snap"})
 
 def _skill_usage_lookup():
     """``(usage, origin)`` callables for the skill catalog: activity count (use + view + patch) and
-    "hub" / "bundled" / "local" (``/api/skills`` ``provenance``, "local" spelled "agent"). Failure → 0 / "local"."""
+    "bundled" / "local" (``/api/skills`` ``provenance``, "local" spelled "agent"). Failure → 0 / "local"."""
     try:
         from tools.skill_usage import (
-            _read_bundled_manifest_names, _read_hub_installed_names, activity_count, load_usage)
-        records, bundled, hub = load_usage(), _read_bundled_manifest_names(), _read_hub_installed_names()
+            _read_bundled_manifest_names, activity_count, load_usage)
+        records, bundled = load_usage(), _read_bundled_manifest_names()
     except Exception as e:
         logger.debug("skill usage lookup unavailable: %s", e)
         return (lambda _name: 0), (lambda _name: "local")
@@ -3284,7 +3284,7 @@ def _skill_usage_lookup():
         return 0
 
     def origin(name: str) -> str:
-        return "hub" if name in hub else "bundled" if name in bundled else "local"
+        return "bundled" if name in bundled else "local"
     return usage, origin
 
 

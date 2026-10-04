@@ -1647,7 +1647,7 @@ export interface Translations {
     bulkUpdated: (count: number) => string
     bulkNoChange: string
     usageCount: (count: number | string) => string
-    provenance: Record<'agent' | 'bundled' | 'hub', string>
+    provenance: Record<'agent' | 'bundled', string>
     emptyNoneFound: (noun: string) => string
     emptyNothingMatches: (query: string) => string
     emptyNoneAvailable: (noun: string) => string
@@ -1747,60 +1747,6 @@ export interface Translations {
         secretSet: string
         secretStoredAs: (env: string) => string
       }
-    }
-    officialCatalog: string
-    officialPill: string
-    hub: {
-      searchPlaceholder: string
-      search: string
-      searching: string
-      connectingHubs: string
-      connectedHubs: string
-      featured: string
-      landingHint: string
-      noResults: string
-      resultCount: (count: number, ms: number | null) => string
-      timedOut: (sources: string) => string
-      installed: string
-      install: string
-      installing: string
-      uninstall: string
-      uninstalling: string
-      updateAll: string
-      updating: string
-      preview: string
-      scan: string
-      scanning: string
-      close: string
-      files: string
-      noReadme: string
-      trust: Record<string, string>
-      verdictSafe: string
-      verdictCaution: string
-      verdictDangerous: string
-      policyAllow: string
-      policyAsk: string
-      policyBlock: string
-      findings: (count: number) => string
-      noFindings: string
-      installStarted: (name: string) => string
-      uninstallStarted: (name: string) => string
-      updateStarted: string
-      actionFailed: string
-      installBlockedTitle: (name: string) => string
-      installBlockedMessage: (findings: number, unverified: boolean) => string
-      viewScan: string
-      openLog: string
-      actionLog: string
-      alreadyInstalled: (name: string) => string
-      pickerTitle: string
-      pickerBrowse: string
-      pickerHide: string
-      pickerHint: string
-      loadFailed: string
-      previewFailed: string
-      scanFailed: string
-      searchFailed: string
     }
   }
 

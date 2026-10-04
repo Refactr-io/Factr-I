@@ -767,6 +767,23 @@ impl Agent {
         Ok(())
     }
 
+    /// A call to a tool this run does not offer is a recoverable tool error, not the end of the
+    /// run: the model gets the reason and the tools it can use, and carries on.
+    pub(super) async fn tool_unavailable_message(&self, name: &str) -> Option<String> {
+        let reason = self.validate_tool_allowed(name).err()?;
+        let mut available: Vec<String> = self
+            .tool_definitions_for_debug()
+            .await
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect();
+        available.sort();
+        Some(format!(
+            "Tool '{name}' is not available in this run ({reason}). Available tools: {}",
+            available.join(", ")
+        ))
+    }
+
     pub(super) fn validate_tool_allowed(&self, name: &str) -> Result<()> {
         let unqualified_name = name.strip_prefix("functions.").unwrap_or(name);
         let name = if crate::tool::sdk::custom(&self.session.id, unqualified_name) {

@@ -3230,7 +3230,7 @@
     },
     {
       "name": "skills.manage",
-      "summary": "Skills hub backend: list the profile's skills or search / browse / inspect / install from the hub.",
+      "summary": "List the profile's skills.",
       "params": [
         {
           "name": "params",
@@ -14953,6 +14953,18 @@
             "default": "",
             "title": "Provider",
             "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reasoning Effort"
           }
         },
         "required": [
@@ -27699,53 +27711,6 @@
         "title": "SideAgentParams",
         "type": "object"
       },
-      "SkillBrowseItem": {
-        "additionalProperties": true,
-        "description": "``factr_backend.skills_hub.browse_skills`` row.",
-        "properties": {
-          "name": {
-            "default": "",
-            "title": "Name",
-            "type": "string"
-          },
-          "description": {
-            "default": "",
-            "title": "Description",
-            "type": "string"
-          },
-          "source": {
-            "default": "",
-            "title": "Source",
-            "type": "string"
-          },
-          "trust": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Trust"
-          },
-          "identifier": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Identifier"
-          }
-        },
-        "title": "SkillBrowseItem",
-        "type": "object"
-      },
       "SkillCatalogEntry": {
         "additionalProperties": false,
         "properties": {
@@ -27782,122 +27747,15 @@
         "title": "SkillCommandRef",
         "type": "object"
       },
-      "SkillHubHit": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "description"
-        ],
-        "title": "SkillHubHit",
-        "type": "object"
-      },
-      "SkillInspectInfo": {
-        "additionalProperties": true,
-        "description": "``factr_backend.skills_hub.inspect_skill``; ``{}`` when the identifier resolves nowhere.",
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Description"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Source"
-          },
-          "identifier": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Identifier"
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Tags"
-          },
-          "skill_md_preview": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Skill Md Preview"
-          }
-        },
-        "title": "SkillInspectInfo",
-        "type": "object"
-      },
       "SkillsAction": {
         "enum": [
-          "list",
-          "search",
-          "install",
-          "browse",
-          "inspect"
+          "list"
         ],
         "title": "SkillsAction",
         "type": "string"
       },
       "SkillsManageParams": {
         "additionalProperties": false,
-        "description": "``query`` is the search text / hub identifier / browse page (digits); ``page`` / ``page_size``\napply to ``browse``.",
         "properties": {
           "profile": {
             "anyOf": [
@@ -27914,42 +27772,6 @@
           "action": {
             "$ref": "#/components/schemas/SkillsAction",
             "default": "list"
-          },
-          "query": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Query"
-          },
-          "page": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Page"
-          },
-          "page_size": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Page Size"
           }
         },
         "title": "SkillsManageParams",
@@ -27957,7 +27779,7 @@
       },
       "SkillsManageResult": {
         "additionalProperties": false,
-        "description": "Shape follows the action: ``list`` \u2192 ``skills`` (category \u2192 names); ``search`` \u2192 ``results``;\n``install`` \u2192 ``installed`` + ``name``; ``browse`` \u2192 ``items`` + paging; ``inspect`` \u2192 ``info``.",
+        "description": "``list`` \u2192 ``skills`` (category \u2192 names).",
         "properties": {
           "skills": {
             "anyOf": [
@@ -27976,107 +27798,6 @@
             ],
             "default": null,
             "title": "Skills"
-          },
-          "results": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/SkillHubHit"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Results"
-          },
-          "installed": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Installed"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Name"
-          },
-          "items": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/SkillBrowseItem"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Items"
-          },
-          "page": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Page"
-          },
-          "total_pages": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Total Pages"
-          },
-          "total": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Total"
-          },
-          "info": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SkillInspectInfo"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
           }
         },
         "title": "SkillsManageResult",

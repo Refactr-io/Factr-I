@@ -329,3 +329,69 @@ async fn apply_patch_still_deletes_ordinary_files() {
 
     assert!(!target.exists(), "an ordinary file should still be deleted");
 }
+
+fn test_ctx(dir: &std::path::Path) -> ToolContext {
+    ToolContext {
+        session_id: "ap".to_string(),
+        message_id: "m".to_string(),
+        tool_call_id: "c".to_string(),
+        working_dir: Some(dir.to_path_buf()),
+        stdin_request_tx: None,
+        graceful_shutdown_signal: None,
+        execution_mode: crate::tool::ToolExecutionMode::Direct,
+    }
+}
+
+#[tokio::test]
+async fn multi_file_patch_is_all_or_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("lines.txt"), "alpha\nbeta\n").unwrap();
+    std::fs::write(temp.path().join("keep.txt"), "keep\n").unwrap();
+    let patch = "*** Begin Patch\n*** Add File: pp/a.txt\n+x\n*** Delete File: keep.txt\n*** Update File: lines.txt\n@@\n nonexistent\n-zzz\n+yyy\n*** End Patch\n";
+    let out = ApplyPatchTool
+        .execute(serde_json::json!({ "patch_text": patch }), test_ctx(temp.path()))
+        .await
+        .unwrap();
+    assert!(out.output.contains("No changes applied"), "{}", out.output);
+    assert!(!temp.path().join("pp/a.txt").exists(), "added file must not exist");
+    assert!(temp.path().join("keep.txt").exists(), "delete must not have run");
+    assert_eq!(std::fs::read_to_string(temp.path().join("lines.txt")).unwrap(), "alpha\nbeta\n");
+}
+
+#[tokio::test]
+async fn later_hunks_see_earlier_ones_in_a_valid_patch() {
+    let temp = tempfile::tempdir().unwrap();
+    let patch = "*** Begin Patch\n*** Add File: n.txt\n+one\n+two\n*** Update File: n.txt\n@@\n-two\n+TWO\n*** End Patch\n";
+    ApplyPatchTool
+        .execute(serde_json::json!({ "patch_text": patch }), test_ctx(temp.path()))
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(temp.path().join("n.txt")).unwrap(), "one\nTWO\n");
+}
+
+#[tokio::test]
+async fn updating_a_crlf_file_keeps_crlf() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("w.txt"), "one needle\r\ntwo\r\nthree\r\n").unwrap();
+    let patch = "*** Begin Patch\n*** Update File: w.txt\n@@\n-one needle\n+uno needle\n+extra\n*** End Patch\n";
+    ApplyPatchTool
+        .execute(serde_json::json!({ "patch_text": patch }), test_ctx(temp.path()))
+        .await
+        .unwrap();
+    let bytes = std::fs::read(temp.path().join("w.txt")).unwrap();
+    assert_eq!(bytes, b"uno needle\r\nextra\r\ntwo\r\nthree\r\n");
+}
+
+#[tokio::test]
+async fn unified_diff_multi_file_failure_rolls_back() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("a.txt"), "a1\na2\n").unwrap();
+    std::fs::write(temp.path().join("b.txt"), "b1\nb2\n").unwrap();
+    let diff = "--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n a1\n-a2\n+A2\n--- a/missing.txt\n+++ b/missing.txt\n@@ -1,2 +1,2 @@\n nomatch\n-zz\n+yy\n";
+    let out = ApplyPatchTool
+        .execute(serde_json::json!({ "patch_text": diff }), test_ctx(temp.path()))
+        .await
+        .unwrap();
+    assert!(out.output.contains("No changes applied"), "{}", out.output);
+    assert_eq!(std::fs::read_to_string(temp.path().join("a.txt")).unwrap(), "a1\na2\n");
+}

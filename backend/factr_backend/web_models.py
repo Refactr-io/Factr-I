@@ -389,17 +389,6 @@ class HookDelete(BaseModel):
     event: str
     command: str
 
-class SkillInstallRequest(BaseModel):
-    identifier: str
-    profile: Optional[str] = None
-
-class SkillUninstallRequest(BaseModel):
-    name: str
-    profile: Optional[str] = None
-
-class SkillsUpdateRequest(BaseModel):
-    profile: Optional[str] = None
-
 class ProfileCreate(BaseModel):
     name: str
     clone_from: Optional[str] = None
@@ -415,9 +404,6 @@ class ProfileCreate(BaseModel):
     # Profile-builder additions, applied best-effort AFTER the profile dir exists (a hiccup never 500s).
     mcp_servers: List["MCPServerCreate"] = []
     keep_skills: List[str] = []  # skills to KEEP: non-empty = replace semantics (unlisted seeded ones disabled)
-    # Installed async via `factr -p <name> skills install` (skills_hub.SKILLS_DIR is import-time-bound,
-    # so FACTR_CONFIG_HOME can't redirect it); PIDs go back for the UI to poll.
-    hub_skills: List[str] = []
 
 class ProfileRename(BaseModel):
     new_name: str

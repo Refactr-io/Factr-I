@@ -1417,7 +1417,6 @@ export const ru = defineLocale({
         vision: { label: 'Зрение', hint: 'Анализ изображений' },
         web_extract: { label: 'Веб-извлечение', hint: 'Суммаризация страниц' },
         compression: { label: 'Сжатие', hint: 'Компрессия контекста' },
-        skills_hub: { label: 'Хаб навыков', hint: 'Поиск навыков' },
         approval: { label: 'Одобрение', hint: 'Умное авто-одобрение' },
         mcp: { label: 'MCP', hint: 'Маршрутизация MCP-инструментов' },
         title_generation: { label: 'Ген. заголовка', hint: 'Заголовки сеансов' }
@@ -1612,8 +1611,7 @@ export const ru = defineLocale({
     usageCount: count => `использован ${count}×`,
     provenance: {
       agent: 'Научен',
-      bundled: 'Встроенный',
-      hub: 'Хаб'
+      bundled: 'Встроенный'
     },
     emptyNoneFound: noun => `Не найдено: ${noun}`,
     emptyNothingMatches: query => `Ничего не подходит под «${query}».`,
@@ -1623,61 +1621,7 @@ export const ru = defineLocale({
     edit: 'Изменить',
     archive: 'В архив',
     skillArchivedTitle: 'Навык в архиве',
-    skillArchivedMessage: 'Навык архивирован.',
-    hub: {
-      searchPlaceholder: 'Поиск в хабе навыков',
-      search: 'Поиск',
-      searching: 'Поиск...',
-      connectingHubs: 'Подключение к хабам навыков...',
-      connectedHubs: 'Подключённые хабы:',
-      featured: 'Избранные навыки',
-      landingHint:
-        'Ищите в хабе, чтобы просматривать устанавливаемые навыки из официального индекса, GitHub и источников сообщества.',
-      noResults: 'Совпадающие навыки в хабе не найдены.',
-      resultCount: (count, ms) =>
-        `${count} ${RU_PLURAL(count, 'результат', 'результата', 'результатов')}${ms !== null ? ` за ${ms}мс` : ''}`,
-      timedOut: sources => `Тайм-аут: ${sources}`,
-      installed: 'Установлен',
-      install: 'Установить',
-      installing: 'Установка...',
-      uninstall: 'Удалить',
-      uninstalling: 'Удаление...',
-      updateAll: 'Обновить установленные',
-      updating: 'Обновление...',
-      preview: 'Предпросмотр',
-      scan: 'Сканировать',
-      scanning: 'Сканирование...',
-      close: 'Закрыть',
-      files: 'Файлы',
-      noReadme: 'Для этого навыка нет предпросмотра SKILL.md.',
-      trust: {
-        builtin: 'встроенный',
-        trusted: 'доверенный',
-        community: 'сообщество'
-      },
-      verdictSafe: 'Безопасен',
-      verdictCaution: 'Осторожно',
-      verdictDangerous: 'Опасен',
-      policyAllow: 'Установка разрешена',
-      policyAsk: 'Проверьте перед установкой',
-      policyBlock: 'Установка заблокирована политикой',
-      findings: count => `${count} ${RU_NOUN(count, 'находка', 'находки', 'находок')}`,
-      noFindings: 'Находок безопасности нет.',
-      installStarted: name => `Установка ${name}...`,
-      uninstallStarted: name => `Удаление ${name}...`,
-      updateStarted: 'Обновление установленных навыков...',
-      actionFailed: 'Действие с навыком не удалось',
-      actionLog: 'Журнал действий',
-      alreadyInstalled: name => `«${name}» уже установлен`,
-      pickerTitle: 'Хаб навыков',
-      pickerBrowse: 'Открыть весь хаб',
-      pickerHide: 'Скрыть браузер хаба',
-      pickerHint: 'Нажмите «+ Добавить к этому агенту» на любом навыке — он установится и появится в списке выше.',
-      loadFailed: 'Не удалось загрузить хаб навыков',
-      previewFailed: 'Не удалось получить предпросмотр навыка',
-      scanFailed: 'Не удалось выполнить проверку безопасности',
-      searchFailed: 'Поиск в хабе не удался'
-    }
+    skillArchivedMessage: 'Навык архивирован.'
   },
   starmap: {
     title: 'Граф памяти',

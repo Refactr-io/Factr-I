@@ -1276,7 +1276,6 @@ export const zhHant = defineLocale({
       tasks: {
         vision: { label: '視覺', hint: '圖片分析' },
         compression: { label: '壓縮', hint: '上下文壓縮' },
-        skills_hub: { label: '技能中心', hint: '技能搜尋' },
         approval: { label: '核准', hint: '智慧自動核准' },
         mcp: { label: 'MCP', hint: 'MCP 工具路由' },
         title_generation: { label: '標題生成', hint: '工作階段標題' },
@@ -1572,8 +1571,7 @@ export const zhHant = defineLocale({
     usageCount: count => `已使用 ${count} 次`,
     provenance: {
       agent: '已學習',
-      bundled: '內建',
-      hub: '技能中心'
+      bundled: '內建'
     },
     emptyNoneFound: noun => `找不到${noun}`,
     emptyNothingMatches: query => `沒有符合「${query}」的內容。`,
@@ -1583,9 +1581,7 @@ export const zhHant = defineLocale({
     edit: '編輯',
     archive: '封存',
     skillArchivedTitle: '技能已封存',
-    skillArchivedMessage: '技能已封存。',
-    officialCatalog: '可安裝',
-    officialPill: '官方'
+    skillArchivedMessage: '技能已封存。'
   },
 
   starmap: {

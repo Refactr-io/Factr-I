@@ -51,7 +51,7 @@ The helper script lives in this skill directory at:
 
 - `scripts/openclaw_to_factr.py`
 
-When this skill is installed from the Skills Hub, the normal location is:
+When this bundled skill is installed, the normal location is:
 
 - `~/.factr/skills/migration/openclaw-migration/scripts/openclaw_to_factr.py`
 

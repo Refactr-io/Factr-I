@@ -249,6 +249,12 @@ fn main() -> Result<()> {
         factr::python_env::install_python_shim(&home);
     }
 
+    // Stamp this process so shutdown can find (and stop) every command it started, including ones
+    // detached with nohup/setsid. Before any thread starts, because it edits the environment.
+    #[cfg(unix)]
+    factr::background::init_run_token();
+    factr::server::set_shutdown_hook(factr::shutdown::cleanup);
+
     // Always unload a warmed Ollama alias on process exit (including SIGTERM),
     // so keep_alive=-1 never leaves the model resident after the desktop closes.
     let _ollama_guard = OllamaUnloadOnDrop;
@@ -392,15 +398,10 @@ fn install_ollama_signal_unload() {
                     Err(_) => return,
                 };
             for _ in signals.forever() {
+                // Drain spans, stop commands (shared with the runtime's own shutdown path).
+                factr::shutdown::cleanup();
                 unload_ollama_from_warm_file();
                 factr::power_inhibit::release_all();
-                // Reap the commands still running in-process: a bash that hit its timeout was
-                // promoted to a background task and would otherwise outlive the engine.
-                if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
-                    rt.block_on(factr::background::global().abort_live_tasks_for_reload());
-                }
-                factr::background::kill_registered_process_groups(std::time::Duration::from_millis(500));
-                std::thread::sleep(std::time::Duration::from_millis(200)); // let the aborted tasks drop their children
                 // `exit` skips destructors: remove this process's sockets and hash files first.
                 factr::server::cleanup_owned_sockets();
                 std::process::exit(0);

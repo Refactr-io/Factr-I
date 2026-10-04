@@ -16,10 +16,24 @@ pub struct SessionState {
     usage: Usage,
 }
 
+/// The last assistant message of each session's most recent turn, by session id.
+static FINAL_TEXT: std::sync::Mutex<std::collections::BTreeMap<String, String>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// Take (and forget) the last assistant message of the session's finished turn.
+pub fn take_final_text(session: &str) -> Option<String> {
+    FINAL_TEXT.lock().unwrap_or_else(|e| e.into_inner()).remove(session)
+}
+
 #[derive(Default)]
 struct Turn {
     started: bool,
     text: String,
+    /// Text of the assistant message in progress / last finished: restarts after a message
+    /// boundary (`text_done`, `token_usage`, any tool event), so a nudged turn's `final_text`
+    /// is only the reply after the nudge.
+    last_text: String,
+    last_closed: bool,
     reasoning: String,
     stop: Option<&'static str>,
     /// The model error text of an `error` stop, for goal error handling.
@@ -149,9 +163,17 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
             ensure_started(state, sid, &mut out);
             let delta = text("text");
             state.turn.text.push_str(&delta);
+            if std::mem::take(&mut state.turn.last_closed) {
+                state.turn.last_text.clear();
+            }
+            state.turn.last_text.push_str(&delta);
             out.push(event("message.delta", sid, json!({ "text": delta })));
         }
-        "text_replace" => state.turn.text = text("text"),
+        "text_replace" => {
+            state.turn.text = text("text");
+            state.turn.last_text = state.turn.text.clone();
+        }
+        "text_done" => state.turn.last_closed = true,
         "reasoning_delta" => {
             ensure_started(state, sid, &mut out);
             let delta = text("text");
@@ -164,6 +186,7 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
             tool.args = Some(ev["input"].clone());
         }
         "tool_start" => {
+            state.turn.last_closed = true;
             ensure_started(state, sid, &mut out);
             state.turn.tools.entry(text("call_id")).or_insert_with(|| Tool::new(text("name")));
         }
@@ -174,11 +197,13 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
             }
         }
         "tool_exec" => {
+            state.turn.last_closed = true;
             let call_id = text("call_id");
             state.turn.tools.entry(call_id.clone()).or_insert_with(|| Tool::new(text("name")));
             announce(state, sid, &call_id, &mut out);
         }
         "tool_done" => {
+            state.turn.last_closed = true;
             let call_id = text("call_id");
             state.turn.tools.entry(call_id.clone()).or_insert_with(|| Tool::new(text("name")));
             announce(state, sid, &call_id, &mut out);
@@ -206,6 +231,7 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
             ));
         }
         "token_usage" => {
+            state.turn.last_closed = true;
             let u = &mut state.usage;
             u.input += ev["input"].as_u64().unwrap_or(0);
             u.output += ev["output"].as_u64().unwrap_or(0);
@@ -228,6 +254,8 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
         }
         "turn_done" => {
             let turn = std::mem::take(&mut state.turn);
+            // Not part of the desktop's `message.complete` contract: kept aside for `/api/agent/run`.
+            FINAL_TEXT.lock().unwrap_or_else(|e| e.into_inner()).insert(sid.to_string(), turn.last_text.clone());
             let reasoning = (!turn.reasoning.is_empty()).then_some(turn.reasoning);
             out.push(event(
                 "message.complete",
@@ -597,6 +625,22 @@ mod tests {
         assert_eq!(payload["text"], "Hello");
         assert_eq!(payload["status"], "complete");
         assert_eq!(payload["usage"]["total"], 12);
+    }
+
+    #[test]
+    fn final_text_is_only_the_last_assistant_message() {
+        let out = run(&[
+            json!({"ev":"text_delta","session_id":"final-text-s","text":"SCRIPTDONE"}),
+            json!({"ev":"token_usage","session_id":"final-text-s","input":1,"output":1}),
+            json!({"ev":"text_delta","session_id":"final-text-s","text":"after "}),
+            json!({"ev":"text_delta","session_id":"final-text-s","text":"nudge"}),
+            json!({"ev":"token_usage","session_id":"final-text-s","input":1,"output":1}),
+            json!({"ev":"turn_done","session_id":"final-text-s"}),
+        ]);
+        let Out::Event { payload, .. } = out.last().unwrap() else { panic!() };
+        assert_eq!(payload["text"], "SCRIPTDONEafter nudge");
+        assert_eq!(take_final_text("final-text-s").as_deref(), Some("after nudge"));
+        assert_eq!(take_final_text("final-text-s"), None);
     }
 
     #[test]

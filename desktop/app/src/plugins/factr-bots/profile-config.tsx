@@ -26,7 +26,6 @@ import { useBots } from './i18n'
 import { McpSetupButton } from './mcp-setup'
 import { ModelPicker } from './model-picker'
 import { botBackendProfileScope, requestForBot, resolveBotConnectionRoute } from './routing'
-import { HubSkillsSection } from './skills-hub'
 import { ensureMessagingProtocol } from './soul'
 import type { RosterRow } from './types'
 
@@ -249,7 +248,7 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
   const mcpList = state.mcp || []
 
   // Newer desktop builds export the WHOLE core Capabilities surface
-  // (factr-backend#87317): Skills (installed list + one-click hub installs +
+  // (factr-backend#87317): Skills (installed list +
   // full-skill detail), Tools (per-toolset config), and MCP — pinned to this
   // bot via fixedProfile, tab state kept out of the page router via embedded.
   // Render THAT instead of the checkbox stand-ins; writes go straight to the
@@ -375,25 +374,6 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
           >
             <CheckList columns={2} items={visibleSkills} onToggle={toggleSkill} />
           </div>
-          <HubSkillsSection
-            bot={bot}
-            onInstalled={name =>
-              setState(prev =>
-                prev.skills.some(s => s.name === name)
-                  ? prev
-                  : {
-                      ...prev,
-                      skills: [
-                        ...prev.skills,
-                        {
-                          name,
-                          enabled: true
-                        }
-                      ]
-                    }
-              )
-            }
-          />
         </div>
       )}
       {labeled(

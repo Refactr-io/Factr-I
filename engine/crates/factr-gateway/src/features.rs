@@ -1,7 +1,7 @@
 //! Factr's own Python backend as an on-demand feature service.
 //!
 //! The Rust harness owns the hot path (chat, tools, memory, sessions). The
-//! ~200 other Factr features (cron, profiles, skills hub, vault, messaging,
+//! ~200 other Factr features (cron, profiles, vault, messaging,
 //! voice, ...) are served by Factr's real Python backend, started only when
 //! one of them is first used and stopped again after an idle period, so a
 //! chat-only session never loads Python. The backend binds loopback with its
@@ -183,7 +183,7 @@ impl Features {
             command.env("FACTR_ENGINE_URL", url);
             secrets["engine_token"] = token.into();
         }
-        // Where the engine's skill registry reads: without it Python's hub installs land in FACTR_CONFIG_HOME.
+        // Where the engine's skill registry reads: without it Python's skill writes land in FACTR_CONFIG_HOME.
         if let Ok(dir) = factr_base::storage::factr_dir() {
             command.env("FACTR_HOME", dir);
         }

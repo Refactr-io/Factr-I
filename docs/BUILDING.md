@@ -138,9 +138,10 @@ Windows x64):
 1. runs `uv python install 3.12.12 --install-dir build/backend-python-managed`
    (skipped when `FACTR_BACKEND_PYTHON_RUNTIME` is set);
 2. copies that runtime to `build/backend-python/runtime`;
-3. runs `uv pip install --target build/backend-python/packages --requirements backend/pyproject.toml`
-   (skipped when `FACTR_BACKEND_PYTHON_PACKAGES` is set; only the core
-   `dependencies` are installed, not extras);
+3. runs `uv pip install --target build/backend-python/packages --requirements backend/pyproject.toml --extra bundled`
+   (skipped when `FACTR_BACKEND_PYTHON_PACKAGES` is set; installs the core
+   `dependencies` plus the `bundled` extra, see [BUNDLED-EXTRAS.md](BUNDLED-EXTRAS.md);
+   an import probe then fails the stage if any bundled package is missing);
 4. extracts the backend source with `git archive HEAD:backend` into
    `build/backend-python/source`. This is the committed `HEAD` only: commit
    your backend changes first or they are not staged;

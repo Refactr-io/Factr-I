@@ -13,9 +13,10 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable, ClassVar, Dict, Optional, Any, Tuple, List
 
-import aiohttp
-
 try:
+    # aiohttp ships with the messaging extra, not core: a missing one must leave the
+    # plugin loadable (SLACK_AVAILABLE False, lazy-installed by check_slack_requirements).
+    import aiohttp
     from slack_bolt.async_app import AsyncApp
     from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
     from slack_sdk.web.async_client import AsyncWebClient
@@ -23,6 +24,7 @@ try:
     SLACK_AVAILABLE = True
 except ImportError:
     SLACK_AVAILABLE = False
+    aiohttp = None  # type: ignore[assignment]
     AsyncApp = Any
     AsyncSocketModeHandler = Any
     AsyncWebClient = Any

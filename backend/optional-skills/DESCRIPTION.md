@@ -3,7 +3,7 @@
 Official skills maintained by Refactr that are **not activated by default**.
 
 These skills ship with the factr-backend repository but are not copied to
-`~/.factr/skills/` during setup. They are discoverable via the Skills Hub:
+`~/.factr/skills/` during setup. They are bundled with the app and can be enabled from the CLI:
 
 ```bash
 factr skills browse               # browse all skills, official shown first

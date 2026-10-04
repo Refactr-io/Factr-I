@@ -631,7 +631,10 @@ pub async fn run_gateway(
         result = gateway => result,
         _ = shutdown_signal() => Ok(()),
     };
-    // The main socket, the debug socket and both `.hash` files: SIGTERM/SIGINT end up here.
+    // SIGTERM/SIGINT end up here too: drain spans and stop commands before the process can exit
+    // (the signal thread runs the same once-only cleanup; whichever is second waits for it).
+    let _ = tokio::task::spawn_blocking(crate::shutdown::cleanup).await;
+    // The main socket, the debug socket and both `.hash` files.
     server::cleanup_socket_files(&socket);
     crate::power_inhibit::release_all();
     if let Some(model) = ollama_unload {

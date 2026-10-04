@@ -204,6 +204,7 @@ class ModelOptionsResult(Result):
     providers: list[ModelOptionProvider]
     model: str = ""
     provider: str = ""
+    reasoning_effort: str | None = None
 
 
 method("model.options", params=ModelOptionsParams, result=ModelOptionsResult,

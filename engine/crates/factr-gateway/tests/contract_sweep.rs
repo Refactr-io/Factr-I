@@ -133,7 +133,7 @@ fn family_reason(method: &str) -> String {
     let f = method.split('.').next().unwrap_or("");
     match f {
         "cron" => "cron scheduler lives in the Python backend".into(),
-        "skills" | "hub" => "skills hub is served by the Python backend".into(),
+        "skills" | "hub" => "skills are served by the Python backend".into(),
         "voice" | "tts" | "stt" => "voice pipeline is served by the Python backend".into(),
         "pets" | "pet" => "pets are served by the Python backend".into(),
         "profiles" | "profile" => "multi-profile management is served by the Python backend".into(),

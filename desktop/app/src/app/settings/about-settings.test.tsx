@@ -77,4 +77,6 @@ test('offline check shows the unreachable notice', () => {
 
   expect(screen.getByText("Couldn't check for updates right now.")).toBeTruthy()
   expect(screen.queryByText(/ERR_PROXY/)).toBeNull()
+  // A failed check is neutral information, not a green "all good" tick.
+  expect(screen.getByTestId('about-check-failed-icon')).toBeTruthy()
 })

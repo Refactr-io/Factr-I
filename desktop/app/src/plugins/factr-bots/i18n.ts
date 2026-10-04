@@ -258,11 +258,9 @@ type BotsMessages = {
     asks: (handle: string) => string
     answerTo: (member: string) => string
   }
-  /** Skills hub + MCP setup surfaces embedded in the bot editor. */
+  /** Skills + MCP setup surfaces embedded in the bot editor. */
   tools: {
-    skillsHub: string
     filterSkills: string
-    searchHub: string
     noMcpServers: string
   }
 
@@ -576,9 +574,7 @@ const en: BotsMessages = {
     answerTo: member => `Answer @${member}`
   },
   tools: {
-    skillsHub: 'Factr-I Skills Hub',
     filterSkills: 'Filter skills…',
-    searchHub: 'Search the hub (community + well-known sources)…',
     noMcpServers: 'No MCP servers configured or in the catalog.'
   },
   screen: {
@@ -885,9 +881,7 @@ const ja: BotsMessages = {
     answerTo: member => `@${member}に回答`
   },
   tools: {
-    skillsHub: 'Factr-I スキルハブ',
     filterSkills: 'スキルを絞り込み…',
-    searchHub: 'ハブを検索（コミュニティと既知のソース）…',
     noMcpServers: '設定済みまたはカタログ内の MCP サーバーはありません。'
   },
   screen: {
@@ -1190,9 +1184,7 @@ const zh: BotsMessages = {
     answerTo: member => `回答 @${member}`
   },
   tools: {
-    skillsHub: 'Factr-I 技能中心',
     filterSkills: '筛选技能…',
-    searchHub: '搜索技能中心（社区和常见来源）…',
     noMcpServers: '未配置 MCP 服务器，目录中也没有。'
   },
   screen: {
@@ -1492,9 +1484,7 @@ const zhHant: BotsMessages = {
     answerTo: member => `回覆 @${member}`
   },
   tools: {
-    skillsHub: 'Factr-I 技能中心',
     filterSkills: '篩選技能…',
-    searchHub: '搜尋技能中心（社群和常見來源）…',
     noMcpServers: '未設定 MCP 伺服器，目錄中也沒有。'
   },
   screen: {

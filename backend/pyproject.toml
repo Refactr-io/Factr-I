@@ -320,6 +320,33 @@ otlp = ["opentelemetry-sdk==1.39.1", "opentelemetry-exporter-otlp-proto-http==1.
 bedrock = ["boto3==1.42.89"]
 vertex = ["google-auth==2.55.1"]
 azure-identity = ["azure-identity==1.25.3"]
+# Matrix without end-to-end encryption: python-olm (pulled by mautrix[encryption])
+# has no wheels for macOS/Windows and needs a C toolchain, so the desktop bundle
+# ships plain mautrix. The adapter runs with MATRIX_E2EE_MODE=off/optional.
+matrix-lite = ["mautrix==0.21.1", "aiosqlite==0.22.1", "asyncpg==0.31.0", "aiohttp-socks==0.11.0", "aiohttp==3.14.3"]
+# Extras shipped inside the packaged desktop app (desktop/app/scripts/stage-backend-python.mjs
+# installs `--extra bundled`). Everything here is pure Python or ships light
+# prebuilt wheels on macOS/Windows/Linux, needs no hosted Factr service, and the
+# whole set stays under ~100 MB over the core install. See docs/BUNDLED-EXTRAS.md.
+bundled = [
+  "factr-backend[messaging]",
+  "factr-backend[matrix-lite]",
+  "factr-backend[dingtalk]",
+  "factr-backend[teams]",
+  "factr-backend[wecom]",
+  "factr-backend[homeassistant]",
+  "factr-backend[sms]",
+  "factr-backend[anthropic]",
+  "factr-backend[mcp]",
+  "factr-backend[acp]",
+  "factr-backend[exa]",
+  "factr-backend[firecrawl]",
+  "factr-backend[parallel-web]",
+  "factr-backend[fal]",
+  "factr-backend[edge-tts]",
+  "factr-backend[youtube]",
+  "factr-backend[uvloop]",
+]
 termux = [
   # Baseline Android / Termux path for reliable fresh installs.
   "python-telegram-bot[webhooks]==22.8",

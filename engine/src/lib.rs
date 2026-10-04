@@ -13,3 +13,4 @@
 pub use factr_app_core::*;
 pub mod cli_auth;
 pub mod factr_runtime;
+pub mod shutdown;

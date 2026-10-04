@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as FactrApi from '@/factr'
 import { queryClient } from '@/lib/query-client'
-import type * as HubActions from '@/store/hub-actions'
 
 const getSkills = vi.fn()
 const getToolsets = vi.fn()
@@ -18,7 +17,6 @@ const selectToolsetProvider = vi.fn()
 const getUsageAnalytics = vi.fn()
 const getProfiles = vi.fn()
 const getSkillContent = vi.fn()
-const getOfficialSkills = vi.fn()
 
 // Partial mock: keep the real module (CapabilitiesView pulls in @/store/profile,
 // whose import-time subscription calls setApiRequestProfile) and stub only the
@@ -35,22 +33,13 @@ vi.mock('@/factr', async importOriginal => ({
   selectToolsetProvider: (toolset: string, provider: string) => selectToolsetProvider(toolset, provider),
   getUsageAnalytics: (days: number, profile?: null | string) => getUsageAnalytics(days, profile),
   getProfiles: () => getProfiles(),
-  getSkillContent: (name: string, profile?: null | string) => getSkillContent(name, profile),
-  getOfficialSkills: (profile?: null | string) => getOfficialSkills(profile)
+  getSkillContent: (name: string, profile?: null | string) => getSkillContent(name, profile)
 }))
 
 // Notifications hit nanostores/timers we don't care about here.
 vi.mock('@/store/notifications', () => ({
   notify: vi.fn(),
   notifyError: vi.fn()
-}))
-
-// The catalog Install button routes through the hub action pipeline — stub the
-// action entrypoint (real module kept: CapabilitiesView reads $hubActions and the
-// query keys from it).
-vi.mock('@/store/hub-actions', async importOriginal => ({
-  ...(await importOriginal<typeof HubActions>()),
-  installHubSkill: vi.fn().mockResolvedValue(undefined)
 }))
 
 // The vision detail navigates to Settings → Models via useNavigate; spy on it
@@ -102,7 +91,6 @@ beforeEach(() => {
   setToolsetEnabled.mockResolvedValue({ ok: true, name: 'web', enabled: false })
   getToolsetConfig.mockResolvedValue({ has_category: true, active_provider: null, providers: [] })
   getUsageAnalytics.mockResolvedValue({ tools: [] })
-  getOfficialSkills.mockResolvedValue({ skills: [] })
   getSkillContent.mockResolvedValue({
     name: 'web-research',
     path: '/skills/web-research/SKILL.md',
@@ -261,34 +249,7 @@ describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
     expect(await screen.findByText(/Deep research steps/)).toBeTruthy()
   })
 
-  it('hub picker refuses to reinstall an already-installed skill', async () => {
-    const { notify } = await import('@/store/notifications')
-    const { EmbeddedHubPicker } = await import('./skills/embedded-hub-picker')
-
-    render(<EmbeddedHubPicker installedNames={new Set(['web-research'])} profile={null} />)
-
-    // The picker is expanded by default — the hub iframe is live on mount.
-    expect(document.querySelector('iframe')).toBeTruthy()
-
-    await act(async () => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: { type: 'factr-skill-pick', name: 'web-research', identifier: 'web-research' },
-          origin: 'https://github.com/Refactr-io/Factr-I'
-        })
-      )
-    })
-
-    // Refused with an informational toast, no install action spawned.
-    await waitFor(() =>
-      expect(vi.mocked(notify)).toHaveBeenCalledWith(
-        expect.objectContaining({ title: expect.stringContaining('web-research') })
-      )
-    )
-  })
-
-  it('does not embed the remote Skills Hub page', async () => {
-    // The hub is a Factr-branded remote site; it stays out until a native one exists.
+  it('does not embed any remote skills page', async () => {
     await act(async () => {
       render(
         <QueryClientProvider client={queryClient}>
@@ -399,80 +360,5 @@ describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
     } finally {
       delete (window as { factrDesktop?: unknown }).factrDesktop
     }
-  })
-
-  it('lists the built-in optional-skills catalog with Install buttons that route through the hub pipeline', async () => {
-    // The full official catalog renders BELOW the installed list; each row
-    // carries an Install button (no toggle until installed) that routes
-    // through the standard hub action pipeline scoped to the Capabilities
-    // profile. Already-installed catalog entries are filtered out.
-    const { installHubSkill } = await import('@/store/hub-actions')
-
-    getSkills.mockResolvedValue([
-      {
-        name: 'web-research',
-        description: 'Research the web',
-        category: 'research',
-        enabled: true,
-        usage: 3,
-        provenance: 'bundled'
-      }
-    ])
-    getOfficialSkills.mockResolvedValue({
-      skills: [
-        {
-          name: 'gif-search',
-          description: 'Search GIFs',
-          identifier: 'official/gifs/gif-search',
-          category: 'gifs',
-          installed: false,
-          tags: ['gifs']
-        },
-        {
-          name: 'web-research',
-          description: 'already here under a different source',
-          identifier: 'official/research/web-research',
-          category: 'research',
-          installed: false,
-          tags: []
-        },
-        {
-          name: 'ascii-art',
-          description: 'ASCII art',
-          identifier: 'official/creative/ascii-art',
-          category: 'creative',
-          installed: true,
-          tags: []
-        }
-      ]
-    })
-
-    await act(async () => {
-      render(
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={['/capabilities?tab=skills']}>
-            <CapabilitiesView />
-          </MemoryRouter>
-        </QueryClientProvider>
-      )
-    })
-
-    // Catalog section header + the one genuinely-available row. Rows already
-    // installed (lock flag OR name collision with the installed list) are gone.
-    expect(await screen.findByText('gif-search')).toBeTruthy()
-    expect(screen.queryByText('ascii-art')).toBeNull()
-
-    // The installed skill still shows its toggle; the catalog row shows
-    // Install instead of a switch.
-    expect(screen.getByRole('switch', { name: 'web-research' })).toBeTruthy()
-    const install = screen.getByRole('button', { name: 'Install' })
-
-    await act(async () => {
-      fireEvent.click(install)
-    })
-
-    await waitFor(() =>
-      expect(vi.mocked(installHubSkill)).toHaveBeenCalledWith('official/gifs/gif-search', expect.anything())
-    )
   })
 })

@@ -124,6 +124,9 @@ export function createSessionRpcDispatcher(deps: SessionRpcDispatcherDeps): Ambi
       if (
         method !== 'session.resume' &&
         method !== 'session.activate' &&
+        // handoffSession resumes and retries on its own; a second route resume would reload the
+        // transcript and wipe the notice it is about to write (and clearNotifications() the toast).
+        method !== 'handoff.request' &&
         paramSessionId &&
         routingSessionId &&
         routingSessionId === selectedStoredSessionIdRef.current &&

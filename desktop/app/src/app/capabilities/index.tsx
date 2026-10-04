@@ -8,7 +8,6 @@ import { queryClient } from '@/lib/query-client'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { $gateway } from '@/store/gateway'
-import { OFFICIAL_SKILLS_KEY } from '@/store/hub-actions'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -20,15 +19,13 @@ import { ConnectorsTab } from './connectors/connectors-tab'
 import { HarnessTab } from './harness/harness-tab'
 import { PluginsTab } from './plugins/plugins-tab'
 import { CapabilityScopeSelector, useCapabilityScope } from './scope-selector'
-import { EmbeddedHubPicker } from './skills/embedded-hub-picker'
 import { SKILLS_QUERY_KEY, skillSearchTerms, useSkillsQuery } from './skills/skills-data'
 import { SkillsTab } from './skills/skills-tab'
 import { refreshToolCalls } from './toolsets/tool-calls'
 import { TOOLSETS_QUERY_KEY, toolsetSearchTerms, useToolsetsQuery, visibleToolsetCount } from './toolsets/toolsets-data'
 import { ToolsetsTab } from './toolsets/toolsets-tab'
 
-// Skills Hub browsing lives inside the Skills tab. Legacy `?tab=hub`
-// links fall back to 'skills' via useRouteEnumParam.
+// Legacy `?tab=` values that are not listed fall back to 'skills' via useRouteEnumParam.
 const CAPABILITY_MODES = ['skills', 'harness', 'toolsets', 'connectors', 'plugins'] as const
 
 type CapabilityMode = (typeof CAPABILITY_MODES)[number]
@@ -73,26 +70,17 @@ export function CapabilitiesView({
 
   const [query, setQuery] = useState('')
 
-  // Keep the docs iframe alive after the first Skills visit.
-  const [hubMounted, setHubMounted] = useState(mode === 'skills')
-
-  if (mode === 'skills' && !hubMounted) {
-    setHubMounted(true)
-  }
-
   const scope = useCapabilityScope({ fixedConnection, fixedProfile })
 
   // The two installed lists the tab pills count. They are fetched here, as a
   // pair, because the counts stay live for the tab the user is NOT on.
   const { data: skills, isError: skillsFailed, error: skillsError } = useSkillsQuery(scope.profile)
   const { data: toolsets, isError: toolsetsFailed } = useToolsetsQuery(scope.profile)
-  const installedSkillNames = useMemo(() => new Set((skills ?? []).map(skill => skill.name)), [skills])
 
   const refreshCapabilities = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: SKILLS_QUERY_KEY }),
-      queryClient.invalidateQueries({ queryKey: TOOLSETS_QUERY_KEY }),
-      queryClient.invalidateQueries({ queryKey: OFFICIAL_SKILLS_KEY })
+      queryClient.invalidateQueries({ queryKey: TOOLSETS_QUERY_KEY })
     ])
 
     invalidateSlashCompletions()
@@ -196,22 +184,11 @@ export function CapabilitiesView({
           <div className={mode === 'skills' ? 'min-h-40 flex-1 overflow-hidden' : 'min-h-0 flex-1'}>
             {loadGate ?? tabContent[mode]()}
           </div>
-          {SHOW_REMOTE_SKILLS_HUB && hubMounted && (
-            <EmbeddedHubPicker
-              hidden={mode !== 'skills'}
-              installedNames={installedSkillNames}
-              profile={scope.profile}
-            />
-          )}
         </div>
       </div>
     </PageSearchShell>
   )
 }
-
-// The Skills Hub is a remote Factr-branded web page (own fonts and theme, needs network).
-// Hidden until there is a Factr-I native hub; the Skills list itself is unaffected.
-const SHOW_REMOTE_SKILLS_HUB = false
 
 // Feature-detection flag for plugins (Bot Mode): TRUE means this build's
 // CapabilitiesView routes `fixedConnection` to the pinned connection's backend.

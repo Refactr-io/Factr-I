@@ -122,6 +122,17 @@ impl Tool for ApplyPatchTool {
                 .collect::<Vec<_>>()
         }))
         .await;
+        // All-or-nothing: simulate the whole patch in memory first. Any hunk
+        // that cannot apply aborts before a single byte is written.
+        let failures = preflight(&hunks, &ctx).await;
+        if !failures.is_empty() {
+            let mut body = failures.join("\n");
+            body.push_str(&format!(
+                "\nNo changes applied: apply_patch is all-or-nothing and {} hunk(s) failed, so no file was modified.",
+                failures.len()
+            ));
+            return Ok(ToolOutput::new(body));
+        }
         let mut before = std::collections::BTreeMap::new();
         for hunk in &hunks {
             let (path, destination) = match hunk {
@@ -480,9 +491,97 @@ fn build_file_touch_preview(diff: &str) -> Option<String> {
     Some(preview)
 }
 
+/// Dry-run every hunk against an in-memory view of the files so later hunks
+/// see earlier ones (add then update, move chains). Returns one message per
+/// hunk that would fail; empty means the whole patch can apply.
+async fn preflight(hunks: &[PatchHunk], ctx: &ToolContext) -> Vec<String> {
+    use std::collections::HashMap;
+    let mut virt: HashMap<std::path::PathBuf, Option<String>> = HashMap::new();
+    let mut failures = Vec::new();
+    async fn read(
+        virt: &HashMap<std::path::PathBuf, Option<String>>,
+        path: &Path,
+    ) -> Result<String> {
+        match virt.get(path) {
+            Some(Some(text)) => Ok(text.clone()),
+            Some(None) => anyhow::bail!("No such file or directory (deleted earlier in this patch)"),
+            None => Ok(tokio::fs::read_to_string(path).await?),
+        }
+    }
+    for hunk in hunks {
+        match hunk {
+            PatchHunk::AddFile { path, contents } => {
+                virt.insert(ctx.resolve_path(Path::new(path)), Some(contents.clone()));
+            }
+            PatchHunk::DeleteFile { path } => {
+                let resolved = ctx.resolve_path(Path::new(path));
+                let risk_ctx = factr_command_risk::RiskContext::from_env(ctx.working_dir.clone());
+                if factr_command_risk::is_catastrophic_target(&resolved, &risk_ctx) {
+                    failures.push(format!(
+                        "✗ {}: refused, this path is protected and must never \
+                         be deleted by an agent",
+                        path
+                    ));
+                    continue;
+                }
+                let exists = match virt.get(&resolved) {
+                    Some(v) => v.is_some(),
+                    None => resolved.is_file(),
+                };
+                if exists {
+                    virt.insert(resolved, None);
+                } else {
+                    failures.push(format!("✗ {}: failed to delete (file not found)", path));
+                }
+            }
+            PatchHunk::UpdateFile { path, move_to, chunks } => {
+                let resolved = ctx.resolve_path(Path::new(path));
+                let applied = match read(&virt, &resolved).await {
+                    Ok(old) => apply_update_to_string(&resolved, &old, chunks).map(|(_, new)| new),
+                    Err(e) => Err(e),
+                };
+                match applied {
+                    Ok(new) => {
+                        if let Some(dest) = move_to {
+                            virt.insert(resolved, None);
+                            virt.insert(ctx.resolve_path(Path::new(dest)), Some(new));
+                        } else {
+                            virt.insert(resolved, Some(new));
+                        }
+                    }
+                    Err(e) => failures.push(format!("✗ {}: {}", path, e)),
+                }
+            }
+        }
+    }
+    failures
+}
+
 async fn apply_update_chunks(path: &Path, chunks: &[UpdateFileChunk]) -> Result<(String, String)> {
     let original_contents = tokio::fs::read_to_string(path).await?;
-    let mut original_lines: Vec<String> = original_contents.split('\n').map(String::from).collect();
+    apply_update_to_string(path, &original_contents, chunks)
+}
+
+/// True when every line break in the text is CRLF (and there is at least one).
+fn is_pure_crlf(text: &str) -> bool {
+    let lf = text.matches('\n').count();
+    lf > 0 && text.matches("\r\n").count() == lf
+}
+
+fn apply_update_to_string(
+    path: &Path,
+    original_contents: &str,
+    chunks: &[UpdateFileChunk],
+) -> Result<(String, String)> {
+    // A CRLF file is edited on LF-normalised lines and written back as CRLF,
+    // so replaced lines never mix endings with untouched ones.
+    let crlf = is_pure_crlf(original_contents);
+    let working: std::borrow::Cow<str> = if crlf {
+        std::borrow::Cow::Owned(original_contents.replace("\r\n", "\n"))
+    } else {
+        std::borrow::Cow::Borrowed(original_contents)
+    };
+    let mut original_lines: Vec<String> = working.split('\n').map(String::from).collect();
 
     if original_lines.last().is_some_and(String::is_empty) {
         original_lines.pop();
@@ -494,7 +593,11 @@ async fn apply_update_chunks(path: &Path, chunks: &[UpdateFileChunk]) -> Result<
     if !new_lines.last().is_some_and(String::is_empty) {
         new_lines.push(String::new());
     }
-    Ok((original_contents, new_lines.join("\n")))
+    let mut new_contents = new_lines.join("\n");
+    if crlf {
+        new_contents = new_contents.replace('\n', "\r\n");
+    }
+    Ok((original_contents.to_string(), new_contents))
 }
 
 /// Generate a compact diff with line numbers (max 30 lines).

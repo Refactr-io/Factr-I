@@ -53,7 +53,7 @@ pub(crate) fn format_rate_limit_error(body: &str, retry_after: Option<Duration>)
         (None, None) => {}
     }
 
-    if let Some(delay) = retry_after {
+    if let Some(delay) = retry_after.filter(|delay| !delay.is_zero()) {
         output.push_str(&format!(" Retry after {}.", format_compact_duration(delay)));
     }
 
@@ -62,6 +62,7 @@ pub(crate) fn format_rate_limit_error(body: &str, retry_after: Option<Duration>)
 
 fn format_unstructured_rate_limit_error(body: &str, retry_after: Option<Duration>) -> String {
     let wait_info = retry_after
+        .filter(|delay| !delay.is_zero())
         .map(|delay| format!(" (retry after {})", format_compact_duration(delay)))
         .unwrap_or_default();
     format!("Rate limited{wait_info}: {body}")
@@ -86,7 +87,8 @@ fn json_timestamp(value: &Value) -> Option<i64> {
 }
 
 fn format_compact_duration(duration: Duration) -> String {
-    let total_seconds = duration.as_secs();
+    // Round up: a 1s Retry-After that has 999ms left reads "1s", never "0s".
+    let total_seconds = duration.as_secs() + u64::from(duration.subsec_nanos() > 0);
     let days = total_seconds / 86_400;
     let hours = total_seconds % 86_400 / 3_600;
     let minutes = total_seconds % 3_600 / 60;
@@ -145,6 +147,21 @@ mod tests {
         assert_eq!(
             format_rate_limit_error(body, Some(Duration::from_secs(65))),
             "Rate limited: Too many requests. Retry after 1m 5s."
+        );
+    }
+
+    #[test]
+    fn a_sub_second_remainder_of_the_wait_rounds_up_and_a_spent_wait_is_hidden() {
+        let body = r#"{"error":{"message":"Too many requests"}}"#;
+
+        assert_eq!(
+            format_rate_limit_error(body, Some(Duration::from_millis(999))),
+            "Rate limited: Too many requests. Retry after 1s."
+        );
+        assert_eq!(format_rate_limit_error(body, Some(Duration::ZERO)), "Rate limited: Too many requests.");
+        assert_eq!(
+            format_rate_limit_error("upstream down", Some(Duration::from_millis(400))),
+            "Rate limited (retry after 1s): upstream down"
         );
     }
 

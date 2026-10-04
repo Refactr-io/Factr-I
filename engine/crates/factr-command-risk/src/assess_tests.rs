@@ -743,3 +743,44 @@ fn confined_to_workdir_allows_only_strictly_inside_targets() {
     let f = &assess("chmod -R 755 sub", &ctx).findings[0];
     assert!(!f.reason.contains("delete"), "{}", f.reason);
 }
+
+#[test]
+fn benign_home_mentions_and_assignments_are_not_gated() {
+    for command in [
+        "echo HOME=$HOME",
+        "echo \"HOME=/x\"",
+        "HOME=/tmp/x pytest",
+        "HOME=/tmp/x pytest -q tests/",
+        "env HOME=/tmp/x pytest",
+        "export HOME=/tmp/x",
+        "FACTR_SCRATCH_DIR=/tmp/s make test",
+        "cd proj && HOME=/tmp/x npm test",
+    ] {
+        assert_eq!(level(command), RiskLevel::Safe, "{command}");
+    }
+}
+
+#[test]
+fn dangerous_home_forms_stay_gated() {
+    for command in [
+        "HOME=/ rm -rf $HOME/x",
+        "export HOME=/; rm -rf \"$HOME\"",
+        "env HOME=/tmp/x rm -rf ~/data",
+        "HOME=/etc; rm -rf ~/cache",
+        "HOME=/tmp/x find $HOME -delete",
+        "rm -rf $HOME",
+        "HOME=/x bash -c 'rm -rf ~'",
+        "HOME=/ rm -rf ${HOME:-/x}/y",
+        "HOME=/ rm -rf ${HOME%/*}",
+    ] {
+        assert!(level(command) >= RiskLevel::Confirm, "{command}");
+    }
+}
+
+#[test]
+fn leading_assignments_do_not_hide_the_destructive_program() {
+    for command in ["FOO=1 rm -rf ~", "A=1 B=2 rm -rf /home/u/.ssh"] {
+        assert_eq!(level(command), RiskLevel::Catastrophic, "{command}");
+    }
+    assert_eq!(level("FOO=1 ls ~"), RiskLevel::Safe);
+}

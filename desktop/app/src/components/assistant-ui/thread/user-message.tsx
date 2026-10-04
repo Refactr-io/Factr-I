@@ -17,6 +17,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip } from '@/components/ui/tooltip'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { useI18n } from '@/i18n'
+import { stripEnvironmentBlock } from '@/lib/chat-runtime'
 import { triggerHaptic } from '@/lib/haptics'
 import { StopFilled } from '@/lib/icons'
 import { LruCache } from '@/lib/lru-cache'
@@ -376,7 +377,7 @@ export const UserMessage: FC<{
       >
         <details className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
           <summary className="cursor-pointer select-none">{copy.scheduledRunPrompt}</summary>
-          <p className="mt-1 whitespace-pre-wrap wrap-anywhere">{messageText.trim()}</p>
+          <p className="mt-1 whitespace-pre-wrap wrap-anywhere">{stripEnvironmentBlock(messageText).trim()}</p>
         </details>
       </MessagePrimitive.Root>
     )

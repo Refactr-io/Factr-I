@@ -40,7 +40,18 @@ pub(crate) use settings::{config_record, yolo_active};
 /// models from a session's catalog, when one is named.
 pub(crate) fn model_options(config: &Config, current_models: Vec<String>, include_unconfigured: bool) -> Value {
     let (model, provider) = crate::profile::effective_default(config);
-    provider_state::model_options(&provider, &model, current_models, include_unconfigured, &config.reasoning_efforts, &config.model)
+    let mut options = provider_state::model_options(&provider, &model, current_models, include_unconfigured, &config.reasoning_efforts, &config.model);
+    // The effort a new chat starts on: the saved pick, else the engine's configured default for the
+    // provider. Lets a draft chat's effort pill show it before any session exists.
+    if let Some(effort) = default_new_chat_effort(&provider) {
+        options["reasoning_effort"] = json!(effort);
+    }
+    options
+}
+
+/// What a new chat on `provider` runs at when the request names no effort.
+fn default_new_chat_effort(provider: &str) -> Option<String> {
+    crate::profile::current().reasoning_effort.or_else(|| configured_default_effort(provider).map(str::to_owned))
 }
 
 pub(crate) fn put_config(home: &std::path::Path, config: &Value) -> Result<(), (bool, String)> {
@@ -3842,6 +3853,8 @@ fn turn_reply(payload: &Value, session_id: &str, surface: &str) -> Value {
         "ok": ok,
         "interrupted": interrupted,
         "text": payload["text"].as_str().unwrap_or_default(),
+        // Only the last assistant message of the turn (after any nudge); `text` joins them all.
+        "final_text": crate::map::take_final_text(session_id).unwrap_or_else(|| payload["text"].as_str().unwrap_or_default().to_string()),
         "error": if ok { Value::Null } else { json!(match payload["error"].as_str().filter(|m| !m.is_empty()) {
             Some(detail) => format!("the turn did not complete cleanly ({status}): {detail}"),
             None => format!("the turn did not complete cleanly ({status})"),
@@ -4434,6 +4447,7 @@ mod tests {
         assert_eq!(conn.dispatch("config.get", &json!({ "key": "model" })).await.unwrap()["model"], "gpt-5.6-luna");
         let options = conn.dispatch("model.options", &json!({})).await.unwrap();
         assert_eq!((options["model"].as_str(), options["provider"].as_str()), (Some("gpt-5.6-luna"), Some("openai")));
+        assert_eq!(options["reasoning_effort"], "low", "a draft chat's pill needs the engine default before any session exists");
         let again = test_conn("model-persist");
         assert_eq!(default(&again).0, "gpt-5.6-luna");
         let err = conn.dispatch("config.set", &json!({ "key": "model", "value": "--provider openai" })).await.unwrap_err();

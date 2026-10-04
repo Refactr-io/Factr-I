@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { approvePairing, getMessagingPlatforms } from './api/messaging'
 import { getAuxiliaryModels, getGlobalModelInfo } from './api/models'
-import { getOfficialSkills, getSkillHubSources } from './api/skills'
 import { getToolsetConfig } from './api/toolsets'
 import {
   getFactrConfigRecord,
@@ -11,7 +10,6 @@ import {
   getSkills,
   getToolsets,
   getUsageAnalytics,
-  installSkillFromHub,
   profileScopeKey,
   saveMcpServers,
   setApiRequestConnection,
@@ -20,7 +18,7 @@ import {
   setToolsetEnabled
 } from './factr'
 
-// Contract: the Capabilities surface (skills / toolsets / MCP / hub / config)
+// Contract: the Capabilities surface (skills / toolsets / MCP / config)
 // can be scoped to a (connection, profile) pair — a profile belongs to ONE
 // gateway, so its skills/tools/MCP must be read from and written to THAT
 // machine's backend. Three shapes:
@@ -98,13 +96,10 @@ describe('capability helpers are connection-scoped', () => {
 
   it('every explicitly scoped api/ helper dials foreground, not only the Settings pages (#111651)', () => {
     // The class rule lives in the scope helpers themselves, so a helper in
-    // any api/ module inherits it — Capabilities hub/toolset-config reads and
+    // any api/ module inherits it — Capabilities skills/toolset-config reads and
     // the Messaging page were left queueing as background work when the rule
     // was spread per call site.
-    void getOfficialSkills('coder')
-    expect(last()).toMatchObject({ profile: 'coder', priority: 'foreground' })
-
-    void getSkillHubSources('coder')
+    void getSkills('coder')
     expect(last()).toMatchObject({ profile: 'coder', priority: 'foreground' })
 
     void getToolsetConfig('browser', { connectionId: 'homelab', profile: 'coder' })
@@ -115,7 +110,7 @@ describe('capability helpers are connection-scoped', () => {
 
     // `null` deliberately targets the primary — that backend is always warm,
     // so it stays untagged like the ambient path.
-    void getOfficialSkills(null)
+    void getSkills(null)
     expect(last()).not.toHaveProperty('priority')
   })
 
@@ -143,7 +138,6 @@ describe('capability helpers are connection-scoped', () => {
     void setSkillEnabled('arxiv', false, { connectionId: 'homelab', profile: 'inbox-bot' })
     void setToolsetEnabled('browser', true, { connectionId: 'homelab', profile: 'inbox-bot' })
     void saveMcpServers({}, { connectionId: 'homelab', profile: 'inbox-bot' })
-    void installSkillFromHub('official/research/arxiv', { connectionId: 'homelab', profile: 'inbox-bot' })
 
     for (const call of api.mock.calls) {
       expect((call[0] as { connectionId?: string }).connectionId).toBe('homelab')

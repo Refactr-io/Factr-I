@@ -203,3 +203,52 @@ describe('coalesceToolOnlyAssistants toolCallId uniqueness', () => {
     expect(ids).toEqual(['call-a', 'call-b'])
   })
 })
+
+describe('toRuntimeMessage environment block', () => {
+  const user = (...texts: string[]): ChatMessage => ({
+    id: 'u1',
+    role: 'user',
+    parts: texts.map(text => ({ type: 'text', text }))
+  })
+
+  it('hides the engine-injected <environment> block from a user prompt, joined or separate', () => {
+    const block = '<environment>cwd /tmp/x; have: git; missing: rg; files: a b</environment>'
+
+    const joined = toRuntimeMessage(user(`Run the job\n\n${block}`))
+    const separate = toRuntimeMessage(user('Run the job', block))
+
+    expect(joined.content).toEqual([{ type: 'text', text: 'Run the job' }])
+    expect(separate.content).toEqual([{ type: 'text', text: 'Run the job' }])
+  })
+
+  it('removes the whole cron environment block, contents included, in one part', () => {
+    const text =
+      '[IMPORTANT: You are running as a scheduled cron job. Do the thing.]\n\n<environment>cron fired cwd /var/folders/ab/T/project; have: python3 (no pytest, no ruff), git; missing: pip, systemctl; files: a.py b.py</environment>'
+
+    expect(toRuntimeMessage(user(text)).content).toEqual([
+      { type: 'text', text: '[IMPORTANT: You are running as a scheduled cron job. Do the thing.]' }
+    ])
+  })
+
+  it('removes an unterminated block and a block that is the whole part', () => {
+    const open = '<environment>cron fired cwd /var/folders/x/project; have: python3; missing: pip, systemctl; files:'
+
+    expect(toRuntimeMessage(user(`Run it\n${open}`)).content).toEqual([{ type: 'text', text: 'Run it' }])
+    expect(toRuntimeMessage(user('Run it', open)).content).toEqual([{ type: 'text', text: 'Run it' }])
+  })
+
+  it('removes the block when only its body survived without tags (observed cron run text)', () => {
+    const body =
+      'cwd /var/folders/ab/T/project; have: python3 (no pytest, no ruff), git; missing: pip, systemctl; files: a.py b.py'
+
+    expect(toRuntimeMessage(user(`cron fired ${body}`)).content).toEqual([{ type: 'text', text: 'cron fired' }])
+    expect(toRuntimeMessage(user('cron fired', body)).content).toEqual([{ type: 'text', text: 'cron fired' }])
+    expect(toRuntimeMessage(user(`cron fired\n\n${body.replace(' a.py b.py', '')}`)).content).toEqual([
+      { type: 'text', text: 'cron fired' }
+    ])
+  })
+
+  it('leaves ordinary user text untouched', () => {
+    expect(toRuntimeMessage(user('hello <b>there</b>')).content).toEqual([{ type: 'text', text: 'hello <b>there</b>' }])
+  })
+})

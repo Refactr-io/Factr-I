@@ -260,7 +260,7 @@ impl Tool for ReadTool {
         // Add metadata
         if end < total_lines {
             let continuation_hint = match range.style {
-                ReadRangeStyle::OffsetLimit => format!("offset={end}"),
+                ReadRangeStyle::OffsetLimit => format!("start_line={}", end + 1),
                 ReadRangeStyle::StartEnd => format!("start_line={}", end + 1),
             };
             output.push_str(&format!(

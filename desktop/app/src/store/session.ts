@@ -1509,6 +1509,13 @@ export const setCurrentReasoningEffortWire = (next: string) => {
 // until config loads, and re-seeded on every profile switch by useFactrConfig.
 export const $defaultReasoningEffort = atom('')
 
+// The engine's effort for a new chat (`model.options.reasoning_effort`: saved pick, else the
+// provider's configured default). Fills the gap before config loads or when config sets none,
+// so a draft chat's pill shows what the request will carry, not the built-in medium.
+export const $engineReasoningEffort = atom('')
+
+export const setEngineReasoningEffort = (next: string) => updateAtom($engineReasoningEffort, next)
+
 export const setDefaultReasoningEffort = (next: string) => updateAtom($defaultReasoningEffort, next)
 
 export const setCurrentServiceTier = (next: Updater<string>) => updateAtom($currentServiceTier, next)

@@ -9,8 +9,6 @@ profile's FACTR_CONFIG_HOME, and the dashboard's own profile stays untouched.
 """
 import pytest
 import yaml
-import factr_backend.web_server_gateway as _web_server_gateway
-import factr_backend.web_server_profiles as _web_server_profiles
 
 
 def _write_skill(skills_dir, name, description="test skill"):
@@ -91,43 +89,3 @@ class TestProfileScopedSkills:
         before = skills_tool.SKILLS_DIR
         client.get("/api/skills", params={"profile": "worker_alpha"})
         assert skills_tool.SKILLS_DIR == before
-
-
-class TestProfileScopedHubActions:
-    def test_hub_install_spawns_with_profile_flag(
-        self, client, isolated_profiles, monkeypatch
-    ):
-        """Hub installs must go through a fresh ``factr -p <profile>``
-        subprocess — the in-process scope can't reach skills_hub's
-        import-time SKILLS_DIR binding."""
-        import factr_backend.web_server as web_server
-
-        calls = []
-
-        class _FakeProc:
-            pid = 4242
-
-        def _fake_spawn(subcommand, name):
-            calls.append((list(subcommand), name))
-            return _FakeProc()
-
-        monkeypatch.setattr(_web_server_gateway, "_spawn_factr_action", _fake_spawn)
-        resp = client.post(
-            "/api/skills/hub/install",
-            json={"identifier": "official/demo", "profile": "worker_alpha"},
-        )
-        assert resp.status_code == 200
-        assert calls == [
-            (
-                ["-p", "worker_alpha", "skills", "install", "official/demo", "--yes"],
-                _web_server_profiles._hub_action_name("install", "official/demo"),
-            )
-        ]
-
-
-    def test_hub_install_unknown_profile_404(self, client, isolated_profiles):
-        resp = client.post(
-            "/api/skills/hub/install",
-            json={"identifier": "official/demo", "profile": "ghost"},
-        )
-        assert resp.status_code == 404

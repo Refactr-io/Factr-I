@@ -172,7 +172,7 @@ function markFeature(path: string): string {
 }
 
 // ── Capability scope: (connection, profile) routing for the Capabilities
-// surface (skills / toolsets / MCP / hub / env / toolset config) ────────────
+// surface (skills / toolsets / MCP / env / toolset config) ────────────
 //
 // A profile is not a machine-global name — it belongs to ONE gateway. The
 // Capabilities surface can be pointed at any (connection, profile) pair

@@ -45,6 +45,7 @@ import {
   resolveComposerSessionKey,
   sessionMatchesStoredId,
   sessionPinId,
+  setEngineReasoningEffort,
   shouldMigrateComposerScope
 } from '@/store/session'
 import { $focusedStoredSessionId, $sessionStates, sessionTileDelegate } from '@/store/session-states'
@@ -708,6 +709,15 @@ const ChatViewContent = memo(function ChatViewContent({
       }),
     enabled: gatewayOpen
   })
+
+  // The engine's new-chat effort feeds the draft pill (see $engineReasoningEffort).
+  const engineReasoningEffort = modelOptionsQuery.data?.reasoning_effort
+
+  useEffect(() => {
+    if (typeof engineReasoningEffort === 'string') {
+      setEngineReasoningEffort(engineReasoningEffort)
+    }
+  }, [engineReasoningEffort])
 
   const quickModels = useMemo(
     () => quickModelOptions(modelOptionsQuery.data, currentProvider, currentModel),

@@ -82,8 +82,7 @@ export const $slashCompletionsEpoch = atom(0)
 
 /**
  * Drop cached `/` completions. Called from every site that changes which
- * skills exist or are enabled — install/uninstall/update from the hub, a
- * skill toggle or delete in Capabilities — so the composer's list matches
+ * skills exist or are enabled — a skill toggle or delete in Capabilities — so the composer's list matches
  * the backend without waiting out the TTL.
  */
 export function invalidateSlashCompletions(): void {

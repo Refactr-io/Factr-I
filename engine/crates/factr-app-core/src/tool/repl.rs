@@ -140,6 +140,19 @@ fn repl_python(
     factr_base::python_env::interpreter_from(explicit, env("PATH"))
 }
 
+/// The REPL's `refine(...)` host call. With learning off (`FACTR_LEARNING_ENABLED=0` or the setting)
+/// a `run` schedules nothing, so a benchmark run never gets a review the model asked for.
+fn refine_host(store: &factr_learn::entries::EntryStore, session: &str, op: &Value) -> Result<String> {
+    match op["op"].as_str().unwrap_or("run") {
+        "status" => Ok(json!({ "pending": store.refine_pending(session)? }).to_string()),
+        _ if !store.learning_enabled() => Ok(json!({ "scheduled": false, "reason": "disabled" }).to_string()),
+        _ => {
+            store.schedule_refine(session, op["instructions"].as_str(), op["global"].as_bool().unwrap_or(false))?;
+            Ok(json!({ "scheduled": true }).to_string())
+        }
+    }
+}
+
 impl ReplTool {
     /// `None` when the REPL is off or no interpreter is available.
     pub fn from_env() -> Option<Self> {
@@ -287,19 +300,7 @@ impl Tool for ReplTool {
                 let op: Value = serde_json::from_str(&op_json).unwrap_or_default();
                 let home = factr_base::storage::factr_dir()?;
                 let store = factr_learn::entries::EntryStore::open_cached(&home)?;
-                match op["op"].as_str().unwrap_or("run") {
-                    "status" => {
-                        Ok(json!({ "pending": store.refine_pending(&session_id)? }).to_string())
-                    }
-                    _ => {
-                        store.schedule_refine(
-                            &session_id,
-                            op["instructions"].as_str(),
-                            op["global"].as_bool().unwrap_or(false),
-                        )?;
-                        Ok(json!({ "scheduled": true }).to_string())
-                    }
-                }
+                refine_host(&store, &session_id, &op)
             })
         });
         let extra = factr_learn::host::ExtraHostFns {
@@ -475,6 +476,28 @@ impl Tool for ReplTool {
 #[cfg(test)]
 mod cell_tests {
     use super::*;
+
+    #[test]
+    fn refine_run_schedules_nothing_when_learning_is_off() {
+        let _env = crate::storage::lock_test_env();
+        let home = std::env::temp_dir().join(format!("repl-refine-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let store = factr_learn::entries::EntryStore::open_cached(&home).unwrap();
+        let prev = std::env::var_os("FACTR_LEARNING_ENABLED");
+        unsafe { std::env::set_var("FACTR_LEARNING_ENABLED", "0") };
+        let off = refine_host(&store, "s1", &json!({"op": "run", "instructions": "x"})).unwrap();
+        let pending_off = store.refine_pending("s1").unwrap();
+        unsafe { std::env::remove_var("FACTR_LEARNING_ENABLED") };
+        let on = refine_host(&store, "s1", &json!({"op": "run", "instructions": "x"})).unwrap();
+        match prev {
+            Some(v) => unsafe { std::env::set_var("FACTR_LEARNING_ENABLED", v) },
+            None => {}
+        }
+        assert_eq!(off, r#"{"reason":"disabled","scheduled":false}"#);
+        assert!(!pending_off, "nothing may be queued while learning is off");
+        assert!(on.contains("\"scheduled\":true"), "{on}");
+        let _ = std::fs::remove_dir_all(home);
+    }
 
     #[test]
     fn coroutine_errors_get_the_await_hint_and_tracebacks_keep_their_end() {

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getToolsetModels, searchSkillsHub, testMcpServer } from './factr'
+import { getToolsetModels, testMcpServer } from './factr'
 
-describe('Factr REST parity helpers (hub / mcp / maintenance)', () => {
+describe('Factr REST parity helpers (mcp / maintenance)', () => {
   let api: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -16,14 +16,6 @@ describe('Factr REST parity helpers (hub / mcp / maintenance)', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     Reflect.deleteProperty(window, 'factrDesktop')
-  })
-
-  it('encodes hub search params', async () => {
-    await searchSkillsHub('gif search', 'official', 5)
-
-    expect(api).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/api/skills/hub/search?q=gif+search&source=official&limit=5' })
-    )
   })
 
   it('tests an MCP server with an encoded name', async () => {

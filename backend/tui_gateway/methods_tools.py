@@ -1207,29 +1207,8 @@ def _(rid, params: dict) -> dict:
     return _err(rid, 4016, f"unknown cron action: {action}")
 
 
-def _skills_search(rid, params, query):
-    search, gh = _tools_mod("tools.skills_hub_search"), _tools_mod("tools.skills_hub_github")
-    raw = search.unified_search(query, search.create_source_router(gh.GitHubAuth()), source_filter="all", limit=20) or []
-    return _ok(rid, {"results": [{"name": r.name, "description": r.description} for r in raw]})
-
-
-def _skills_install(rid, params, query):
-    quiet = _tools_mod("types").SimpleNamespace(print=lambda *a, **k: None)
-    _tools_mod("factr_backend.skills_hub").do_install(query, skip_confirm=True, console=quiet)
-    return _ok(rid, {"installed": True, "name": query})
-
-
-def _skills_browse(rid, params, query):
-    pg = int(params.get("page", 0) or 0) or (int(query) if query.isdigit() else 1)
-    browse = _tools_mod("factr_backend.skills_hub").browse_skills
-    return _ok(rid, browse(page=pg, page_size=int(params.get("page_size", 20))))
-
-
 _SKILLS_ACTIONS = {
-    "list": lambda rid, params, query: _ok(rid, {"skills": _tools_mod("factr_backend.banner").get_available_skills()}),
-    "search": _skills_search, "install": _skills_install, "browse": _skills_browse,
-    "inspect": lambda rid, params, query: _ok(
-        rid, {"info": _tools_mod("factr_backend.skills_hub").inspect_skill(query) or {}})}
+    "list": lambda rid, params, query: _ok(rid, {"skills": _tools_mod("factr_backend.banner").get_available_skills()})}
 
 
 def _run_action(rid, params: dict, table: dict, label: str, *extra) -> dict:
@@ -1243,7 +1222,7 @@ def _run_action(rid, params: dict, table: dict, label: str, *extra) -> dict:
 
 @_scoped_rpc("skills.manage")
 def _(rid, params: dict) -> dict:
-    """list/install use the scoped profile's skills dir; search/browse/inspect hit the shared hub."""
+    """List the scoped profile's skills."""
     return _run_action(rid, params, _SKILLS_ACTIONS, "skills", params.get("query", ""))
 
 

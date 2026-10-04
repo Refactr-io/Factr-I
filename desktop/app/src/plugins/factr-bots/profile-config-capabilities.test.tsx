@@ -1,6 +1,6 @@
 /**
  * The bot editor's Advanced section renders the REAL core Capabilities
- * surfaces — CapabilitiesView (installed skills + hub installs + detail),
+ * surfaces — CapabilitiesView (installed skills + detail),
  * ToolsetConfigPanel (per-toolset env/keys/model/post-setup) and ConnectorsTab
  * (per-server enable + OAuth + API keys) — pinned to the bot's own profile,
  * instead of bare checkbox stand-ins.
@@ -194,7 +194,6 @@ describe('a build whose CapabilitiesView cannot route connections', () => {
     expect(sdk.seen.CapabilitiesView).toHaveLength(0)
     expect(sdk.seen.ConnectorsTab).toHaveLength(0)
     expect(sdk.seen.ToolsetConfigPanel).toHaveLength(0)
-    expect(screen.queryByText('Skills Hub')).toBeNull()
     expect(screen.queryByRole('button', { name: /Set up/ })).toBeNull()
     // Model + SOUL still edit, and stay staged until the user saves.
     expect(container.querySelector('textarea')).toBeTruthy()
@@ -213,9 +212,8 @@ describe('a build whose CapabilitiesView cannot route connections', () => {
       toolsets: [{ enabled: true, name: 'local-tools' }]
     })
 
-    // The staged checklist and the hub search section both survive here.
+    // The staged checklist survives here.
     expect(screen.getByText('staged-skill')).toBeTruthy()
-    expect(screen.getByText('Skills Hub')).toBeTruthy()
     expect(sdk.seen.ToolsetConfigPanel[0]).toEqual({
       profile: { connectionId: 'local', profile: 'default' },
       toolset: 'local-tools'

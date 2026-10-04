@@ -159,7 +159,7 @@ _OAUTH_PROVIDER_CATALOG: tuple[Dict[str, Any], ...] = (
     # Login works via the terminal (`factr auth add anthropic`) or a plain API key.
     {"id": "anthropic", "name": "Anthropic API Key", "flow": "external", "cli_command": "factr auth add anthropic",
      "docs_url": "https://docs.claude.com/en/api/getting-started", "status_fn": _anthropic_oauth_status},
-    {"id": "claude-code", "name": "Anthropic OAuth: Required Extra Usage Credits to Use Subscription",
+    {"id": "claude-code", "name": "Anthropic subscription (extra usage credits required)",
      "flow": "external", "cli_command": "claude setup-token",
      "docs_url": "https://docs.claude.com/en/docs/claude-code", "status_fn": _claude_code_only_status},
 )

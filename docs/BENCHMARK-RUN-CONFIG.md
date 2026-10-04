@@ -137,13 +137,41 @@ Never point `FACTR_BACKEND_CMD` at the engine binary or at the bundle's `Content
    - the reply has `ok: true`;
    - every `Model call` span in `$FACTR_HOME/factr.db` (`spans` table) names `gpt-6-luna` and carries `gen_ai.request.reasoning_effort` equal to the expected effort;
    - no `checkpoints` directory in `FACTR_HOME`;
-   - no `skills` directory in `FACTR_CONFIG_HOME` or `FACTR_HOME`;
+   - no `skills` directory in `FACTR_CONFIG_HOME`, and none in `FACTR_HOME` unless a REPL cell ran with learning enabled (with `FACTR_LEARNING_ENABLED=0` the REPL no longer creates it);
    - no `headless-deny` rows in the `approvals` table (`actor` column) of `$FACTR_HOME/factr.db`;
    - no `memory.extract` or `memory.recall` span, and `learning.skip` spans only;
    - the pre-flight of section 4 passed (no `model provider not ready` on stderr, `authenticated: true` for the current provider).
 4. Environment audit: print the engine's environment (names only) and confirm nothing outside section 3 matches `FACTR_`, and nothing ends in `API_KEY`, `TOKEN` or `SECRET`. Also confirm `ls` of the task's `HOME`, `FACTR_HOME` and `FACTR_CONFIG_HOME` shows nothing the run should not have created, and that the real `~/.factr` is unchanged.
 5. Label settings recorded in the results header: every row of section 6 with its chosen treatment.
 6. An explicit go from the operator. A smoke task is a paid run; do not start the scored window without it.
+
+## 9. Runner rules (what the runner must do; the engine does not do these for you)
+
+These come from an independent review of the headless run path.
+
+0. **Grade `final_text`, not `text`.** The `/api/agent/run` reply carries `final_text` (the last assistant message of the turn) next to `text`, which joins the text from before and after any stop nudge. Graders should take `final_text`.
+1. **Empty or notice-only text is "no answer", never a result.** After repeated empty model turns the engine can still return `ok:true` with `text:""` or with a text that starts with `[provider guardrail]`. Treat both as "no result" and re-queue or record them as infrastructure failures.
+2. **Classify infrastructure errors and re-queue them, do not score them.** An `error` that mentions a usage limit, `429` or a rate limit; `Codex login expired`; `OpenAI rejected the access token...`; and `ok:false` with `text:""` after a timeout are not task results. With `FACTR_WAIT_FOR_USAGE_MAX_S=0` a usage limit fails the task immediately.
+3. **Run tasks sequentially, or with at most 2 engines at once.** Every engine shares one account's quota, so parallel engines hit a limit together.
+4. **Isolate task directories.** The file and search tools have no workspace sandbox: `ls ../` or a search with `path:".."` can reach sibling task directories and their answers. Put each task's `cwd` under a parent that holds nothing else, and delete finished task directories before the next task starts.
+5. **Token window.** The engine never spends the refresh token. Refresh the master login once per benchmark window, read the JWT `exp`, and start a task only if `exp - now > 15 minutes + timeout_s`. Copy `auth.json` fresh for every task.
+6. **Never configure `fallback_providers`.** It makes the engine silently switch to another provider on non-context errors. Assert it is absent from every task `config.yaml` and grep the spans for `reason=provider_fallback` in the smoke task.
+7. **Shutdown.** Wait at least 1 second after the reply before sending SIGTERM (spans are written by a batched writer about 0.3 to 0.5 seconds after the reply), then make sure no descendants survive: commands started with `nohup` or `setsid` can outlive the engine's group kill, so kill leftover descendants of the engine by process tree.
+8. **Tool policy per task.** The web tools (`websearch`, `webfetch`) are available by default and reach public search engines and pages without API keys. Pass `enabled_toolsets` per task and record the exact set and the tool list from the request body. Recommended sets:
+   - GAIA: `["terminal","file","code_execution","web","todo"]`. Run a free live smoke of `websearch` and `webfetch` first (a scripted fake model calls them; no paid call), because they scrape public pages.
+   - TBLite, Aider polyglot, OOLONG, OOLONG-Pairs, LongCoT-Mini: `["terminal","file","code_execution","todo"]`. The REPL has no network.
+   - Leave out `browser`, `delegation`, `memory`, `skills`, `session_search`, `cronjob` and `clarify` everywhere.
+   - A call to a tool that is off the list is returned to the model as a tool error and the run continues; `disabled_toolsets:["web"]` behaves the same way.
+   - Check whether the hosted `image_generation` tool still appears in the request and record it.
+9. **Memory cap.** Set `terminal.max_memory_mb` in the task `config.yaml` (a few GB, and above 256 MiB so the REPL's own 256 MiB cap is not lowered) so a runaway command is killed at a fixed threshold; without it the engine kills only under real memory pressure. Record the value.
+10. **Linux.** The REPL is off on Linux unless `FACTR_REPL_PYTHON` is set; set it there (the only case where this variable is set) and record it. If `HTTPS_PROXY` is set, add `NO_PROXY=127.0.0.1`.
+
+## 10. Behaviours to label in the results
+
+- **Repeat guard.** The 6th identical `(tool, args, result)` call gets a tool error and the 10th ends the turn (`ok:false`). A model re-running the same failing command ten times is stopped by this rule. Identify such runs by the `loop.guard action=stop` span and do not count them as model failures without looking.
+- **Reflection turns.** Commands such as `rm -r`, `find -delete`, `git clean`, `chmod -R`, `dd`, `truncate` and `xargs rm` always cost one reflection turn before the retry, regardless of `approvals.mode`. Label if relevant.
+- **Tool output caps.** Tool results over about 50 KB are cut (40% head, 60% tail) with a note and a spill file; `repl` output is capped at 8,000 characters. These announce themselves. REPL-heavy tasks will page a lot.
+- **A timeout** interrupts the session and returns `ok:false` with `text:""`; files already written stay on disk (relevant to graded file outputs).
 
 ## Integrity
 

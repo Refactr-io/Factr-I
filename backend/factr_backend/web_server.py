@@ -989,7 +989,6 @@ app.include_router(_status_routes.logs_router)
 app.include_router(_cron_routes.router)
 app.include_router(_mcp_routes.router)
 app.include_router(_ops_routes.router)
-app.include_router(_skills_routes.hub_router)
 app.include_router(_profiles_routes.router)
 app.include_router(_skills_routes.router)
 app.include_router(_tools_routes.router)
@@ -1634,10 +1633,7 @@ _PLUGIN_COMPAT_LAZY = {
     'SessionRename': ('factr_backend.web_models', 'SessionRename'),
     'SkillContentUpdate': ('factr_backend.web_models', 'SkillContentUpdate'),
     'SkillCreate': ('factr_backend.web_models', 'SkillCreate'),
-    'SkillInstallRequest': ('factr_backend.web_models', 'SkillInstallRequest'),
     'SkillToggle': ('factr_backend.web_models', 'SkillToggle'),
-    'SkillUninstallRequest': ('factr_backend.web_models', 'SkillUninstallRequest'),
-    'SkillsUpdateRequest': ('factr_backend.web_models', 'SkillsUpdateRequest'),
     'TTSLeaseRequest': ('factr_backend.web_models', 'TTSLeaseRequest'),
     'TTSSpeakRequest': ('factr_backend.web_models', 'TTSSpeakRequest'),
     'TerminalBackendSelect': ('factr_backend.web_models', 'TerminalBackendSelect'),
@@ -1787,7 +1783,6 @@ _PLUGIN_COMPAT_LAZY = {
     'grant_computer_use_permissions': ('factr_backend.web_routers.tools', 'grant_computer_use_permissions'),
     'import_sessions_endpoint': ('factr_backend.web_routers.sessions', 'import_sessions_endpoint'),
     'install_mcp_catalog_entry': ('factr_backend.web_routers.mcp', 'install_mcp_catalog_entry'),
-    'install_skill_hub': ('factr_backend.web_routers.skills', 'install_skill_hub'),
     'instantiate_blueprint': ('factr_backend.web_routers.cron', 'instantiate_blueprint'),
     'is_nix_install_method': ('factr_backend.config', 'is_nix_install_method'),
     'list_checkpoints': ('factr_backend.web_routers.ops', 'list_checkpoints'),
@@ -1803,7 +1798,6 @@ _PLUGIN_COMPAT_LAZY = {
     'list_oauth_providers': ('factr_backend.web_routers.oauth', 'list_oauth_providers'),
     'list_pairing': ('factr_backend.web_routers.ops', 'list_pairing'),
     'list_profiles_endpoint': ('factr_backend.web_routers.profiles', 'list_profiles_endpoint'),
-    'list_skills_hub_sources': ('factr_backend.web_routers.skills', 'list_skills_hub_sources'),
     'list_webhooks': ('factr_backend.web_routers.ops', 'list_webhooks'),
     'load_env': ('factr_backend.config', 'load_env'),
     'mcp_oauth_callback': ('factr_backend.web_routers.mcp', 'mcp_oauth_callback'),
@@ -1818,7 +1812,6 @@ _PLUGIN_COMPAT_LAZY = {
     'post_agent_plugin_install': ('factr_backend.web_routers.dashboard_ui', 'post_agent_plugin_install'),
     'post_agent_plugin_update': ('factr_backend.web_routers.dashboard_ui', 'post_agent_plugin_update'),
     'post_plugin_visibility': ('factr_backend.web_routers.dashboard_ui', 'post_plugin_visibility'),
-    'preview_skill_hub': ('factr_backend.web_routers.skills', 'preview_skill_hub'),
     'prune_checkpoints': ('factr_backend.web_routers.ops', 'prune_checkpoints'),
     'prune_sessions_endpoint': ('factr_backend.web_routers.sessions', 'prune_sessions_endpoint'),
     'pty_ws': ('factr_backend.web_routers.chat_ws', 'pty_ws'),
@@ -1857,9 +1850,7 @@ _PLUGIN_COMPAT_LAZY = {
     'save_config': ('factr_backend.config', 'save_config'),
     'save_env_value': ('factr_backend.config', 'save_env_value'),
     'save_toolset_env': ('factr_backend.web_routers.tools', 'save_toolset_env'),
-    'scan_skill_hub': ('factr_backend.web_routers.skills', 'scan_skill_hub'),
     'search_sessions': ('factr_backend.web_routers.sessions', 'search_sessions'),
-    'search_skills_hub': ('factr_backend.web_routers.skills', 'search_skills_hub'),
     'select_terminal_backend': ('factr_backend.web_routers.tools', 'select_terminal_backend'),
     'select_toolset_model': ('factr_backend.web_routers.tools', 'select_toolset_model'),
     'select_toolset_provider': ('factr_backend.web_routers.tools', 'select_toolset_provider'),
@@ -1890,7 +1881,6 @@ _PLUGIN_COMPAT_LAZY = {
     'transcribe_audio_upload': ('factr_backend.web_routers.audio', 'transcribe_audio_upload'),
     'trigger_cron_job': ('factr_backend.web_routers.cron', 'trigger_cron_job'),
     'tts_lease': ('factr_backend.web_routers.audio', 'tts_lease'),
-    'uninstall_skill_hub': ('factr_backend.web_routers.skills', 'uninstall_skill_hub'),
     'update_config': ('factr_backend.web_routers.config_env', 'update_config'),
     'update_config_raw': ('factr_backend.web_routers.analytics', 'update_config_raw'),
     'update_cron_job': ('factr_backend.web_routers.cron', 'update_cron_job'),
@@ -1901,7 +1891,6 @@ _PLUGIN_COMPAT_LAZY = {
     'update_profile_model_endpoint': ('factr_backend.web_routers.profiles', 'update_profile_model_endpoint'),
     'update_profile_soul': ('factr_backend.web_routers.profiles', 'update_profile_soul'),
     'update_skill_content': ('factr_backend.web_routers.skills', 'update_skill_content'),
-    'update_skills_hub': ('factr_backend.web_routers.skills', 'update_skills_hub'),
     'upload_chat_image': ('factr_backend.web_routers.files', 'upload_chat_image'),
     'upload_managed_file': ('factr_backend.web_routers.files', 'upload_managed_file'),
     'upload_managed_file_stream': ('factr_backend.web_routers.files', 'upload_managed_file_stream'),

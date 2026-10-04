@@ -5,7 +5,7 @@ import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { type Translations, useI18n } from '@/i18n'
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw } from '@/lib/icons'
+import { AlertTriangle, CheckCircle2, ExternalLink, Info, Loader2, RefreshCw } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import {
   $desktopVersion,
@@ -97,6 +97,7 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
 
   let statusLine: string
   let statusTone: 'idle' | 'available' | 'error' = 'idle'
+  let checkFailed = false
 
   if (!supported) {
     statusLine = status?.message ?? a.cantUpdate
@@ -108,6 +109,7 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
     const local = status.error === 'git-unusable'
     statusLine = local ? (status.message ?? a.cantReach) : a.cantReach
     statusTone = local ? 'error' : 'idle'
+    checkFailed = true
   } else if (applying) {
     statusLine = a.installing
     statusTone = 'available'
@@ -197,7 +199,9 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
           <div className="flex items-start gap-2">
             {statusTone === 'available' ? (
               <Codicon className="mt-0.5 size-4 shrink-0 text-primary" name="cloud-download" size="1rem" />
-            ) : statusTone === 'error' ? null : (
+            ) : statusTone === 'error' ? null : checkFailed ? (
+              <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" data-testid="about-check-failed-icon" />
+            ) : (
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
             )}
             <div className="min-w-0">

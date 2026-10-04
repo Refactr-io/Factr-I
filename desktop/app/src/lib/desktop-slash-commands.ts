@@ -28,7 +28,7 @@ export interface CommandsCatalogLike {
  */
 export interface SkillCatalogEntry {
   /** Where the skill came from; matches `/api/skills` provenance ('agent' = 'local'). */
-  origin?: 'bundled' | 'hub' | 'local'
+  origin?: 'bundled' | 'local'
   /** Observed activity (use + view + patch) — the same number Capabilities shows. */
   usage?: number
 }

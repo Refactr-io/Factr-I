@@ -14,8 +14,12 @@ import pytest
 
 
 @pytest.fixture
-def adapter_mod():
-    sys.modules.pop("plugins.platforms.discord.adapter", None)
+def adapter_mod(monkeypatch):
+    # Re-import fresh, but restore the cached module (and the package's `adapter` attribute) at
+    # teardown so this test's copy does not leak into later Discord test files.
+    pkg = importlib.import_module("plugins.platforms.discord")
+    monkeypatch.setattr(pkg, "adapter", importlib.import_module("plugins.platforms.discord.adapter"))
+    monkeypatch.delitem(sys.modules, "plugins.platforms.discord.adapter", raising=False)
     return importlib.import_module("plugins.platforms.discord.adapter")
 
 

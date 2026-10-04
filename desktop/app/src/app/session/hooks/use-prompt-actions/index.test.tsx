@@ -1954,11 +1954,13 @@ describe('usePromptActions desktop slash pickers', () => {
 
     let handle: HarnessHandle | null = null
     let messages: { parts: { text?: string }[] }[] = []
+    const storedIds: (null | string | undefined)[] = []
 
     await actRender(
       <Harness
         onReady={h => (handle = h)}
-        onUpdateState={(_id, _stored, next) => {
+        onUpdateState={(_id, stored, next) => {
+          storedIds.push(stored)
           messages = (next as { messages: typeof messages }).messages
         }}
         refreshSessions={async () => undefined}
@@ -1967,6 +1969,10 @@ describe('usePromptActions desktop slash pickers', () => {
     )
 
     await handle!.submitText('/handoff telegram')
+
+    // Bound to the target chat's stored id like every other slash outcome, so it lands in the visible transcript.
+    expect(storedIds.length).toBeGreaterThan(0)
+    expect(storedIds.every(id => id !== undefined)).toBe(true)
 
     const line = 'No messaging platform is configured for handoff'
     expect(JSON.stringify(messages)).toContain(line)

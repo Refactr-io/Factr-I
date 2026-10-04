@@ -171,6 +171,7 @@ export interface ModelOptionsResult {
   providers: ModelOptionProvider[]
   model?: string
   provider?: string
+  reasoning_effort?: string | null
 }
 /** One ``factr_backend/inventory.py::build_models_payload`` provider row (the union of every field the builder sets; ``pricing_pending`` marks the cached-only path). */
 export interface ModelOptionProvider {
@@ -3203,49 +3204,14 @@ export interface ReloadMcpResult {
   host_ack?: unknown | null
 }
 export type ReloadMcpStatus = 'confirm_required' | 'reloaded'
-/** ``query`` is the search text / hub identifier / browse page (digits); ``page`` / ``page_size`` apply to ``browse``. */
 export interface SkillsManageParams {
   profile?: string | null
   action?: SkillsAction
-  query?: string | null
-  page?: number | null
-  page_size?: number | null
 }
-export type SkillsAction = 'list' | 'search' | 'install' | 'browse' | 'inspect'
-/** Shape follows the action: ``list`` → ``skills`` (category → names); ``search`` → ``results``; ``install`` → ``installed`` + ``name``; ``browse`` → ``items`` + paging; ``inspect`` → ``info``. */
+export type SkillsAction = 'list'
+/** ``list`` → ``skills`` (category → names). */
 export interface SkillsManageResult {
   skills?: Record<string, string[]> | null
-  results?: SkillHubHit[] | null
-  installed?: boolean | null
-  name?: string | null
-  items?: SkillBrowseItem[] | null
-  page?: number | null
-  total_pages?: number | null
-  total?: number | null
-  info?: SkillInspectInfo | null
-}
-export interface SkillHubHit {
-  name: string
-  description: string
-}
-/** ``factr_backend.skills_hub.browse_skills`` row. */
-export interface SkillBrowseItem {
-  name?: string
-  description?: string
-  source?: string
-  trust?: string | null
-  identifier?: string | null
-  [key: string]: unknown
-}
-/** ``factr_backend.skills_hub.inspect_skill``; ``{}`` when the identifier resolves nowhere. */
-export interface SkillInspectInfo {
-  name?: string | null
-  description?: string | null
-  source?: string | null
-  identifier?: string | null
-  tags?: string[] | null
-  skill_md_preview?: string | null
-  [key: string]: unknown
 }
 /** ``session_id`` binds the rescan to that session's profile and workspace (project skills). */
 export interface SkillsReloadParams {
@@ -4498,7 +4464,7 @@ export interface RpcMethods {
   'setup.status': { params: ProfileParams; result: SetupStatusResult }
   /** Run a safe (non-dangerous) shell command captured for ``!cmd`` / inline substitution. */
   'shell.exec': { params: ShellExecParams; result: ShellExecResult }
-  /** Skills hub backend: list the profile's skills or search / browse / inspect / install from the hub. */
+  /** List the profile's skills. */
   'skills.manage': { params: SkillsManageParams; result: SkillsManageResult }
   /** Re-scan skill dirs; the pre-rendered ``output`` is what /reload-skills prints. */
   'skills.reload': { params: SkillsReloadParams; result: SkillsReloadResult }

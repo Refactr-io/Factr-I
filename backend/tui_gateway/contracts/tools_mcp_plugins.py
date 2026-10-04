@@ -143,65 +143,20 @@ method("reload.mcp", params=ReloadMcpParams, result=ReloadMcpResult,
 
 class SkillsAction(WireEnum):
     list = "list"
-    search = "search"
-    install = "install"
-    browse = "browse"
-    inspect = "inspect"
 
 
 class SkillsManageParams(ProfileParams):
-    """``query`` is the search text / hub identifier / browse page (digits); ``page`` / ``page_size``
-    apply to ``browse``."""
-
     action: SkillsAction = SkillsAction.list
-    query: str | None = None
-    page: int | None = None
-    page_size: int | None = None
-
-
-class SkillHubHit(Result):
-    name: str
-    description: str
-
-
-class SkillBrowseItem(OpenModel):
-    """``factr_backend.skills_hub.browse_skills`` row."""
-
-    name: str = ""
-    description: str = ""
-    source: str = ""
-    trust: str | None = None
-    identifier: str | None = None
-
-
-class SkillInspectInfo(OpenModel):
-    """``factr_backend.skills_hub.inspect_skill``; ``{}`` when the identifier resolves nowhere."""
-
-    name: str | None = None
-    description: str | None = None
-    source: str | None = None
-    identifier: str | None = None
-    tags: list[str] | None = None
-    skill_md_preview: str | None = None
 
 
 class SkillsManageResult(Result):
-    """Shape follows the action: ``list`` → ``skills`` (category → names); ``search`` → ``results``;
-    ``install`` → ``installed`` + ``name``; ``browse`` → ``items`` + paging; ``inspect`` → ``info``."""
+    """``list`` → ``skills`` (category → names)."""
 
     skills: dict[str, list[str]] | None = None
-    results: list[SkillHubHit] | None = None
-    installed: bool | None = None
-    name: str | None = None
-    items: list[SkillBrowseItem] | None = None
-    page: int | None = None
-    total_pages: int | None = None
-    total: int | None = None
-    info: SkillInspectInfo | None = None
 
 
 method("skills.manage", params=SkillsManageParams, result=SkillsManageResult,
-       doc="Skills hub backend: list the profile's skills or search / browse / inspect / install from the hub.")
+       doc="List the profile's skills.")
 
 
 class SkillsReloadParams(Params):

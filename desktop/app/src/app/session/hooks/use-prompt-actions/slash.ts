@@ -147,8 +147,8 @@ interface SlashCommandDeps {
   handleSkinCommand: (arg: string) => string
   handoffSession: (
     platform: string,
-    options?: { onProgress?: (state: string) => void; sessionId?: string }
-  ) => Promise<{ ok: boolean; error?: string }>
+    options?: { onProgress?: (state: string) => void; sessionId?: string; storedSessionId?: null | string }
+  ) => Promise<{ ok: boolean; error?: string; }>
   openMemoryGraph: () => void
   refreshSessions: () => Promise<void>
   requestGateway: GatewayRequest
@@ -964,8 +964,8 @@ export function useSlashCommand(deps: SlashCommandDeps) {
         // completed inline in the slash popover (backend _handoff_completions),
         // so there is no overlay: `/handoff <platform>` runs the desktop's own
         // handoff RPC. cli_only on the backend, so it must not reach slash.exec.
-        handoff: async ({ arg, command, recordInput, sessionHint }) => {
-          const platform = arg.trim()
+        handoff: async ctx => {
+          const platform = ctx.arg.trim()
 
           if (!platform) {
             notify({ kind: 'success', message: copy.handoff.pickPlatform })
@@ -973,15 +973,18 @@ export function useSlashCommand(deps: SlashCommandDeps) {
             return
           }
 
-          const sid = sessionHint || activeSessionIdRef.current
+          // Same writer as /save and friends: the notice is bound to the target
+          // session's stored id, so it lands in the transcript that is on screen.
+          const resolved = await withSlashOutput(ctx)
 
-          if (!sid) {
-            notify({ kind: 'error', title: copy.sessionUnavailable, message: copy.createSessionFailed })
-
+          if (!resolved) {
             return
           }
 
-          const result = await handoffSession(platform, { sessionId: sid })
+          const result = await handoffSession(platform, {
+            sessionId: resolved.sessionId,
+            storedSessionId: resolved.storedSessionId
+          })
 
           if (!result.ok) {
             // Never silent: an unconfigured platform is the common case, and the backend's reason is
@@ -992,7 +995,7 @@ export function useSlashCommand(deps: SlashCommandDeps) {
               ? copy.handoff.notConfigured(platform)
               : raw
 
-            appendSessionTextMessage(sid, 'system', recordInput ? slashStatusText(command, message) : message)
+            resolved.render(message)
             notify({ kind: 'error', message })
           }
         },

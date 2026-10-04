@@ -37,7 +37,7 @@ export function currentPickerSelection(
  * never reach user-facing copy. */
 export const PROVIDER_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   anthropic: 'Anthropic API Key',
-  'claude-code': 'Anthropic OAuth: Required Extra Usage Credits to Use Subscription',
+  'claude-code': 'Anthropic subscription (extra usage credits required)',
   'minimax-oauth': 'MiniMax',
   'openai-codex': 'ChatGPT or Codex Subscription',
   'qwen-oauth': 'Qwen Code',

@@ -1578,7 +1578,6 @@ export const en: Translations = {
       tasks: {
         vision: { label: 'Vision', hint: 'Image analysis' },
         compression: { label: 'Compression', hint: 'Context compaction' },
-        skills_hub: { label: 'Skills hub', hint: 'Skill search' },
         approval: { label: 'Approval', hint: 'Smart auto-approve' },
         mcp: { label: 'MCP', hint: 'MCP tool routing' },
         title_generation: { label: 'Title gen', hint: 'Session titles' },
@@ -1921,8 +1920,7 @@ export const en: Translations = {
     usageCount: count => `used ${count}×`,
     provenance: {
       agent: 'Learned',
-      bundled: 'Built-in',
-      hub: 'Hub'
+      bundled: 'Built-in'
     },
     emptyNoneFound: noun => `No ${noun} found`,
     emptyNothingMatches: query => `Nothing matches “${query}”.`,
@@ -2036,66 +2034,6 @@ export const en: Translations = {
         secretStoredAs: (env: string) =>
           `Stored in the profile's .env as ${env}, never in config.yaml; leave blank to keep the current value.`
       }
-    },
-    officialCatalog: 'Available to install',
-    officialPill: 'Official',
-    hub: {
-      searchPlaceholder: 'Search the skill hub',
-      search: 'Search',
-      searching: 'Searching...',
-      connectingHubs: 'Connecting to skill hubs...',
-      connectedHubs: 'Connected hubs:',
-      featured: 'Featured skills',
-      landingHint:
-        'Search the hub to browse installable skills from the official index, GitHub, and community sources.',
-      noResults: 'No matching skills found in the hub.',
-      resultCount: (count, ms) => `${count} result${count === 1 ? '' : 's'}${ms !== null ? ` in ${ms}ms` : ''}`,
-      timedOut: sources => `Timed out: ${sources}`,
-      installed: 'Installed',
-      install: 'Install',
-      installing: 'Installing...',
-      uninstall: 'Uninstall',
-      uninstalling: 'Uninstalling...',
-      updateAll: 'Update installed',
-      updating: 'Updating...',
-      preview: 'Preview',
-      scan: 'Scan',
-      scanning: 'Scanning...',
-      close: 'Close',
-      files: 'Files',
-      noReadme: 'This skill has no SKILL.md preview.',
-      trust: {
-        builtin: 'builtin',
-        trusted: 'trusted',
-        community: 'community'
-      },
-      verdictSafe: 'Safe',
-      verdictCaution: 'Caution',
-      verdictDangerous: 'Dangerous',
-      policyAllow: 'Install allowed',
-      policyAsk: 'Review before installing',
-      policyBlock: 'Install blocked by policy',
-      findings: count => `${count} finding${count === 1 ? '' : 's'}`,
-      noFindings: 'No security findings.',
-      installStarted: name => `Installing ${name}...`,
-      uninstallStarted: name => `Uninstalling ${name}...`,
-      updateStarted: 'Updating installed skills...',
-      actionFailed: 'Skill action failed',
-      installBlockedTitle: name => `Couldn't install ${name}`,
-      installBlockedMessage: (findings, unverified) =>
-        `The security scan flagged ${findings > 0 ? `${findings} item${findings === 1 ? '' : 's'}` : 'risky patterns'} to review${unverified ? ' and the skill comes from an unverified source' : ''}. Read the scan before deciding whether to trust the author.`,
-      viewScan: 'View scan',
-      openLog: 'Open log',
-      actionLog: 'Action log',
-      alreadyInstalled: (name: string) => `"${name}" is already installed`,
-      pickerTitle: 'Skills Hub',
-      pickerBrowse: 'Browse the full hub',
-      pickerHide: 'Hide the hub browser',
-      pickerHint: 'Hit "+ Add to this Agent" on any skill — it installs and appears in the list above.',
-      loadFailed: 'Skill hub failed to load',
-      previewFailed: 'Skill preview failed',
-      scanFailed: 'Security scan failed',
-      searchFailed: 'Hub search failed'
     }
   },
 

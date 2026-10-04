@@ -43,7 +43,7 @@ import {
   setModelVisibilityOpen
 } from '@/store/model-visibility'
 import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
-import { $defaultReasoningEffort } from '@/store/session'
+import { $defaultReasoningEffort, $engineReasoningEffort } from '@/store/session'
 import type { LocalModelLoadProgress } from '@/types/factr'
 
 import { supportedEfforts } from './effort-slider'
@@ -784,5 +784,8 @@ function useStoreCollapsed(): string[] {
 }
 
 function useDefaultEffort(): string {
-  return useStore($defaultReasoningEffort) || DEFAULT_REASONING_EFFORT
+  const configured = useStore($defaultReasoningEffort)
+  const engine = useStore($engineReasoningEffort)
+
+  return configured || engine || DEFAULT_REASONING_EFFORT
 }

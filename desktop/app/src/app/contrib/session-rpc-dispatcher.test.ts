@@ -327,4 +327,18 @@ describe('createSessionRpcDispatcher: stale runtime recovery', () => {
 
     expect(sessionMocks.requestSessionResume).not.toHaveBeenCalled()
   })
+
+  it('does not queue a route resume for handoff.request (the handoff recovers itself; a reload would wipe its notice)', async () => {
+    setSessions([makeSessionInfo({ connection_id: 'local', id: 'stored-omar', profile: 'omar' })])
+    gatewayMocks.requestGatewayForAgent.mockRejectedValueOnce(
+      Object.assign(new Error('session not found'), { code: 4001 })
+    )
+    const { request } = dispatcher(undefined, 'stored-omar')
+
+    await expect(request('handoff.request', { platform: 'telegram', session_id: 'rt-omar' })).rejects.toThrow(
+      'session not found'
+    )
+
+    expect(sessionMocks.requestSessionResume).not.toHaveBeenCalled()
+  })
 })

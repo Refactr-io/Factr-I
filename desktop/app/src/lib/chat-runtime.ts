@@ -351,6 +351,18 @@ export function messageCreatedAt(message: Pick<ChatMessage, 'timestamp'>, nowMs 
     : new Date(nowMs)
 }
 
+// The engine appends `<environment>cwd …; have: …</environment>` to the first prompt of a headless
+// run (cron, REST). It is for the model; the transcript shows only what the person wrote.
+// Tags AND contents go; a block whose closing tag was cut off runs to the end of the text. The
+// second pattern catches the same block when its tags were lost upstream (body text only).
+const ENVIRONMENT_BLOCK = /\s*<environment[\w-]*(?:\s[^>]*)?>[\s\S]*?(?:<\/environment[\w-]*\s*>|$)/gi
+const ENVIRONMENT_BODY = /\s*\bcwd \S+; have: [\s\S]*?; missing: [\s\S]*?; files:[\s\S]*$/
+const ENVIRONMENT_HINT = /<environment|\bcwd \S+; have: /i
+
+export function stripEnvironmentBlock(text: string): string {
+  return ENVIRONMENT_HINT.test(text) ? text.replace(ENVIRONMENT_BLOCK, '').replace(ENVIRONMENT_BODY, '').trim() : text
+}
+
 export function toRuntimeMessage(message: ChatMessage): ThreadMessage {
   const role =
     message.role === 'user' || message.role === 'assistant' || message.role === 'system' ? message.role : 'assistant'
@@ -373,7 +385,10 @@ export function toRuntimeMessage(message: ChatMessage): ThreadMessage {
     return {
       id: message.id,
       role,
-      content: message.parts.filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text'),
+      content: message.parts
+        .filter((part): part is Extract<ChatMessagePart, { type: 'text' }> => part.type === 'text')
+        .map(part => (ENVIRONMENT_HINT.test(part.text) ? { ...part, text: stripEnvironmentBlock(part.text) } : part))
+        .filter(part => part.text !== '' || message.parts.length === 1),
       attachments: [],
       createdAt,
       metadata: { custom: { attachmentRefs: message.attachmentRefs ?? [], ...reactionMeta, ...timelineMeta } }

@@ -11,6 +11,7 @@ import { $modelPresets, applyModelPreset, modelPresetKey, setModelPreset } from 
 import { notifyError } from '@/store/notifications'
 import {
   $defaultReasoningEffort,
+  $engineReasoningEffort,
   markComposerSelectionManual,
   setCurrentFastMode,
   setCurrentReasoningEffort
@@ -60,7 +61,9 @@ export function useModelMenuController({
   const currentReasoningEffort = useStore(view.$reasoningEffort)
   const currentReasoningEffortWire = useStore(view.$reasoningEffortWire)
   const modelPresets = useStore($modelPresets)
-  const defaultEffort = useStore($defaultReasoningEffort) || DEFAULT_REASONING_EFFORT
+  const configuredEffort = useStore($defaultReasoningEffort)
+  const engineEffort = useStore($engineReasoningEffort)
+  const defaultEffort = configuredEffort || engineEffort || DEFAULT_REASONING_EFFORT
   const touchesPrimary = view.kind === 'primary'
 
   // Subscribe to the SAME query the menu runs (identical key ⇒ React Query

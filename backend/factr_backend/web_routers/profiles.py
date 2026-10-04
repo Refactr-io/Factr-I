@@ -36,7 +36,7 @@ from factr_backend.web_server_config import (
 from factr_backend.web_server_gateway import _strip_session_list_rows
 from factr_backend.web_routers._common import _CONFIG_MUTATION_LOCK
 from factr_backend.web_server_profiles import (
-    _fallback_profile_dicts, _hub_action_name, _write_profile_mcp_servers,
+    _fallback_profile_dicts, _write_profile_mcp_servers,
 )
 from factr_backend.web_server_sessions import _open_session_db_at_path
 from factr_state_health import STORAGE_CORRUPT, note_storage_error, storage_state
@@ -757,21 +757,8 @@ async def create_profile_endpoint(body: ProfileCreate):
         "Applying skill selection for new profile %s failed", body.name, default=0,
         fn=lambda: _disable_unselected_skills(path, body.keep_skills)) if body.keep_skills else 0
 
-    # Hub installs spawn async, scoped via `-p <name>` (a fresh subprocess re-binds
-    # skills_hub.SKILLS_DIR at import). PIDs go back for the UI to poll.
-    def _spawn_install(ident: str):
-        return _spawn_factr_action(["-p", body.name, "skills", "install", ident, "--yes"],
-                                    _hub_action_name("install", ident)).pid
-
-    hub_installs: List[Dict[str, Any]] = [
-        {"identifier": ident, "pid": _best_effort(
-            "Spawning hub-skill install %s for new profile %s failed", ident, body.name,
-            fn=lambda: _spawn_install(ident))}
-        for ident in ((i or "").strip() for i in body.hub_skills) if ident]
-
     return {"ok": True, "name": body.name, "path": str(path), "model_set": model_set, "model_error": model_error,
-            "mcp_written": mcp_written, "skills_disabled": skills_disabled,
-            "hub_installs": hub_installs}
+            "mcp_written": mcp_written, "skills_disabled": skills_disabled}
 
 
 @router.get("/api/profiles/active")

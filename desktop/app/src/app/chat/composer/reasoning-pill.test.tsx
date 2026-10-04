@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { ChatBarState } from '@/app/chat/composer/types'
 import { type SessionView, SessionViewProvider } from '@/app/chat/session-view'
-import { $defaultReasoningEffort } from '@/store/session'
+import { $defaultReasoningEffort, $engineReasoningEffort } from '@/store/session'
 
 import { ReasoningPill } from './reasoning-pill'
 
@@ -37,6 +37,7 @@ const tileView = (reasoningEffort: string, reasoningEffortWire = ''): SessionVie
 afterEach(() => {
   cleanup()
   $defaultReasoningEffort.set('')
+  $engineReasoningEffort.set('')
 })
 
 describe('ReasoningPill', () => {
@@ -82,6 +83,18 @@ describe('ReasoningPill', () => {
     )
 
     expect(screen.getByTestId('reasoning-pill').textContent).toBe('High')
+  })
+
+  it("shows the engine's new-chat effort before any session or config default, not the built-in medium", () => {
+    $engineReasoningEffort.set('low')
+
+    render(
+      <SessionViewProvider value={tileView('')}>
+        <ReasoningPill disabled={false} model={modelState()} />
+      </SessionViewProvider>
+    )
+
+    expect(screen.getByTestId('reasoning-pill').textContent).toBe('Low')
   })
 
   it('hides when the catalog says the model has no reasoning control, but not while that is unknown', () => {

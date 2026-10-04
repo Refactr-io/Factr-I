@@ -541,6 +541,60 @@ impl PromotedCommandProgress {
     }
 }
 
+/// Line reader over a command's output that decodes lossily. tokio's
+/// `Lines` fails on the first invalid UTF-8 byte and ends the stream, which
+/// dropped everything after it and reported "no output". Here each bad byte
+/// becomes U+FFFD and all valid text is kept.
+pub(crate) struct LossyLines<R> {
+    reader: BufReader<R>,
+    buf: Vec<u8>,
+}
+
+pub(crate) fn lossy_lines<R: tokio::io::AsyncRead + Unpin>(reader: R) -> LossyLines<R> {
+    LossyLines { reader: BufReader::new(reader), buf: Vec::new() }
+}
+
+/// A single physical line longer than this is returned in pieces, so a command that prints
+/// gigabytes without a newline cannot grow one buffer without bound.
+const MAX_LINE_BYTES: usize = 1 << 20;
+
+impl<R: tokio::io::AsyncRead + Unpin> LossyLines<R> {
+    pub(crate) async fn next_line(&mut self) -> std::io::Result<Option<String>> {
+        self.buf.clear();
+        let mut saw_newline = false;
+        loop {
+            let available = self.reader.fill_buf().await?;
+            if available.is_empty() {
+                break;
+            }
+            let room = MAX_LINE_BYTES - self.buf.len();
+            let (take, newline) = match available.iter().position(|b| *b == b'\n') {
+                Some(i) if i < room => (i + 1, true),
+                _ => (available.len().min(room), false),
+            };
+            self.buf.extend_from_slice(&available[..take]);
+            self.reader.consume(take);
+            if newline {
+                saw_newline = true;
+                break;
+            }
+            if self.buf.len() >= MAX_LINE_BYTES {
+                break;
+            }
+        }
+        if self.buf.is_empty() && !saw_newline {
+            return Ok(None);
+        }
+        if self.buf.last() == Some(&b'\n') {
+            self.buf.pop();
+            if self.buf.last() == Some(&b'\r') {
+                self.buf.pop();
+            }
+        }
+        Ok(Some(String::from_utf8_lossy(&self.buf).into_owned()))
+    }
+}
+
 /// Collect a command's output stream line by line, reporting any parsed
 /// progress so a later background promotion has live progress instead of
 /// sitting at 0% until completion.
@@ -554,7 +608,7 @@ async fn collect_output_reporting_progress<R>(
     let Some(reader) = reader else {
         return;
     };
-    let mut lines = BufReader::new(reader).lines();
+    let mut lines = lossy_lines(reader);
     while let Ok(Some(line)) = lines.next_line().await {
         if let Ok(Some(update)) = parse_progress_line(&line) {
             progress.record(update).await;
@@ -654,7 +708,11 @@ impl ProcessGroupKillGuard {
 
     fn disarm(&mut self) {
         if let Some(p) = self.pid.take() {
-            crate::background::unregister_process_group(p as i32);
+            // A member that outlived the command (nohup) keeps the group registered, so the
+            // shutdown path still reaches it; dead groups are pruned at the next registration.
+            if !crate::background::process_group_alive(p as i32) {
+                crate::background::unregister_process_group(p as i32);
+            }
         }
     }
 }
@@ -1500,8 +1558,8 @@ impl BashTool {
                     let stdout = child.stdout.take();
                     let stderr = child.stderr.take();
 
-                    let mut stdout_lines = stdout.map(|s| BufReader::new(s).lines());
-                    let mut stderr_lines = stderr.map(|s| BufReader::new(s).lines());
+                    let mut stdout_lines = stdout.map(lossy_lines);
+                    let mut stderr_lines = stderr.map(lossy_lines);
                     let mut stdout_done = stdout_lines.is_none();
                     let mut stderr_done = stderr_lines.is_none();
                     let timeout_sleep = timeout_duration.map(tokio::time::sleep);

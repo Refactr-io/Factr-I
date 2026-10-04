@@ -643,6 +643,14 @@ const HEAP_RETENTION_CHECK_SECS: u64 = 120;
 pub const EXIT_IDLE_TIMEOUT: i32 = 44;
 
 /// Server state
+/// Cleanup the embedding binary runs before the server's SIGTERM path exits the process.
+static SHUTDOWN_HOOK: std::sync::OnceLock<fn()> = std::sync::OnceLock::new();
+
+/// Install the cleanup to run on SIGTERM before exit (first call wins).
+pub fn set_shutdown_hook(hook: fn()) {
+    let _ = SHUTDOWN_HOOK.set(hook);
+}
+
 pub struct Server {
     provider: Arc<dyn Provider>,
     socket_path: PathBuf,
@@ -1121,6 +1129,11 @@ impl Server {
                 if let Ok(mut sigterm) = signal(SignalKind::terminate()) {
                     sigterm.recv().await;
                     crate::logging::info("Server received SIGTERM, shutting down gracefully");
+                    // The binary's once-only cleanup (drain spans, stop commands) must finish before
+                    // `exit` below; it blocks, so keep it off the async workers.
+                    if let Some(hook) = SHUTDOWN_HOOK.get() {
+                        let _ = tokio::task::spawn_blocking(*hook).await;
+                    }
                     let _ = crate::registry::unregister_server(&sigterm_server_name).await;
                     crate::power_inhibit::release_all();
                     // Exiting here skips destructors: remove the sockets and

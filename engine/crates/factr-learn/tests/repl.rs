@@ -421,6 +421,52 @@ async fn load_reads_workspace_files_into_variables() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn the_worker_starts_in_the_project_dir_with_relative_file_access() {
+    let h = host!();
+    let dir = workdir();
+    let code = "import os, glob\n\
+        here = os.path.realpath(os.getcwd())\n\
+        names = sorted(os.listdir('.'))\n\
+        txt = open('src/notes.txt').read()\n\
+        open('out.txt', 'w').write('written')\n\
+        (here, names, len(txt.splitlines()), glob.glob('src/*.txt'), open('out.txt').read())";
+    let out = h
+        .run(
+            "s",
+            code,
+            Some(&dir),
+            upper(),
+            no_refine(),
+            factr_learn::host::ExtraHostFns::default(),
+            MEMORY_LIMIT,
+        )
+        .await
+        .unwrap();
+    assert!(out.error.is_none(), "{:?}", out.error);
+    let value = out.value.unwrap_or_default();
+    let real = std::fs::canonicalize(&dir).unwrap();
+    assert!(value.contains(real.to_str().unwrap()), "{value}");
+    assert!(value.contains("'src'") && value.contains("3") && value.contains("src/notes.txt"), "{value}");
+    assert!(value.contains("'written'"), "{value}");
+    assert_eq!(std::fs::read_to_string(dir.join("out.txt")).unwrap(), "written");
+    // Still confined: the parent directory and the home directory are not readable or writable.
+    let outside = dir.parent().unwrap().join(format!("learn-parent-secret-{}", rand_suffix()));
+    std::fs::write(&outside, "secret").unwrap();
+    let probe = format!(
+        "import os\nres = []\nfor f, mode in [('../{}', 'r'), ('../w.txt', 'w'), (os.path.expanduser('~/.zshrc'), 'r'), ('/etc/hosts', 'r')]:\n    try:\n        open(f, mode); res.append('OPEN')\n    except Exception as e:\n        res.append(type(e).__name__)\nres",
+        outside.file_name().unwrap().to_str().unwrap()
+    );
+    let denied = h
+        .run("s", &probe, Some(&dir), upper(), no_refine(), factr_learn::host::ExtraHostFns::default(), MEMORY_LIMIT)
+        .await
+        .unwrap();
+    let value = denied.value.unwrap_or_default();
+    assert!(!value.contains("OPEN"), "{value} {:?}", denied.error);
+    std::fs::remove_file(outside).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn load_is_confined_to_the_working_directory() {
     let h = host!();
     let dir = workdir();

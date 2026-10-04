@@ -17,6 +17,9 @@ mod tool_streaming;
 #[path = "agent_tests/rewind.rs"]
 mod rewind;
 
+#[path = "agent_tests/off_list_tool.rs"]
+mod off_list_tool;
+
 #[path = "agent_tests/provider_fallback.rs"]
 mod provider_fallback;
 

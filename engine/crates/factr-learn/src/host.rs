@@ -175,10 +175,7 @@ impl ReplHost {
                 std::env::temp_dir().join(format!("factr-repl-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&session_tmp)?;
             let session_tmp = std::fs::canonicalize(session_tmp)?;
-            let skills = factr_storage::factr_dir()?.join("skills");
-            std::fs::create_dir_all(&skills)?;
-            crate::bundled_skills::install(&skills)?;
-            let skills = std::fs::canonicalize(skills)?;
+            let skills = skills_dir()?;
             // Launch by the path as given, not its canonical target: a virtualenv interpreter is a
             // symlink and finds its packages through `pyvenv.cfg` next to that path.
             // Only the directory is resolved (the sandbox matches real paths, and /var is /private/var).
@@ -203,6 +200,10 @@ impl ReplHost {
                 .args(["-E", "-u", "-c", crate::worker::PYTHON_WORKER])
                 .arg(&project)
                 .arg(&skills)
+                // Start inside the project directory (inside the sandbox's allowed set) so
+                // `os.getcwd()` and relative `open()` work; inheriting the engine's cwd left
+                // the worker in a directory the profile forbids.
+                .current_dir(&project)
                 // The worker receives no model credentials or arbitrary environment.
                 .env_clear()
                 .env("PYTHONDONTWRITEBYTECODE", "1")
@@ -253,13 +254,12 @@ impl ReplHost {
         let session_tmp =
             std::env::temp_dir().join(format!("factr-repl-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&session_tmp)?;
-        let skills = factr_storage::factr_dir()?.join("skills");
-        std::fs::create_dir_all(&skills)?;
-        crate::bundled_skills::install(&skills)?;
+        let skills = skills_dir()?;
         let mut child = Command::new(&self.python)
             .args(["-E", "-u", "-c", crate::worker::PYTHON_WORKER])
             .arg(&project)
             .arg(&skills)
+            .current_dir(&project)
             .env_clear()
             .env("PYTHONDONTWRITEBYTECODE", "1")
             .env("TMPDIR", &session_tmp)
@@ -370,6 +370,19 @@ fn sbpl_path(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "\\\\")
         .replace('"', "\\\"")
+}
+
+/// The skills directory the worker may import from. With learning off (`FACTR_LEARNING_ENABLED=0`) it
+/// is neither created nor seeded, so the REPL leaves no `skills/` behind; the worker tolerates a
+/// missing directory.
+fn skills_dir() -> Result<PathBuf> {
+    let skills = factr_storage::factr_dir()?.join("skills");
+    if std::env::var("FACTR_LEARNING_ENABLED").is_ok_and(|v| v == "0") {
+        return Ok(std::fs::canonicalize(&skills).unwrap_or(skills));
+    }
+    std::fs::create_dir_all(&skills)?;
+    crate::bundled_skills::install(&skills)?;
+    Ok(std::fs::canonicalize(skills)?)
 }
 
 #[cfg(target_os = "macos")]

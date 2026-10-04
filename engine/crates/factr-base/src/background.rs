@@ -1716,8 +1716,17 @@ static LIVE_PROCESS_GROUPS: std::sync::Mutex<Option<std::collections::HashSet<i3
 #[cfg(unix)]
 pub fn register_process_group(pgid: i32) {
     if let Ok(mut g) = LIVE_PROCESS_GROUPS.lock() {
-        g.get_or_insert_with(Default::default).insert(pgid);
+        let set = g.get_or_insert_with(Default::default);
+        // Groups kept after their command ended (see `process_group_alive`) go once empty.
+        set.retain(|p| process_group_alive(*p));
+        set.insert(pgid);
     }
+}
+
+/// Whether any process is still in group `pgid`.
+#[cfg(unix)]
+pub fn process_group_alive(pgid: i32) -> bool {
+    pgid > 1 && unsafe { libc::kill(-pgid, 0) } == 0
 }
 
 #[cfg(unix)]
@@ -1754,6 +1763,93 @@ pub fn kill_process_groups(groups: &[i32], grace: std::time::Duration) -> usize 
         unsafe { libc::kill(-*g, libc::SIGKILL) };
     }
     groups.len()
+}
+
+/// Environment variable carrying this engine process's unique run token. Every command a tool spawns
+/// inherits it, and it survives `nohup`, `setsid` and reparenting to PID 1, which a process-group
+/// or parent walk cannot follow.
+pub const RUN_TOKEN_ENV: &str = "FACTR_ENGINE_RUN_ID";
+
+/// Stamp this process (and so everything it spawns) with a fresh run token. Call once at start,
+/// before other threads exist (it edits the process environment). Returns the token.
+#[cfg(unix)]
+pub fn init_run_token() -> String {
+    static TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TOKEN
+        .get_or_init(|| {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or_default();
+            let token = format!("{}-{nanos}", std::process::id());
+            // SAFETY: called at startup before any other thread is created.
+            unsafe { std::env::set_var(RUN_TOKEN_ENV, &token) };
+            token
+        })
+        .clone()
+}
+
+/// Pids of processes (other than this one) whose environment carries `token`, i.e. descendants of
+/// tools this engine spawned, however far they detached. Other users' processes are not visible
+/// and other engines carry a different token, so nothing unrelated matches.
+#[cfg(unix)]
+pub fn pids_with_run_token(token: &str) -> Vec<i32> {
+    let me = std::process::id() as i32;
+    let needle = format!("{RUN_TOKEN_ENV}={token}");
+    let mut found = Vec::new();
+    #[cfg(target_os = "linux")]
+    if let Ok(dir) = std::fs::read_dir("/proc") {
+        for entry in dir.flatten() {
+            let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<i32>().ok()) else { continue };
+            if pid == me {
+                continue;
+            }
+            if let Ok(env) = std::fs::read(entry.path().join("environ")) {
+                if env.split(|b| *b == 0).any(|kv| kv == needle.as_bytes()) {
+                    found.push(pid);
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    if let Ok(out) = std::process::Command::new("/bin/ps")
+        .args(["-axwwE", "-o", "pid=,command="])
+        .output()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            let line = line.trim_start();
+            let Some((pid, rest)) = line.split_once(' ') else { continue };
+            let Ok(pid) = pid.parse::<i32>() else { continue };
+            // `ps -E` appends the environment, space separated, after the command.
+            if pid != me && rest.split(' ').any(|kv| kv == needle) {
+                found.push(pid);
+            }
+        }
+    }
+    found
+}
+
+/// SIGTERM, wait `grace`, then SIGKILL every process that carries this engine's run token.
+/// Returns how many were signalled. No token (never initialised) kills nothing.
+#[cfg(unix)]
+pub fn kill_run_token_descendants(grace: std::time::Duration) -> usize {
+    let Ok(token) = std::env::var(RUN_TOKEN_ENV) else { return 0 };
+    let pids = pids_with_run_token(&token);
+    if pids.is_empty() {
+        return 0;
+    }
+    for pid in &pids {
+        unsafe { libc::kill(*pid, libc::SIGTERM) };
+    }
+    std::thread::sleep(grace);
+    for pid in &pids {
+        // Re-check: the pid may have exited and been reused during the grace period.
+        if pids_with_run_token(&token).contains(pid) {
+            unsafe { libc::kill(*pid, libc::SIGKILL) };
+        }
+    }
+    pids.len()
 }
 
 pub fn global() -> &'static BackgroundTaskManager {

@@ -2,7 +2,6 @@
 //! built on the `ignore` and `regex` crates (gitignore-aware walk).
 
 use super::{Tool, ToolContext, ToolOutput};
-use crate::util;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use ignore::WalkBuilder;
@@ -12,13 +11,16 @@ use regex::RegexBuilder;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::fmt::Write as _;
+use std::io::BufRead as _;
 use std::path::Path;
 
 /// Cap on rendered grep matches. The header always reports the true total.
 const DEFAULT_GREP_MAX_REGIONS: usize = 200;
 const DEFAULT_FIND_MAX_FILES: usize = 10;
 const MAX_LINE_CHARS: usize = 300;
-const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
+/// Per-file size cap (streamed, so memory stays bounded). Files above it are
+/// skipped and counted in the result header, never silently.
+const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
 struct AgentGrepInput {
@@ -93,7 +95,7 @@ impl Tool for AgentGrepTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Directory or file to search, relative to the workspace. Omit to search the whole workspace."
+                    "description": "Directory or file to search (default: workspace). Result paths are relative to it."
                 },
                 "glob": {
                     "type": "string",
@@ -101,7 +103,7 @@ impl Tool for AgentGrepTool {
                 },
                 "type": {
                     "type": "string",
-                    "description": "Optional file type filter, such as rs, py, js, ts, or md."
+                    "description": "Optional file type filter using ripgrep type names, such as rust (alias rs), py, js, ts, or md."
                 },
                 "max_files": {
                     "type": "integer",
@@ -136,6 +138,9 @@ fn run_blocking(params: &AgentGrepInput, ctx: &ToolContext) -> Result<ToolOutput
             anyhow!("agentgrep requires a session working directory unless an absolute path is provided")
         })?,
     };
+    if !root.exists() {
+        return Err(anyhow!("path not found: {}", root.display()));
+    }
     match params.mode.as_str() {
         "grep" => grep(params, &root),
         "find" => find(params, &root),
@@ -173,14 +178,44 @@ fn walker(params: &AgentGrepInput, root: &Path) -> Result<ignore::Walk> {
     if let Some(ty) = params.file_type.as_deref().filter(|t| !t.is_empty()) {
         let mut types = TypesBuilder::new();
         types.add_defaults();
-        types.select(ty);
-        builder.types(types.build()?);
+        let ty = type_alias(ty);
+        types.select(&ty);
+        let built = types.build().map_err(|e| {
+            anyhow!("{e}. Use ripgrep type names such as rust (alias rs), py, js, ts, md, go, json, toml, yaml, sh, html, java, c, cpp")
+        })?;
+        builder.types(built);
     }
     Ok(builder.build())
 }
 
+fn type_alias(ty: &str) -> String {
+    let lower = ty.trim().to_lowercase();
+    match lower.as_str() {
+        "rs" => "rust".to_string(),
+        "text" => "txt".to_string(),
+        "python" | "javascript" | "typescript" | "markdown" | "golang" => lower,
+        _ => lower,
+    }
+}
+
+fn base_dir(root: &Path) -> &Path {
+    if root.is_file() { root.parent().unwrap_or(root) } else { root }
+}
+
+/// One output line: trimmed, clipped with an explicit marker carrying the
+/// original length so a cut line is never mistaken for the whole line.
+fn clip_line(line: &str) -> String {
+    let t = line.trim();
+    let n = t.chars().count();
+    if n <= MAX_LINE_CHARS {
+        return t.to_string();
+    }
+    let cut: String = t.chars().take(MAX_LINE_CHARS).collect();
+    format!("{cut}... [line truncated, {n} chars total]")
+}
+
 fn display(root: &Path, path: &Path) -> String {
-    let base = if root.is_file() { root.parent().unwrap_or(root) } else { root };
+    let base = base_dir(root);
     path.strip_prefix(base)
         .unwrap_or(path)
         .display()
@@ -206,46 +241,72 @@ fn grep(params: &AgentGrepInput, root: &Path) -> Result<ToolOutput> {
     let paths_only = params.paths_only.unwrap_or(false);
 
     let (mut total, mut files, mut shown, mut body) = (0usize, 0usize, 0usize, String::new());
+    let mut skipped = 0usize;
     for entry in walker(params, root)?.flatten() {
         let path = entry.path();
         if !entry.file_type().is_some_and(|t| t.is_file()) {
             continue;
         }
         if entry.metadata().map(|m| m.len() > MAX_FILE_BYTES).unwrap_or(true) {
+            skipped += 1;
             continue;
         }
-        let Ok(bytes) = std::fs::read(path) else { continue };
-        if bytes.contains(&0) {
-            continue;
-        }
-        let text = String::from_utf8_lossy(&bytes);
+        let Ok(file) = std::fs::File::open(path) else { continue };
         let name = display(root, path);
-        let mut file_hit = false;
-        for (i, line) in text.lines().enumerate() {
-            if !re.is_match(line) {
-                continue;
+        // Stream line by line; matches are buffered per file so a NUL byte
+        // anywhere (binary) discards the whole file like rg does.
+        let mut reader = std::io::BufReader::new(file);
+        let mut buf = Vec::new();
+        let (mut file_total, mut pending, mut lineno) = (0usize, Vec::new(), 0usize);
+        let mut binary = false;
+        loop {
+            buf.clear();
+            match reader.read_until(b'\n', &mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
             }
-            total += 1;
-            if !file_hit {
-                file_hit = true;
-                files += 1;
-                if paths_only && shown < max {
-                    shown += 1;
-                    let _ = writeln!(body, "{name}");
+            lineno += 1;
+            if buf.contains(&0) {
+                binary = true;
+                break;
+            }
+            if buf.last() == Some(&b'\n') {
+                buf.pop();
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
                 }
             }
-            if !paths_only && shown < max {
+            let line = String::from_utf8_lossy(&buf);
+            if !re.is_match(&line) {
+                continue;
+            }
+            file_total += 1;
+            if !paths_only && shown + pending.len() < max {
+                pending.push((lineno, clip_line(&line)));
+            }
+        }
+        if binary || file_total == 0 {
+            continue;
+        }
+        total += file_total;
+        files += 1;
+        if paths_only {
+            if shown < max {
                 shown += 1;
-                let _ = writeln!(
-                    body,
-                    "{name}:{}: {}",
-                    i + 1,
-                    util::truncate_str(line.trim(), MAX_LINE_CHARS)
-                );
+                let _ = writeln!(body, "{name}");
+            }
+        } else {
+            for (n, text) in pending {
+                shown += 1;
+                let _ = writeln!(body, "{name}:{n}: {text}");
             }
         }
     }
     let mut out = format!("{total} matches in {files} files for {query:?}\n");
+    let _ = writeln!(out, "paths are relative to {}", base_dir(root).display());
+    if skipped > 0 {
+        let _ = writeln!(out, "skipped {skipped} files over {} MiB", MAX_FILE_BYTES >> 20);
+    }
     out.push_str(&body);
     if shown < if paths_only { files } else { total } {
         let _ = writeln!(out, "... output capped at {max}; raise max_regions or narrow the search");
@@ -292,6 +353,7 @@ fn find(params: &AgentGrepInput, root: &Path) -> Result<ToolOutput> {
     hits.sort();
     let total = hits.len();
     let mut out = format!("{total} files\n");
+    let _ = writeln!(out, "paths are relative to {}", base_dir(root).display());
     for (_, name) in hits.iter().take(max) {
         let _ = writeln!(out, "{name}");
     }
@@ -363,6 +425,65 @@ mod tests {
         let o = find(&input(json!({"mode": "find", "query": "src a"})), &dir).unwrap().output;
         assert!(o.starts_with("1 files") && o.contains("src/a.rs"), "{o}");
         assert!(find(&input(json!({"mode": "find"})), &dir).is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn grep_searches_big_files_and_reports_relative_root() {
+        let dir = tmp("big");
+        let big = "abc line\n".repeat(700_000); // ~5.6 MB, over the old 2 MiB cap
+        std::fs::write(dir.join("big.txt"), &big).unwrap();
+        let o = grep(&input(json!({"query": "abc", "path": "big.txt", "max_regions": 3})), &dir.join("big.txt"))
+            .unwrap()
+            .output;
+        assert!(o.starts_with("700000 matches in 1 files"), "{}", &o[..80]);
+        assert!(o.contains("paths are relative to"), "{o}");
+        assert!(!o.contains("skipped"), "{o}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn grep_reports_files_over_the_cap() {
+        let dir = tmp("cap");
+        let f = std::fs::File::create(dir.join("huge.log")).unwrap();
+        f.set_len(MAX_FILE_BYTES + 1).unwrap(); // sparse
+        let o = grep(&input(json!({"query": "needle"})), &dir).unwrap().output;
+        assert!(o.contains("skipped 1 files over 64 MiB"), "{o}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn grep_long_lines_get_a_marker_and_binary_files_are_skipped() {
+        let dir = tmp("long");
+        std::fs::write(dir.join("l.txt"), format!("{}\n", "a".repeat(1000))).unwrap();
+        std::fs::write(dir.join("bin.dat"), b"a\0a\n").unwrap();
+        std::fs::write(dir.join("crlf.txt"), b"a\r\na\r\n").unwrap();
+        let o = grep(&input(json!({"query": "aaa", "regex": true})), &dir).unwrap().output;
+        assert!(o.contains("[line truncated, 1000 chars total]"), "{o}");
+        assert!(!o.contains("bin.dat"), "{o}");
+        let o = grep(&input(json!({"query": "^a$", "regex": true})), &dir).unwrap().output;
+        assert!(o.starts_with("2 matches in 1 files") && o.contains("crlf.txt:2: a"), "{o}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_path_is_an_error_and_type_aliases_work() {
+        let dir = tmp("path");
+        let ctx = ToolContext {
+            session_id: "t".into(),
+            message_id: "t".into(),
+            tool_call_id: "t".into(),
+            working_dir: Some(dir.clone()),
+            stdin_request_tx: None,
+            graceful_shutdown_signal: None,
+            execution_mode: crate::tool::ToolExecutionMode::Direct,
+        };
+        let err = run_blocking(&input(json!({"query": "needle", "path": "nope/x"})), &ctx).unwrap_err();
+        assert!(err.to_string().contains("path not found"), "{err}");
+        let o = grep(&input(json!({"query": "needle", "type": "rs"})), &dir).unwrap().output;
+        assert!(o.starts_with("1 matches in 1 files") && o.contains("a.rs"), "{o}");
+        let e = grep(&input(json!({"query": "needle", "type": "zzz"})), &dir).unwrap_err();
+        assert!(e.to_string().contains("ripgrep type names"), "{e}");
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -164,6 +164,43 @@ async fn test_basic_command_no_stdin() {
 }
 
 #[tokio::test]
+async fn invalid_utf8_output_is_decoded_lossily_and_keeps_later_text() {
+    let tool = BashTool::new();
+    let result = tool
+        .execute(
+            json!({"command": "echo ascii; printf 'a\\377b\\n'; printf 'tail\\377'; echo; echo after"}),
+            make_ctx(None),
+        )
+        .await
+        .unwrap();
+    let out = result.output;
+    assert!(out.contains("ascii") && out.contains("a\u{FFFD}b") && out.contains("after"), "{out}");
+    assert!(!out.contains("no output"), "{out}");
+}
+
+#[tokio::test]
+async fn lossy_lines_keeps_every_line() {
+    let data: &[u8] = b"one\r\n\xff\xfetwo\nlast";
+    let mut lines = super::lossy_lines(data);
+    let mut got = Vec::new();
+    while let Some(l) = lines.next_line().await.unwrap() {
+        got.push(l);
+    }
+    assert_eq!(got, vec!["one", "\u{FFFD}\u{FFFD}two", "last"]);
+}
+
+#[tokio::test]
+async fn lossy_lines_bounds_a_line_with_no_newline() {
+    let data = vec![b'x'; super::MAX_LINE_BYTES * 2 + 10];
+    let mut lines = super::lossy_lines(&data[..]);
+    let mut sizes = Vec::new();
+    while let Some(l) = lines.next_line().await.unwrap() {
+        sizes.push(l.len());
+    }
+    assert_eq!(sizes, vec![super::MAX_LINE_BYTES, super::MAX_LINE_BYTES, 10]);
+}
+
+#[tokio::test]
 async fn foreground_command_reading_stdin_gets_eof_instead_of_hanging() {
     let tool = BashTool::new();
     let ctx = make_ctx(None);

@@ -11,7 +11,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { reasoningEffortClamp, reasoningEffortLabel } from '@/lib/reasoning-effort'
 import { cn } from '@/lib/utils'
-import { $defaultReasoningEffort } from '@/store/session'
+import { $defaultReasoningEffort, $engineReasoningEffort } from '@/store/session'
 
 import { isMaxEffort } from '../../shell/effort-slider'
 
@@ -36,7 +36,9 @@ export function ReasoningPill({ disabled, model }: { disabled: boolean; model: C
   const view = useSessionView()
   const reasoningEffort = useStore(view.$reasoningEffort)
   const reasoningEffortWire = useStore(view.$reasoningEffortWire)
-  const defaultEffort = useStore($defaultReasoningEffort)
+  const configEffort = useStore($defaultReasoningEffort)
+  const engineEffort = useStore($engineReasoningEffort)
+  const defaultEffort = configEffort || engineEffort
   const [open, setOpen] = useState(false)
 
   if (!model.reasoningMenuContent || model.supportsReasoning === false) {

@@ -79,6 +79,17 @@ impl Tool for PatchTool {
         let config_watch = super::config_edit_notice::ConfigEditWatch::begin();
         crate::checkpoint::before_change(&ctx, &format!("before patch: {}", patches[0].path)).await;
         let mut results = Vec::new();
+        // All-or-nothing: remember each target's bytes so one failed file
+        // rolls the whole patch back.
+        let mut backups: Vec<(std::path::PathBuf, Option<Vec<u8>>)> = Vec::new();
+        for patch in &patches {
+            let resolved = ctx.resolve_path(Path::new(&patch.path));
+            if !backups.iter().any(|(p, _)| *p == resolved) {
+                let bytes = tokio::fs::read(&resolved).await.ok();
+                backups.push((resolved, bytes));
+            }
+        }
+        let mut failed = 0usize;
 
         for patch in patches {
             let resolved_path = ctx.resolve_path(Path::new(&patch.path));
@@ -91,8 +102,30 @@ impl Tool for PatchTool {
                         results.push(format!("✓ {}: {}\n{}", patch.path, msg, diff));
                     }
                 }
-                Err(e) => results.push(format!("✗ {}: {}", patch.path, e)),
+                Err(e) => {
+                    failed += 1;
+                    results.push(format!("✗ {}: {}", patch.path, e));
+                }
             }
+        }
+        if failed > 0 {
+            for (path, bytes) in backups {
+                match bytes {
+                    Some(b) => {
+                        let _ = tokio::fs::write(&path, b).await;
+                    }
+                    None => {
+                        let _ = tokio::fs::remove_file(&path).await;
+                    }
+                }
+            }
+            results = results
+                .into_iter()
+                .filter(|r| r.starts_with('✗'))
+                .collect();
+            results.push(format!(
+                "No changes applied: the patch is all-or-nothing and {failed} file(s) failed, so every file was left as it was."
+            ));
         }
 
         let mut body = results.join("\n\n");

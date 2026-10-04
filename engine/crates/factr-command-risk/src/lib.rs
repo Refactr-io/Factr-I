@@ -215,9 +215,19 @@ const CONDITIONALLY_DESTRUCTIVE: &[(&str, &[&str])] =
 /// including garbage, produces an assessment rather than an error.
 pub fn assess(command: &str, ctx: &RiskContext) -> RiskAssessment {
     let mut findings = Vec::new();
+    let mut segments = tokenize::split_segments(command);
+    let reassigns = segments.iter().any(|s| assigns_protected_var(s));
+    let uses_var_destructively = reassigns && uses_protected_var_destructively(&segments);
+    substitute_assigned_paths(&mut segments, ctx);
+    for segment in segments {
+        assess_segment(&segment, ctx, &mut findings);
+    }
     // Keep the trusted context for literal protected paths, but never approve
-    // commands whose own assignments can invalidate known-variable expansion.
-    if command.contains("HOME=") || command.contains("FACTR_SCRATCH_DIR=") {
+    // a command whose own assignment can invalidate known-variable expansion
+    // of something destructive. A bare assignment that only runs ordinary
+    // programs (`HOME=/tmp/x pytest`) or prints the name (`echo HOME=$HOME`)
+    // cannot, so it is not gated.
+    if reassigns && (uses_var_destructively || !findings.is_empty()) {
         findings.push(RiskFinding {
             level: RiskLevel::Confirm,
             reason: "command reassigns a path variable used by risk assessment".into(),
@@ -225,16 +235,64 @@ pub fn assess(command: &str, ctx: &RiskContext) -> RiskAssessment {
         });
     }
 
-    let mut segments = tokenize::split_segments(command);
-    substitute_assigned_paths(&mut segments, ctx);
-    for segment in segments {
-        assess_segment(&segment, ctx, &mut findings);
-    }
-
     if findings.is_empty() {
         return RiskAssessment::safe();
     }
     RiskAssessment::from_findings(findings)
+}
+
+const PROTECTED_VARS: &[&str] = &["HOME", "FACTR_SCRATCH_DIR"];
+const ASSIGNING_BUILTINS: &[&str] = &["env", "export", "declare", "typeset", "readonly", "local", "sudo", "doas"];
+
+fn is_protected_assignment(text: &str) -> bool {
+    text.split_once('=').is_some_and(|(name, _)| PROTECTED_VARS.contains(&name))
+}
+
+/// True when the segment really assigns HOME / FACTR_SCRATCH_DIR: a leading
+/// `VAR=value` prefix, or a value passed to env/export/declare and friends.
+/// Mentions inside the arguments of other commands (`echo HOME=$HOME`) are not
+/// assignments.
+fn assigns_protected_var(tokens: &[Token]) -> bool {
+    let mut rest = tokens;
+    while let Some(first) = rest.first() {
+        if is_protected_assignment(&first.text) {
+            return true;
+        }
+        let name_ok = first.text.split_once('=').is_some_and(|(n, _)| {
+            !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        });
+        if name_ok {
+            rest = &rest[1..];
+            continue;
+        }
+        break;
+    }
+    match rest.first() {
+        Some(first) if ASSIGNING_BUILTINS.contains(&first.basename().as_str()) => {
+            rest.iter().any(|t| is_protected_assignment(&t.text))
+        }
+        _ => false,
+    }
+}
+
+/// A destructive-capable program together with a reference to the protected
+/// variables or `~`, anywhere in the command.
+fn uses_protected_var_destructively(segments: &[Vec<Token>]) -> bool {
+    const EXTRA: &[&str] = &["find", "mv", "chmod", "chown", "git", "xargs", "sh", "bash", "zsh", "eval"];
+    let tokens = || segments.iter().flatten();
+    let destructive = tokens().any(|t| {
+        let b = t.basename();
+        DESTRUCTIVE_COMMANDS.contains(&b.as_str()) || EXTRA.contains(&b.as_str())
+    });
+    destructive
+        && tokens().any(|t| {
+            !is_protected_assignment(&t.text)
+                && (t.text.contains("$HOME")
+                    || t.text.contains("${HOME")
+                    || t.text.contains("FACTR_SCRATCH_DIR")
+                    || t.text == "~"
+                    || t.text.starts_with("~/"))
+        })
 }
 
 /// True when everything destructive in `command` stays strictly inside the working directory
@@ -300,6 +358,18 @@ fn assess_segment(tokens: &[Token], ctx: &RiskContext, findings: &mut Vec<RiskFi
         && tokens
             .first()
             .is_some_and(|token| SHELL_CONTROL_PREFIXES.contains(&token.text.as_str()))
+    {
+        tokens = &tokens[1..];
+    }
+    // Leading `VAR=value` assignments only decorate the command that follows
+    // (`FOO=1 rm -rf ~`); the real program comes after them.
+    while tokens.len() > 1
+        && !tokens[0].is_operator
+        && tokens[0].text.split_once('=').is_some_and(|(n, _)| {
+            !n.is_empty()
+                && !n.starts_with(|c: char| c.is_ascii_digit())
+                && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
     {
         tokens = &tokens[1..];
     }

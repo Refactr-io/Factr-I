@@ -56,7 +56,7 @@ if (process.env.FACTR_BACKEND_PYTHON_PACKAGES) {
 } else {
   execFileSync(
     'uv',
-    ['pip', 'install', '--target', path.join(stage, 'packages'), '--python', stagedPython, '--requirements', path.join(backend, 'pyproject.toml')],
+    ['pip', 'install', '--target', path.join(stage, 'packages'), '--python', stagedPython, '--requirements', path.join(backend, 'pyproject.toml'), '--extra', 'bundled'],
     { cwd: repo, stdio: 'inherit' }
   )
 }
@@ -70,14 +70,21 @@ const defaults = execFileSync(stagedPython, [
   '-c', 'import json; from factr_backend.config_defaults import DEFAULT_CONFIG; print(json.dumps(DEFAULT_CONFIG))'
 ], { env: { ...process.env, PYTHONPATH: [source, path.join(stage, 'packages')].join(path.delimiter) } })
 writeFileSync(path.join(stage, 'defaults.json'), defaults)
-// Windows: PYTHONPATH entries get no .pth processing, so prove the staged tree imports pywin32-backed modules
-// (factr_bootstrap runs site.addsitedir on PYTHONPATH first). Other platforms keep the probe above.
-if (process.platform === 'win32') {
-  execFileSync(stagedPython, ['-c', 'import factr_bootstrap, pywintypes, win32file, factr_logging, factr_backend.main'], {
-    stdio: 'inherit',
-    env: { ...process.env, PYTHONPATH: [source, path.join(stage, 'packages')].join(path.delimiter) }
-  })
-}
+// Prove the staged tree imports the bundled optional libraries (docs/BUNDLED-EXTRAS.md), so a missing
+// package fails at staging, not on a user's machine. Windows: PYTHONPATH entries get no .pth processing,
+// so also import the pywin32-backed modules (factr_bootstrap runs site.addsitedir on PYTHONPATH first).
+const probeModules = [
+  'telegram', 'telegram.ext', 'discord', 'nacl', 'aiohttp', 'brotlicffi', 'slack_bolt', 'slack_sdk', 'qrcode',
+  'mautrix', 'dingtalk_stream', 'microsoft_teams.apps', 'defusedxml', 'anthropic', 'mcp', 'acp', 'exa_py',
+  'firecrawl', 'parallel', 'fal_client', 'edge_tts', 'youtube_transcript_api',
+]
+const probe = process.platform === 'win32'
+  ? ['factr_bootstrap', 'pywintypes', 'win32file', 'factr_logging', 'factr_backend.main', ...probeModules]
+  : ['factr_bootstrap', ...probeModules]
+execFileSync(stagedPython, ['-c', `import ${probe.join(', ')}`], {
+  stdio: 'inherit',
+  env: { ...process.env, PYTHONPATH: [source, path.join(stage, 'packages')].join(path.delimiter) }
+})
 const tools = path.join(stage, 'tools')
 mkdirSync(tools)
 const uvPath = process.platform === 'win32'

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { getSkills, type ProfileScope, profileScopeKey } from '@/factr'
 import { normalize } from '@/lib/text'
-import type { OfficialSkillInfo, SkillInfo } from '@/types/factr'
+import type { SkillInfo } from '@/types/factr'
 
 import { asText, includesQuery } from '../../settings/helpers'
 
@@ -10,8 +10,6 @@ import { asText, includesQuery } from '../../settings/helpers'
 // instantly (no reload flash) and mount only fires a deduped background
 // refetch. A profile swap globally invalidates (see store/profile), so this
 // plain key refetches against the new backend automatically.
-// `store/hub-actions` invalidates it after a hub (un)install — it imports this
-// constant rather than re-spelling the key.
 export const SKILLS_QUERY_KEY = ['skills-list'] as const
 
 /** The list key for one scope: the plain key plus the Capabilities scope key,
@@ -30,22 +28,6 @@ export function useSkillsQuery(profile: ProfileScope) {
 export const usageOf = (skill: SkillInfo): number => (typeof skill.usage === 'number' ? skill.usage : 0)
 
 export const categoryFor = (skill: SkillInfo): string => asText(skill.category) || 'general'
-
-// Catalog rows have no usage yet — plain A–Z, with tags as searchable metadata.
-export function filteredOfficial(skills: OfficialSkillInfo[], query: string): OfficialSkillInfo[] {
-  const q = normalize(query)
-
-  return skills
-    .filter(
-      skill =>
-        !q ||
-        includesQuery(skill.name, q) ||
-        includesQuery(skill.description, q) ||
-        includesQuery(skill.category, q) ||
-        skill.tags.some(tag => includesQuery(tag, q))
-    )
-    .sort((a, b) => asText(a.name).localeCompare(asText(b.name)))
-}
 
 export function filteredSkills(skills: SkillInfo[], query: string, desc: boolean): SkillInfo[] {
   const q = normalize(query)
