@@ -186,6 +186,22 @@ impl Config {
         {
             self.websearch.searxng_url = Some(v);
         }
+        if let Ok(v) = std::env::var("FACTR_WEBSEARCH_LAST_RESORT_WIKIPEDIA")
+            && let Some(on) = parse_env_bool(&v)
+        {
+            self.websearch.last_resort_wikipedia = on;
+        }
+        if let Ok(v) = std::env::var("FACTR_WEBFETCH_ALLOWED_HOSTS") {
+            let hosts = parse_env_list(&v);
+            if !hosts.is_empty() {
+                self.webfetch.allowed_hosts = hosts;
+            }
+        }
+        if let Ok(v) = std::env::var("FACTR_WEBFETCH_WAYBACK")
+            && let Some(on) = parse_env_bool(&v)
+        {
+            self.webfetch.wayback_fallback = on;
+        }
 
         if let Ok(v) = std::env::var("FACTR_TRUSTED_EXTERNAL_AUTH_SOURCES") {
             let mut source_ids = Vec::new();

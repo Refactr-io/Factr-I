@@ -1,5 +1,5 @@
 use super::{Tool, ToolContext, ToolOutput};
-use super::webfetch_net::fetch_resilient;
+use super::webfetch_net::{WAYBACK_API, fetch_resilient_with, restricted_client};
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -24,7 +24,7 @@ const DEFAULT_TIMEOUT: u64 = 30;
 const MAX_TIMEOUT: u64 = 120;
 
 pub struct WebFetchTool {
-    client: reqwest::Client,
+    pub(super) client: reqwest::Client,
 }
 
 impl WebFetchTool {
@@ -100,7 +100,17 @@ impl Tool for WebFetchTool {
         let timeout = Duration::from_secs(params.timeout.unwrap_or(DEFAULT_TIMEOUT).min(MAX_TIMEOUT));
         let format = params.format.as_deref().unwrap_or("markdown");
 
-        let (fetched, archived) = fetch_resilient(&self.client, &params.url, timeout)
+        let cfg = crate::config::config();
+        let allowed = &cfg.webfetch.allowed_hosts;
+        let restricted;
+        let client = if allowed.is_empty() {
+            &self.client
+        } else {
+            restricted = restricted_client(allowed);
+            &restricted
+        };
+        let wayback = cfg.webfetch.wayback_fallback.then_some(WAYBACK_API);
+        let (fetched, archived) = fetch_resilient_with(client, &params.url, timeout, wayback, allowed)
             .await
             .map_err(|e| anyhow::anyhow!("{} fetching {}", e.msg, params.url))?;
 

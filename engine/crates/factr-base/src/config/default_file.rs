@@ -74,6 +74,18 @@ bing_market = "en-US"
 # this. Configure here or via the FACTR_SEARXNG_URL environment variable, then
 # set engine = "searxng" or add it to fallback_engines.
 # searxng_url = "https://searx.example.org"
+# When engine = "searxng" AND a SearXNG URL is configured, the per-call `engine`
+# argument is ignored, no fallback engine or key-based backend is used.
+# Empty searches fall back to the Wikipedia opensearch API; false disables that
+# (env FACTR_WEBSEARCH_LAST_RESORT_WIKIPEDIA=0).
+# last_resort_wikipedia = true
+
+[webfetch]
+# When non-empty, webfetch only contacts these hosts (redirect hops included);
+# anything else is refused. Env: FACTR_WEBFETCH_ALLOWED_HOSTS (comma list).
+# allowed_hosts = ["127.0.0.1"]
+# Try an archive.org (Wayback) snapshot after a 403/404/410. Env: FACTR_WEBFETCH_WAYBACK=0 disables.
+# wayback_fallback = true
 
 [tools]
 # Controls which built-in tools are sent to the model.

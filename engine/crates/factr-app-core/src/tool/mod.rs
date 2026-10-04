@@ -48,6 +48,8 @@ mod memory_cap;
 mod webfetch;
 mod webfetch_net;
 mod websearch;
+#[cfg(test)]
+mod gaia_switch_tests;
 mod websearch_backends;
 mod write;
 

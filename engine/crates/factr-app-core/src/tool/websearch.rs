@@ -9,13 +9,17 @@ const SNIPPET_CHARS: usize = 200;
 
 /// Web search using DuckDuckGo or Bing (HTML scraping, with optional Bing API)
 pub struct WebSearchTool {
-    client: reqwest::Client,
+    pub(super) client: reqwest::Client,
+    pub(super) wikipedia_api: String,
 }
+
+const WIKIPEDIA_API: &str = "https://en.wikipedia.org/w/api.php";
 
 impl WebSearchTool {
     pub fn new() -> Self {
         Self {
             client: crate::provider::shared_http_client(),
+            wikipedia_api: WIKIPEDIA_API.to_string(),
         }
     }
 }
@@ -56,6 +60,32 @@ impl Tool for WebSearchTool {
     }
 
     fn parameters_schema(&self) -> Value {
+        if searxng_only(crate::config::config()) {
+            return json!({
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "intent": super::intent_schema_property(),
+                    "query": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Search query."
+                    },
+                    "num_results": {
+                        "type": "integer",
+                        "description": "Max results."
+                    },
+                    "engine": {
+                        "type": "string",
+                        "description": "Ignored: every search goes to the one configured SearXNG search service whatever this says."
+                    },
+                    "bing_market": {
+                        "type": "string",
+                        "description": "Ignored."
+                    }
+                }
+            });
+        }
         json!({
             "type": "object",
             "required": ["query"],
@@ -90,10 +120,16 @@ impl Tool for WebSearchTool {
         let fetch_n = (num_results * 2).min(20);
 
         let config = crate::config::config();
+        let only_searxng = searxng_only(config);
         let mut engines = Vec::new();
-        engines.push(params.engine.unwrap_or(config.websearch.engine));
-        engines.extend(config.websearch.fallback_engines.iter().copied());
-        engines.dedup();
+        if only_searxng {
+            // Pinned mode: the per-call engine, fallbacks and key backends are all ignored.
+            engines.push(WebSearchEngine::Searxng);
+        } else {
+            engines.push(params.engine.unwrap_or(config.websearch.engine));
+            engines.extend(config.websearch.fallback_engines.iter().copied());
+            engines.dedup();
+        }
 
         let market = params
             .bing_market
@@ -102,7 +138,8 @@ impl Tool for WebSearchTool {
         let mut last_error = None;
         let mut results = Vec::new();
         // A key-based backend (Factr `web.backend`) first; any failure falls back to the keyless chain.
-        if params.engine.is_none()
+        if !only_searxng
+            && params.engine.is_none()
             && let Some((backend, key, base)) = super::websearch_backends::configured()
         {
             match super::websearch_backends::search(&self.client, backend, &key, base.as_deref(), &params.query, fetch_n).await {
@@ -137,7 +174,7 @@ impl Tool for WebSearchTool {
             }
         }
 
-        if results.is_empty() {
+        if results.is_empty() && config.websearch.last_resort_wikipedia {
             // Last resort: Wikipedia opensearch (never blocked, titles only).
             if let Ok(found) = self.search_wikipedia(&params.query, num_results).await {
                 results = found;
@@ -151,6 +188,9 @@ impl Tool for WebSearchTool {
         }
         let results = tidy_results(results, num_results);
 
+        if results.is_empty() && (only_searxng || !config.websearch.last_resort_wikipedia) {
+            return Ok(ToolOutput::new(format!("No results found for: {}", params.query)));
+        }
         if results.is_empty() {
             return Ok(ToolOutput::new(format!(
                 "No results found for: {}\n\n\
@@ -204,10 +244,32 @@ fn tidy_results(results: Vec<SearchResult>, max: usize) -> Vec<SearchResult> {
         .collect()
 }
 
+/// The configured SearXNG base URL (config value, else the named env var).
+fn searxng_base(config: &crate::config::Config) -> Option<String> {
+    config
+        .websearch
+        .searxng_url
+        .as_deref()
+        .filter(|u| !u.trim().is_empty())
+        .map(|u| u.to_string())
+        .or_else(|| {
+            std::env::var(&config.websearch.searxng_url_env)
+                .ok()
+                .filter(|u| !u.trim().is_empty())
+        })
+}
+
+/// True when the preferred engine is searxng and an instance URL is set: the
+/// pinned mode where the per-call `engine` argument and every fallback is ignored.
+fn searxng_only(config: &crate::config::Config) -> bool {
+    config.websearch.engine == WebSearchEngine::Searxng && searxng_base(config).is_some()
+}
+
 impl WebSearchTool {
     async fn search_wikipedia(&self, query: &str, n: usize) -> Result<Vec<SearchResult>> {
         let url = format!(
-            "https://en.wikipedia.org/w/api.php?action=opensearch&format=json&limit={n}&search={}",
+            "{}?action=opensearch&format=json&limit={n}&search={}",
+            self.wikipedia_api,
             urlencoding::encode(query)
         );
         let v: Value = self.client.get(url).send().await?.json().await?;
@@ -387,17 +449,7 @@ impl WebSearchTool {
     /// scraped requests on some hosts (see issue #270).
     async fn search_searxng(&self, query: &str, num_results: usize) -> Result<Vec<SearchResult>> {
         let config = crate::config::config();
-        let base = config
-            .websearch
-            .searxng_url
-            .as_deref()
-            .filter(|u| !u.trim().is_empty())
-            .map(|u| u.to_string())
-            .or_else(|| {
-                std::env::var(&config.websearch.searxng_url_env)
-                    .ok()
-                    .filter(|u| !u.trim().is_empty())
-            })
+        let base = searxng_base(config)
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "SearXNG engine selected but no instance URL configured. Set \
