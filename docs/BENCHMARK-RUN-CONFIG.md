@@ -173,6 +173,17 @@ These come from an independent review of the headless run path.
 - **Tool output caps.** Tool results over about 50 KB are cut (40% head, 60% tail) with a note and a spill file; `repl` output is capped at 8,000 characters. These announce themselves. REPL-heavy tasks will page a lot.
 - **A timeout** interrupts the session and returns `ok:false` with `text:""`; files already written stay on disk (relevant to graded file outputs).
 
+## 11. Apples-to-apples certification (before each benchmark)
+
+1. **Tool surface.** Capture one request body with the identical `enabled_toolsets` through a fake-provider recorder (`--provider openai-api` with a local recorder, the method used in ENGINE-VERIFY.md): diff `tools[].name` and the schemas against the recorded set, and confirm there is no `factr`, `load_tools` or web tool unless the benchmark is web-enabled. The hosted `image_generation` tool is attached to Responses requests in ChatGPT mode for non-codex model ids: state that in the results header.
+2. **System prompt.** Diff the request `instructions` between two benchmarks: only the cwd and file list may differ.
+3. **Spans per sample.** `gen_ai.request.model` is `gpt-6-luna`, `reasoning_effort` is the arm's value, there is no `provider_fallback`, and the `loop.guard` reasons and the `nudged` flag are recorded.
+4. **Inputs identical across arms.** The prompt template hash, timeout, order file and scorer version match the other arms.
+5. **GAIA only.** Every `websearch` call must have a matching search event on the shared service (this catches the engine's own Wikipedia and Wayback fallbacks, which a session audit cannot see), and the web audit must be zero before the headline is scored. Use the GAIA variant described in the manifest.
+6. **Recorded configuration.** Hash the environment set, `config.yaml` and `config.toml` bytes into the result, and assert `fallback_providers` is absent.
+7. **Evidence.** Before deleting a task home, checkpoint the database (`sqlite3 factr.db 'PRAGMA wal_checkpoint(TRUNCATE)'`) so the spans survive; deleting `factr.db-wal` and `-shm` first loses them.
+8. **Behaviours to label, not neutralise:** the `<environment>` line (`FACTR_ENV_SNAPSHOT=0` removes it), deadline reminders at 70% and 90%, stop nudges (`FACTR_VERIFY_ON_STOP=0` disables them; a nudge can fire on a stated output template such as `FINAL ANSWER:`), native compaction, the persistent WebSocket transport with a response-id chain, `parallel_tool_calls: false`, bash caps (120 s default) and the REPL's 256 MiB cap.
+
 ## Integrity
 
 Only general capabilities were added. No benchmark task ids, answers or per-task formats appear in the code. Edits to test files are flagged in the `loop.guard` spans (`tests_touched`), so those passes can be excluded. The format-compliance nudge reads an explicitly stated output label from the task text only.

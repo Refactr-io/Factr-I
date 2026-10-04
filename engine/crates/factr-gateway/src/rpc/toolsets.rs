@@ -23,14 +23,21 @@ fn tools_of(toolset: &str) -> Vec<&str> {
     }
 }
 
-/// Whether a toolset's tools live in Factr's Python backend, reached through the `factr` bridge tool
-/// (image_gen, vision, tts, homeassistant, kanban, ...). The bridge matches a tool's own toolset name
-/// against the run's policy, so those names pass through as-is; only the tool that carries them,
-/// `factr`, has to be allowed too. A name the engine maps itself, or an MCP server, is not one (a direct
-/// engine-tool name also passes this test, which only makes `factr` visible: it still runs nothing unnamed).
+/// Toolsets whose tools live only in Factr's Python backend (backend/toolsets.py), reached through the
+/// `factr` bridge tool. The bridge matches a tool's own toolset name against the run's policy, so these
+/// names pass through `tools_of` as-is; only the tool that carries them, `factr`, has to be allowed too.
+/// `cronjob` is also here: it maps to engine tools above and its `cronjob_manage` is a backend tool.
+/// Keep sorted; backend/tests/test_engine_bridged_toolsets.py fails when this drifts from the backend.
+const BRIDGED_TOOLSETS: &[&str] = &[
+    "computer_use", "connections", "cronjob", "desktop_ui", "discord", "discord_admin", "feishu_doc", "feishu_drive",
+    "homeassistant", "image_gen", "kanban", "project", "spotify", "tts", "video", "video_gen", "vision", "x_search",
+    "yuanbao",
+];
+
+/// Whether a toolset needs the `factr` bridge. A name the engine maps itself (terminal, file, ...), an MCP
+/// server or an unknown name is not one: an unmapped name never makes `factr` visible.
 fn bridged(toolset: &str) -> bool {
-    toolset == "cronjob"
-        || (tools_of(toolset) == [toolset] && !toolset.starts_with("mcp") && toolset != "factr")
+    BRIDGED_TOOLSETS.contains(&toolset)
 }
 
 /// factr refuses a whole tool policy over one odd name (`no_mcp`-style markers, dots).
@@ -153,5 +160,30 @@ mod tests {
         assert_eq!(req["tools"]["enabled"], serde_json::json!([]), "a denied bridge toolset does not enable the bridge");
         let req = request("s1", None, &names(&["cronjob", "image_gen"])).unwrap();
         assert_eq!(req["tools"]["disabled"], serde_json::json!(["cronjob_manage", "heartbeat", "image_gen", "session_goal"]));
+    }
+
+    #[test]
+    fn engine_mapped_toolsets_never_enable_the_bridge() {
+        let policy = names(&["terminal", "file", "code_execution", "todo"]);
+        let req = request("s1", Some(&policy), &[]).unwrap();
+        let allowed: Vec<String> = serde_json::from_value(req["tools"]["enabled"].clone()).unwrap();
+        assert!(!allowed.iter().any(|t| t == "factr"), "{allowed:?}");
+        let mut expect: Vec<String> = policy.iter().flat_map(|t| tools_of(t)).map(str::to_string).collect();
+        expect.sort();
+        assert_eq!(allowed, expect, "the allow-list is exactly the engine tools of those toolsets");
+        for t in BRIDGED_TOOLSETS {
+            assert!(t.eq(&"cronjob") || tools_of(t) == [*t], "{t} is mapped by the engine, so it is not backend-only");
+        }
+        assert!(BRIDGED_TOOLSETS.windows(2).all(|w| w[0] < w[1]), "keep the list sorted");
+        assert!(!bridged("mcp__docs") && !bridged("factr") && !bridged("made_up"));
+    }
+
+    #[test]
+    fn backend_toolsets_enable_the_bridge() {
+        for set in [&["terminal", "image_gen"][..], &["cronjob"][..], &["kanban", "file"][..]] {
+            let req = request("s1", Some(&names(set)), &[]).unwrap();
+            let allowed: Vec<String> = serde_json::from_value(req["tools"]["enabled"].clone()).unwrap();
+            assert!(allowed.iter().any(|t| t == "factr"), "{set:?} -> {allowed:?}");
+        }
     }
 }
