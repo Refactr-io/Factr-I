@@ -49,6 +49,7 @@ pub(crate) fn configure(
     config: SessionToolConfig,
     sender: mpsc::UnboundedSender<ServerEvent>,
 ) -> Result<()> {
+    super::install_policy_hook();
     let valid_name = |name: &str| {
         !name.is_empty()
             && name.len() <= 128

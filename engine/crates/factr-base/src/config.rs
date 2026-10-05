@@ -8,7 +8,7 @@ pub use factr_config_types::{
     CompactionMode, CrossProviderFailoverMode, DisplayConfig, FeatureConfig,
     NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
     NamedProviderType, NotificationsConfig, PowerConfig, ProviderConfig, ReasoningDisplayMode,
-    SwarmSpawnMode, UpdateChannel, WebSearchConfig, WebSearchEngine,
+    SwarmSpawnMode, UpdateChannel, WebFetchConfig, WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -62,6 +62,9 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "FACTR_REASONING_DISPLAY",
     "FACTR_SAME_PROVIDER_ACCOUNT_FAILOVER",
     "FACTR_SEARXNG_URL",
+    "FACTR_WEBSEARCH_LAST_RESORT_WIKIPEDIA",
+    "FACTR_WEBFETCH_ALLOWED_HOSTS",
+    "FACTR_WEBFETCH_WAYBACK",
     "FACTR_SHOW_THINKING",
     "FACTR_STREAM_IDLE_TIMEOUT_SECS",
     "FACTR_MAX_RETRIES",
@@ -374,6 +377,9 @@ pub struct Config {
 
     /// Web search tool configuration
     pub websearch: WebSearchConfig,
+
+    /// Web fetch tool configuration
+    pub webfetch: WebFetchConfig,
 
     /// Built-in tool exposure configuration
     pub tools: ToolConfig,

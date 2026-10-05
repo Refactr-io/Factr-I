@@ -658,7 +658,7 @@ impl Tool for TodoTool {
                             "confidence": {
                                 "type": "string",
                                 "enum": ["speculative", "plausible", "validated", "verified"],
-                                "description": "Evidence state that this todo can be completed correctly; reassess as evidence accumulates."
+                                "description": "Evidence this todo can be completed correctly; verified needs a tool-checked result."
                             },
                             "completion_confidence": {
                                 "type": "string",
@@ -865,7 +865,7 @@ mod tests {
         assert!(!item_props.contains_key("closed_feedback_loop"));
         assert_eq!(
             item_props["confidence"]["description"],
-            "Evidence state that this todo can be completed correctly; reassess as evidence accumulates."
+            "Evidence this todo can be completed correctly; verified needs a tool-checked result."
         );
 
         let plan_props = props["plan"]

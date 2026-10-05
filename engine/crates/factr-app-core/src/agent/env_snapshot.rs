@@ -1,6 +1,6 @@
 //! One-time environment line for a session's first user message: cwd, which
 //! common tools are on PATH (no subprocess per tool), python package probe
-//! (one `python3 -c`, 1.5 s cap), and the first cwd entries. Hard cap 600 chars.
+//! (one `python3 -c`, 1.5 s cap), and the first cwd entries with sizes. Hard cap 1200 chars.
 
 use std::path::Path;
 use std::sync::OnceLock;
@@ -10,7 +10,11 @@ const TOOLS: [&str; 16] = [
     "python3", "python", "pip", "node", "npm", "cargo", "go", "java", "gcc", "g++", "cmake", "git", "uv", "jq", "curl",
     "systemctl",
 ];
-const MAX_CHARS: usize = 600;
+const MAX_CHARS: usize = 1200;
+/// Same threshold as the system prompt's large-input rule (~20K characters).
+const LARGE_INPUT_BYTES: u64 = 20_000;
+/// Line counts are only computed for files up to this size.
+const LINE_COUNT_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 fn on_path(name: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
@@ -59,6 +63,40 @@ pub(super) fn enabled() -> bool {
         && crate::config::config().agents.environment_snapshot
 }
 
+fn human_size(bytes: u64) -> String {
+    match bytes {
+        0..1024 => format!("{bytes} B"),
+        1024..1_048_576 => format!("{} KB", bytes.div_ceil(1024)),
+        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+    }
+}
+
+/// `name`, or `name (size, N lines[, large input])` for a regular file; a directory gets a `/`.
+fn describe_entry(path: &Path, name: &str) -> String {
+    let Ok(meta) = std::fs::metadata(path) else { return name.to_string() };
+    if meta.is_dir() {
+        return format!("{name}/");
+    }
+    if !meta.is_file() {
+        return name.to_string();
+    }
+    let size = meta.len();
+    let mut parts = vec![human_size(size)];
+    if size > 0 && size <= LINE_COUNT_MAX_BYTES {
+        if let Ok(bytes) = std::fs::read(path) {
+            if !bytes[..bytes.len().min(8192)].contains(&0) {
+                let newlines = bytes.iter().filter(|&&b| b == b'\n').count();
+                let lines = newlines + usize::from(bytes.last() != Some(&b'\n'));
+                parts.push(format!("{lines} lines"));
+            }
+        }
+    }
+    if size > LARGE_INPUT_BYTES {
+        parts.push("large input".to_string());
+    }
+    format!("{name} ({})", parts.join(", "))
+}
+
 pub(super) fn snapshot(cwd: &Path) -> String {
     let (have, missing): (Vec<&str>, Vec<&str>) = TOOLS.iter().partition(|t| on_path(t));
     let mut have: Vec<String> = have.iter().map(|t| t.to_string()).collect();
@@ -73,6 +111,7 @@ pub(super) fn snapshot(cwd: &Path) -> String {
         .unwrap_or_default();
     names.sort();
     names.truncate(20);
+    let names: Vec<String> = names.iter().map(|n| describe_entry(&cwd.join(n), n)).collect();
     let text = format!(
         "<environment>cwd {}; have: {}; missing: {}; files: {}</environment>",
         cwd.display(),
@@ -107,6 +146,25 @@ mod tests {
         std::fs::create_dir_all(&d2).unwrap();
         std::fs::write(d2.join("a.txt"), "").unwrap();
         assert!(snapshot(&d2).contains("files: a.txt"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn snapshot_shows_sizes_lines_and_large_marker() {
+        let d = std::env::temp_dir().join(format!("envsnap-sizes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("sub")).unwrap();
+        let big: String = (0..1237).map(|i| format!("line {i:05} category-{} with filler text to pad it out a bit\n", i % 7)).collect();
+        assert!(big.len() as u64 > LARGE_INPUT_BYTES);
+        std::fs::write(d.join("big.txt"), &big).unwrap();
+        std::fs::write(d.join("small.txt"), "a\nb").unwrap();
+        std::fs::write(d.join("blob.bin"), [0u8, 1, 2, 3]).unwrap();
+        let s = snapshot(&d);
+        assert!(s.contains(&format!("big.txt ({} KB, 1237 lines, large input)", big.len().div_ceil(1024))), "{s}");
+        assert!(s.contains("small.txt (3 B, 2 lines)"), "{s}");
+        assert!(s.contains("blob.bin (4 B)"), "{s}");
+        assert!(s.contains("sub/"), "{s}");
+        assert!(s.chars().count() <= MAX_CHARS);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

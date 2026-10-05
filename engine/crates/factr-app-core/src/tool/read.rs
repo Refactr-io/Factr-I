@@ -10,6 +10,8 @@ use std::path::Path;
 
 const DEFAULT_LIMIT: usize = 5000;
 const MAX_LINE_LEN: usize = 2000;
+/// A plain read (no range) of a file over this many bytes returns an overview, not the content.
+const LARGE_FILE_BYTES: usize = 20_000;
 
 pub struct ReadTool;
 
@@ -189,6 +191,10 @@ impl Tool for ReadTool {
         } else {
             tokio::fs::read_to_string(&path).await?
         };
+        let no_range = params.start_line.is_none() && params.end_line.is_none() && params.offset.is_none() && params.limit.is_none();
+        if no_range && !office && content.len() > LARGE_FILE_BYTES {
+            return Ok(ToolOutput::new(large_file_overview(&params.file_path, &content, super::repl_available())));
+        }
         let char_cap = if office { 12_000 } else { usize::MAX };
         let mut capped_at: Option<usize> = None;
 
@@ -276,6 +282,39 @@ impl Tool for ReadTool {
             Ok(ToolOutput::new(output))
         }
     }
+}
+
+/// Size, line count, head, tail and evenly spaced sample lines of a large file, with where to go next.
+fn large_file_overview(file_path: &str, content: &str, repl: bool) -> String {
+    use std::fmt::Write;
+    const HEAD: usize = 10;
+    const TAIL: usize = 5;
+    const SAMPLES: usize = 8;
+    let lines: Vec<&str> = content.lines().collect();
+    let total = lines.len();
+    let show = |out: &mut String, i: usize| {
+        let _ = writeln!(out, "{:>6}\t{}", i + 1, crate::util::truncate_str(lines[i], 200));
+    };
+    let mut out = format!(
+        "{file_path}: {} bytes, {total} lines. Too large to show whole; overview below.\n\nHead:\n",
+        content.len()
+    );
+    (0..HEAD.min(total)).for_each(|i| show(&mut out, i));
+    out.push_str("\nSamples (evenly spaced):\n");
+    let (from, to) = (HEAD.min(total), total.saturating_sub(TAIL));
+    if to > from {
+        for k in 0..SAMPLES {
+            show(&mut out, from + (to - from) * (2 * k + 1) / (2 * SAMPLES));
+        }
+    }
+    out.push_str("\nTail:\n");
+    (to.max(HEAD.min(total))..total).for_each(|i| show(&mut out, i));
+    out.push_str("\nRead a range with start_line and end_line (1-based, inclusive), or search with agentgrep.");
+    if repl {
+        out.push_str(" To process it, use the `repl` tool: `await load(path, start, length)` reads a slice and keeps results in variables.");
+    }
+    out.push('\n');
+    out
 }
 
 /// Audio and video cannot be read as text: say what `read` cannot do and where to look instead,

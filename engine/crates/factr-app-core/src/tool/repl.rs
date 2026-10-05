@@ -93,6 +93,60 @@ mod repl_python_tests {
 }
 
 #[cfg(test)]
+mod spawn_policy_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    fn ctx(session: &str) -> ToolContext {
+        ToolContext {
+            session_id: session.to_string(),
+            message_id: "m".into(),
+            tool_call_id: "t".into(),
+            working_dir: None,
+            stdin_request_tx: None,
+            graceful_shutdown_signal: None,
+            execution_mode: super::super::ToolExecutionMode::Direct,
+        }
+    }
+
+    fn set(session: &str, allowed: &[&str], disabled: &[&str]) {
+        let to_set = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<HashSet<_>>();
+        super::super::set_session_tool_policy(session, Some(to_set(allowed)), to_set(disabled));
+    }
+
+    const OP: &str = r#"{"prompt":"x","label":"w"}"#;
+    const AWAIT: &str = r#"{"action":"await","target":"nobody","timeout":1}"#;
+
+    #[tokio::test]
+    async fn spawn_subagent_is_refused_without_the_delegate_tool() {
+        let s = "repl-spawn-policy-denied";
+        set(s, &["repl", "bash"], &[]);
+        for op in [OP, AWAIT] {
+            let err = spawn_subagent_host(op.into(), ctx(s)).await.unwrap_err().to_string();
+            assert!(err.contains("not available in this run") && err.contains("delegate"), "{err}");
+        }
+        set(s, &["repl", "delegate"], &["delegate"]);
+        assert!(spawn_subagent_host(OP.into(), ctx(s)).await.unwrap_err().to_string().contains("not available in this run"));
+        super::super::clear_session_tool_policy(s);
+    }
+
+    #[tokio::test]
+    async fn spawn_subagent_passes_the_gate_when_delegate_is_allowed_or_no_policy() {
+        let s = "repl-spawn-policy-allowed";
+        for policy in [Some(&["repl", "delegate"][..]), None] {
+            match policy {
+                Some(a) => set(s, a, &[]),
+                None => super::super::clear_session_tool_policy(s),
+            }
+            // Past the gate the call fails for a different reason (no such child), not the policy.
+            let err = spawn_subagent_host(AWAIT.into(), ctx(s)).await.unwrap_err().to_string();
+            assert!(!err.contains("not available in this run"), "{err}");
+        }
+        super::super::clear_session_tool_policy(s);
+    }
+}
+
+#[cfg(test)]
 mod compaction_request_tests {
     use super::{compaction_pending, queue_compaction, take_pending_compaction};
 
@@ -110,6 +164,44 @@ mod compaction_request_tests {
         assert!(!compaction_pending(&session));
         assert_eq!(take_pending_compaction(&session), None);
     }
+}
+
+/// REPL `spawn_subagent` / `await_subagent`: the REPL must not widen the run's tool policy, so
+/// spawning is refused unless the session's tool policy allows the `delegate` tool.
+async fn spawn_subagent_host(op_json: String, context: ToolContext) -> Result<String> {
+    anyhow::ensure!(
+        super::session_tool_allows(&context.session_id, "delegate", "delegation"),
+        "spawn_subagent is not available in this run: the `delegate` tool is not allowed by the run's tool policy"
+    );
+    let op: Value = serde_json::from_str(&op_json).unwrap_or_default();
+    let prompt = op["prompt"].as_str().unwrap_or_default();
+    let label = op["label"].as_str().unwrap_or("worker");
+    if op["action"].as_str() == Some("await") {
+        let target = op["target"].as_str().unwrap_or_default();
+        let timeout = op["timeout"].as_u64().unwrap_or(20);
+        let result = super::communicate::learn_await_subagent(
+            &context.session_id,
+            target,
+            timeout,
+        )
+        .await?;
+        return Ok(result.to_string());
+    }
+    let output = super::delegate::DelegateTool::new()
+        .execute(
+            json!({"action":"spawn","prompt":prompt,"label":label}),
+            context,
+        )
+        .await?;
+    let session_id = output
+        .output
+        .split_once("Spawned new agent:")
+        .map(|(_, id)| id.trim())
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!("delegate did not return a spawned session id")
+        })?;
+    Ok(json!({ "session_id": session_id, "status": "spawned" }).to_string())
 }
 
 static HOST: OnceLock<Option<Arc<factr_learn::ReplHost>>> = OnceLock::new();
@@ -310,37 +402,7 @@ impl Tool for ReplTool {
                 let context = ctx.clone();
                 Arc::new(move |op_json| {
                     let context = context.clone();
-                    Box::pin(async move {
-                        let op: Value = serde_json::from_str(&op_json).unwrap_or_default();
-                        let prompt = op["prompt"].as_str().unwrap_or_default();
-                        let label = op["label"].as_str().unwrap_or("worker");
-                        if op["action"].as_str() == Some("await") {
-                            let target = op["target"].as_str().unwrap_or_default();
-                            let timeout = op["timeout"].as_u64().unwrap_or(20);
-                            let result = super::communicate::learn_await_subagent(
-                                &context.session_id,
-                                target,
-                                timeout,
-                            )
-                            .await?;
-                            return Ok(result.to_string());
-                        }
-                        let output = super::delegate::DelegateTool::new()
-                            .execute(
-                                json!({"action":"spawn","prompt":prompt,"label":label}),
-                                context,
-                            )
-                            .await?;
-                        let session_id = output
-                            .output
-                            .split_once("Spawned new agent:")
-                            .map(|(_, id)| id.trim())
-                            .filter(|id| !id.is_empty())
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("delegate did not return a spawned session id")
-                            })?;
-                        Ok(json!({ "session_id": session_id, "status": "spawned" }).to_string())
-                    })
+                    Box::pin(spawn_subagent_host(op_json, context))
                 })
             },
             agent_message: {

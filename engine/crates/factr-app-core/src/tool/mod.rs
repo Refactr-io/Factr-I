@@ -48,6 +48,10 @@ mod memory_cap;
 mod webfetch;
 mod webfetch_net;
 mod websearch;
+#[cfg(test)]
+mod gaia_switch_tests;
+#[cfg(test)]
+mod policy_hook_tests;
 mod websearch_backends;
 mod write;
 
@@ -195,11 +199,17 @@ impl Drop for SessionToolPolicyRegistration {
     }
 }
 
+/// Let provider crates ask this module's policy about tools they attach themselves.
+pub(crate) fn install_policy_hook() {
+    factr_base::tool_policy::install_tool_allowed_hook(session_tool_allows);
+}
+
 pub(crate) fn register_session_tool_policy(
     session_id: &str,
     allowed_tools: Option<HashSet<String>>,
     disabled_tools: HashSet<String>,
 ) -> SessionToolPolicyRegistration {
+    install_policy_hook();
     let owner = NEXT_SESSION_TOOL_POLICY_OWNER.fetch_add(1, Ordering::Relaxed);
     let mut policies = SESSION_TOOL_POLICIES
         .write()
@@ -224,6 +234,7 @@ pub(crate) fn set_session_tool_policy(
     allowed_tools: Option<HashSet<String>>,
     disabled_tools: HashSet<String>,
 ) {
+    install_policy_hook();
     let mut policies = SESSION_TOOL_POLICIES
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

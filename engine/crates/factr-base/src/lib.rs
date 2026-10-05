@@ -60,6 +60,7 @@ pub mod message;
 pub mod model_pricing;
 pub mod model_usage;
 pub mod output_style;
+pub mod tool_policy;
 pub mod plan;
 pub mod platform;
 pub mod power_inhibit;

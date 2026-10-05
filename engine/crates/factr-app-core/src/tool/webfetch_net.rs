@@ -7,7 +7,7 @@ pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Ap
 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 /// Hard cap on any downloaded body (PDFs and office files can be large).
 pub const MAX_BODY: usize = 25 * 1024 * 1024;
-const WAYBACK_API: &str = "https://archive.org/wayback/available";
+pub const WAYBACK_API: &str = "https://archive.org/wayback/available";
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(10);
 
 pub struct Fetched {
@@ -42,7 +42,12 @@ async fn get_once(client: &reqwest::Client, url: &str, timeout: Duration) -> Res
         .await
         .map_err(|e| {
             let transient = e.is_connect() || e.is_timeout();
-            fail(None, format!("request failed: {}", e.without_url()), transient, None)
+            let redirect_src = if e.is_redirect() { std::error::Error::source(&e).map(|s| s.to_string()) } else { None };
+            let mut msg = format!("request failed: {}", e.without_url());
+            if let Some(src) = redirect_src {
+                msg = format!("{msg}: {src}");
+            }
+            fail(None, msg, transient, None)
         })?;
     let status = resp.status();
     if !status.is_success() {
@@ -93,21 +98,100 @@ pub async fn fetch_retry(client: &reqwest::Client, url: &str, timeout: Duration)
 
 /// Fetch, then on 403/404/410 try the closest Wayback snapshot. The bool is
 /// true when the archived copy was used.
-pub async fn fetch_resilient(client: &reqwest::Client, url: &str, timeout: Duration) -> Result<(Fetched, bool), FetchFail> {
+/// `wayback_api` None disables the archive.org fallback entirely. A non-empty
+/// `allowed_hosts` refuses any host outside the list (Wayback included).
+pub async fn fetch_resilient_with(
+    client: &reqwest::Client,
+    url: &str,
+    timeout: Duration,
+    wayback_api: Option<&str>,
+    allowed_hosts: &[String],
+) -> Result<(Fetched, bool), FetchFail> {
+    if let Err(msg) = check_host_allowed(url, allowed_hosts) {
+        return Err(FetchFail { status: None, msg, transient: false, retry_after: None });
+    }
     let mut err = match fetch_retry(client, url, timeout).await {
         Ok(f) => return Ok((f, false)),
         Err(e) => e,
     };
     if matches!(err.status, Some(403 | 404 | 410))
-        && let Some(snap) = wayback_snapshot(client, WAYBACK_API, url).await
+        && let Some(api) = wayback_api
+        && check_host_allowed(api, allowed_hosts).is_ok()
+        && let Some(snap) = wayback_snapshot(client, api, url).await
+        && check_host_allowed(&snap, allowed_hosts).is_ok()
         && let Ok(f) = fetch_retry(client, &snap, timeout).await
     {
         return Ok((f, true));
     }
-    if matches!(err.status, Some(403 | 404 | 410)) {
+    if matches!(err.status, Some(403 | 404 | 410)) && wayback_api.is_some() {
         err.msg.push_str(" (no archived copy)");
     }
     Err(err)
+}
+
+fn norm_host(h: &str) -> String {
+    h.trim().trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase()
+}
+
+/// Ok when `allowed` is empty or the URL matches an entry (case-insensitive). An entry
+/// `host` matches that host on any port; an entry `host:port` matches host AND port
+/// (the URL's scheme default port counts, so `example.com:443` matches `https://example.com`).
+pub fn check_host_allowed(url: &str, allowed: &[String]) -> Result<(), String> {
+    if allowed.is_empty() {
+        return Ok(());
+    }
+    let parsed = reqwest::Url::parse(url).ok();
+    let host = parsed.as_ref().and_then(|u| u.host_str().map(norm_host)).unwrap_or_default();
+    let port = parsed.as_ref().and_then(|u| u.port_or_known_default());
+    let ok = allowed.iter().any(|entry| {
+        let (entry_host, entry_port) = split_host_port(entry);
+        entry_host == host && (entry_port.is_none() || entry_port == port)
+    });
+    if ok {
+        return Ok(());
+    }
+    Err(format!(
+        "host `{host}` is not allowed; webfetch is restricted to: {}",
+        allowed.join(", ")
+    ))
+}
+
+/// Split an allow-list entry into (normalised host, optional port). Bracketed IPv6
+/// (`[::1]:8080`) is handled; a bare IPv6 literal or a non-numeric suffix has no port.
+fn split_host_port(entry: &str) -> (String, Option<u16>) {
+    let e = entry.trim();
+    if let Some(rest) = e.strip_prefix('[')
+        && let Some((h, tail)) = rest.split_once(']')
+    {
+        return (norm_host(h), tail.strip_prefix(':').and_then(|p| p.parse().ok()));
+    }
+    if e.matches(':').count() == 1
+        && let Some((h, p)) = e.split_once(':')
+        && let Ok(port) = p.parse::<u16>()
+    {
+        return (norm_host(h), Some(port));
+    }
+    (norm_host(e), None)
+}
+
+/// A client whose redirect hops are re-checked against `allowed`.
+pub fn restricted_client(allowed: &[String]) -> reqwest::Client {
+    let allowed = allowed.to_vec();
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .connect_timeout(Duration::from_secs(15))
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.previous().len() >= 10 {
+                return attempt.error("too many redirects");
+            }
+            match check_host_allowed(attempt.url().as_str(), &allowed) {
+                Ok(()) => attempt.follow(),
+                Err(msg) => attempt.error(format!("redirect blocked: {msg}")),
+            }
+        }))
+        .build()
+        .unwrap_or_default()
 }
 
 pub fn wayback_query_url(api: &str, url: &str) -> String {

@@ -2220,11 +2220,13 @@ async fn a_persona_keeps_the_harness_addenda_agents_md_and_skill_index() {
 #[tokio::test]
 async fn the_first_request_prefix_stays_under_its_token_ceiling() {
     use factr_learn::entries::{EntryKind, EntryStore, MAX_PROMPT_CHARS, NewEntry, Scope};
-    // Measured 2026-10-03 at 6cc8904a2 with the REPL available (its paragraph is in the prompt):
-    // 4370 tokens (system 2128 + tool schemas 2242). The margin is one new parameter on one tool at
+    // Measured 2026-10-04 with the REPL available (its paragraph is in the prompt): 4682 tokens
+    // (system 2526 + tool schemas 2156); before the whole-set labelling guidance and the `classify`
+    // mention it measured 4497 (system 2341), so that guidance costs 185 tokens; before the
+    // large-input guidance 4371. The margin is one new parameter on one tool at
     // the per-description caps of `tool/tests.rs` (tool description 20 + parameter description
     // 25 = 45): a change bigger than that re-measures here.
-    const MEASURED_TOKENS: usize = 4370;
+    const MEASURED_TOKENS: usize = 4682;
     const CEILING_TOKENS: usize = MEASURED_TOKENS + 20 + 25;
     let _lock = crate::storage::lock_test_env();
     let home = tempfile::tempdir().unwrap();
@@ -2261,6 +2263,31 @@ async fn the_first_request_prefix_stays_under_its_token_ceiling() {
         "first-request prefix is {} tokens (system {system} + tool schemas {schemas}); ceiling {CEILING_TOKENS}",
         system + schemas
     );
+}
+
+/// The REPL and sub-query guidance appears exactly when the REPL is available (the always-on base
+/// prompt never mentions it: `prompt_tells_model_to_process_large_inputs_in_code`).
+#[tokio::test]
+async fn large_input_guidance_is_gated_on_the_repl() {
+    let _lock = crate::storage::lock_test_env();
+    let home = tempfile::tempdir().unwrap();
+    let saved: Vec<_> = ["FACTR_HOME", "FACTR_REPL_WORKER"].map(|key| (key, std::env::var_os(key))).into();
+    crate::env::set_var("FACTR_HOME", home.path());
+    crate::env::set_var("FACTR_REPL_WORKER", "/bin/factr");
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+    agent.session.working_dir = None;
+    let prompt = agent.build_system_prompt_split(None).static_part;
+    let available = crate::tool::repl_available();
+    for (key, value) in saved {
+        match value {
+            Some(value) => crate::env::set_var(key, value),
+            None => crate::env::remove_var(key),
+        }
+    }
+    assert!(prompt.contains("first inspect size and structure"), "inspect-first rule is always on");
+    assert_eq!(prompt.contains("llm_query_batch") && prompt.contains("judgment work"), available, "REPL guidance follows REPL availability");
 }
 
 #[test]

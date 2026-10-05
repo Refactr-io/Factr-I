@@ -788,9 +788,13 @@ fn skills_section_is_lazy_summary_not_full_bodies_with_20_skills() {
 fn prompt_tells_model_to_process_large_inputs_in_code() {
     let line = DEFAULT_SYSTEM_PROMPT
         .lines()
-        .find(|l| l.starts_with("Inputs over ~20K characters"))
+        .find(|l| l.starts_with("For a data file or large input"))
         .expect("large-input rule present");
-    assert!(line.len() <= 220, "rule must stay short: {}", line.len());
+    assert!(line.contains("first inspect size and structure") && line.contains("environment line"));
+    assert!(line.len() <= 360, "rule must stay short: {}", line.len());
+    assert!(DEFAULT_SYSTEM_PROMPT.contains("not counted by its name") && DEFAULT_SYSTEM_PROMPT.contains("a best estimate"));
+    assert!(DEFAULT_SYSTEM_PROMPT.contains("Use the todo tool for multi-step work, not single-answer tasks"));
+    assert!(!DEFAULT_SYSTEM_PROMPT.contains("llm_query") && !DEFAULT_SYSTEM_PROMPT.contains("`repl`"), "REPL guidance is gated in app-core");
 }
 
 /// A learned skill is only used if the model is told it may load a matching skill by itself: the

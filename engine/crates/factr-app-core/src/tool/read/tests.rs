@@ -387,3 +387,22 @@ async fn audio_and_video_are_answered_plainly_not_as_binary() {
         assert!(!out.contains("Binary file detected"), "{out}");
     }
 }
+
+#[tokio::test]
+async fn read_tool_gives_an_overview_of_a_large_file_unless_a_range_is_asked() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let body: String = (1..=900).map(|i| format!("row {i:04} item-{} with some padding text here\n", i % 11)).collect();
+    assert!(body.len() > LARGE_FILE_BYTES);
+    std::fs::write(temp.path().join("big.txt"), &body).expect("write");
+    let tool = ReadTool::new();
+    let out = tool.execute(json!({"file_path": "big.txt"}), make_ctx(temp.path().to_path_buf())).await.expect("read").output;
+    assert!(out.contains(&format!("{} bytes, 900 lines", body.len())), "{out}");
+    assert!(out.contains("row 0001") && out.contains("row 0900") && out.contains("Samples"), "{out}");
+    assert!(!out.contains("row 0450 item-"), "not the whole file: {out}");
+    assert!(out.chars().count() < 3_000, "{}", out.chars().count());
+    let ranged = tool.execute(json!({"file_path": "big.txt", "start_line": 450, "end_line": 451}), make_ctx(temp.path().to_path_buf())).await.expect("read").output;
+    assert!(ranged.contains("row 0450") && !ranged.contains("Samples"), "{ranged}");
+    std::fs::write(temp.path().join("small.txt"), "a\nb\n").expect("write");
+    let small = tool.execute(json!({"file_path": "small.txt"}), make_ctx(temp.path().to_path_buf())).await.expect("read").output;
+    assert!(small.contains("1\ta") && !small.contains("Head:"));
+}

@@ -76,6 +76,7 @@ fn build_test_response_request(
         &[],
         &[],
         is_chatgpt_mode,
+        true,
         max_output_tokens,
         reasoning_effort,
         service_tier,
@@ -376,6 +377,29 @@ fn test_build_response_request_keeps_image_generation_for_non_codex_chatgpt_mode
             .contains(&serde_json::json!({ "type": "image_generation" })),
         "non-codex ChatGPT models should still receive image_generation"
     );
+}
+
+#[test]
+fn test_build_response_request_omits_image_generation_when_the_tool_policy_disallows_it() {
+    let build = |allowed: bool| {
+        OpenAIProvider::build_response_request(
+            "gpt-5.5",
+            "system".to_string(),
+            &[],
+            &[],
+            true,
+            allowed,
+            Some(DEFAULT_MAX_OUTPUT_TOKENS),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+    };
+    let image = serde_json::json!({ "type": "image_generation" });
+    assert!(build(true)["tools"].as_array().unwrap().contains(&image));
+    assert!(!build(false)["tools"].as_array().unwrap().contains(&image));
 }
 
 #[test]

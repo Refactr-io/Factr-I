@@ -581,6 +581,28 @@ pub struct WebSearchConfig {
     pub searxng_url: Option<String>,
     /// Environment variable containing the SearXNG base URL.
     pub searxng_url_env: String,
+    /// Whether an empty search falls back to the Wikipedia opensearch API
+    /// (default true). Set false to keep all traffic on the configured engine.
+    pub last_resort_wikipedia: bool,
+}
+
+/// Configuration for the webfetch tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebFetchConfig {
+    /// When non-empty, only these host names / IPs may be fetched (redirect
+    /// targets included). Empty means no restriction. An entry `host` matches any port;
+    /// `host:port` matches host and port.
+    pub allowed_hosts: Vec<String>,
+    /// Whether a 403/404/410 fetch may fall back to a Wayback (archive.org)
+    /// snapshot (default true).
+    pub wayback_fallback: bool,
+}
+
+impl Default for WebFetchConfig {
+    fn default() -> Self {
+        Self { allowed_hosts: Vec::new(), wayback_fallback: true }
+    }
 }
 
 impl Default for WebSearchConfig {
@@ -593,6 +615,7 @@ impl Default for WebSearchConfig {
             bing_market: "en-US".to_string(),
             searxng_url: None,
             searxng_url_env: "FACTR_SEARXNG_URL".to_string(),
+            last_resort_wikipedia: true,
         }
     }
 }

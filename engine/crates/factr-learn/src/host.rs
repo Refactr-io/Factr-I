@@ -16,7 +16,9 @@ use tokio::sync::Mutex;
 
 /// Time the code itself may run per cell, and the extra time allowed while a
 /// host call (model sub-queries) is in flight. A cell with no host calls gets 20s.
-const COMPUTE_TIMEOUT: Duration = Duration::from_secs(20);
+/// Extra host wait granted per wave of `BATCH_CONCURRENCY` prompts in an `llm_query_batch` call.
+const BATCH_WAVE_ALLOWANCE: Duration = Duration::from_secs(30);
+pub const COMPUTE_TIMEOUT: Duration = Duration::from_secs(20);
 const HOST_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
 const IDLE_REAP_AFTER: Duration = Duration::from_secs(10 * 60);
 /// After the interrupt (SIGINT) that ends an over-long cell, how long the worker gets to report
@@ -25,11 +27,11 @@ const IDLE_REAP_AFTER: Duration = Duration::from_secs(10 * 60);
 const INTERRUPT_GRACE: Duration = Duration::from_secs(2);
 const RSS_POLL: Duration = Duration::from_millis(100);
 pub const MAX_LOAD_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_QUERY_CHARS: usize = 200_000;
-const MAX_HOST_CALLS: usize = 16;
-const BATCH_CONCURRENCY: usize = 8;
-const MAX_BATCH_PROMPTS: usize = 64;
-const MAX_BATCH_BYTES: usize = 2_000_000;
+pub const MAX_QUERY_CHARS: usize = 200_000;
+pub const MAX_HOST_CALLS: usize = 16;
+pub const BATCH_CONCURRENCY: usize = 8;
+pub const MAX_BATCH_PROMPTS: usize = 64;
+pub const MAX_BATCH_BYTES: usize = 2_000_000;
 
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 /// Recursive model call used by `llm_query(prompt)`.
@@ -523,8 +525,12 @@ async fn drive(
                 }
                 let arg = msg["args"][0].as_str().unwrap_or_default().to_string();
                 let started = Instant::now();
+                let allowance = if msg["fn"].as_str() == Some("llm_query_batch") { batch_allowance(&arg) } else { Duration::ZERO };
                 let call = async { match msg["fn"].as_str() {
-                    Some("llm_query") => llm_query(truncate(arg.clone(), MAX_QUERY_CHARS)).await,
+                    Some("llm_query") => match within_query_cap(arg.clone()) {
+                        Ok(prompt) => llm_query(prompt).await,
+                        Err(err) => Err(err),
+                    },
                     Some("llm_query_batch") => llm_query_batch(&llm_query, &arg).await,
                     Some("load_path") => load_path(workdir, &arg).await,
                     Some("load") => load(workdir, &arg).await,
@@ -542,12 +548,19 @@ async fn drive(
                     Some("skill") => (extra.skill)(truncate(arg, MAX_QUERY_CHARS)).await,
                     _ => Err(anyhow!("unknown host function")),
                 } };
-                let reply = tokio::time::timeout(host_left, call).await.map_err(|_| {
-                    anyhow!(
-                        "the REPL cell exceeded {}s waiting on host calls",
-                        HOST_WAIT_TIMEOUT.as_secs()
-                    )
-                })?;
+                // A batch earns extra wait per wave of concurrent sub-queries.
+                host_left += allowance;
+                let reply = match tokio::time::timeout(host_left, call).await {
+                    Ok(reply) => reply,
+                    // Like the call budget: the cell gets an error and its worker and variables survive.
+                    Err(_) => {
+                        host_left = Duration::ZERO;
+                        Err(anyhow!(
+                            "host call time budget exhausted: the cell may wait {}s in total on model calls (more for a large batch); split the work across cells",
+                            HOST_WAIT_TIMEOUT.as_secs()
+                        ))
+                    }
+                };
                 host_left = host_left.saturating_sub(started.elapsed());
                 let reply = match reply {
                     Ok(value) => json!({"op": "reply", "value": value}),
@@ -558,6 +571,20 @@ async fn drive(
             _ => bail!("REPL worker protocol error"),
         }
     }
+}
+
+fn batch_allowance(prompts_json: &str) -> Duration {
+    let n = serde_json::from_str::<Vec<Value>>(prompts_json).map_or(0, |v| v.len().min(MAX_BATCH_PROMPTS));
+    BATCH_WAVE_ALLOWANCE * n.div_ceil(BATCH_CONCURRENCY) as u32
+}
+
+/// A prompt over the cap is an explicit error for the caller, never silently cut.
+fn within_query_cap(prompt: String) -> Result<String> {
+    let chars = prompt.chars().count();
+    if chars > MAX_QUERY_CHARS {
+        bail!("llm_query: prompt is {chars} characters, the limit is {MAX_QUERY_CHARS}; split the input into smaller slices");
+    }
+    Ok(prompt)
 }
 
 fn truncate(text: String, max: usize) -> String {
@@ -617,6 +644,9 @@ pub async fn load(workdir: Option<&Path>, path: &str) -> Result<String> {
 pub async fn llm_query_batch(llm_query: &LlmQuery, prompts_json: &str) -> Result<String> {
     let prompts: Vec<String> = serde_json::from_str(prompts_json)
         .context("llm_query_batch expects a JSON list of strings")?;
+    if prompts.is_empty() {
+        bail!("llm_query_batch: the list is empty; pass one prompt per record, each containing that record's text");
+    }
     if prompts.len() > MAX_BATCH_PROMPTS {
         bail!(
             "llm_query_batch: {} prompts, the limit is {MAX_BATCH_PROMPTS}",
@@ -630,11 +660,14 @@ pub async fn llm_query_batch(llm_query: &LlmQuery, prompts_json: &str) -> Result
     let gate = Arc::new(tokio::sync::Semaphore::new(BATCH_CONCURRENCY));
     let mut jobs = tokio::task::JoinSet::new();
     for (index, prompt) in prompts.into_iter().enumerate() {
-        let call = llm_query(truncate(prompt, MAX_QUERY_CHARS));
+        let call = within_query_cap(prompt).map(|p| llm_query(p));
         let gate = gate.clone();
         jobs.spawn(async move {
             let _slot = gate.acquire_owned().await;
-            (index, call.await)
+            (index, match call {
+                Ok(call) => call.await,
+                Err(err) => Err(err),
+            })
         });
     }
     let mut replies = vec![String::new(); jobs.len()];
@@ -671,6 +704,13 @@ mod batch_tests {
         })
     }
 
+    #[test]
+    fn batch_wait_scales_with_waves() {
+        assert_eq!(batch_allowance("not json"), Duration::ZERO);
+        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 8])), BATCH_WAVE_ALLOWANCE);
+        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 64])), BATCH_WAVE_ALLOWANCE * 8);
+    }
+
     fn json_list(items: &[String]) -> String {
         serde_json::to_string(items).unwrap()
     }
@@ -699,7 +739,14 @@ mod batch_tests {
         assert!(llm_query_batch(&q, &big).await.unwrap_err().to_string().contains("bytes of input"));
         let one = json_list(&["y".repeat(300_000)]);
         let out: Vec<String> = serde_json::from_str(&llm_query_batch(&q, &one).await.unwrap()).unwrap();
-        assert!(out[0].len() < MAX_QUERY_CHARS + 40, "each item is capped at 200K chars");
+        assert!(out[0].starts_with("Error: llm_query: prompt is 300000 characters, the limit is 200000"), "{}", out[0]);
+        let edge = json_list(&["y".repeat(MAX_QUERY_CHARS)]);
+        let out: Vec<String> = serde_json::from_str(&llm_query_batch(&q, &edge).await.unwrap()).unwrap();
+        assert!(out[0].starts_with("yyy"), "a prompt at the cap goes through whole");
+        assert!(within_query_cap("z".repeat(MAX_QUERY_CHARS + 1)).is_err());
+        assert_eq!(within_query_cap("ok".into()).unwrap(), "ok");
         assert!(llm_query_batch(&q, "not json").await.is_err());
+        let empty = llm_query_batch(&q, "[]").await.unwrap_err().to_string();
+        assert!(empty.contains("list is empty"), "{empty}");
     }
 }

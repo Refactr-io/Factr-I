@@ -1238,6 +1238,12 @@ impl OpenAIProvider {
         is_chatgpt_mode: bool,
     ) -> Value {
         let api_tools = build_tools(tools);
+        // The hosted image tool follows the run's tool policy (the session this turn is for).
+        let image_generation_allowed = factr_base::tool_policy::tool_allowed(
+            factr_base::logging::current_session().as_deref(),
+            "image_generate",
+            "image_gen",
+        );
         let reasoning_effort = self
             .reasoning_effort
             .read()
@@ -1262,6 +1268,7 @@ impl OpenAIProvider {
             input,
             &api_tools,
             is_chatgpt_mode,
+            image_generation_allowed,
             self.max_output_tokens,
             api_reasoning_effort.as_deref(),
             service_tier.as_deref(),
@@ -1286,6 +1293,7 @@ impl OpenAIProvider {
         input: &[Value],
         api_tools: &[Value],
         is_chatgpt_mode: bool,
+        image_generation_allowed: bool,
         max_output_tokens: Option<u32>,
         reasoning_effort: Option<&str>,
         service_tier: Option<&str>,
@@ -1296,8 +1304,10 @@ impl OpenAIProvider {
         let mut tools = api_tools.to_vec();
         // The hosted `image_generation` tool is only available to general
         // ChatGPT/GPT models on the Responses backend. Codex models
-        // (`*-codex*`) reject unknown hosted tools, so don't attach it for them.
-        if is_chatgpt_mode && model_supports_image_generation(model_id) {
+        // (`*-codex*`) reject unknown hosted tools, so don't attach it for them. It is also
+        // left off when the run's tool policy (enabled/disabled toolsets) does not allow
+        // `image_generate`; with no policy it is attached as before.
+        if is_chatgpt_mode && image_generation_allowed && model_supports_image_generation(model_id) {
             tools.push(serde_json::json!({ "type": "image_generation" }));
         }
 
@@ -1307,6 +1317,9 @@ impl OpenAIProvider {
             "input": input,
             "tools": tools,
             "tool_choice": "auto",
+            // Deliberately serial: one tool call per model step. The agent loop, the approval
+            // flow and the per-call tool policy checks all assume tool calls arrive one at a time,
+            // and a run's tool order must stay reproducible. Do not flip this without those.
             "parallel_tool_calls": false,
             "stream": true,
             "store": false,

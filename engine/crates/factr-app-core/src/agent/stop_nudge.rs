@@ -32,9 +32,12 @@ const OFFER_PHRASES: [&str; 9] = [
     "shall i", "should i", "let me know if you want me to",
 ];
 const SNIPPET_NUDGE: &str = "<system-reminder>Your answer rests on search result snippets alone. Open the source behind what it depends on and check it there.</system-reminder>";
-const DECLINE_PHRASES: [&str; 9] = [
+const DECLINE_PHRASES: [&str; 24] = [
     "unable to determine", "unable to verify", "unable to find", "cannot determine", "can't determine",
-    "cannot be determined", "could not find", "couldn't find", "not possible to",
+    "cannot be determined", "could not find", "couldn't find", "not possible to", "could not determine",
+    "couldn't determine", "not able to determine", "impossible to determine", "no way to determine",
+    "unable to answer", "cannot answer", "can't answer", "unable to provide", "insufficient information",
+    "not enough information", "can't calculate", "cannot calculate", "cannot be verified", "can't verify",
 ];
 // A decline that names an unreadable input is an honest limitation, not a give-up.
 const UNREADABLE_PHRASES: [&str; 10] = [
@@ -42,6 +45,10 @@ const UNREADABLE_PHRASES: [&str; 10] = [
     "unable to read", "cannot open", "can't open", "unable to access",
 ];
 const DECLINE_NUDGE: &str = "<system-reminder>Try one different route (another source, tool or method). Then give your best-supported answer and state the uncertainty in one sentence. If the blocker is an input you cannot read, say so plainly.</system-reminder>";
+const UNVERIFIED_NUDGE: &str = "<system-reminder>Your todo list reports verified work but no tool call inspected the inputs or checked the result. Look at the actual data and check the result with a tool, then finish.</system-reminder>";
+const MEASURE_NUDGE: &str = "<system-reminder>State what you measured and why it equals what was asked; check its size against the record count. If it does not, work out the real quantity from the data and answer with that.</system-reminder>";
+/// A top-level cwd file this large (bytes) counts as a large input; the system prompt's ~20K rule.
+const LARGE_INPUT_BYTES: u64 = 20_000;
 const ACTION_NUDGE: &str = "<system-reminder>Continue by calling the tool now, or state the final result.</system-reminder>";
 
 type Runner<'a> = &'a dyn Fn(&str, &std::path::Path, std::time::Duration) -> factr_learn::agent_loop::GateResult;
@@ -83,6 +90,13 @@ pub(super) struct StopNudge {
     // The 70% time-budget reminder was sent (set by the turn loop); decline_sent: one per turn.
     late: bool,
     decline_sent: bool,
+    // A todo write marked an item completed as `verified`, and whether any non-todo tool ran.
+    claims_verified: bool,
+    inspected: bool,
+    // A large non-code input sits in the cwd (headless runs), and how many non-todo calls ran.
+    large_input: bool,
+    analysis_calls: u32,
+    measure_sent: bool,
 }
 
 fn enabled() -> bool {
@@ -237,6 +251,9 @@ impl super::Agent {
             && cwd.as_deref().is_some_and(|d| d.is_dir() && !is_home(d))
             && !self.in_goal();
         n.headless = factr_base::headless::is(&self.session.id);
+        n.large_input = n.headless
+            && self.session.parent_id.is_none()
+            && cwd.as_deref().is_some_and(|d| !is_home(d) && has_large_input(d));
         if self.session.parent_id.is_none() && !self.in_goal() {
             n.format_label = first_task_text(
                 self.session
@@ -261,6 +278,14 @@ impl StopNudge {
     pub(super) fn observe(&mut self, tool: &str, input: &serde_json::Value, exit_code: i64) {
         self.used_tools = true;
         self.seq += 1;
+        if tool == "todo" {
+            self.claims_verified |= claims_verified(input);
+        } else {
+            self.inspected = true;
+            if tool != "load_tools" {
+                self.analysis_calls += 1;
+            }
+        }
         if exit_code == 0 && EDIT_TOOLS.contains(&tool) {
             self.last_write = self.seq;
             if edits_code(input) {
@@ -402,6 +427,12 @@ impl StopNudge {
             (VERIFY_NUDGE, "verify_nudge")
         } else if !self.gate_ran && self.last_check > self.last_write && self.last_check_exit != 0 {
             (FAILED_CHECK_NUDGE, "failed_check_nudge")
+        } else if self.claims_verified && !self.inspected && !self.edited {
+            self.claims_verified = false; // one per turn
+            (UNVERIFIED_NUDGE, "unverified_claim_nudge")
+        } else if self.headless && self.large_input && !self.edited && !self.measure_sent && self.analysis_calls <= 1 && !text.trim().is_empty() && !announces_action(&lower) {
+            self.measure_sent = true;
+            (MEASURE_NUDGE, "measure_nudge")
         } else if self.used_tools && announces_action(&lower) {
             (ACTION_NUDGE, "action_nudge")
         } else if self.headless && !self.edited && asks_or_offers(&lower) {
@@ -468,16 +499,19 @@ fn first_task_text<'a>(user_messages: impl Iterator<Item = &'a [factr_message_ty
         .find(|t| !t.trim_start().starts_with("<system-reminder>"))
 }
 
-/// Literal uppercase label (e.g. `RESULT:`) the task says the reply must
-/// end with / contain / start with: quoted, or the first unquoted label after a
-/// `[`/`<` placeholder, within a short window after a formatting verb.
+/// Literal label (all caps like `RESULT:` or Title-case like `Result:`) the task
+/// says the reply must end with / contain / start with: quoted, or the first
+/// unquoted label before a `[`/`<` placeholder, within a short window after a
+/// formatting verb. Title-case words that merely introduce prose (`Note:`,
+/// `Example:`) never count.
 fn required_label(task: &str) -> Option<String> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    let re = RE.get_or_init(|| regex::Regex::new(r#"(["'`\u{2018}\u{201C}])?\b([A-Z]{2,}(?: [A-Z]{2,}){0,3}:)(\s*[\[<])?"#).unwrap());
+    let re = RE.get_or_init(|| regex::Regex::new(r#"(["'`\u{2018}\u{201C}])?\b([A-Z]{2,}(?: [A-Z]{2,}){0,3}:|[A-Z][a-z]+(?: [A-Z][a-z]+){0,2}:)(\s*[\[<])?"#).unwrap());
+    const PROSE: [&str; 14] = ["Note:", "Example:", "Examples:", "Hint:", "Tip:", "Warning:", "Context:", "Question:", "Task:", "Step:", "Important:", "Remember:", "Format:", "Background:"];
     const VERBS: [&str; 10] = ["end", "finish", "conclude", "finali", "report", "respond", "reply", "answer", "template", "format"];
     for c in re.captures_iter(task) {
         let m = c.get(2)?;
-        if c.get(1).is_none() && c.get(3).is_none() {
+        if (c.get(1).is_none() && c.get(3).is_none()) || PROSE.contains(&m.as_str()) {
             continue;
         }
         let start = task[..m.start()].char_indices().rev().nth(120).map_or(0, |(i, _)| i);
@@ -487,6 +521,28 @@ fn required_label(task: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// A regular, non-code file of the cwd's top level is over the large-input threshold.
+fn has_large_input(dir: &std::path::Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|rd| {
+        rd.flatten().any(|e| {
+            e.metadata().is_ok_and(|m| m.is_file() && m.len() > LARGE_INPUT_BYTES) && !is_code_path(&e.file_name().to_string_lossy())
+        })
+    })
+}
+
+/// A todo write marks an item completed with a self-declared `verified` confidence.
+fn claims_verified(input: &serde_json::Value) -> bool {
+    let items = match &input["todos"] {
+        serde_json::Value::Array(a) => a.clone(),
+        serde_json::Value::String(s) => serde_json::from_str(s).unwrap_or_default(),
+        _ => return false,
+    };
+    items.iter().any(|t| {
+        t["status"].as_str() == Some("completed")
+            && [&t["completion_confidence"], &t["confidence"]].iter().any(|c| c.as_str() == Some("verified"))
+    })
 }
 
 /// Some line of the reply starts with the label (markdown emphasis ignored).
@@ -503,6 +559,8 @@ fn asks_or_offers(lower: &str) -> bool {
 
 /// The final paragraph gives up on the question, without blaming an unreadable input.
 fn declines(lower: &str) -> bool {
+    // A typographic apostrophe must match like a plain one.
+    let lower = lower.replace(['\u{2019}', '\u{2018}', '\u{02bc}'], "'");
     let body = lower.trim_end();
     let para = body.rsplit("\n\n").next().unwrap_or(body);
     DECLINE_PHRASES.iter().any(|p| para.contains(p)) && !UNREADABLE_PHRASES.iter().any(|p| para.contains(p))
@@ -537,6 +595,14 @@ mod tests {
         assert_eq!(l("Respond in this format: \"RESULT: x\""), want);
         assert_eq!(l("Fix the bug in parse(); NOTE: tests are slow."), None);
         assert_eq!(l("Write a poem. Format: 'haiku' only."), None);
+        let title = Some("Result:".to_string());
+        assert_eq!(l("Final answer must be in the form \"Result: <x>\""), title);
+        assert_eq!(l("Reply with a final line: Result: [value]"), title);
+        assert_eq!(l("Your answer must be given as 'Answer: <x>'."), Some("Answer:".to_string()));
+        assert_eq!(l("Note: this is fine. Answer the question below."), None);
+        assert_eq!(l("Answer briefly. Example: foo is a word."), None);
+        assert_eq!(l("Report the totals. \"Example: <x>\" shows the style."), None);
+        assert_eq!(l("Summary: the answer is long and the Total: 5 is fine."), None);
     }
 
     #[test]
@@ -620,6 +686,88 @@ mod tests {
         coded.observe("edit", &json!({"file_path": "a.rs"}), 0);
         coded.observe("bash", &json!({"command": "cargo test"}), 0);
         assert!(!coded.on_text_only_stop("s", "Fixed. I could not find any other caller."), "code work");
+    }
+
+    #[test]
+    fn decline_covers_common_phrasings_without_false_positives() {
+        let mk = || {
+            let mut n = StopNudge::default();
+            n.headless = true;
+            n
+        };
+        for t in ["I could not determine the total.", "There is insufficient information to answer.", "I am unable to provide a value.", "It is impossible to determine this."] {
+            assert!(mk().on_text_only_stop("s", t), "{t}");
+        }
+        for t in [
+            "I can\u{2019}t calculate the total from this.",
+            "I can't calculate that.",
+            "I cannot calculate the share.",
+            "That figure cannot be verified.",
+            "I can\u{2019}t verify the count.",
+            "I could not determine the answer\u{2019}s basis, so I can\u{2019}t answer.",
+        ] {
+            assert!(mk().on_text_only_stop("s", t), "{t}");
+        }
+        for t in [
+            "The total is 42. I can verify it against the table.",
+            "I can calculate it: 42.",
+            "I can\u{2019}t calculate by hand, so the code did it.\n\nAnswer: 42",
+            "The total is 42, which the sum check confirms.",
+        ] {
+            assert!(!mk().on_text_only_stop("s", t), "{t}");
+        }
+        for t in ["The total is 42.", "Estimated total is about 40 (not enough information for more precision), best estimate 40.\n\nAnswer: 40"] {
+            assert!(!mk().on_text_only_stop("s", t), "{t}");
+        }
+    }
+
+    #[test]
+    fn large_input_answer_after_one_call_gets_one_measure_nudge() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("data.txt"), "x\n".repeat(15_000)).unwrap();
+        std::fs::write(d.path().join("tool.rs"), "x".repeat(30_000)).unwrap();
+        assert!(has_large_input(d.path()));
+        let small = tempfile::tempdir().unwrap();
+        std::fs::write(small.path().join("a.txt"), "tiny").unwrap();
+        std::fs::write(small.path().join("big.rs"), "x".repeat(30_000)).unwrap();
+        assert!(!has_large_input(small.path()), "code files and small files do not count");
+        let mk = || {
+            let mut n = StopNudge::default();
+            n.headless = true;
+            n.large_input = true;
+            n
+        };
+        let mut n = mk();
+        n.observe("bash", &json!({"command": "wc -l data.txt"}), 0);
+        assert!(n.on_text_only_stop("s", "The answer is 7."));
+        assert_eq!(n.take_pending(), Some(MEASURE_NUDGE.to_string()));
+        n.observe("bash", &json!({"command": "grep -c x data.txt"}), 0);
+        assert!(!n.on_text_only_stop("s", "The answer is 7."), "once per turn");
+        let mut many = mk();
+        for _ in 0..2 {
+            many.observe("bash", &json!({"command": "ls"}), 0);
+        }
+        assert!(!many.on_text_only_stop("s", "The answer is 7."), "more than one analysis call");
+        let mut plain = mk();
+        plain.large_input = false;
+        assert!(!plain.on_text_only_stop("s", "The answer is 7."), "no large input");
+    }
+
+    #[test]
+    fn self_declared_verified_needs_an_inspecting_tool_call() {
+        let todo = json!({"todos": [{"content": "a", "status": "completed", "priority": "high", "id": "1", "confidence": "verified"}]});
+        let mut n = StopNudge::default();
+        n.observe("todo", &todo, 0);
+        assert!(n.on_text_only_stop("s", "Done, it is 42."));
+        assert_eq!(n.take_pending(), Some(UNVERIFIED_NUDGE.to_string()));
+        let mut n = StopNudge::default();
+        n.observe("todo", &todo, 0);
+        n.observe("bash", &json!({"command": "wc -l data.txt"}), 0);
+        assert!(!n.on_text_only_stop("s", "Done, it is 42."), "a tool call inspected something");
+        let plain = json!({"todos": [{"content": "a", "status": "completed", "priority": "high", "id": "1", "confidence": "plausible"}]});
+        let mut n = StopNudge::default();
+        n.observe("todo", &plain, 0);
+        assert!(!n.on_text_only_stop("s", "Done."));
     }
 
     #[test]

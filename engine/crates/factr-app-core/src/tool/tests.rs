@@ -699,7 +699,9 @@ async fn tool_descriptions_stay_under_token_cap() {
     // swarm appends the user-tunable swarm-prompt.md by design.
     // batch carries a deliberate parallel-call example (2f4abae33, pinned by
     // batch_tests::description_includes_parallel_tool_call_example).
-    const EXEMPT: &[&str] = &["batch"];
+    // repl is deferred (loaded with load_tools), so its fuller description is not in the
+    // first-request prefix; it has its own cap in `repl_description_stays_under_its_own_cap`.
+    const EXEMPT: &[&str] = &["batch", "repl"];
 
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
@@ -723,6 +725,19 @@ async fn tool_descriptions_stay_under_token_cap() {
         "tool descriptions over the {DESCRIPTION_TOKEN_CAP}-token cap:\n{}",
         over_cap.join("\n")
     );
+}
+
+/// The REPL description carries the real limits of the tool; it is sent only once the tool is loaded.
+#[tokio::test]
+async fn repl_description_stays_under_its_own_cap() {
+    // Raised from 190 to 215 for the `classify` helper (the tool is deferred: not in the first-request prefix).
+    const REPL_DESCRIPTION_TOKEN_CAP: usize = 215;
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider).await;
+    let defs = registry.definitions(None).await;
+    if let Some(def) = defs.iter().find(|d| d.name == "repl") {
+        assert!(def.description_token_estimate() <= REPL_DESCRIPTION_TOKEN_CAP, "{} tokens", def.description_token_estimate());
+    }
 }
 
 fn collect_param_descriptions(schema: &Value, path: &str, out: &mut Vec<(String, String)>) {

@@ -52,6 +52,163 @@ async def llm_query_batch(prompts):
     return json.loads(await host_call("llm_query_batch", json.dumps([str(p) for p in prompts])))
 
 
+CLASSIFY_CHUNK_ITEMS = 40
+CLASSIFY_CHUNK_CHARS = 24000
+CLASSIFY_ITEM_CHARS = 6000
+CLASSIFY_RETRIES = 2
+CLASSIFY_BATCH_BYTES = 1_800_000
+
+
+def _calls_left():
+    counter = globals().get("call_count")
+    return max_calls - counter[0] if counter else max_calls
+
+
+def _label_key(text):
+    return " ".join("".join(c if c.isalnum() else " " for c in str(text).casefold()).split())
+
+
+def _match_label(value, keyed):
+    """The allowed label a reply value means: exact (case and punctuation aside), else a unique whole-word fragment either way."""
+    key = _label_key(value)
+    if not key:
+        return None
+    if key in keyed:
+        return keyed[key]
+    found = {label for k, label in keyed.items() if f" {key} " in f" {k} " or f" {k} " in f" {key} "}
+    return found.pop() if len(found) == 1 else None
+
+
+def _check_reply(reply, ids, keyed):
+    """(accepted {index: label}, reason or None). A reply that is not one JSON object, repeats or invents an id is rejected whole."""
+    text = str(reply).strip()
+    if text.startswith("Error:"):
+        return {}, text[:160]
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end < start:
+        return {}, "the reply was not a JSON object"
+    try:
+        pairs = json.loads(text[start:end + 1], object_pairs_hook=lambda p: p)
+    except ValueError:
+        return {}, "the reply was not valid JSON"
+    if not isinstance(pairs, list):
+        return {}, "the reply was not a JSON object"
+    seen = {}
+    for key, value in pairs:
+        key = str(key).strip()
+        if key in seen:
+            return {}, f"id {key} appeared more than once"
+        seen[key] = value
+    wanted = {str(i + 1) for i in ids}
+    extra = [k for k in seen if k not in wanted]
+    if extra:
+        return {}, f"ids not in the list: {', '.join(extra[:5])}"
+    good, bad = {}, []
+    for i in ids:
+        value = seen.get(str(i + 1))
+        label = _match_label(value, keyed) if isinstance(value, str) else None
+        if label is None:
+            bad.append(str(i + 1))
+        else:
+            good[i] = label
+    return good, (f"missing or not an allowed label for ids: {', '.join(bad[:8])}" if bad else None)
+
+
+def _chunks(indices, texts, size):
+    chunk, chars = [], 0
+    for i in indices:
+        if chunk and (len(chunk) >= size or chars + len(texts[i]) > CLASSIFY_CHUNK_CHARS):
+            yield chunk
+            chunk, chars = [], 0
+        chunk.append(i)
+        chars += len(texts[i])
+    if chunk:
+        yield chunk
+
+
+async def _classify_batches(prompts):
+    out, group, size = [], [], 0
+    for prompt in prompts + [None]:
+        if group and (prompt is None or len(group) >= 64 or size + len(prompt) > CLASSIFY_BATCH_BYTES):
+            if _calls_left() < 1:
+                raise RuntimeError("classify: the cell's host call budget (16) is used up; call classify in a new cell")
+            out.extend(await llm_query_batch(group))
+            group, size = [], 0
+        if prompt is not None:
+            group.append(prompt)
+            size += len(prompt)
+    return out
+
+
+async def _classify_jobs(texts, labels, guidance, jobs):
+    """Label the given {pass number: [item indexes]}; each pass sees the labels in a different order. Chunks that fail validation are re-asked (smaller) up to CLASSIFY_RETRIES times, one batch call per wave."""
+    keyed = {_label_key(label): label for label in labels}
+    results = {p: {} for p in jobs}
+    pending = {p: list(ix) for p, ix in jobs.items()}
+    notes = {}
+    size = CLASSIFY_CHUNK_ITEMS
+    for _ in range(CLASSIFY_RETRIES + 1):
+        chunks = [(p, c) for p, ix in pending.items() for c in _chunks(ix, texts, size)]
+        if not chunks:
+            break
+        prompts = []
+        for p, ids in chunks:
+            shift = p % len(labels)
+            order = labels[shift:] + labels[:shift]
+            lines = "\n".join(f"{i + 1}. {texts[i]}" for i in ids)
+            prompts.append(
+                "Classify every numbered item with exactly one label from the allowed list. Judge each item by its own text only.\n"
+                f"Allowed labels (use these exact strings): {json.dumps(order)}\n"
+                + (f"{guidance}\n" if guidance else "")
+                + "Reply with ONLY a JSON object that maps every id below to one allowed label, each id exactly once, like "
+                + '{"<id>": "<label>"}. No other text.\n'
+                + (f"Your previous reply was rejected: {notes[p]}\n" if p in notes else "")
+                + f"Items:\n{lines}"
+            )
+        replies = await _classify_batches(prompts)
+        pending = {}
+        for (p, ids), reply in zip(chunks, replies):
+            good, reason = _check_reply(reply, ids, keyed)
+            results[p].update(good)
+            left = [i for i in ids if i not in good]
+            if left:
+                pending.setdefault(p, []).extend(left)
+                notes[p] = reason
+        size = max(5, size // 2)
+    left = sum(len(v) for v in pending.values())
+    if left:
+        raise RuntimeError(f"classify: {left} items still without a valid label after {CLASSIFY_RETRIES} retries ({next(iter(notes.values()), '')})")
+    return results
+
+
+async def classify(items, labels, guidance=None, votes=1):
+    """One label per item from the FULL label list, as a list aligned with items. The sub-model gets the items numbered in chunks and must return JSON; every id must appear once with an allowed label (case and fragments are normalised) or the chunk is re-asked. votes>1 asks again with the labels reordered and re-asks only the items where passes disagree; the majority wins."""
+    if isinstance(items, (str, bytes)) or isinstance(labels, (str, bytes)):
+        raise TypeError("classify expects a list of items and a list of labels")
+    items, labels = list(items), [str(x) for x in labels]
+    if len({_label_key(x) for x in labels}) != len(labels) or not all(_label_key(x) for x in labels):
+        raise ValueError("classify: labels must be distinct, non-empty strings")
+    if not items:
+        return []
+    texts = [" ".join(str(x).split())[:CLASSIFY_ITEM_CHARS] for x in items]
+    votes = max(1, int(votes))
+    everything = list(range(len(items)))
+    first = await _classify_jobs(texts, labels, guidance, {p: everything for p in range(min(votes, 2))})
+    tally = [[first[p][i] for p in first] for i in everything]
+    if votes > 1:
+        split = [i for i in everything if len(set(tally[i])) > 1]
+        if split:
+            more = await _classify_jobs(texts, labels, guidance, {2 + k: split for k in range(max(1, votes - 2))})
+            for i in split:
+                tally[i].extend(more[p][i] for p in more)
+    out = []
+    for cast in tally:
+        counts = {label: cast.count(label) for label in cast}
+        best = max(counts.values())
+        out.append(next(label for label in cast if counts[label] == best))
+    return out
+
+
 MAX_LOAD_BYTES = 64 * 1024 * 1024
 
 
@@ -152,6 +309,7 @@ sys.modules["rlm"] = _rlm_module
 namespace.update({
     "llm_query": llm_query,
     "llm_query_batch": llm_query_batch,
+    "classify": classify,
     "load": load,
     "refine": refine,
     "goal": goal,
