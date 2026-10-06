@@ -397,7 +397,8 @@ mod tests {
             collect_files(dir.path(), glob)
                 .unwrap()
                 .iter()
-                .map(|path| display_path(path, dir.path()))
+                // Windows paths use `\`; the glob and ordering are what is under test.
+                .map(|path| display_path(path, dir.path()).replace('\\', "/"))
                 .collect::<Vec<_>>()
         };
         assert_eq!(names(Some("*.rs")), ["src/a.rs", "src/nested/b.rs"]);

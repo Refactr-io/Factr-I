@@ -203,7 +203,8 @@ async fn the_debug_socket_is_bound_only_in_test_mode() {
         let server = Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
         let run = tokio::spawn(async move { server.run().await });
         assert!(wait_for_existing_server(&socket_path, Duration::from_secs(5)).await, "server socket should come up");
-        *bound = debug_socket_path.exists();
+        // Windows binds a named pipe, which `Path::exists` never sees; on Unix this is `exists`.
+        *bound = crate::transport::is_socket_path(&debug_socket_path);
         run.abort();
         let _ = run.await;
         let _ = std::fs::remove_file(&socket_path);

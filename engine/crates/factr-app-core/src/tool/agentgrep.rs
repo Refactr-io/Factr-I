@@ -386,7 +386,8 @@ mod tests {
     #[test]
     fn grep_is_literal_case_smart_and_respects_gitignore() {
         let dir = tmp("grep");
-        let out = grep(&input(json!({"query": "needle"})), &dir).unwrap().output;
+        // Windows prints `src\a.rs`; separators are not what is under test.
+        let out = grep(&input(json!({"query": "needle"})), &dir).unwrap().output.replace('\\', "/");
         assert!(out.starts_with("2 matches in 2 files"), "{out}");
         assert!(out.contains("src/a.rs:1: fn needle() {}"));
         assert!(!out.contains("ignored.txt"));
@@ -422,7 +423,10 @@ mod tests {
     #[test]
     fn find_matches_all_words_and_requires_a_narrowing() {
         let dir = tmp("find");
-        let o = find(&input(json!({"mode": "find", "query": "src a"})), &dir).unwrap().output;
+        let o = find(&input(json!({"mode": "find", "query": "src a"})), &dir)
+            .unwrap()
+            .output
+            .replace('\\', "/");
         assert!(o.starts_with("1 files") && o.contains("src/a.rs"), "{o}");
         assert!(find(&input(json!({"mode": "find"})), &dir).is_err());
         let _ = std::fs::remove_dir_all(dir);
