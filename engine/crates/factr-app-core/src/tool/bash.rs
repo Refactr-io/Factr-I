@@ -747,7 +747,7 @@ fn build_shell_command(cmd_str: &str) -> TokioCommand {
     }
     #[cfg(not(windows))]
     {
-        let mut cmd = TokioCommand::new("bash");
+        let mut cmd = TokioCommand::new(factr_base::shell::posix_shell());
         cmd.arg("-c").arg(cmd_str);
         configure_tool_scratch(&mut cmd);
         cmd
@@ -763,8 +763,8 @@ fn configure_background_command_stdio(command: &mut TokioCommand) {
 
 #[cfg(unix)]
 fn build_detached_shell_wrapper(command: &str) -> StdCommand {
-    let mut cmd = StdCommand::new("bash");
-    cmd.arg("-lc")
+    let mut cmd = StdCommand::new(factr_base::shell::posix_shell());
+    cmd.arg(if factr_base::shell::is_bash() { "-lc" } else { "-c" })
         .arg(
             r#"eval "$FACTR_RELOAD_DETACH_COMMAND"; status=$?; printf '\n--- Command finished with exit code: %s ---\n' "$status"; exit "$status""#,
         )
@@ -1013,6 +1013,13 @@ impl Tool for BashTool {
         // Foreground execution with stdin detection
         let hint = file_edit_hint(&params.command);
         let mut output = self.execute_foreground(&params, &ctx).await?;
+        if output.output.contains("No module named") || output.output.contains("ModuleNotFoundError") {
+            let python = factr_base::python_env::interpreter();
+            output.output.push_str(&factr_base::shell::missing_module_hint(
+                factr_base::shell::package_routes(),
+                python.as_deref().and_then(|p| p.to_str()),
+            ));
+        }
         if let Some(hint) = hint {
             output.output.push_str("\n\n");
             output.output.push_str(hint);
@@ -1512,7 +1519,9 @@ impl BashTool {
         let description = params.intent.clone();
         let display_name = summarize_background_command(description.as_deref(), &command);
         let working_dir = ctx.working_dir.clone();
-        let timeout_ms = params.timeout.map(|timeout| timeout.min(600000));
+        // A task started with run_in_background keeps running until it exits or is stopped: the
+        // foreground `timeout` does not apply to it (a server must not die at the foreground cap).
+        let timeout_ms: Option<u64> = None;
         let timeout_duration = timeout_ms.map(Duration::from_millis);
 
         let wake = params.wake;
@@ -1690,7 +1699,7 @@ impl BashTool {
              {}\n\
              {}To wait for completion/checkpoints: use the `bg` tool with action=\"wait\" and task_id=\"{}\"\n\
              To check progress immediately: use the `bg` tool with action=\"status\" and task_id=\"{}\"\n\
-             To see output: use the `read` tool on the output file, or `bg` with action=\"output\"\n\n\
+             {}To see output: use the `read` tool on the output file, or `bg` with action=\"output\"\n\n\
              {}",
             info.task_id,
             display_name,
@@ -1700,6 +1709,7 @@ impl BashTool {
             stall_msg,
             info.task_id,
             info.task_id,
+            destructive_gate::bg_start_hint(destructive_gate::bg_desc_on()),
             BACKGROUND_PROGRESS_GUIDANCE,
         );
 

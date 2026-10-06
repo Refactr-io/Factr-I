@@ -153,6 +153,9 @@ impl Tool for WebSearchTool {
         if results.is_empty()
             && let Some(err) = last_error
         {
+            if std::env::var("FACTR_GUARD_FETCH_HINT").map_or(true, |v| v != "0") {
+                return Err(anyhow::anyhow!("{err}; the search backend failed: retry once with a shorter query"));
+            }
             return Err(err);
         }
         let results = tidy_results(results, num_results);

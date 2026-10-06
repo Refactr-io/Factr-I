@@ -330,6 +330,17 @@ mod addenda_snapshot_tests {
     use super::*;
 
     #[test]
+    fn every_helper_the_repl_guidance_names_is_defined_by_the_worker() {
+        let defined = factr_learn::helper_names();
+        let g = repl_guidance(true);
+        let called: Vec<&str> = g.split("await ").skip(1).filter_map(|r| r.split(['(', ' ']).next()).collect();
+        assert!(called.len() >= 8, "{called:?}");
+        for c in called {
+            assert!(defined.iter().any(|d| d == c), "the guidance names undefined helper `{c}`");
+        }
+    }
+
+    #[test]
     fn tool_use_enforcement_skips_claude() {
         assert!(needs_tool_use_enforcement("gpt-5.1-codex"));
         assert!(needs_tool_use_enforcement("Qwen3-Coder"));

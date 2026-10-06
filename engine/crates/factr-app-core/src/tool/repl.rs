@@ -288,6 +288,30 @@ fn mentions_coroutine(text: &str) -> bool {
     text.contains("'coroutine' object") || text.contains("<coroutine object") || text.contains("was never awaited")
 }
 
+/// An actionable tail for the common REPL failures: un-awaited helpers, an undefined name (list the
+/// helpers that exist), a missing module (the installers that exist, then the standard library) and the
+/// compute-limit interrupt (run a script through bash).
+fn repl_error_hint(text: &str) -> String {
+    let mut hint = String::new();
+    if mentions_coroutine(text) {
+        hint.push_str("\nHint: helpers are async: use `await load(...)`, `await llm_query(...)`.");
+    }
+    if text.contains("NameError") {
+        hint.push_str(&format!("\nHint: the REPL helpers are: {}.", factr_learn::helper_names().join(", ")));
+    }
+    if text.contains("No module named") || text.contains("ModuleNotFoundError") {
+        let python = factr_base::python_env::interpreter();
+        hint.push_str(&factr_base::shell::missing_module_hint(
+            factr_base::shell::package_routes(),
+            python.as_deref().and_then(|p| p.to_str()),
+        ));
+    }
+    if text.contains("of compute and") {
+        hint.push_str("\nHint: run a longer job as a script through bash (python3 script.py), or process it in smaller slices.");
+    }
+    hint
+}
+
 /// The end of a traceback, where the exception line is, within half the output budget.
 fn tail(error: &str) -> &str {
     let keep = MAX_OUTPUT_CHARS / 2;
@@ -521,11 +545,7 @@ impl Tool for ReplTool {
         }
         // A Python exception is a failure like any tool's: the repeat guard and stop nudge see it.
         if let Some(error) = &out.error {
-            let hint = if mentions_coroutine(&format!("{text}{error}")) {
-                "\nHint: helpers are async: use `await load(...)`, `await llm_query(...)`."
-            } else {
-                ""
-            };
+            let hint = repl_error_hint(&format!("{text}{error}"));
             anyhow::bail!("{}{}{hint}", clip(&text), tail(error));
         }
         if text.is_empty() {
@@ -538,6 +558,15 @@ impl Tool for ReplTool {
 #[cfg(test)]
 mod cell_tests {
     use super::*;
+
+    #[test]
+    fn repl_errors_get_actionable_hints() {
+        assert!(repl_error_hint("NameError: name 'x' is not defined").contains("llm_query_batch"));
+        let m = repl_error_hint("ModuleNotFoundError: No module named 'foo'");
+        assert!(m.contains("standard library") && m.contains("Hint"), "{m}");
+        assert!(repl_error_hint("the cell exceeded 20s of compute and was interrupted").contains("script through bash"));
+        assert!(repl_error_hint("ValueError: bad").is_empty());
+    }
 
     #[test]
     fn refine_run_schedules_nothing_when_learning_is_off() {

@@ -15,6 +15,7 @@ mod rewind_stack;
 mod auto_verify;
 mod env_snapshot;
 mod stop_nudge;
+mod bg_guard;
 mod provider_fallback;
 mod turn_deadline;
 mod usage_wait;

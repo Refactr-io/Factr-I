@@ -58,7 +58,6 @@ impl Agent {
         );
         let mut final_text = String::new();
         // Text of replies that were followed by a stop nudge; kept in the result.
-        let mut nudged_text = String::new();
         let trace = trace_enabled();
         let mut context_limit_retries = 0u32;
         let mut incomplete_continuations = 0u32;
@@ -68,7 +67,9 @@ impl Agent {
         let mut batch_nudge_pending = false;
         let mut repeat_guard = super::repeat_guard::RepeatGuard::default();
         let mut stop_nudge = self.new_stop_nudge();
+        stop_nudge.compute_tool &= self.registry.tool_names().await.iter().any(|t| t == "bash" || t == "repl");
         let mut deadline = super::turn_deadline::TurnDeadline::new();
+        deadline.set_no_tools(stop_nudge.no_tools());
         let mut usage_parks = super::usage_wait::UsageParks::default();
         let mut fallback_walk = super::provider_fallback::FallbackWalk::default();
         let mut iterations = 0u32;
@@ -937,18 +938,19 @@ impl Agent {
 
             // If no tool calls, we're done
             if tool_calls.is_empty() {
+                if saw_message_end && !stop_nudge.watched().is_empty() {
+                    let exits = super::bg_guard::exited_services(crate::background::global(), stop_nudge.watched()).await;
+                    stop_nudge.set_service_exits(exits);
+                }
                 if saw_message_end
                     && !self.is_graceful_shutdown()
                     && matches!(stop_reason.as_deref(), None | Some("end_turn") | Some("stop"))
                     && {
                         stop_nudge.set_late(deadline.past_70());
+                        stop_nudge.set_half(deadline.past_50());
                         stop_nudge.on_text_only_stop(&self.session.id, &text_content)
                     }
                 {
-                    if !text_content.trim().is_empty() {
-                        nudged_text.push_str(&text_content);
-                        nudged_text.push_str("\n\n");
-                    }
                     continue;
                 }
                 if self
@@ -1003,7 +1005,9 @@ impl Agent {
                 if print_output {
                     println!();
                 }
-                final_text = format!("{nudged_text}{text_content}");
+                // The answer is a whole reply, never a concatenation or an edit of replies.
+                final_text = stop_nudge.final_text(&text_content);
+                stop_nudge.emit_turn_end(&self.session.id, &final_text, stop_reason.as_deref());
                 break;
             }
 
@@ -1194,6 +1198,7 @@ impl Agent {
 
                 logging::info(&format!("Tool starting: {}", tc.name));
                 let tool_start = Instant::now();
+                let tool_wall = chrono::Utc::now();
 
                 // Publish status for TUI to show during Task execution
                 Bus::global().publish(BusEvent::SubagentStatus(SubagentStatus {
@@ -1213,8 +1218,9 @@ impl Agent {
 
                 match result {
                     Ok(output) => {
-                        let output = cap_tool_output_for_history(&tc.name, output);
-                        stop_nudge.observe(&tc.name, &tc.input, super::auto_verify::exit_code_of(&output.output, false));
+                        let mut output = cap_tool_output_for_history(&tc.name, output);
+                        super::bg_guard::annotate_edit(&tc.name, &self.session.id, tool_wall, &mut stop_nudge.stale_warned, &mut output).await;
+                        stop_nudge.observe_full(&tc.name, &tc.input, super::auto_verify::exit_code_of(&output.output, false), output.metadata.as_ref(), Some(&output.output));
                         let verdict =
                             repeat_guard.observe(&tc.name, &tc.input, &output.output, false);
                         guard_stop = guard_stop.or(repeat_guard.handle(&self.session.id, &verdict));

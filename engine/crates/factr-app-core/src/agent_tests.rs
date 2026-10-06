@@ -776,6 +776,29 @@ async fn headless_first_message_gets_env_snapshot_despite_session_context_messag
 }
 
 #[tokio::test]
+async fn a_first_task_that_forbids_tools_gets_no_environment_snapshot() {
+    let _env = crate::storage::lock_test_env();
+    for (task, blocks) in [
+        ("Do not use any tools or code. What is 17 times 23?", 1),
+        ("Please answer without using any tools or code.", 1),
+        ("Fix the bug by handling the error case.", 2),
+    ] {
+        let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+        let registry = Registry::new(provider.clone()).await;
+        let mut agent = Agent::new(provider, registry);
+        let dir = std::env::temp_dir().join(format!("env-snap-notools-{}-{blocks}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        agent.session.working_dir = Some(dir.to_string_lossy().into_owned());
+        factr_base::headless::mark(&agent.session.id);
+        agent.append_user_context_message(task, vec![]).unwrap();
+        factr_base::headless::unmark(&agent.session.id);
+        let last = agent.session.messages.last().unwrap();
+        assert_eq!(last.content.len(), blocks, "{task}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[tokio::test]
 async fn messages_for_provider_replays_persisted_native_compaction_in_auto_mode() {
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
@@ -2220,13 +2243,21 @@ async fn a_persona_keeps_the_harness_addenda_agents_md_and_skill_index() {
 #[tokio::test]
 async fn the_first_request_prefix_stays_under_its_token_ceiling() {
     use factr_learn::entries::{EntryKind, EntryStore, MAX_PROMPT_CHARS, NewEntry, Scope};
-    // Measured 2026-10-04 with the REPL available (its paragraph is in the prompt): 4682 tokens
+    // v0.0.2 round E: the missing-library rule and the installers field are ON by default (=0 drops each);
+    // the bg wording stays opt-in. Default prefix now 4727 tokens (system 2600 + tool schemas 2127):
+    // +47 vs the 4680 of round C / ee4ec5d (system 2553), +45 vs v0.0.1 (4682).
+    // Round C: 4680 (system 2553 + tool schemas 2127): -22 vs the 4702 below, -2 vs v0.0.1 (4682).
+    // Measured 2026-10-05 with the REPL available (its paragraph is in the prompt): 4702 tokens
+    // (system 2569 + tool schemas 2133). v0.0.2 vs v0.0.1 (4682): +20 (the missing-library rule and
+    // the environment line, the published-answers line, the shorter finishing rule, minus the todo
+    // sentence; the tool schemas shrank by 23 with the factr bridge tool unregistered here).
+    // Before that: 4682 tokens
     // (system 2526 + tool schemas 2156); before the whole-set labelling guidance and the `classify`
     // mention it measured 4497 (system 2341), so that guidance costs 185 tokens; before the
     // large-input guidance 4371. The margin is one new parameter on one tool at
     // the per-description caps of `tool/tests.rs` (tool description 20 + parameter description
     // 25 = 45): a change bigger than that re-measures here.
-    const MEASURED_TOKENS: usize = 4682;
+    const MEASURED_TOKENS: usize = 4727;
     const CEILING_TOKENS: usize = MEASURED_TOKENS + 20 + 25;
     let _lock = crate::storage::lock_test_env();
     let home = tempfile::tempdir().unwrap();

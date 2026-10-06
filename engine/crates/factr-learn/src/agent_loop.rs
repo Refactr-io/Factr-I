@@ -111,7 +111,7 @@ pub fn run_gate(gate: &mut QualityGate, cwd: Option<&Path>) -> GateResult {
     r
 }
 
-/// The shell invocation for a gate or one-shot command: `sh -c` on Unix, `cmd.exe /D /S /C` on Windows
+/// The shell invocation for a gate or one-shot command: `bash -c` (else `/bin/sh -c`) on Unix, `cmd.exe /D /S /C` on Windows
 /// (`/D` skips AutoRun hooks, `/S` plus the outer quotes keep the inner quotes intact for child programs).
 fn shell_command(command: &str) -> Command {
     #[cfg(windows)]
@@ -124,7 +124,7 @@ fn shell_command(command: &str) -> Command {
     #[cfg(not(windows))]
     {
         use std::os::unix::process::CommandExt;
-        let mut cmd = Command::new("sh");
+        let mut cmd = Command::new(factr_base::shell::posix_shell());
         cmd.arg("-c").arg(command).process_group(0);
         cmd
     }

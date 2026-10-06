@@ -115,7 +115,9 @@ impl Agent {
         let mut refusal_retries = 0u32;
         let mut repeat_guard = super::repeat_guard::RepeatGuard::default();
         let mut stop_nudge = self.new_stop_nudge();
+        stop_nudge.compute_tool &= self.registry.tool_names().await.iter().any(|t| t == "bash" || t == "repl");
         let mut deadline = super::turn_deadline::TurnDeadline::new();
+        deadline.set_no_tools(stop_nudge.no_tools());
         let mut usage_parks = super::usage_wait::UsageParks::default();
         let mut fallback_walk = super::provider_fallback::FallbackWalk::default();
         let mut iterations = 0u32;
@@ -1316,11 +1318,16 @@ impl Agent {
             // Injecting before tool_results would break the API requirement that
             // tool_use must be immediately followed by tool_result.
             if tool_calls.is_empty() {
+                if saw_message_end && !stop_nudge.watched().is_empty() {
+                    let exits = super::bg_guard::exited_services(crate::background::global(), stop_nudge.watched()).await;
+                    stop_nudge.set_service_exits(exits);
+                }
                 if saw_message_end
                     && !self.is_graceful_shutdown()
                     && matches!(stop_reason.as_deref(), None | Some("end_turn") | Some("stop"))
                     && {
                         stop_nudge.set_late(deadline.past_70());
+                        stop_nudge.set_half(deadline.past_50());
                         stop_nudge.on_text_only_stop(&self.session.id, &text_content)
                     }
                 {
@@ -1391,6 +1398,8 @@ impl Agent {
                                 message: notice,
                             });
                         }
+                        // The streamed answer is the last assistant message; nothing is concatenated.
+                        stop_nudge.emit_turn_end(&self.session.id, &stop_nudge.final_text(&text_content), stop_reason.as_deref());
                         break;
                     }
                     NoToolCallOutcome::ContinueWithoutEvent => {
@@ -1610,6 +1619,7 @@ impl Agent {
                     self.publish_inline_tail();
                 }
                 let tool_start = Instant::now();
+                let tool_wall = chrono::Utc::now();
 
                 // Spawn tool in its own task so we can detach it to background on Alt+B
                 let registry_clone = self.registry.clone();
@@ -1687,8 +1697,9 @@ impl Agent {
 
                     match result {
                         Ok(output) => {
-                            let output = cap_tool_output_for_history(&tc.name, output);
-                            stop_nudge.observe(&tc.name, &tc.input, super::auto_verify::exit_code_of(&output.output, false));
+                            let mut output = cap_tool_output_for_history(&tc.name, output);
+                            super::bg_guard::annotate_edit(&tc.name, &self.session.id, tool_wall, &mut stop_nudge.stale_warned, &mut output).await;
+                            stop_nudge.observe_full(&tc.name, &tc.input, super::auto_verify::exit_code_of(&output.output, false), output.metadata.as_ref(), Some(&output.output));
                             let verdict =
                                 repeat_guard.observe(&tc.name, &tc.input, &output.output, false);
                             guard_stop =

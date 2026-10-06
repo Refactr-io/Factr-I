@@ -112,7 +112,7 @@ impl Tool for WebFetchTool {
         let wayback = cfg.webfetch.wayback_fallback.then_some(WAYBACK_API);
         let (fetched, archived) = fetch_resilient_with(client, &params.url, timeout, wayback, allowed)
             .await
-            .map_err(|e| anyhow::anyhow!("{} fetching {}", e.msg, params.url))?;
+            .map_err(|e| if e.complete { anyhow::anyhow!("{}", e.msg) } else { anyhow::anyhow!("{} fetching {}", e.msg, params.url) })?;
 
         let mut notes = Vec::new();
         if archived {
@@ -689,6 +689,30 @@ mod tests {
         assert!(paged.contains("chars 12000..24000") && paged.contains("next offset=24000"));
         let ua = seen.lock().unwrap()[0].to_ascii_lowercase();
         assert!(ua.contains("user-agent: mozilla/5.0 (macintosh") && !ua.contains("factr"), "{ua}");
+    }
+
+    #[tokio::test]
+    async fn server_error_after_retries_names_the_attempts_and_a_different_source() {
+        let (_g, _d) = scratch();
+        let (url, seen) = serve(vec![http("502 Bad Gateway", "text/plain", b"bad", ""); 3]);
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let err = match fetch_resilient_with(&client, &url, Duration::from_secs(5), None, &[]).await {
+            Err(e) => e,
+            Ok(_) => panic!("expected failure"),
+        };
+        assert_eq!(seen.lock().unwrap().len(), 3);
+        assert!(err.complete);
+        assert_eq!(
+            err.msg,
+            format!("HTTP 502 for {url} after 3 attempts; the same URL will likely fail again. Get the same fact from another page or site, or an archived copy.")
+        );
+        // A 404 keeps the plain error: it is not a server-side failure.
+        let (url, _) = serve(vec![http("404 Not Found", "text/plain", b"x", "")]);
+        let err = match fetch_resilient_with(&client, &url, Duration::from_secs(5), None, &[]).await {
+            Err(e) => e,
+            Ok(_) => panic!("expected failure"),
+        };
+        assert!(!err.complete && err.msg.contains("404"));
     }
 
     #[tokio::test]

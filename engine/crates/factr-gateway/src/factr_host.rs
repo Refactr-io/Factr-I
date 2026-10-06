@@ -51,6 +51,10 @@ impl FactrHost for Host {
     async fn clarify(&self, session_id: &str, question: &str, choices: &[String]) -> ClarifyReply {
         self.hub.clarify(session_id, question, choices).await
     }
+
+    fn has_backend(&self) -> bool {
+        self.features.is_some()
+    }
 }
 
 /// Make the bridge tools usable by this engine's agent turns.

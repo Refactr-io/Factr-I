@@ -829,76 +829,6 @@ async fn test_background_command_byte_ratio_output_updates_progress() {
 }
 
 #[tokio::test]
-async fn test_background_command_respects_timeout() {
-    let tool = BashTool::new();
-    let ctx = make_ctx(None);
-
-    let result = tool
-        .execute(
-            json!({
-                "command": "sleep 5; echo should_not_print",
-                "run_in_background": true,
-                "timeout": 100,
-                "notify": false,
-                "wake": false,
-            }),
-            ctx,
-        )
-        .await
-        .expect("background command should start");
-
-    let metadata = result.metadata.expect("expected metadata");
-    let task_id = metadata["task_id"]
-        .as_str()
-        .expect("task id should be present")
-        .to_string();
-
-    let mut final_status = None;
-    // Wall-clock deadline rather than a fixed iteration count. The command's own
-    // timeout is 100ms, but the *observation* of the resulting Failed status
-    // depends on scheduler latency, and a 50 x 50ms budget starved when the full
-    // suite runs in parallel on a loaded machine (issue #593). A generous
-    // deadline keeps the assertion strict while removing the timing race: a real
-    // regression still fails, it just is not reported as a flake.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while std::time::Instant::now() < deadline {
-        let status = crate::background::global()
-            .status(&task_id)
-            .await
-            .expect("status should exist");
-        if status.status == BackgroundTaskStatus::Failed {
-            final_status = Some(status);
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-
-    let status = final_status.expect("background task should fail after timeout");
-    assert_eq!(status.exit_code, Some(124));
-    assert!(
-        status
-            .error
-            .as_deref()
-            .unwrap_or_default()
-            .contains("timed out"),
-        "timeout failure should be recorded: {status:?}"
-    );
-
-    let output = crate::background::global()
-        .output(&task_id)
-        .await
-        .expect("output should exist");
-    assert!(
-        output.contains("timed out after 100ms"),
-        "output was: {output}"
-    );
-    assert!(
-        !output.contains("should_not_print"),
-        "timed-out command should not complete normally: {output}"
-    );
-}
-
-#[tokio::test]
 async fn test_background_command_without_timeout_keeps_running_past_default_foreground_timeout() {
     let tool = BashTool::new();
     let ctx = make_ctx(None);
@@ -1451,4 +1381,28 @@ async fn bg_wait_until_returns_on_matching_output_or_exit() {
         .await
         .unwrap_err();
     assert!(bad.to_string().contains("not a valid regex"), "{bad}");
+}
+
+#[tokio::test]
+async fn a_background_task_ignores_the_foreground_timeout() {
+    let tool = BashTool::new();
+    let result = tool
+        .execute(
+            json!({"command": "sleep 1; echo survived", "run_in_background": true, "timeout": 200, "notify": false, "wake": false}),
+            make_ctx(None),
+        )
+        .await
+        .expect("background command should start");
+    assert_eq!(result.output.contains("until=<ready regex>"), destructive_gate::bg_desc_on(), "{}", result.output);
+    let task_id = result.metadata.expect("metadata")["task_id"].as_str().unwrap().to_string();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut output = String::new();
+    while std::time::Instant::now() < deadline {
+        output = crate::background::global().output(&task_id).await.unwrap_or_default();
+        if output.contains("survived") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert!(output.contains("survived") && !output.contains("timed out"), "{output}");
 }

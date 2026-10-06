@@ -1,6 +1,6 @@
 # Releasing Factr-I
 
-Current version: `0.0.1`. Releases live at
+Current version: `0.0.2`. Releases live at
 https://github.com/Refactr-io/Factr-I/releases (the `publish` block of
 `desktop/app/package.json` and every update link in the app point there).
 

@@ -166,7 +166,8 @@ impl Agent {
 
         let starts_turn = blocks.len() > 1 || !user_message.trim().is_empty();
         // The session-context system message is already there, so "first" means no visible message yet.
-        if starts_turn && self.session.visible_conversation_message_count() == 0 && self.wants_env_snapshot() {
+        let forbids = super::stop_nudge::guard_on("NOTOOLS") && factr_base::task_policy::forbids_tools(user_message);
+        if starts_turn && !forbids && self.session.visible_conversation_message_count() == 0 && self.wants_env_snapshot() {
             if let Some(dir) = self.session.working_dir.as_deref() {
                 blocks.push(ContentBlock::Text {
                     text: super::env_snapshot::snapshot(std::path::Path::new(dir)),

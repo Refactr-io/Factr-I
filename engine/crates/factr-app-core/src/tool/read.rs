@@ -193,7 +193,11 @@ impl Tool for ReadTool {
         };
         let no_range = params.start_line.is_none() && params.end_line.is_none() && params.offset.is_none() && params.limit.is_none();
         if no_range && !office && content.len() > LARGE_FILE_BYTES {
-            return Ok(ToolOutput::new(large_file_overview(&params.file_path, &content, super::repl_available())));
+            let mut overview = large_file_overview(&params.file_path, &content, super::repl_available());
+            if let Some(f) = tabular_footer(&path, &content) {
+                overview.push_str(&f);
+            }
+            return Ok(ToolOutput::new(overview));
         }
         let char_cap = if office { 12_000 } else { usize::MAX };
         let mut capped_at: Option<usize> = None;
@@ -276,12 +280,49 @@ impl Tool for ReadTool {
             ));
         }
 
+        if let Some(f) = tabular_footer(&path, &content) {
+            output.push_str(&f);
+        }
         if output.is_empty() {
             Ok(ToolOutput::new("(empty file)"))
         } else {
             Ok(ToolOutput::new(output))
         }
     }
+}
+
+/// One footer line for a spreadsheet or data file: its shape, where it is, and that counts and
+/// totals belong in code. `FACTR_GUARD_READ_FOOTER=0` turns it off.
+fn tabular_footer(path: &Path, content: &str) -> Option<String> {
+    if std::env::var("FACTR_GUARD_READ_FOOTER").is_ok_and(|v| v == "0") {
+        return None;
+    }
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    let (rows, cols) = match ext.as_str() {
+        "csv" | "tsv" => {
+            let d = if ext == "csv" { ',' } else { '\t' };
+            let mut it = content.lines().filter(|l| !l.trim().is_empty());
+            let first = it.next()?;
+            (1 + it.count(), first.split(d).count())
+        }
+        "xlsx" | "xlsm" => {
+            let rows = content.lines().filter(|l| !l.trim().is_empty() && !l.starts_with("Sheet: "));
+            let (mut n, mut c) = (0, 0);
+            for l in rows {
+                n += 1;
+                c = c.max(l.split('\t').count());
+            }
+            (n, c)
+        }
+        "json" => match serde_json::from_str::<Value>(content).ok()? {
+            Value::Array(a) => (a.len(), a.first().and_then(|v| v.as_object()).map_or(1, |o| o.len())),
+            Value::Object(o) => (1, o.len()),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    Some(format!("\n[{rows} rows x {cols} columns; {}; compute totals or counts from this file in code]\n", abs.display()))
 }
 
 /// Size, line count, head, tail and evenly spaced sample lines of a large file, with where to go next.

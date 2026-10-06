@@ -20,6 +20,10 @@ pub struct FetchFail {
     pub msg: String,
     transient: bool,
     retry_after: Option<Duration>,
+    /// Attempts made before giving up (1 + retries).
+    pub attempts: u32,
+    /// `msg` is the whole user-facing error (it already names the URL).
+    pub complete: bool,
 }
 
 pub fn backoff(attempt: u32, retry_after: Option<Duration>) -> Duration {
@@ -31,7 +35,7 @@ pub fn backoff(attempt: u32, retry_after: Option<Duration>) -> Duration {
 }
 
 async fn get_once(client: &reqwest::Client, url: &str, timeout: Duration) -> Result<Fetched, FetchFail> {
-    let fail = |status, msg: String, transient, retry_after| FetchFail { status, msg, transient, retry_after };
+    let fail = |status, msg: String, transient, retry_after| FetchFail { status, msg, transient, retry_after, attempts: 1, complete: false };
     let resp = client
         .get(url)
         .header(reqwest::header::USER_AGENT, USER_AGENT)
@@ -91,7 +95,11 @@ pub async fn fetch_retry(client: &reqwest::Client, url: &str, timeout: Duration)
                 tokio::time::sleep(backoff(attempt, e.retry_after)).await;
                 attempt += 1;
             }
-            other => return other,
+            Err(mut e) => {
+                e.attempts = attempt + 1;
+                return Err(e);
+            }
+            ok => return ok,
         }
     }
 }
@@ -108,7 +116,7 @@ pub async fn fetch_resilient_with(
     allowed_hosts: &[String],
 ) -> Result<(Fetched, bool), FetchFail> {
     if let Err(msg) = check_host_allowed(url, allowed_hosts) {
-        return Err(FetchFail { status: None, msg, transient: false, retry_after: None });
+        return Err(FetchFail { status: None, msg, transient: false, retry_after: None, attempts: 1, complete: false });
     }
     let mut err = match fetch_retry(client, url, timeout).await {
         Ok(f) => return Ok((f, false)),
@@ -125,6 +133,22 @@ pub async fn fetch_resilient_with(
     }
     if matches!(err.status, Some(403 | 404 | 410)) && wayback_api.is_some() {
         err.msg.push_str(" (no archived copy)");
+    }
+    // Retries ran out on a server error or a connection failure: try the archive, then say plainly
+    // that the same URL will keep failing. `FACTR_GUARD_FETCH_HINT=0` keeps the plain error.
+    let server_side = err.transient && err.attempts >= 3 && (err.status.is_none() || err.status.is_some_and(|s| s >= 500));
+    if server_side && std::env::var("FACTR_GUARD_FETCH_HINT").map_or(true, |v| v != "0") {
+        if let Some(api) = wayback_api
+            && check_host_allowed(api, allowed_hosts).is_ok()
+            && let Some(snap) = wayback_snapshot(client, api, url).await
+            && check_host_allowed(&snap, allowed_hosts).is_ok()
+            && let Ok(f) = fetch_retry(client, &snap, timeout).await
+        {
+            return Ok((f, true));
+        }
+        let what = err.status.map_or_else(|| err.msg.clone(), |s| format!("HTTP {s}"));
+        err.msg = format!("{what} for {url} after {} attempts; the same URL will likely fail again. Get the same fact from another page or site, or an archived copy.", err.attempts);
+        err.complete = true;
     }
     Err(err)
 }

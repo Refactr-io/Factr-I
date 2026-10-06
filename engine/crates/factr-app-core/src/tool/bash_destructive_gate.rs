@@ -82,6 +82,25 @@ pub(super) fn destructive_command_refusal(
 ///
 /// Lives beside the gate so the schema and the policy that reads it stay in
 /// sync, and so bash.rs stays inside the code-size budget.
+/// `FACTR_GUARD_BG_DESC=1` selects the newer `run_in_background` wording and adds the server hint
+/// to the background-start result (off by default: the v0.0.1 text). Read once per process (tool schemas are frozen per session).
+pub(super) fn bg_desc_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| factr_base::prompt::opt_in_switch("BG_DESC"))
+}
+
+pub(super) fn bg_start_hint(on: bool) -> &'static str {
+    if on { "For a server or watcher: `bg` wait with until=<ready regex> returns when the ready line prints.\n" } else { "" }
+}
+
+fn run_in_background_description(new_wording: bool) -> &'static str {
+    if new_wording {
+        "Long builds/servers: run here, then `bg` wait until=<ready line>. May print `FACTR_PROGRESS {json}`."
+    } else {
+        "Run in background. Emit `FACTR_PROGRESS {json}` lines for progress reporting."
+    }
+}
+
 pub(super) fn bash_parameters_schema() -> serde_json::Value {
     let cmd_desc = if cfg!(windows) {
         "The Windows command to execute via cmd.exe. Use cmd.exe syntax and quoting, not Bash syntax."
@@ -104,7 +123,7 @@ pub(super) fn bash_parameters_schema() -> serde_json::Value {
             },
             "run_in_background": {
                 "type": "boolean",
-                "description": "Run in background. Emit `FACTR_PROGRESS {json}` lines for progress reporting."
+                "description": run_in_background_description(bg_desc_on())
             },
             "notify": {
                 "type": "boolean",
@@ -168,5 +187,19 @@ mod tests {
                 "{command}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod bg_desc_tests {
+    #[test]
+    fn the_earlier_text_is_the_default_and_the_new_text_opt_in() {
+        assert_eq!(
+            super::run_in_background_description(false),
+            "Run in background. Emit `FACTR_PROGRESS {json}` lines for progress reporting."
+        );
+        assert!(super::run_in_background_description(true).contains("until=<ready line>"));
+        assert!(super::bg_start_hint(true).contains("until=<ready regex>") && super::bg_start_hint(false).is_empty());
+        assert!(!super::bg_desc_on(), "opt-in: off by default");
     }
 }

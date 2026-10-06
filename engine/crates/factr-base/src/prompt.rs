@@ -28,7 +28,40 @@ pub fn load_base_system_prompt(working_dir: Option<&Path>) -> String {
             }
         }
     }
-    DEFAULT_SYSTEM_PROMPT.to_string()
+    default_system_prompt()
+}
+
+const STDLIB_LINE: &str = "If a needed library is missing, install it with an installer from the environment line; if none works, implement the logic with the standard library before calling the task impossible.\n";
+const BEST_NEW: &str = "give your best answer in the requested form";
+const BEST_OLD: &str = "give a best estimate with a caveat";
+
+/// An opt-in text switch (`FACTR_GUARD_<NAME>=1` turns it on, default off: the v0.0.1 wording), read once per process.
+pub fn opt_in_switch(name: &str) -> bool {
+    std::env::var(format!("FACTR_GUARD_{name}")).is_ok_and(|v| v == "1")
+}
+
+/// A guard switch (`FACTR_GUARD_<NAME>=0` turns it off, default on), read once per process.
+pub fn guard_switch(name: &str) -> bool {
+    std::env::var(format!("FACTR_GUARD_{name}")).map_or(true, |v| v != "0")
+}
+
+/// [`DEFAULT_SYSTEM_PROMPT`] with the ablation switches applied (read once, at the first prompt build):
+/// `FACTR_GUARD_PROMPT_STDLIB=0` drops the missing-library rule (on by default), `FACTR_GUARD_PROMPT_BEST=0` restores
+/// the earlier wording of the best-answer line.
+pub fn default_system_prompt() -> String {
+    static P: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    P.get_or_init(|| apply_prompt_switches(DEFAULT_SYSTEM_PROMPT, guard_switch("PROMPT_STDLIB"), guard_switch("PROMPT_BEST"))).clone()
+}
+
+fn apply_prompt_switches(base: &str, stdlib: bool, best: bool) -> String {
+    let mut p = base.to_string();
+    if !stdlib {
+        p = p.replace(STDLIB_LINE, "");
+    }
+    if !best {
+        p = p.replace(BEST_NEW, BEST_OLD);
+    }
+    p
 }
 
 /// Prompt guidance for the optional Mermaid rendering capability.

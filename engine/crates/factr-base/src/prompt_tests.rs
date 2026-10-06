@@ -619,7 +619,7 @@ fn project_system_prompt_file_replaces_default_base_prompt() {
 
     // Empty override falls back to the built-in default.
     std::fs::write(factr_dir.join("system-prompt.md"), "   \n").unwrap();
-    assert_eq!(load_base_system_prompt(Some(&dir)), DEFAULT_SYSTEM_PROMPT);
+    assert_eq!(load_base_system_prompt(Some(&dir)), default_system_prompt());
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -792,8 +792,14 @@ fn prompt_tells_model_to_process_large_inputs_in_code() {
         .expect("large-input rule present");
     assert!(line.contains("first inspect size and structure") && line.contains("environment line"));
     assert!(line.len() <= 360, "rule must stay short: {}", line.len());
-    assert!(DEFAULT_SYSTEM_PROMPT.contains("not counted by its name") && DEFAULT_SYSTEM_PROMPT.contains("a best estimate"));
-    assert!(DEFAULT_SYSTEM_PROMPT.contains("Use the todo tool for multi-step work, not single-answer tasks"));
+    assert!(DEFAULT_SYSTEM_PROMPT.contains("not counted by its name") && DEFAULT_SYSTEM_PROMPT.contains("give your best answer in the requested form"));
+    for hedge in ["caveat", "estimate", "uncertain"] {
+        assert!(!DEFAULT_SYSTEM_PROMPT.contains(hedge), "no hedging wording: {hedge}");
+    }
+    assert!(DEFAULT_SYSTEM_PROMPT.contains("Don't search for or use published answers or solutions to the task you were given."));
+    assert!(!DEFAULT_SYSTEM_PROMPT.to_ascii_lowercase().contains("benchmark"));
+    assert!(!DEFAULT_SYSTEM_PROMPT.contains("todo"), "the prompt does not push the todo tool");
+    assert!(DEFAULT_SYSTEM_PROMPT.contains("implement the logic with the standard library"));
     assert!(!DEFAULT_SYSTEM_PROMPT.contains("llm_query") && !DEFAULT_SYSTEM_PROMPT.contains("`repl`"), "REPL guidance is gated in app-core");
 }
 
@@ -878,5 +884,38 @@ fn overlays_and_preferred_tools_written_mid_session_do_not_reach_the_captured_pr
     match prev_home {
         Some(prev) => crate::env::set_var("FACTR_HOME", prev),
         None => crate::env::remove_var("FACTR_HOME"),
+    }
+}
+
+#[test]
+fn prompt_switches_default_to_the_stdlib_rule_present_and_the_new_best_answer_line() {
+    // Default: the missing-library rule is on (STDLIB=0 drops it), the best-answer line is the new one.
+    let default = apply_prompt_switches(DEFAULT_SYSTEM_PROMPT, true, true);
+    assert_eq!(default, DEFAULT_SYSTEM_PROMPT);
+    assert!(default.contains("implement the logic with the standard library") && default.contains("requested form"));
+    assert_eq!(default_system_prompt(), default, "defaults: STDLIB on, BEST on");
+    let no_stdlib = apply_prompt_switches(DEFAULT_SYSTEM_PROMPT, false, true);
+    assert!(!no_stdlib.contains("standard library") && !no_stdlib.contains("If a needed library") && no_stdlib.contains("requested form"));
+    let off = apply_prompt_switches(DEFAULT_SYSTEM_PROMPT, false, false);
+    assert!(!off.contains("standard library") && !off.contains("If a needed library"));
+    assert!(off.contains("When an answer is required, give a best estimate with a caveat, never \"cannot determine\" after one attempt."));
+    assert!(!off.contains("requested form"));
+    let only_best = apply_prompt_switches(DEFAULT_SYSTEM_PROMPT, true, false);
+    assert!(only_best.contains("implement the logic with the standard library") && !only_best.contains("requested form"));
+}
+
+#[test]
+fn every_tool_or_code_line_sits_below_the_no_tools_override_or_makes_the_exception() {
+    const OVERRIDE: &str = "If the user says not to use tools or code, answer directly; that overrides every rule below.";
+    for text in [default_system_prompt(), DEFAULT_SYSTEM_PROMPT.to_string()] {
+        let at = text.find(OVERRIDE).expect("override line present");
+        let mut offset = 0;
+        for line in text.split_inclusive('\n') {
+            let l = line.to_ascii_lowercase();
+            if offset < at && (l.contains("tool") || l.contains("code") || l.contains("install")) {
+                assert!(l.contains("unless"), "tool/code/install line above the override without an exception: {line}");
+            }
+            offset += line.len();
+        }
     }
 }

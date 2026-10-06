@@ -62,6 +62,10 @@ pub trait FactrHost: Send + Sync {
     async fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value>;
     /// Ask the person a question and wait for the answer.
     async fn clarify(&self, session_id: &str, question: &str, choices: &[String]) -> ClarifyReply;
+    /// Whether a feature backend is behind `call` (a host that only answers `clarify` has none).
+    fn has_backend(&self) -> bool {
+        true
+    }
 }
 
 static HOST: RwLock<Option<Arc<dyn FactrHost>>> = RwLock::new(None);
@@ -77,6 +81,12 @@ fn installed() -> Option<Arc<dyn FactrHost>> {
 
 /// Whether the Factr backend is up and offers `tool` (it lists only tools whose own
 /// credentials and setup are in place). False when there is no backend.
+/// A host with a feature backend is installed: the `factr` tool has something to talk to.
+/// `FACTR_GUARD_BRIDGE=0` registers the tool regardless.
+pub(crate) fn backend_installed() -> bool {
+    std::env::var("FACTR_GUARD_BRIDGE").is_ok_and(|v| v == "0") || installed().is_some_and(|h| h.has_backend())
+}
+
 pub(crate) async fn offers_tool(tool: &str) -> bool {
     let Some(host) = installed() else { return false };
     let Ok(reply) = host.call("GET", "/api/agent-tools", None).await else { return false };
@@ -270,6 +280,34 @@ mod tests {
         fn new(up: bool) -> Arc<Self> {
             Arc::new(Self { up, clarify: Mutex::new(None), calls: Mutex::default() })
         }
+    }
+
+    struct NoBackend;
+
+    #[async_trait]
+    impl FactrHost for NoBackend {
+        async fn call(&self, _: &str, _: &str, _: Option<Value>) -> Result<Value> {
+            anyhow::bail!(UNAVAILABLE)
+        }
+        async fn clarify(&self, _: &str, _: &str, _: &[String]) -> ClarifyReply {
+            ClarifyReply::NoUser
+        }
+        fn has_backend(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn the_factr_tool_is_registered_only_when_a_backend_host_is_installed() {
+        let _lock = crate::storage::lock_test_env();
+        let before = HOST.read().unwrap().clone();
+        *HOST.write().unwrap() = None;
+        assert!(!backend_installed(), "no host");
+        install_host(Arc::new(NoBackend));
+        assert!(!backend_installed(), "a host without a backend");
+        install_host(Fake::new(true));
+        assert!(backend_installed());
+        *HOST.write().unwrap() = before;
     }
 
     #[async_trait]

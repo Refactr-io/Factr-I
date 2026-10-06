@@ -579,7 +579,9 @@ impl Registry {
                 session_heartbeat::SessionHeartbeatTool,
             );
             Self::insert_tool(&mut tools_map, "delegate", delegate::DelegateTool::new());
-            Self::insert_tool(&mut tools_map, "factr", factr_bridge::FactrTool::new());
+            if factr_bridge::backend_installed() {
+                Self::insert_tool(&mut tools_map, "factr", factr_bridge::FactrTool::new());
+            }
             Self::insert_tool(&mut tools_map, "clarify", factr_bridge::ClarifyTool::new());
         }
         let session_tools_ms = session_tools_start.elapsed().as_millis();

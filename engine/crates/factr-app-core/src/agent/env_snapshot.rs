@@ -97,6 +97,14 @@ fn describe_entry(path: &Path, name: &str) -> String {
     format!("{name} ({})", parts.join(", "))
 }
 
+fn installers_field(on: bool, routes: &[&str]) -> String {
+    if on {
+        format!("installers: {}; ", if routes.is_empty() { "none".to_string() } else { routes.join(",") })
+    } else {
+        String::new()
+    }
+}
+
 pub(super) fn snapshot(cwd: &Path) -> String {
     let (have, missing): (Vec<&str>, Vec<&str>) = TOOLS.iter().partition(|t| on_path(t));
     let mut have: Vec<String> = have.iter().map(|t| t.to_string()).collect();
@@ -112,9 +120,16 @@ pub(super) fn snapshot(cwd: &Path) -> String {
     names.sort();
     names.truncate(20);
     let names: Vec<String> = names.iter().map(|n| describe_entry(&cwd.join(n), n)).collect();
+    let routes = factr_base::shell::package_routes();
+    // `FACTR_GUARD_ENV_INSTALLERS=0` drops the installers field (on by default) (read once per process).
+    static INSTALLERS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let installers = installers_field(*INSTALLERS.get_or_init(|| factr_base::prompt::guard_switch("ENV_INSTALLERS")), routes);
     let text = format!(
-        "<environment>cwd {}; have: {}; missing: {}; files: {}</environment>",
+        "<environment>cwd {}; shell: {}; repl: {}; {}have: {}; missing: {}; files: {}</environment>",
         cwd.display(),
+        if factr_base::shell::is_bash() { "bash" } else { "sh" },
+        if crate::tool::repl_available() { "on" } else { "off" },
+        installers,
         have.join(", "),
         missing.join(", "),
         names.join(" ")
@@ -142,11 +157,19 @@ mod tests {
         let s = snapshot(&d);
         assert!(s.chars().count() <= MAX_CHARS, "{}", s.chars().count());
         assert!(s.starts_with("<environment>cwd ") && s.ends_with("</environment>"));
+        assert!(s.contains("; shell: ") && s.contains("; repl: ") && s.contains("; installers: "), "{s}");
         let d2 = d.join("sub");
         std::fs::create_dir_all(&d2).unwrap();
         std::fs::write(d2.join("a.txt"), "").unwrap();
         assert!(snapshot(&d2).contains("files: a.txt"));
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn installers_field_follows_its_switch() {
+        assert_eq!(installers_field(false, &["pip"]), "");
+        assert_eq!(installers_field(true, &[]), "installers: none; ");
+        assert_eq!(installers_field(true, &["pip", "npm"]), "installers: pip,npm; ");
     }
 
     #[test]
