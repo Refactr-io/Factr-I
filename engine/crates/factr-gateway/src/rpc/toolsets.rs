@@ -126,6 +126,12 @@ mod tests {
         let registered = registry.tool_names().await;
         for toolset in ["cronjob", "messaging", "terminal", "file", "web", "browser", "skills", "memory", "todo", "delegation", "session_search", "code_execution", "clarify"] {
             for tool in tools_of(toolset) {
+                // The REPL is registered only where its sandbox exists (macOS); Linux and Windows
+                // runners never register it, so there is nothing to check it against.
+                if tool == "repl" && !factr_learn::host::sandbox_available() {
+                    eprintln!("skipping repl: no REPL sandbox on this platform, so the tool is not registered");
+                    continue;
+                }
                 assert!(
                     registered.iter().any(|n| n == tool) || FACTR_BACKEND_TOOLS.contains(&tool),
                     "toolset {toolset} names {tool}, which is neither a registered tool nor a Factr tool"
