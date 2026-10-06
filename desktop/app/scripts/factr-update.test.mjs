@@ -3,7 +3,10 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { test } from 'vitest'
+import { test as baseTest } from 'vitest'
+
+// The update script relies on macOS-only tools (ditto).
+const test = baseTest.skipIf(process.platform !== 'darwin')
 
 const script = path.join(import.meta.dirname, 'factr-update.sh')
 

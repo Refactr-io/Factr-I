@@ -110,6 +110,10 @@ async fn explicit_allowlist_is_never_deferred() {
 
 #[tokio::test]
 async fn repl_is_deferred_until_loaded() {
+    // The REPL is only registered where the macOS sandbox exists.
+    if !factr_learn::host::sandbox_available() {
+        return;
+    }
     let _guard = crate::storage::lock_test_env();
     let mut agent = factr_agent().await;
     assert!(!names(&agent.tool_definitions().await).contains(&"repl"));

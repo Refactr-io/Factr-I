@@ -7,6 +7,7 @@ declare-only seam (surfaced, never installed).
 """
 
 import logging
+from pathlib import Path
 
 import pytest
 import yaml
@@ -584,4 +585,4 @@ class TestDirectoryPluginKeepsIdentityOverEntryPoint:
         from factr_backend.plugins_cmd import _discover_all_plugins
         rows = [r for r in _discover_all_plugins() if r[0] == "twin"]
         assert [r[3] for r in rows] == ["user"]
-        assert str(rows[0][4]).endswith("plugins/twin")
+        assert Path(rows[0][4]).as_posix().endswith("plugins/twin")

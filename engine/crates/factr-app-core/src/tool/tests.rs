@@ -1969,16 +1969,20 @@ async fn empty_required_strings_fail_before_the_tool_runs() {
         graceful_shutdown_signal: None,
         execution_mode: ToolExecutionMode::Direct,
     };
-    for (tool, field) in [
+    let mut cases = vec![
         ("bash", "command"),
-        ("repl", "code"),
         ("websearch", "query"),
         ("webfetch", "url"),
         ("read", "file_path"),
         ("edit", "file_path"),
         ("write", "file_path"),
         ("apply_patch", "patch_text"),
-    ] {
+    ];
+    // The REPL is only registered where the macOS sandbox exists.
+    if factr_learn::host::sandbox_available() {
+        cases.insert(1, ("repl", "code"));
+    }
+    for (tool, field) in cases {
         for empty in ["", "  \n\t"] {
             let err = registry
                 .execute(tool, serde_json::json!({ field: empty }), ctx())

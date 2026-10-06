@@ -9,13 +9,21 @@ import { saveFactrConfig } from '@/factr'
 
 import { $voiceStopPhrase, applyVoiceStopPhraseFromConfig } from './voice-prefs'
 
+// Real jsdom Storage keeps setItem on the prototype (an instance spy does not
+// intercept it); the setup shim is a plain object, so spy on that instead.
+function spyOnSetItem() {
+  return typeof Storage !== 'undefined' && localStorage instanceof Storage
+    ? vi.spyOn(Storage.prototype, 'setItem')
+    : vi.spyOn(localStorage, 'setItem')
+}
+
 it('keeps the desktop toggle local across config refreshes', async () => {
   for (const fails of [false, true]) {
     for (const enabled of [false, true]) {
       localStorage.clear()
       vi.resetModules()
       const prefs = await import('./voice-prefs')
-      const write = vi.spyOn(localStorage, 'setItem')
+      const write = spyOnSetItem()
 
       if (fails) {
         write.mockImplementation(() => {
@@ -44,7 +52,7 @@ it('migrates the legacy preference once, not on every refresh', async () => {
       localStorage.clear()
       vi.resetModules()
       const prefs = await import('./voice-prefs')
-      const write = vi.spyOn(localStorage, 'setItem')
+      const write = spyOnSetItem()
 
       if (fails) {
         write.mockImplementation(() => {
