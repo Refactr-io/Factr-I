@@ -126,6 +126,12 @@ fn shell_command(command: &str) -> Command {
         use std::os::unix::process::CommandExt;
         let mut cmd = Command::new(factr_base::shell::posix_shell());
         cmd.arg("-c").arg(command).process_group(0);
+        // The gate commands see the session venv like `bash` does: wait for the build (free when there
+        // is none or it is over), and drop the venv variables when it failed.
+        factr_base::python_env::ensure_session_venv(factr_base::python_env::VENV_WAIT);
+        if let Some(path) = factr_base::python_env::withdrawn_path() {
+            cmd.env("PATH", path).env_remove("FACTR_SESSION_VENV").env_remove("VIRTUAL_ENV");
+        }
         cmd
     }
 }

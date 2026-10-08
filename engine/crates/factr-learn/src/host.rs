@@ -105,14 +105,23 @@ impl Drop for Worker {
 
 pub struct ReplHost {
     python: PathBuf,
+    /// Asked at each worker start for the interpreter to use now (the session environment may have
+    /// been created after the host was); `python` is the fallback.
+    resolver: Option<fn() -> Option<PathBuf>>,
     workers: Mutex<HashMap<String, Arc<Mutex<Option<Worker>>>>>,
 }
 
 impl ReplHost {
     /// `python` is the Factr-bundled CPython interpreter.
     pub fn new(python: PathBuf) -> Arc<Self> {
+        Self::new_resolving(python, None)
+    }
+
+    /// Like [`ReplHost::new`], but each new worker runs on `resolver()` when it returns a path.
+    pub fn new_resolving(python: PathBuf, resolver: Option<fn() -> Option<PathBuf>>) -> Arc<Self> {
         let host = Arc::new(Self {
             python,
+            resolver,
             workers: Mutex::new(HashMap::new()),
         });
         let weak = Arc::downgrade(&host);
@@ -162,6 +171,7 @@ impl ReplHost {
 
     #[cfg(target_os = "macos")]
     async fn spawn(&self, workdir: Option<&Path>) -> Result<Worker> {
+        let interpreter = self.resolver.and_then(|resolve| resolve()).unwrap_or_else(|| self.python.clone());
         let (mut child, session_tmp) = {
             let cwd;
             let project = match workdir {
@@ -181,7 +191,7 @@ impl ReplHost {
             // Launch by the path as given, not its canonical target: a virtualenv interpreter is a
             // symlink and finds its packages through `pyvenv.cfg` next to that path.
             // Only the directory is resolved (the sandbox matches real paths, and /var is /private/var).
-            let given = std::path::absolute(&self.python).context("resolving the REPL interpreter")?;
+            let given = std::path::absolute(&interpreter).context("resolving the REPL interpreter")?;
             let python = match (given.parent().map(std::fs::canonicalize), given.file_name()) {
                 (Some(Ok(dir)), Some(name)) => dir.join(name),
                 _ => given,
@@ -244,6 +254,7 @@ impl ReplHost {
 
     #[cfg(not(target_os = "macos"))]
     async fn spawn(&self, workdir: Option<&Path>) -> Result<Worker> {
+        let interpreter = self.resolver.and_then(|resolve| resolve()).unwrap_or_else(|| self.python.clone());
         let cwd;
         let project = match workdir {
             Some(path) => path,
@@ -257,7 +268,7 @@ impl ReplHost {
             std::env::temp_dir().join(format!("factr-repl-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&session_tmp)?;
         let skills = skills_dir()?;
-        let mut child = Command::new(&self.python)
+        let mut child = Command::new(&interpreter)
             .args(["-E", "-u", "-c", crate::worker::PYTHON_WORKER])
             .arg(&project)
             .arg(&skills)

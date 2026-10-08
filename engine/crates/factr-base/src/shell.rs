@@ -46,19 +46,44 @@ pub fn package_routes() -> &'static [&'static str] {
     })
 }
 
-/// The actionable tail for a "module not found" error: the installers that exist, never run for the
-/// model, then the standard-library fallback.
-pub fn missing_module_hint(routes: &[&str], interpreter: Option<&str>) -> String {
+/// The one install command that works first try for `interpreter` (the session environment's python
+/// when there is one): `uv pip install --python <py> <pkg>` when uv exists, else `<py> -m pip install <pkg>`.
+pub fn install_command(routes: &[&str], interpreter: Option<&str>) -> Option<String> {
     let py = interpreter.unwrap_or("python3");
-    let mut ways = Vec::new();
     if routes.contains(&"uv") {
-        ways.push(format!("`uv pip install --python {py} <pkg>`"));
+        Some(format!("uv pip install --python {py} <pkg>"))
+    } else if routes.contains(&"pip") || routes.contains(&"pip3") || interpreter.is_some() {
+        Some(format!("{py} -m pip install <pkg>"))
+    } else {
+        None
     }
-    if routes.contains(&"pip") || routes.contains(&"pip3") {
-        ways.push(format!("`{py} -m pip install <pkg>`"));
+}
+
+/// The actionable tail for a "module not found" error: exactly one installer command, never run for
+/// the model (a package installed that way is importable in the REPL on its next cell, no restart),
+/// then the standard-library fallback.
+pub fn missing_module_hint(routes: &[&str], interpreter: Option<&str>) -> String {
+    match install_command(routes, interpreter).filter(|_| !routes.is_empty()) {
+        Some(cmd) => format!("\nHint: install it with `{cmd}` (importable in the REPL on its next cell, no restart), or implement it with the standard library before declaring it impossible."),
+        None => "\nHint: No installer is on PATH; implement it with the standard library before declaring it impossible.".to_string(),
     }
-    let via = if ways.is_empty() { "No installer is on PATH; ".to_string() } else { format!("Install it with {}, or ", ways.join(" or ")) };
-    format!("\nHint: {via}implement it with the standard library before declaring it impossible.")
+}
+
+/// A one-line tail for a failed `pip`/`uv` install whose cause is structural (unwritable prefix,
+/// externally-managed interpreter, read-only filesystem): use the session environment's command, not
+/// `--break-system-packages`, `--target` or a different prefix. Empty when the output shows no such cause.
+pub fn install_failure_hint(command: &str, output: &str, routes: &[&str], interpreter: Option<&str>) -> String {
+    let installs = command.contains("pip install") || command.contains("pip3 install") || command.contains("uv pip") || command.contains("uv run --with");
+    let structural = ["externally-managed-environment", "Permission denied", "Read-only file system", "not writable", "EACCES"]
+        .iter()
+        .any(|m| output.contains(m));
+    if !installs || !structural {
+        return String::new();
+    }
+    match (crate::python_env::session_venv_active(), install_command(routes, interpreter)) {
+        (true, Some(cmd)) => format!("\nHint: that prefix is not writable; install into the session environment with `{cmd}` instead of --break-system-packages or --target."),
+        _ => String::new(),
+    }
 }
 
 #[cfg(test)]
@@ -68,7 +93,9 @@ mod tests {
     #[test]
     fn missing_module_hint_names_only_existing_routes() {
         let h = missing_module_hint(&["uv", "pip"], Some("/x/python3"));
-        assert!(h.contains("uv pip install --python /x/python3") && h.contains("-m pip install") && h.contains("standard library"));
+        assert!(h.contains("uv pip install --python /x/python3") && !h.contains("-m pip install") && h.contains("standard library"));
+        let p = missing_module_hint(&["pip"], Some("/x/python3"));
+        assert!(p.contains("`/x/python3 -m pip install <pkg>`") && !p.contains("uv pip"));
         let none = missing_module_hint(&[], None);
         assert!(!none.contains("pip install") && none.contains("No installer") && none.contains("standard library"));
     }

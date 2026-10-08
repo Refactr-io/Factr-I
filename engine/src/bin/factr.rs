@@ -328,6 +328,7 @@ struct OllamaUnloadOnDrop;
 impl Drop for OllamaUnloadOnDrop {
     fn drop(&mut self) {
         unload_ollama_from_warm_file();
+        factr::python_env::remove_session_venv(); // normal exit; signals go through shutdown::cleanup
     }
 }
 

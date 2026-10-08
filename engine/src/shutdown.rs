@@ -14,6 +14,8 @@ pub fn cleanup() {
         // Spans and run rows are written by a background thread a moment after a reply: wait for
         // the queue to drain (and stay drained briefly) so an immediate SIGTERM keeps them.
         factr_gateway::observability::flush_pending(Duration::from_millis(500), Duration::from_millis(2500));
+        // The session venv this process made (best-effort, never inherited ones).
+        crate::python_env::remove_session_venv();
         #[cfg(unix)]
         {
             // Reap the commands still running in-process: a bash that hit its timeout was promoted to

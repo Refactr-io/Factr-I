@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.0.3 (released 2026-10-08)
+
+Design and evidence: `docs/design/v003.md`.
+
+- REPL imports after an install: before every cell the worker drops the import finders' caches and adds a user-site or
+  site-packages directory that appeared after it started (`pip install --user`). The sandbox may read the user site
+  before it exists.
+- One session environment: with no `FACTR_REPL_PYTHON`, the engine builds one writable virtualenv (system site packages
+  included, pip seeded) on a background thread at start (the ready line is not delayed; the first command, REPL cell,
+  environment line and hint wait for it, at most 15 s, then fall back to the system interpreter), puts it first on `PATH` and uses it for bash, the REPL and the environment line.
+  `FACTR_REPL_PYTHON` is never replaced. `FACTR_GUARD_SESSION_VENV=0` disables it.
+- Environment line: the tool list is computed after the session venv is ready, so it no longer says `installers: pip`
+  together with `missing: pip`. A failed or timed-out venv build no longer mutates the process environment from a
+  background thread; commands the engine starts drop the dead venv's `PATH` entry and variables per command, and the
+  auto-verify gate and the `!` shell wait for the venv like `bash`.
+- The session venv is removed at shutdown and exit; stale `factr-session-venv-<pid>` directories of dead engines are
+  swept at start.
+- The missing-module hint names exactly one install command for the REPL's own interpreter; a failed install with a
+  structural cause (unwritable prefix, externally managed) gets a one-line pointer to that command.
+- Windows and CI test fixes: the agentgrep, replace and debug-socket tests are platform-neutral, the REPL toolset check
+  is skipped where the REPL sandbox is absent, the Windows cmd.exe shell tool description is shortened to fit the
+  tool-schema token cap, and CI runs the engine tests on two threads with a timeout (the Windows leg skips two hanging groups).
+
 ## v0.0.2 (released 2026-10-06)
 
 Design and rationale: `docs/design/v002.md`. Every guard below has a switch `FACTR_GUARD_<NAME>=0` (default on).

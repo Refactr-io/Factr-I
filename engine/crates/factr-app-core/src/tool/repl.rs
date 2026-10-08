@@ -250,9 +250,15 @@ impl ReplTool {
     pub fn from_env() -> Option<Self> {
         let host = HOST.get_or_init(|| {
             let python = repl_python(|key| std::env::var_os(key), crate::config::config().agents.repl, factr_learn::host::sandbox_available())?;
+            // Without an explicit interpreter the worker runs on the session environment, which may
+            // still be building now: each worker start asks for the interpreter again (after the gate).
+            let resolver: Option<fn() -> Option<PathBuf>> = std::env::var_os("FACTR_REPL_PYTHON")
+                .filter(|p| !p.is_empty())
+                .is_none()
+                .then_some(factr_base::python_env::interpreter as fn() -> Option<PathBuf>);
             python
                 .is_file()
-                .then(|| factr_learn::ReplHost::new(python))
+                .then(|| factr_learn::ReplHost::new_resolving(python, resolver))
         });
         host.clone().map(|host| Self { host })
     }
@@ -345,6 +351,8 @@ impl Tool for ReplTool {
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
         // Empty or blank code never gets here: the registry rejects it from the schema's `minLength`.
         let code = input["code"].as_str().context("`code` is required")?;
+        // Before the cell's compute clock starts: the worker runs on the session environment.
+        super::bash::await_session_venv().await;
         let session_id = ctx.session_id.clone();
         let llm_query: factr_learn::LlmQuery = Arc::new(move |prompt: String| {
             let session_id = session_id.clone();
@@ -600,5 +608,148 @@ mod cell_tests {
         let long = format!("{}ZeroDivisionError: boom", "x".repeat(10_000));
         assert!(tail(&long).ends_with("ZeroDivisionError: boom") && tail(&long).chars().count() <= MAX_OUTPUT_CHARS / 2 + 1);
         assert_eq!(tail("short"), "short");
+    }
+}
+
+/// The first bash command and the first REPL cell, issued while the session environment is still
+/// being built by a slow fake creator, wait on the gate and then see the venv.
+#[cfg(all(test, unix))]
+mod session_venv_gate_tests {
+    use super::*;
+    use crate::tool::{Tool, ToolContext, ToolExecutionMode};
+    use factr_base::python_env as pe;
+    use std::time::{Duration, Instant};
+
+    fn ctx() -> ToolContext {
+        ToolContext {
+            session_id: "gate-session".into(),
+            message_id: "m".into(),
+            tool_call_id: "c".into(),
+            working_dir: Some(std::env::temp_dir()),
+            stdin_request_tx: None,
+            graceful_shutdown_signal: None,
+            execution_mode: ToolExecutionMode::Direct,
+        }
+    }
+
+    /// A slow creator: waits, builds a real venv, preinstalls `dummyprobe_pkg` into it.
+    fn slow_gate(base: PathBuf, dir: PathBuf, delay: Duration, works: bool) -> Arc<pe::VenvGate> {
+        let made = dir.clone();
+        pe::VenvGate::start(dir, Box::new(|| {}), move |_| {
+            std::thread::sleep(delay);
+            if !works {
+                return false;
+            }
+            let ok = std::process::Command::new(&base).args(["-m", "venv", "--system-site-packages"]).arg(&made).status().is_ok_and(|s| s.success());
+            let site = std::process::Command::new(made.join("bin/python3"))
+                .args(["-c", "import site; print(site.getsitepackages()[0])"])
+                .output()
+                .ok()
+                .map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()));
+            if let (true, Some(site)) = (ok, site) {
+                std::fs::create_dir_all(site.join("dummyprobe_pkg")).unwrap();
+                std::fs::write(site.join("dummyprobe_pkg/__init__.py"), "MARK = 'probe-ok'\n").unwrap();
+                return true;
+            }
+            false
+        })
+    }
+
+    struct Env(Vec<(&'static str, Option<std::ffi::OsString>)>);
+    impl Env {
+        fn save() -> Self {
+            Self(["PATH", "FACTR_SESSION_VENV", "VIRTUAL_ENV"].into_iter().map(|k| (k, std::env::var_os(k))).collect())
+        }
+    }
+    impl Drop for Env {
+        fn drop(&mut self) {
+            for (k, v) in &self.0 {
+                match v {
+                    Some(v) => crate::env::set_var(k, v),
+                    None => crate::env::remove_var(k),
+                }
+            }
+            pe::set_gate_for_test(None);
+        }
+    }
+
+    fn point_at(dir: &std::path::Path) {
+        let path = std::env::var_os("PATH").unwrap();
+        let joined = std::env::join_paths(std::iter::once(dir.join("bin")).chain(std::env::split_paths(&path))).unwrap();
+        crate::env::set_var("PATH", joined);
+        crate::env::set_var("FACTR_SESSION_VENV", dir);
+        crate::env::set_var("VIRTUAL_ENV", dir);
+    }
+
+    fn base_python() -> Option<PathBuf> {
+        let base = pe::interpreter_from(None, std::env::var_os("PATH"))?;
+        let in_venv = base.parent().and_then(|p| p.parent()).is_some_and(|v| v.join("pyvenv.cfg").is_file());
+        (!in_venv).then_some(base)
+    }
+
+    #[tokio::test]
+    async fn first_bash_command_and_first_repl_cell_wait_for_the_venv_and_see_it() {
+        let _lock = crate::storage::lock_test_env();
+        let Some(base) = base_python() else { return eprintln!("skipped: no non-venv python3") };
+        let _env = Env::save();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("venv");
+        let delay = Duration::from_millis(1500);
+
+        // bash, first command, issued while the venv is still being built.
+        pe::set_gate_for_test(Some(slow_gate(base.clone(), dir.clone(), delay, true)));
+        point_at(&dir);
+        assert!(pe::session_venv_pending());
+        let t = Instant::now();
+        let out = crate::tool::bash::BashTool::new()
+            .execute(serde_json::json!({"command": "command -v python3; python3 -c 'import dummyprobe_pkg; print(dummyprobe_pkg.MARK)'"}), ctx())
+            .await
+            .unwrap();
+        assert!(t.elapsed() >= delay, "the command waited for the gate");
+        assert!(out.output.contains(dir.to_str().unwrap()) && out.output.contains("probe-ok"), "{}", out.output);
+        assert!(!out.output.contains("No module named"), "{}", out.output);
+
+        // REPL, first cell, again while building (a second, slow gate).
+        let dir2 = tmp.path().join("venv2");
+        pe::set_gate_for_test(Some(slow_gate(base.clone(), dir2.clone(), delay, true)));
+        point_at(&dir2);
+        let repl = ReplTool { host: factr_learn::ReplHost::new_resolving(base.clone(), Some(pe::interpreter)) };
+        let t = Instant::now();
+        let out = repl
+            .execute(serde_json::json!({"code": "import dummyprobe_pkg\nprint(dummyprobe_pkg.MARK)"}), ctx())
+            .await
+            .unwrap();
+        assert!(t.elapsed() >= delay, "the cell waited for the gate");
+        assert!(out.output.contains("probe-ok") && !out.output.contains("compute"), "{}", out.output);
+    }
+
+    #[tokio::test]
+    async fn a_failing_build_falls_back_to_the_system_interpreter_without_hanging() {
+        let _lock = crate::storage::lock_test_env();
+        let Some(base) = base_python() else { return eprintln!("skipped: no non-venv python3") };
+        let _env = Env::save();
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("venv");
+        pe::set_gate_for_test(Some(slow_gate(base.clone(), dir.clone(), Duration::from_millis(200), false)));
+        point_at(&dir);
+        let t = Instant::now();
+        let out = crate::tool::bash::BashTool::new()
+            .execute(serde_json::json!({"command": "python3 -c 'import dummyprobe_pkg'"}), ctx())
+            .await
+            .unwrap();
+        assert!(t.elapsed() < Duration::from_secs(5), "released promptly");
+        // The hint names the interpreter that exists, not the missing venv.
+        assert!(out.output.contains("No module named") && !out.output.contains(dir.to_str().unwrap()), "{}", out.output);
+        let hint = repl_error_hint("ModuleNotFoundError: No module named 'x'");
+        assert!(!hint.contains(dir.to_str().unwrap()), "{hint}");
+        // The engine did not rewrite its own environment from the build thread; the next command just
+        // does not see the dead venv.
+        assert!(std::env::var_os("FACTR_SESSION_VENV").is_some(), "no setenv from the build thread");
+        let out = crate::tool::bash::BashTool::new()
+            .execute(serde_json::json!({"command": "echo \"[${FACTR_SESSION_VENV}][${VIRTUAL_ENV}]\"; echo \"$PATH\""}), ctx())
+            .await
+            .unwrap();
+        assert!(out.output.contains("[][]") && !out.output.contains(dir.to_str().unwrap()), "{}", out.output);
+        assert!(!pe::session_venv_active());
     }
 }

@@ -190,7 +190,13 @@ pub(super) fn handle_input_shell(
         };
 
         let started = Instant::now();
+        if factr_base::python_env::session_venv_pending() {
+            let _ = tokio::task::spawn_blocking(|| factr_base::python_env::ensure_session_venv(factr_base::python_env::VENV_WAIT)).await;
+        }
         let mut cmd = build_input_shell_command(&command);
+        if let Some(path) = factr_base::python_env::withdrawn_path() {
+            cmd.env("PATH", path).env_remove("FACTR_SESSION_VENV").env_remove("VIRTUAL_ENV");
+        }
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

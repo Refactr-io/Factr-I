@@ -106,6 +106,9 @@ fn installers_field(on: bool, routes: &[&str]) -> String {
 }
 
 pub(super) fn snapshot(cwd: &Path) -> String {
+    // Before any PATH lookup: the session venv provides `pip`/`python` and `package_routes` probes it,
+    // so every field of the line is computed after it exists (or after the gate gave up on it).
+    factr_base::python_env::ensure_session_venv(factr_base::python_env::VENV_WAIT);
     let (have, missing): (Vec<&str>, Vec<&str>) = TOOLS.iter().partition(|t| on_path(t));
     let mut have: Vec<String> = have.iter().map(|t| t.to_string()).collect();
     if let Some(py) = have.iter_mut().find(|t| *t == "python3") {
@@ -148,6 +151,7 @@ mod tests {
 
     #[test]
     fn snapshot_is_capped_and_lists_files() {
+        let _lock = crate::storage::lock_test_env();
         let d = std::env::temp_dir().join(format!("envsnap-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
@@ -165,6 +169,43 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// Every field of the line is computed after the session venv exists (or the gate gave up), so a
+    /// tool the venv provides is never both an installer and `missing`.
+    #[cfg(unix)]
+    #[test]
+    fn snapshot_waits_for_the_session_venv_before_listing_tools() {
+        use factr_base::python_env as pe;
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => crate::env::set_var("PATH", v),
+                    None => crate::env::remove_var("PATH"),
+                }
+                pe::set_gate_for_test(None);
+            }
+        }
+        let _lock = crate::storage::lock_test_env();
+        // `repl_available()` caches its PATH lookup process-wide; resolve it against the real PATH first so
+        // the venv-only PATH below cannot poison it for every later test in this process.
+        let _ = crate::tool::repl_available();
+        let _restore = Restore(std::env::var_os("PATH"));
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("venv");
+        let made = dir.clone();
+        pe::set_gate_for_test(Some(pe::VenvGate::start(dir.clone(), Box::new(|| {}), move |_| {
+            std::thread::sleep(Duration::from_millis(1000));
+            std::fs::create_dir_all(made.join("bin")).unwrap();
+            std::fs::write(made.join("bin/pip"), "").unwrap();
+            true
+        })));
+        crate::env::set_var("PATH", dir.join("bin"));
+        let s = snapshot(tmp.path());
+        let (have, missing) = s.split_once("have: ").unwrap().1.split_once("; missing: ").unwrap();
+        assert!(have.split(", ").any(|t| t == "pip"), "{s}");
+        assert!(!missing.split("; files").next().unwrap().split(", ").any(|t| t == "pip"), "{s}");
+    }
+
     #[test]
     fn installers_field_follows_its_switch() {
         assert_eq!(installers_field(false, &["pip"]), "");
@@ -174,6 +215,7 @@ mod tests {
 
     #[test]
     fn snapshot_shows_sizes_lines_and_large_marker() {
+        let _lock = crate::storage::lock_test_env();
         let d = std::env::temp_dir().join(format!("envsnap-sizes-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(d.join("sub")).unwrap();

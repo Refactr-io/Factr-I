@@ -6,9 +6,11 @@ sys.path[:] = [p for p in sys.path if p not in ("", ".")]
 import ast
 import asyncio
 import contextlib
+import importlib
 import inspect
 import json
 import os
+import site
 from pathlib import Path
 import traceback
 import types
@@ -382,6 +384,22 @@ def _traceback_text(error):
     return "".join(traceback.format_exception(type(error), error, tb)).strip()
 
 
+def _refresh_imports():
+    """Before each cell: a package installed since the last one must be importable. Drops the finders'
+    directory caches, and adds a user-site or site-packages directory that did not exist when `site`
+    ran at startup (it only adds existing ones), processing its .pth files. Stat calls only."""
+    importlib.invalidate_caches()
+    try:
+        dirs = list(site.getsitepackages()) if hasattr(site, "getsitepackages") else []
+        if site.ENABLE_USER_SITE:
+            dirs.append(site.getusersitepackages())
+        for directory in dirs:
+            if directory and directory not in sys.path and os.path.isdir(directory):
+                site.addsitedir(directory)
+    except Exception:
+        pass
+
+
 for line in sys.stdin:
     try:
         message = json.loads(line)
@@ -391,6 +409,7 @@ for line in sys.stdin:
         if len(code.encode("utf-8")) > 1_048_576:
             write_frame({"op": "done", "stdout": "", "value": None, "error": "cell exceeds 1 MiB"})
             continue
+        _refresh_imports()
         output = []
         call_count = [0]
         original_host_call = namespace["llm_query"].__globals__["host_call"]

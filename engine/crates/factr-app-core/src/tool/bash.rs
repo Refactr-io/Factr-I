@@ -749,6 +749,9 @@ fn build_shell_command(cmd_str: &str) -> TokioCommand {
     {
         let mut cmd = TokioCommand::new(factr_base::shell::posix_shell());
         cmd.arg("-c").arg(cmd_str);
+        if let Some(path) = factr_base::python_env::withdrawn_path() {
+            cmd.env("PATH", path).env_remove("FACTR_SESSION_VENV").env_remove("VIRTUAL_ENV");
+        }
         configure_tool_scratch(&mut cmd);
         cmd
     }
@@ -769,6 +772,9 @@ fn build_detached_shell_wrapper(command: &str) -> StdCommand {
             r#"eval "$FACTR_RELOAD_DETACH_COMMAND"; status=$?; printf '\n--- Command finished with exit code: %s ---\n' "$status"; exit "$status""#,
         )
         .env("FACTR_RELOAD_DETACH_COMMAND", command);
+    if let Some(path) = factr_base::python_env::withdrawn_path() {
+        cmd.env("PATH", path).env_remove("FACTR_SESSION_VENV").env_remove("VIRTUAL_ENV");
+    }
     if let Some(dir) = tool_scratch_dir() {
         cmd.env("TMPDIR", &dir).env("FACTR_SCRATCH_DIR", dir);
     }
@@ -963,6 +969,14 @@ where
     Ok(Option::<bool>::deserialize(deserializer)?.unwrap_or(DEFAULT))
 }
 
+/// Wait (off the async threads) until the session environment is built, so a command started now
+/// finds `python`/`pip` on its `PATH`. Free once it is finished; bounded, never an error.
+pub(crate) async fn await_session_venv() {
+    if factr_base::python_env::session_venv_pending() {
+        let _ = tokio::task::spawn_blocking(|| factr_base::python_env::ensure_session_venv(factr_base::python_env::VENV_WAIT)).await;
+    }
+}
+
 #[path = "bash_destructive_gate.rs"]
 mod destructive_gate;
 pub use destructive_gate::{BashVerdict, bash_verdict};
@@ -988,6 +1002,7 @@ impl Tool for BashTool {
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
         let mut params: BashInput = serde_json::from_value(input)?;
         let run_in_background = params.run_in_background.unwrap_or(false);
+        await_session_venv().await;
 
         // Destructive-command gate (#604), before background dispatch.
         if let Some(refusal) = destructive_command_refusal(
@@ -1019,6 +1034,16 @@ impl Tool for BashTool {
                 factr_base::shell::package_routes(),
                 python.as_deref().and_then(|p| p.to_str()),
             ));
+        }
+        {
+            let python = factr_base::python_env::interpreter();
+            let tail = factr_base::shell::install_failure_hint(
+                &params.command,
+                &output.output,
+                factr_base::shell::package_routes(),
+                python.as_deref().and_then(|p| p.to_str()),
+            );
+            output.output.push_str(&tail);
         }
         if let Some(hint) = hint {
             output.output.push_str("\n\n");
