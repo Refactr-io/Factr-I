@@ -34,7 +34,7 @@ const GREETINGS: readonly (readonly [string, Moment?])[] = [
   ['Fresh page, sharp pencil'],
   ['Back at it'],
   ["Let's untangle something"],
-  ['Pour one out, then ask away'],
+  ['Pour a cup, then ask away'],
   ["What's on your mind?"],
   ['Ready when you are'],
   ['A good day to ship something'],
