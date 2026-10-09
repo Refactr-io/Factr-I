@@ -5,34 +5,19 @@ import { registerBundledPresets } from '@/components/pane-shell/tree/presets'
 // Layout presets — CHAT (main) always dominates.
 // ---------------------------------------------------------------------------
 
-// The REAL default: sessions left, chat main, and the right sidebars in column
-// order main | … | review | file-browser (files outermost). Each is its OWN
-// zone. Review collapses to nothing while its pane is hidden (⌘G off).
+// The REAL default: sessions left, chat main, and ONE right sidebar whose tab strip carries Terminal,
+// Files and Changes (the review pane), with Browser stacking in beside them when it is opened. Every tool
+// is one click away; the sidebar's toggle shows or hides the whole thing.
 //
-// Preview tiles are DYNAMIC panes (like session tiles), so no preset names one:
-// they're registered by watchPreviewTiles as tabs open, and dockPaneBeside lands
-// each one directly beside the file tree wherever that currently lives — so a
-// file double-click still slides a preview open as its own pane next to the
-// tree, never as a tab stacked into the files sidebar.
+// Preview tiles are DYNAMIC panes (like session tiles), so no preset names one: they're registered by
+// watchPreviewTiles as tabs open. A Browser tab stacks into this sidebar; a file peek still opens its own
+// pane beside it.
 export const DEFAULT_TREE = split(
   'row',
   [
     group(['sessions'], { id: 'grp-sessions' }),
     group(['workspace'], { id: 'grp-main' }),
-    split(
-      'column',
-      [
-        split(
-          'row',
-          [group(['review'], { id: 'grp-review' }), group(['files'], { id: 'grp-files' })],
-          [1, 1.2],
-          'spl-rail'
-        ),
-        group(['terminal'], { id: 'grp-terminal' })
-      ],
-      [1.6, 1],
-      'spl-right'
-    )
+    group(['terminal', 'files', 'review'], { id: 'grp-right' })
   ],
   [1, 3.4, 1.25],
   'spl-root'
@@ -47,19 +32,14 @@ const FOCUS_TREE = split(
   [1, 4.6]
 )
 
-// Basic is sessions and chat with the tooling RESTING in its own slots: the
-// terminal a collapsed rail under the chat (its column carries the chat, so
-// ⌘J folding the right side can never take the rail with it), review and
-// files a right column that ⌘J / ⌘G open. A tree that simply omitted them was
-// a lie — applying it adopts every missing pane back in as workspace tabs,
-// which is Focus.
+// Basic is sessions and chat with the tooling RESTING in one right sidebar: a single zone whose
+// tab strip carries Terminal, Files and Changes (and Browser, which stacks in when opened), so every
+// tool is one click away instead of its own toggle. The toggle shows or hides the whole sidebar.
+// A tree that simply omitted the tools was a lie — applying it adopts every missing pane back in as
+// workspace tabs, which is Focus.
 export const BASIC_TREE = split(
   'row',
-  [
-    group(['sessions']),
-    split('column', [group(['workspace']), group(['terminal'])], [3, 1]),
-    split('row', [group(['review']), group(['files'])], [1, 1.2])
-  ],
+  [group(['sessions']), group(['workspace']), group(['terminal', 'files', 'review'], { id: 'grp-right' })],
   [1, 3.4, 1.25]
 )
 

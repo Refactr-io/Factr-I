@@ -2874,7 +2874,7 @@ export const en: Translations = {
     sessions: 'Sessions',
     terminal: 'Terminal',
     files: 'Files',
-    review: 'Review',
+    review: 'Changes',
     logs: 'Logs',
     cronJobs: 'Cron jobs',
     groupAriaGrouped: 'Show sessions as a single list',

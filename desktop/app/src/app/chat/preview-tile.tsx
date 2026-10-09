@@ -190,6 +190,12 @@ function existingPreviewAnchor(tabId: string): string | undefined {
   return other ? previewPaneId(other.id) : undefined
 }
 
+const RIGHT_SIDEBAR_ANCHOR = 'files'
+
+function anchorFor(tabId: string): string | undefined {
+  return existingPreviewAnchor(tabId) ?? (targetFor(tabId)?.kind === 'url' ? RIGHT_SIDEBAR_ANCHOR : undefined)
+}
+
 /** Keep pane contributions mirroring `$previewTabs`, keep the store's selection
  *  and the tree's active pane agreeing, and front a tile when its tab is
  *  selected. Call once from the root. */
@@ -256,8 +262,10 @@ const watchPreviewTileMirror = paneMirror<{ id: string }>({
   // along). Every SUBSEQUENT preview stacks into that zone as a center tab:
   // without the anchor each opened file split a new zone off the right edge
   // (#93610), turning three file opens into three ever-narrower columns.
-  dir: tab => (existingPreviewAnchor(tab.id) ? 'center' : 'right'),
-  anchor: tab => existingPreviewAnchor(tab.id),
+  // A Browser is one of the right sidebar's tools: its first tab stacks into the sidebar that carries Terminal,
+  // Files and Changes (anchored on Files) instead of opening a zone of its own.
+  dir: tab => (anchorFor(tab.id) ? 'center' : 'right'),
+  anchor: tab => anchorFor(tab.id),
   minWidth: '22rem',
   title: previewTitle,
   tabLead: tabId => <PreviewTabLead tabId={tabId} />,

@@ -239,6 +239,8 @@ registry.registerMany([
       placement: 'bottom',
       height: '20vh',
       maxHeight: '80vh',
+      // Wide enough for a shell when it sits as a tab in the right sidebar (the zone is as wide as its widest tab).
+      width: '26rem',
       lifecycleKeepAlive: true,
       headerTrailing: () => <TerminalNewButton />,
       tabTitle: () => <LocalizedTabTitle select={t => t.sidebar.terminal} />,
@@ -592,6 +594,13 @@ bindPaneVisibility(
   () => setFileBrowserOpen(false),
   () => setFileBrowserOpen(true)
 )
+// Changes is one of the right sidebar's tabs: opening that sidebar puts it in the strip beside Terminal and
+// Files (⌘G still brings it to the front, and closing its tab still hides it until the sidebar is reopened).
+$fileBrowserOpen.subscribe(open => {
+  if (open) {
+    $reviewOpen.set(true)
+  }
+})
 // ⌘G — the review sidebar appears/disappears (and comes to the front).
 bindPaneVisibility(
   'review',
