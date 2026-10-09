@@ -905,6 +905,8 @@ mod tests {
             ("chatgpt", ProviderChoice::Openai),
             ("anthropic", ProviderChoice::Claude),
             ("claude-code", ProviderChoice::Claude),
+            ("openai-api", ProviderChoice::OpenaiApi),
+            ("muse", ProviderChoice::MetaMuse),
             ("auto", ProviderChoice::Auto),
             ("yolo-auto", ProviderChoice::YoloAuto),
         ] {
