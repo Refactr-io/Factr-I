@@ -1877,18 +1877,6 @@ body.guest-pointer-lock :is(webview, iframe) {
   text-align: center;
 }
 
-[data-slot='aui_intro'] > div {
-  max-width: var(--composer-width);
-}
-
-[data-slot='aui_intro'] p:last-child {
-  max-width: 34rem;
-  margin-inline: auto;
-  color: var(--ui-text-tertiary);
-  font-size: 0.875rem;
-  line-height: 1.45;
-}
-
 .fit-text {
   --fit-captured-length: initial;
   --fit-support-sentinel: var(--fit-captured-length, 9999px);
