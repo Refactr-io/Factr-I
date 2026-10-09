@@ -1,7 +1,7 @@
 # Third-party notices
 
-Factr-I is MIT licensed (see LICENSE). It includes code derived from the
-MIT-licensed projects below; their notices are reproduced verbatim inside the
+Factr-I is Apache-2.0 licensed (see LICENSE). It includes code derived from the
+MIT-licensed projects below, which remain under their MIT terms; their notices are reproduced verbatim inside the
 marked regions. Other files may contain portions derived from the same
 upstream projects; where a file carries its own header, that header applies.
 

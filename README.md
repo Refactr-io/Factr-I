@@ -54,4 +54,4 @@ All environment variables use the `FACTR_` prefix.
 
 ## License
 
-MIT, see `LICENSE`. Third-party notices: `THIRD_PARTY_NOTICES.md`.
+Apache-2.0, see `LICENSE`. Third-party notices: `THIRD_PARTY_NOTICES.md`.
