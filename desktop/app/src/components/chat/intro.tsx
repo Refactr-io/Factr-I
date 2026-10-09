@@ -67,7 +67,6 @@ export const GREETINGS: readonly (readonly [string, Moment?])[] = [
   ["Room to think."],
   ["Curious about something?"],
   ["One thing at a time."],
-  ["Settle in."],
   ["Glad you're here!"],
   ["Ideas welcome here."],
   ["Mug in hand?"],

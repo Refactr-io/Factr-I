@@ -86,7 +86,7 @@ function ContextUsageBar({
     <div
       className={cn(
         'flex h-1.5 overflow-hidden rounded-sm',
-        categories.length ? 'bg-(--ui-stroke-tertiary)' : 'dither bg-(--ui-bg-elevated)'
+        categories.length ? 'bg-(--ui-stroke-tertiary)' : 'bg-(--ui-bg-elevated)'
       )}
       data-slot="context-usage-bar"
     >

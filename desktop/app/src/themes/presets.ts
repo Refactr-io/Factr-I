@@ -48,22 +48,22 @@ export const factrTheme: DesktopTheme = {
     userBubbleBorder: '#d1d1cd'
   },
   darkColors: {
-    background: '#0a0a0a',
+    background: '#161616',
     foreground: '#ffffff',
-    card: '#151515',
+    card: '#1e1e1e',
     cardForeground: '#ffffff',
-    muted: '#242424',
+    muted: '#2a2a2a',
     mutedForeground: '#b6b6b6',
-    popover: '#151515',
+    popover: '#262626',
     popoverForeground: '#ffffff',
     primary: '#ffffff',
     primaryForeground: '#0a0a0a',
-    secondary: '#242424',
+    secondary: '#2a2a2a',
     secondaryForeground: '#ffffff',
-    accent: '#242424',
+    accent: '#2a2a2a',
     accentForeground: '#ffffff',
     border: '#545454',
-    input: '#151515',
+    input: '#1e1e1e',
     ring: '#d5d9e2',
     midground: '#d5d9e2',
     midgroundForeground: '#0a0a0a',
@@ -72,7 +72,7 @@ export const factrTheme: DesktopTheme = {
     destructiveForeground: '#0a0a0a',
     sidebarBackground: '#151515',
     sidebarBorder: '#545454',
-    userBubble: '#242424',
+    userBubble: '#2c2c2c',
     userBubbleBorder: '#545454'
   }
 }

@@ -8,7 +8,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { requestComposerAttachImages, requestComposerFocus, requestComposerInsert } from '@/app/chat/composer/focus'
 import { openGuestContextMenu } from '@/app/context-menu/store'
-import { PanelEmpty } from '@/app/overlays/panel'
 import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
 import { Tip } from '@/components/ui/tooltip'
 import { type Translations, useI18n } from '@/i18n'
@@ -45,6 +44,7 @@ import {
 import { $selectedStoredSessionId } from '@/store/session'
 import { canOpenBrowserWindow, isBrowserWindow } from '@/store/windows'
 
+import { BrowserTools } from './browser-tools'
 import { placeAnnotateCard, PreviewAnnotateCard } from './preview-annotate-card'
 import {
   bindPreviewExecuteJavaScript,
@@ -1367,7 +1367,8 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
 
         {/* First-open real-profile consent offer — Browser tabs only (URL
             vessels the user browses with), never file/HTML previews. */}
-        {target.kind === 'url' && tabId && <RealProfileConsentDialog tabId={tabId} />}
+        {/* Not on the blank resting Browser: the offer waits for a page the user (or agent) actually opens. */}
+        {target.kind === 'url' && tabId && !isBlankPage && <RealProfileConsentDialog tabId={tabId} />}
 
         <div
           className="pointer-events-auto relative min-h-0 flex-1 overflow-hidden bg-transparent"
@@ -1400,8 +1401,8 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
               />
             ))}
           {isBlankPage && (
-            <div className="absolute inset-0 grid bg-background">
-              <PanelEmpty description={copy.blankPageBody} icon="globe" />
+            <div className="absolute inset-0 flex bg-(--shell-block-bg)">
+              <BrowserTools />
             </div>
           )}
           {isWebPreview && loadError && (

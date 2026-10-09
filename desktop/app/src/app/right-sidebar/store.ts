@@ -1,5 +1,6 @@
 import { atom } from 'nanostores'
 
+import { revealTreePane } from '@/components/pane-shell/tree/store'
 import { persistBoolean, storedBoolean } from '@/lib/storage'
 import { modeBound } from '@/store/interface-mode'
 
@@ -33,5 +34,6 @@ export const runInTerminal = (command: string) => {
   }
 
   setTerminalTakeover(true)
+  revealTreePane('terminal')
   $terminalInjection.set(trimmed)
 }

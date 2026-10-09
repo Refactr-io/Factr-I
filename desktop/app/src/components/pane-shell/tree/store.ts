@@ -135,6 +135,12 @@ function toggledSet<T>(set: ReadonlySet<T>, item: T, present: boolean): Set<T> |
 }
 
 export function setTreePaneHidden(paneId: string, hidden: boolean) {
+  // A strip-hidden (on-demand) tab stays hidden against reactive unhides; the explicit paths
+  // (revealTreePane, setStripTabHidden, reset) clear the strip-hide record first.
+  if (!hidden && $hiddenStripTabs.get().has(paneId)) {
+    return
+  }
+
   const next = toggledSet($hiddenTreePanes.get(), paneId, hidden)
 
   if (!next) {
@@ -397,6 +403,36 @@ export function markCollapsePane(paneId: string) {
   collapsePanes.add(paneId)
 }
 
+// ON-DEMAND TOOLS (Files / Terminal / Changes in the right sidebar): the strip shows only the Browser until a
+// tool is opened from its Tools page; a tool's ✕ puts it away again instead of closing the sidebar.
+const onDemandPanes = new Set<string>()
+
+export function markOnDemandPane(paneId: string) {
+  onDemandPanes.add(paneId)
+}
+
+export function isOnDemandPane(paneId: string): boolean {
+  return onDemandPanes.has(paneId)
+}
+
+/** Put an on-demand tool away (strip-hide). False when it isn't one, or is the only tab left in its zone. */
+export function hideOnDemandTab(paneId: string): boolean {
+  if (!onDemandPanes.has(paneId) || isLastShownInGroup(paneId)) {
+    return false
+  }
+
+  return setStripTabHidden(paneId, true)
+}
+
+/** The Codex default: every on-demand tool starts out of the strip. Written straight to the set, which
+ *  skips the last-tab refusal; the hydrator mirrors it into the chrome-hidden set. */
+export function hideOnDemandTools(): void {
+  const next = new Set($hiddenStripTabs.get())
+
+  onDemandPanes.forEach(id => next.add(id))
+  $hiddenStripTabs.set(next)
+}
+
 export function isCollapsePane(paneId: string): boolean {
   return collapsePanes.has(paneId)
 }
@@ -598,6 +634,10 @@ export function closeFocusedSessionTab(): boolean {
  *  Close read as a no-op. Dismiss first so the store listener's collapse lands
  *  on an absent pane instead of minimizing a shared zone's surviving sibling. */
 export function closeToolPane(paneId: string) {
+  if (hideOnDemandTab(paneId)) {
+    return
+  }
+
   dismissTreePane(paneId)
   paneClosers[paneId]?.()
 }
@@ -919,15 +959,19 @@ export function paneRootSide(paneId: string): null | TreeSide {
   const panes = registry.getArea('panes')
   const index = row.children.findIndex(c => allPaneIds(c).includes(paneId))
 
-  const mainIndices = row.children.flatMap((child, i) =>
-    allPaneIds(child).some(
-      id =>
-        id === 'workspace' ||
-        (panes.find(p => p.id === id)?.data as { placement?: string } | undefined)?.placement === 'main'
-    )
+  const placementOf = (id: string) =>
+    (panes.find(p => p.id === id)?.data as { placement?: string } | undefined)?.placement
+
+  // A Browser tile is main-placed, but one stacked into the right sidebar (beside Files / Terminal / Changes)
+  // is part of that side, not of the main zone.
+  const mainIndices = row.children.flatMap((child, i) => {
+    const ids = allPaneIds(child)
+    const sideTenant = ids.some(id => id !== 'workspace' && placementOf(id) !== 'main' && placementOf(id) !== undefined)
+
+    return ids.some(id => id === 'workspace' || (placementOf(id) === 'main' && !(sideTenant && id.startsWith('preview-tile:'))))
       ? [i]
       : []
-  )
+  })
 
   if (index < 0 || mainIndices.length === 0) {
     return null
@@ -949,6 +993,10 @@ export function dismissTreePane(paneId: string) {
 }
 
 export function closeTreePane(paneId: string) {
+  if (hideOnDemandTab(paneId)) {
+    return
+  }
+
   const closer = paneClosers[paneId]
 
   if (closer) {
@@ -1053,7 +1101,7 @@ export function collapseTreeSide(side: TreeSide) {
 /** Explicit side-open also recovers hide-only tabs, without fronting over Bots. */
 export function restoreHiddenTreeSideTabs(side: TreeSide): void {
   for (const paneId of [...$hiddenStripTabs.get()]) {
-    if (paneRootSide(paneId) === side) {
+    if (isHideOnlyPane(paneId) && paneRootSide(paneId) === side) {
       setStripTabHidden(paneId, false)
     }
   }
@@ -2161,6 +2209,7 @@ export function resetLayoutTree() {
     setStripTabHidden(paneId, false)
   }
 
+  hideOnDemandTools()
   $layoutTree.set(defaultTrees[modeLayout.mode])
   markActivePreset(modeLayout.mode === 'simple' ? 'sidebar-left' : 'default')
   // Owners PRE-PLACE their panes into the fresh default (session tiles stack

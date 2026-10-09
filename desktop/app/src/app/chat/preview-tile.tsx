@@ -13,13 +13,14 @@
 import { useStore } from '@nanostores/react'
 
 import { findGroup } from '@/components/pane-shell/tree/model'
-import { $activeTreeGroup, $layoutTree, revealTreePane, treePanesWithPrefix } from '@/components/pane-shell/tree/store'
+import { $activeTreeGroup, $layoutTree, isPaneVisible, revealTreePane, treePanesWithPrefix } from '@/components/pane-shell/tree/store'
 import { type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { translateNow } from '@/i18n'
 import { openExternalLink } from '@/lib/external-link'
-import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from '@/store/layout'
+import { World } from '@/lib/icons'
+import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab, setFileBrowserOpen } from '@/store/layout'
 import {
   $browserPages,
   $dockedPreviewTabs,
@@ -163,7 +164,7 @@ function PreviewTabLead({ tabId }: { tabId: string }) {
   }
 
   if (target.kind === 'url') {
-    return <ToolIcon className="opacity-70" name="globe" size="0.6875rem" />
+    return <World className="size-3.5 shrink-0 opacity-75" stroke={1.6} />
   }
 
   return <FileTypeIcon className="opacity-70" path={target.path || target.url} size="0.6875rem" />
@@ -266,7 +267,11 @@ const watchPreviewTileMirror = paneMirror<{ id: string }>({
   // Files and Changes (anchored on Files) instead of opening a zone of its own.
   dir: tab => (anchorFor(tab.id) ? 'center' : 'right'),
   anchor: tab => anchorFor(tab.id),
+  // First in the strip, like Codex: the Browser is what the sidebar opens on.
+  before: tab => (targetFor(tab.id)?.kind === 'url' ? 'terminal' : undefined),
   minWidth: '22rem',
+  // A Browser rides the right sidebar, whose zone is a fixed-width track (that is what lets it fold on a drag).
+  width: tab => (targetFor(tab.id)?.kind === 'url' ? '26rem' : undefined),
   title: previewTitle,
   tabLead: tabId => <PreviewTabLead tabId={tabId} />,
   tabTitle: tabId => (targetFor(tabId)?.kind === 'url' ? <BrowserTabLabel tabId={tabId} /> : undefined),
@@ -284,5 +289,10 @@ const watchPreviewTileMirror = paneMirror<{ id: string }>({
     forgetBrowserPage(tabId)
     forgetPreviewConsole(tabId)
     closeRightRailTab(tabId)
+
+    // The last Browser gone with no tool open: nothing is left to rest on, so the sidebar folds (it reopens on a fresh Browser).
+    if ($previewTabs.get().length === 0 && !['files', 'terminal', 'review'].some(isPaneVisible)) {
+      setFileBrowserOpen(false)
+    }
   }
 })

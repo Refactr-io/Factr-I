@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { atom, computed } from 'nanostores'
+import { atom } from 'nanostores'
 import type { CSSProperties, ReactElement, PointerEvent as ReactPointerEvent } from 'react'
 
 import { SessionDraftTitle } from '@/app/chat/session-draft-title'
@@ -21,8 +21,10 @@ import {
   bindToolPaneCollapse,
   declareDefaultTree,
   dismissTreePane,
+  hideOnDemandTools,
   isPaneVisible,
   markCollapsePane,
+  markOnDemandPane,
   paneRootSide,
   registerLayoutResetHandler,
   registerPaneCloser,
@@ -58,10 +60,11 @@ import {
 } from '@/lib/icons'
 import { type KeybindContribution, KEYBINDS_AREA } from '@/lib/keybinds/actions'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
+import { Codecs } from '@/lib/persisted'
 import { TRANSCRIPT_DIRECTIVE_AREA, type TranscriptDirectiveContribution } from '@/lib/transcript-directives'
 import { setYoloEnabled } from '@/lib/yolo-session'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
-import { $interfaceMode, $showsAdvancedChrome, setModeContext, toggleSimpleMode } from '@/store/interface-mode'
+import { $interfaceMode, $showsAdvancedChrome, modeLayout, setModeContext, toggleSimpleMode } from '@/store/interface-mode'
 import {
   $fileBrowserOpen,
   $sidebarOpen,
@@ -76,6 +79,7 @@ import {
   SIDEBAR_MIN_WIDTH,
   sidebarSide
 } from '@/store/layout'
+import { ensureBrowserTab } from '@/store/preview'
 import { $profiles } from '@/store/profile'
 import { $profileRailVisible } from '@/store/profile-rail-prefs'
 import { runExportProfileFlow, runImportProfileFlow } from '@/store/profile-share'
@@ -88,7 +92,7 @@ import {
   openReview,
   REVIEW_PANE_ID
 } from '@/store/review'
-import { $currentCwd, $selectedStoredSessionId, $sessions, $yoloActive, sessionMatchesStoredId } from '@/store/session'
+import { $selectedStoredSessionId, $sessions, $yoloActive, sessionMatchesStoredId } from '@/store/session'
 import { watchSessionPins } from '@/store/session-pin-sync'
 import { $botChatScopes } from '@/store/session-states'
 import { watchUnreadWriteGuard } from '@/store/session-unread-remote'
@@ -241,6 +245,8 @@ registry.registerMany([
       maxHeight: '80vh',
       // Wide enough for a shell when it sits as a tab in the right sidebar (the zone is as wide as its widest tab).
       width: '26rem',
+      // Where it lands when a saved layout lacks it: a tab beside Files, in the right sidebar, never in the chat.
+      dock: { pane: 'files', pos: 'center', enforce: true },
       lifecycleKeepAlive: true,
       headerTrailing: () => <TerminalNewButton />,
       tabTitle: () => <LocalizedTabTitle select={t => t.sidebar.terminal} />,
@@ -482,6 +488,7 @@ if (!isBrowserWindow() && !isHudWindow()) {
   startUnrestoredTileTitleBackfill()
   watchRouteTiles()
   watchPreviewTiles()
+
 }
 
 // Mirror sidebar pins into the backend keep-flag so the auto-archive sweep
@@ -571,12 +578,6 @@ registerLayoutResetHandler(stackSessionTilesIntoMain)
 
 bindLayoutSides()
 
-// Workspace-scoped surfaces: the file tree and git diff only mean something
-// inside a project. A detached chat (no cwd) hides them — their zones
-// collapse and the chat absorbs the width; picking a project brings them
-// back. The terminal is NOT workspace-gated: unlike the old shell (where it
-// rode the rail's row and vanished with it), its zone stands on its own.
-const $hasWorkspace = computed($currentCwd, cwd => Boolean(cwd.trim()))
 
 // The tree pane's own presence tracks ⌘J directly, not just the column's
 // collapse — otherwise a pane revealed into that shared column would drag the
@@ -590,21 +591,42 @@ const $hasWorkspace = computed($currentCwd, cwd => Boolean(cwd.trim()))
 // is about.
 bindPaneVisibility(
   'files',
-  computed([$hasWorkspace, $fileBrowserOpen], (workspace, open) => workspace && open),
+  $fileBrowserOpen,
   () => setFileBrowserOpen(false),
   () => setFileBrowserOpen(true)
 )
-// Changes is one of the right sidebar's tabs: opening that sidebar puts it in the strip beside Terminal and
-// Files (⌘G still brings it to the front, and closing its tab still hides it until the sidebar is reopened).
-$fileBrowserOpen.subscribe(open => {
+
+// The right sidebar opens on a Browser; Files, Terminal and Changes are tools opened from its Tools page (or
+// their shortcuts) and put away again with their ✕, which leaves the sidebar itself open.
+for (const id of ['files', 'terminal', 'review']) {
+  markOnDemandPane(id)
+}
+
+const $toolsOnDemand = modeLayout.atom<boolean>('factr.sidebarToolsOnDemand.v1', () => false, Codecs.json<boolean>())
+
+// One-shot per interface mode: fresh and already-saved layouts alike start with the three tools out of the
+// strip. Deferred a microtask because persistence skips writes while a mode restore is running.
+const applyToolsOnDemand = () =>
+  queueMicrotask(() => {
+    if (!$toolsOnDemand.get()) {
+      hideOnDemandTools()
+      $toolsOnDemand.set(true)
+    }
+  })
+
+applyToolsOnDemand()
+// The Browser is the sidebar's resting tab, so it exists whether or not the sidebar is open right now.
+queueMicrotask(() => !isBrowserWindow() && !isHudWindow() && ensureBrowserTab())
+modeLayout.onRestore(applyToolsOnDemand)
+$fileBrowserOpen.listen(open => {
   if (open) {
-    $reviewOpen.set(true)
+    ensureBrowserTab()
   }
 })
 // ⌘G — the review sidebar appears/disappears (and comes to the front).
 bindPaneVisibility(
   'review',
-  computed([$reviewOpen, $hasWorkspace], (open, workspace) => open && workspace),
+  $reviewOpen,
   closeReview,
   () => openReview($reviewScopeCwd.get(), $reviewScopeTarget.get())
 )

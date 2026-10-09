@@ -1218,7 +1218,7 @@ function getWindowBackgroundColor() {
     return rendererTitleBarTheme.background
   }
 
-  return nativeTheme.shouldUseDarkColors ? '#0a0a0a' : '#ffffff'
+  return nativeTheme.shouldUseDarkColors ? '#161616' : '#ffffff'
 }
 
 // Transparent WCO — renderer chrome shows through. rgba(0,0,0,0) can fall back
@@ -16516,7 +16516,7 @@ ipcMain.on('factr:titlebar-theme', (_event, payload) => {
   const foreground = payload.foreground.toLowerCase()
 
   if (!(
-    (background === '#0a0a0a' && foreground === '#ffffff') ||
+    ((background === '#0a0a0a' || background === '#161616') && foreground === '#ffffff') ||
     (background === '#ffffff' && foreground === '#0a0a0a')
   )) {
     return

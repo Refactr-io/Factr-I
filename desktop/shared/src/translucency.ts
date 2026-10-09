@@ -132,8 +132,8 @@ export type Appearance = 'light' | 'dark'
  */
 const DEFAULT_VALUES: Record<'mac' | 'windows', Record<Appearance, TranslucencyValues>> = {
   mac: {
-    light: { intensity: 29, fade: 0, material: 'header', scope: DEFAULT_GLASS_SCOPE },
-    dark: { intensity: 29, fade: 0, material: 'titlebar', scope: DEFAULT_GLASS_SCOPE }
+    light: { intensity: 35, fade: 0, material: 'header', scope: DEFAULT_GLASS_SCOPE },
+    dark: { intensity: 42, fade: 0, material: 'popover', scope: DEFAULT_GLASS_SCOPE }
   },
   windows: {
     light: { intensity: 29, fade: 0, material: 'under-window', scope: DEFAULT_GLASS_SCOPE },
