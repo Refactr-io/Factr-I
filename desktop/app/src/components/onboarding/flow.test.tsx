@@ -13,7 +13,12 @@ vi.mock('@/factr', async importOriginal => ({
   ...(await importOriginal<typeof FactrApi>()),
   getGlobalModelOptions: async () => ({
     providers: [
-      { models: ['gpt-5.6-terra'], name: 'OpenAI OAuth (ChatGPT)', slug: 'openai' },
+      {
+        models: ['gpt-5.6-terra'],
+        name: 'OpenAI OAuth (ChatGPT)',
+        pricing: { 'gpt-5.6-terra': { input: '$1.25', output: '$10.00' } },
+        slug: 'openai'
+      },
       { models: ['example/model-a'], name: 'OpenRouter', slug: 'openrouter' }
     ]
   })
@@ -123,5 +128,19 @@ describe('ConfirmingModelPanel model pick', () => {
         expect(flow.label).toBe('OpenRouter')
       }
     })
+  })
+})
+
+describe('ConfirmingModelPanel price', () => {
+  it('finds the price for a pick saved under the runtime id of the ChatGPT login', async () => {
+    const state = confirmingModelState()
+
+    if (state.flow.status === 'confirming_model') {
+      $desktopOnboarding.set({ ...state, flow: { ...state.flow, providerSlug: 'openai-codex' } })
+    }
+
+    render(<Harness />)
+
+    expect(await screen.findByText('$1.25 in / $10.00 out per Mtok')).toBeTruthy()
   })
 })

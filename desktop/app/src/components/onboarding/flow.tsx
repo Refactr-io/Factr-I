@@ -14,6 +14,7 @@ import {
   cancelOnboardingFlow,
   copyDeviceCode,
   copyExternalCommand,
+  engineProviderSlug,
   type OnboardingContext,
   type OnboardingFlow,
   recheckExternalSignin,
@@ -261,9 +262,10 @@ function ConfirmingModelPanel({
     queryFn: () => getGlobalModelOptions({ includeUnconfigured: true, explicitOnly: false })
   })
 
-  const providerRow = options.data?.providers?.find(
-    p => String(p.slug).toLowerCase() === flow.providerSlug.toLowerCase()
-  )
+  // The card holds the id the pick was saved under (`openai-codex`); the catalog lists the engine's (`openai`).
+  const rowSlugs = [flow.providerSlug.toLowerCase(), engineProviderSlug(flow.providerSlug)]
+
+  const providerRow = options.data?.providers?.find(p => rowSlugs.includes(String(p.slug).toLowerCase()))
 
   const price = providerRow?.pricing?.[flow.currentModel]
 

@@ -265,6 +265,9 @@ const ENGINE_PROVIDER_SLUGS: Record<string, string> = {
   'openai-codex': 'openai'
 }
 
+/** The model.options row slug for a provider id the runtime uses (`openai-codex` is the engine's `openai`). */
+export const engineProviderSlug = (slug: string) => ENGINE_PROVIDER_SLUGS[slug.toLowerCase()] ?? slug.toLowerCase()
+
 // After credentials are persisted, ask the backend which provider+models
 // are now authenticated. Pick the first curated model for the matching
 // provider as a sensible default, persist it via /api/model/set, and
