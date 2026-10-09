@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { momentsAt, pickGreeting } from './intro'
+import { GREETINGS, momentsAt, pickGreeting } from './intro'
 
 describe('empty chat greeting', () => {
   it('knows the part of the day and the weekend', () => {
@@ -25,5 +25,22 @@ describe('empty chat greeting', () => {
 
     expect(Array.from({ length: 300 }, (_, seed) => pickGreeting(seed, saturday)).includes('Weekend project?')).toBe(true)
     expect(Array.from({ length: 300 }, (_, seed) => pickGreeting(seed, monday)).includes('Weekend project?')).toBe(false)
+  })
+
+  it('never claims a time, a season or the weather outside its moment', () => {
+    // Anything that names a time of day is tagged to it, and nothing guesses the weather or the season.
+    const untagged = GREETINGS.filter(([, moment]) => !moment).map(([text]) => text.toLowerCase())
+
+    for (const text of untagged) {
+      expect(text).not.toMatch(/morning|afternoon|evening|night|midnight|sunrise|moon|star|weekend|rain|snow|sun\b|summer|winter/)
+    }
+
+    expect(GREETINGS.flatMap(([text]) => (/rain|snow|summer|winter/i.test(text) ? [text] : []))).toEqual([])
+  })
+
+  it('has at least four phrases for every part of the day', () => {
+    for (const moment of ['morning', 'afternoon', 'evening', 'night']) {
+      expect(GREETINGS.filter(([, tag]) => tag === moment).length).toBeGreaterThanOrEqual(4)
+    }
   })
 })
