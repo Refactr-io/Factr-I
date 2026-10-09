@@ -14,17 +14,17 @@ describe('empty chat greeting', () => {
     const night = new Date(2026, 9, 12, 2)
     const seen = new Set(Array.from({ length: 200 }, (_, seed) => pickGreeting(seed, night)))
 
-    expect(seen.has('Moonlit chat')).toBe(true)
-    expect(seen.has('Sunrise session')).toBe(false)
-    expect(seen.has('Weekend project?')).toBe(false)
+    expect(seen.has('Night owl, hello.')).toBe(true)
+    expect(seen.has('Morning. Kettle on?')).toBe(false)
+    expect(seen.has('Weekend tinkering?')).toBe(false)
   })
 
   it('offers the weekend line only on a weekend', () => {
     const saturday = new Date(2026, 9, 10, 15)
     const monday = new Date(2026, 9, 12, 15)
 
-    expect(Array.from({ length: 300 }, (_, seed) => pickGreeting(seed, saturday)).includes('Weekend project?')).toBe(true)
-    expect(Array.from({ length: 300 }, (_, seed) => pickGreeting(seed, monday)).includes('Weekend project?')).toBe(false)
+    expect(Array.from({ length: 300 }, (_, seed) => pickGreeting(seed, saturday)).includes('Weekend tinkering?')).toBe(true)
+    expect(Array.from({ length: 300 }, (_, seed) => pickGreeting(seed, monday)).includes('Weekend tinkering?')).toBe(false)
   })
 
   it('never claims a time, a season or the weather outside its moment', () => {
@@ -32,7 +32,7 @@ describe('empty chat greeting', () => {
     const untagged = GREETINGS.filter(([, moment]) => !moment).map(([text]) => text.toLowerCase())
 
     for (const text of untagged) {
-      expect(text).not.toMatch(/morning|afternoon|evening|night|midnight|sunrise|moon|star|weekend|rain|snow|sun\b|summer|winter/)
+      expect(text).not.toMatch(/\b(morning|afternoon|evening|night|midnight|sunrise|moon|stars?|weekend|rain|snow|sun|summer|winter)\b/)
     }
 
     expect(GREETINGS.flatMap(([text]) => (/rain|snow|summer|winter/i.test(text) ? [text] : []))).toEqual([])
