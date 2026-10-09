@@ -30,12 +30,12 @@ import {
   $collapsedTreeSides,
   $hiddenTreePanes,
   $narrowViewport,
+  collapseTreeSide,
   isCollapsePane,
   paneRootSide,
   persistTree,
   presetSplitWeights,
   setTreeGroupMinimized,
-  setTreeSideCollapsed,
   setTreeSplitWeights
 } from '../store'
 
@@ -534,7 +534,7 @@ export function TreeSplit({
             : null
 
         if (overdragSide) {
-          setTreeSideCollapsed(overdragSide, true)
+          collapseTreeSide(overdragSide)
         } else if (lastPlan && lastPlan.moved !== 0) {
           // Dragged a tool panel down to its collapsed header? Fold the zone
           // to its rail instead of persisting a sliver — and DON'T write the

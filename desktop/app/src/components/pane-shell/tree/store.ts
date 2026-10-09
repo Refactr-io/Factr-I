@@ -1043,6 +1043,13 @@ export function setTreeSideCollapsed(side: TreeSide, collapsed: boolean) {
   }
 }
 
+/** Collapse a side from a gesture (a sash dragged past its floor) and tell the app store that owns its toggle,
+ *  so the toggle's next click shows the side instead of "hiding" one that is already gone. */
+export function collapseTreeSide(side: TreeSide) {
+  setTreeSideCollapsed(side, true)
+  sideOpeners[side]?.(false)
+}
+
 /** Explicit side-open also recovers hide-only tabs, without fronting over Bots. */
 export function restoreHiddenTreeSideTabs(side: TreeSide): void {
   for (const paneId of [...$hiddenStripTabs.get()]) {
