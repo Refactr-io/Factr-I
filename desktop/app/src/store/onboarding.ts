@@ -16,7 +16,7 @@ import { translateNow } from '@/i18n'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
 import { setMainModelAssignment } from '@/store/model-assignment'
-import { notify, notifyError } from '@/store/notifications'
+import { notify, notifyError, readableError } from '@/store/notifications'
 import { guidedOnboardingActive } from '@/store/onboarding-gate'
 import type { OAuthProvider, OAuthStartResponse } from '@/types/factr'
 
@@ -176,12 +176,28 @@ let flowProfile: string | undefined
 let pollTimer: number | null = null
 let providersRefreshPromise: null | Promise<void> = null
 
-const errMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))
+const SETUP_SERVICE_DOWN = "Factr-I's setup service didn't start. Restart Factr-I and try again."
+
+/** The engine answered 404 because the feature backend was not started (or does not exist). */
+export const isSetupServiceDown = (raw: string) => /feature_not_requested|not[ _]supported[ _]by[ _]engine/i.test(raw)
+
+/** A failure to reach a host at all (as opposed to the host answering with an error). */
+export const isConnectivityError = (raw: string) =>
+  /fetch failed|ECONNREFUSED|ECONNRESET|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|timed? ?out|network|failed to fetch|socket hang up/i.test(
+    raw
+  )
+
+/** User-facing text for a thrown error: no IPC wrapper, no raw `404 {...}` body. */
+const errMessage = (e: unknown, fallback = 'Something went wrong. Try again.') => {
+  const raw = e instanceof Error ? e.message : String(e)
+
+  return isSetupServiceDown(raw) ? SETUP_SERVICE_DOWN : readableError(e, fallback).message
+}
 
 // One plain sentence for every way a provider sign-in can fail (start, poll,
 // code exchange); the raw error text rides along as `detail` (desktop-09).
 function signInDidNotFinish(provider: OAuthProvider, raw: unknown): { message: string; detail?: string } {
-  const detail = raw instanceof Error ? errMessage(raw) : typeof raw === 'string' ? raw.trim() : ''
+  const detail = raw instanceof Error ? raw.message : typeof raw === 'string' ? raw.trim() : ''
 
   return { message: translateNow('onboarding.signInDidNotFinish', provider.name), detail: detail || undefined }
 }
@@ -242,6 +258,13 @@ function notifyReady(provider: string) {
   notify({ kind: 'success', title: 'Factr-I is ready', message: `${provider} connected.` })
 }
 
+// Sign-in ids the engine lists under its own provider slug in model.options.
+const ENGINE_PROVIDER_SLUGS: Record<string, string> = {
+  anthropic: 'claude',
+  'claude-code': 'claude',
+  'openai-codex': 'openai'
+}
+
 // After credentials are persisted, ask the backend which provider+models
 // are now authenticated. Pick the first curated model for the matching
 // provider as a sensible default, persist it via /api/model/set, and
@@ -269,13 +292,38 @@ async function fetchProviderDefaultModel(
     return null
   }
 
-  // Try each preferred slug (lowercased), fall back to the first provider
-  // returned (model.options orders by recency / authenticated state, so
-  // the just-authenticated provider is usually first anyway).
-  const lower = preferredSlugs.map(s => s.toLowerCase())
+  // Try each preferred slug, also under the engine's own slug for it; the pick
+  // is saved under the id the user signed in with (the one the runtime knows).
+  // With no match only a provider that has credentials stands in. Never the
+  // first row as such: that is the provider being served, which on a fresh
+  // install is whatever the engine booted on, not what was just connected.
+  const slugOf = (p: ModelOptionProvider) => String(p.slug).toLowerCase()
+  let matched: ModelOptionProvider | undefined
+  let persistSlug = ''
 
-  const matched =
-    providers.find((p: ModelOptionProvider) => lower.includes(String(p.slug).toLowerCase())) ?? providers[0]
+  for (const preferred of preferredSlugs) {
+    const slug = preferred.toLowerCase()
+    const engineSlug = ENGINE_PROVIDER_SLUGS[slug]
+
+    matched =
+      providers.find((p: ModelOptionProvider) => slugOf(p) === slug) ??
+      (engineSlug ? providers.find((p: ModelOptionProvider) => slugOf(p) === engineSlug) : undefined)
+
+    if (matched) {
+      persistSlug = slugOf(matched) === slug ? String(matched.slug) : preferred
+
+      break
+    }
+  }
+
+  if (!matched) {
+    matched = providers.find((p: ModelOptionProvider) => p.authenticated === true && p.settable !== false)
+    persistSlug = matched ? String(matched.slug) : ''
+  }
+
+  if (!matched) {
+    return null
+  }
 
   const models = matched.models ?? []
 
@@ -293,7 +341,7 @@ async function fetchProviderDefaultModel(
     String(options?.provider ?? '').toLowerCase() === String(matched.slug).toLowerCase() &&
     models.map(String).includes(currentModel)
   ) {
-    return { providerSlug: String(matched.slug), defaultModel: currentModel }
+    return { providerSlug: persistSlug, defaultModel: currentModel }
   }
 
   // Prefer the backend's recommended default — it mirrors the curation
@@ -301,7 +349,7 @@ async function fetchProviderDefaultModel(
   let defaultModel = String(models[0])
 
   try {
-    const recommended = await getRecommendedDefaultModel(String(matched.slug), profile)
+    const recommended = await getRecommendedDefaultModel(persistSlug, profile)
 
     if (recommended.model && models.map(String).includes(recommended.model)) {
       defaultModel = recommended.model
@@ -315,7 +363,7 @@ async function fetchProviderDefaultModel(
   }
 
   return {
-    providerSlug: String(matched.slug),
+    providerSlug: persistSlug,
     defaultModel
   }
 }
@@ -370,7 +418,7 @@ async function completeWithModelConfirm(
         return
       }
 
-      onFail(error instanceof Error ? error.message : 'Factr-I could not save the selected model.')
+      onFail(errMessage(error, 'Factr-I could not save the selected model.'))
 
       return
     }
@@ -981,7 +1029,7 @@ export async function saveOnboardingApiKey(
   } catch (error) {
     notifyError(error, `Could not save ${label}`)
 
-    return { ok: false, message: errMessage(error) }
+    return { ok: false, message: errMessage(error, `Could not save ${label}`) }
   }
 }
 
@@ -1038,8 +1086,16 @@ export async function saveOnboardingLocalEndpoint(baseUrl: string, apiKey: strin
 
     model = (probe.models?.[0] ?? '').trim()
     resolvedUrl = probe.resolved_base_url?.trim() || url
-  } catch {
-    return { ok: false, message: `Could not reach ${url}.` }
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error)
+
+    return {
+      ok: false,
+      message:
+        isConnectivityError(raw) && !isSetupServiceDown(raw)
+          ? `Could not reach ${url}.`
+          : errMessage(error, `Could not reach ${url}.`)
+    }
   }
 
   if (!model) {
@@ -1082,7 +1138,7 @@ export async function saveOnboardingLocalEndpoint(baseUrl: string, apiKey: strin
   } catch (error) {
     notifyError(error, 'Could not save local endpoint')
 
-    return { ok: false, message: errMessage(error) }
+    return { ok: false, message: errMessage(error, 'Could not save local endpoint') }
   }
 }
 

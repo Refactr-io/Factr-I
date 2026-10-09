@@ -18,6 +18,13 @@ export function catalogProviderMatches(provider: CatalogProviderIdentity, curren
   )
 }
 
+/** Rows a pick can be saved for as the default model (`/api/model/set`). The gateway marks an engine
+ *  provider the runtime has no route for `settable: false`; a chat can still use it, a saved default
+ *  cannot, so pickers that save hide it rather than offer a choice that errors. */
+export function savableProviders<T extends ModelOptionProvider>(rows: T[] | null | undefined): T[] {
+  return (rows ?? []).filter(row => row.settable !== false)
+}
+
 /** The catalog's option support for the current pick, or undefined while the
  *  catalog is loading / doesn't say. Callers treat undefined as "assume
  *  reasoning" so controls never flicker away during the fetch. */

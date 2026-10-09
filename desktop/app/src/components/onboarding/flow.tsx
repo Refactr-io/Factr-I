@@ -342,6 +342,7 @@ function ConfirmingModelPanel({
         }}
         open={pickerOpen}
         profile={profile}
+        savableOnly
       />
     </div>
   )

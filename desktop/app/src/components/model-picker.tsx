@@ -5,7 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { getLocalModelsStatus } from '@/factr'
 import { useI18n } from '@/i18n'
-import { catalogProviderMatches, modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
+import {
+  catalogProviderMatches,
+  modelOptionsQueryKey,
+  requestModelOptions,
+  savableProviders
+} from '@/lib/model-options'
 import { currentPickerSelection } from '@/lib/model-status-label'
 import { foldIncludes, normalize } from '@/lib/text'
 import { useStoreSelector } from '@/lib/use-session-slice'
@@ -42,6 +47,8 @@ interface ModelPickerDialogProps {
    * underneath and blocks pointer events.
    */
   contentClassName?: string
+  /** The pick is saved as the default model: list only providers that can be saved. */
+  savableOnly?: boolean
 }
 
 export function ModelPickerDialog({
@@ -55,7 +62,8 @@ export function ModelPickerDialog({
   ownerConnectionId,
   profile = 'default',
   request,
-  contentClassName
+  contentClassName,
+  savableOnly = false
 }: ModelPickerDialogProps) {
   const { t } = useI18n()
   const copy = t.modelPicker
@@ -147,7 +155,12 @@ export function ModelPickerDialog({
     })
   }, [open, refetchOptions])
 
-  const providers = modelOptions.data?.providers ?? []
+  const allProviders = modelOptions.data?.providers
+
+  const providers = useMemo(
+    () => (savableOnly ? savableProviders(allProviders) : (allProviders ?? [])),
+    [allProviders, savableOnly]
+  )
 
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     { model: currentModel, provider: currentProvider },

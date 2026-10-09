@@ -25,6 +25,24 @@ fn factr_knows(d: LoginProviderDescriptor) -> bool {
     )
 }
 
+/// The provider id the Factr runtime (which owns `/api/model/set` and config.yaml's saved pick) takes
+/// for an engine catalog id: a different spelling for the few that differ, `None` for an engine
+/// provider the runtime has no route for (chats can still use it, but it cannot be saved as a
+/// default there), and any other id unchanged.
+pub(crate) fn runtime_provider_id(id: &str) -> Option<&str> {
+    match id.trim().to_ascii_lowercase().as_str() {
+        "openai" => Some("openai-codex"),
+        "claude" | "anthropic-api" => Some("anthropic"),
+        "gemini-api" => Some("gemini"),
+        "meta-muse" => Some("muse"),
+        "302ai" | "baseten" | "belvedir" | "celeris" | "cerebras" | "chutes" | "comtegra" | "conifer"
+        | "cortecs" | "cursor" | "firmware" | "fpt" | "grok-build" | "groq" | "mistral" | "moonshotai"
+        | "openai-compatible" | "orcarouter" | "perplexity" | "scaleway" | "stackit" | "togetherai"
+        | "yolo-auto" => None,
+        _ => Some(id),
+    }
+}
+
 /// The catalog the engine offers: `login_providers()` without the factr-only rows.
 fn offered() -> Vec<LoginProviderDescriptor> {
     login_providers().iter().copied().filter(|d| !is_factr_only(*d)).collect()
@@ -234,7 +252,8 @@ pub(super) fn model_options(provider: &str, model: &str, current_models: Vec<Str
                 },
                 model,
             );
-            let mut row = json!({ "slug": d.id, "name": d.display_name, "total_models": models.len(), "models": models, "is_current": is_current, "authenticated": auth });
+            // `settable`: a pick here can be saved as the default (`/api/model/set`); pickers that save hide the rest.
+            let mut row = json!({ "slug": d.id, "name": d.display_name, "total_models": models.len(), "models": models, "is_current": is_current, "authenticated": auth, "settable": runtime_provider_id(d.id).is_some() });
             if !models.is_empty() {
                 row["capabilities"] = served_capabilities(d.id, &models, efforts, served_model);
             }
@@ -293,6 +312,22 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(dir);
         out
+    }
+
+    #[test]
+    fn rows_say_whether_a_pick_can_be_saved_as_the_default() {
+        isolated(|| {
+            // Fresh install of an older build: the served row is an engine-only API-key provider.
+            let options = model_options("yolo-auto", "yolo", Vec::new(), true, &[], "yolo");
+            let row = |slug: &str| options["providers"].as_array().unwrap().iter().find(|r| r["slug"] == slug).cloned();
+            assert_eq!(row("yolo-auto").unwrap()["settable"], json!(false));
+            assert_eq!(row("openai").unwrap()["settable"], json!(true));
+            assert_eq!(row("claude").unwrap()["settable"], json!(true));
+        });
+        assert_eq!(runtime_provider_id("openai"), Some("openai-codex"));
+        assert_eq!(runtime_provider_id("OpenAI"), Some("openai-codex"));
+        assert_eq!(runtime_provider_id("cursor"), None);
+        assert_eq!(runtime_provider_id("openrouter"), Some("openrouter"));
     }
 
     #[test]

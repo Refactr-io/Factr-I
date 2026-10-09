@@ -13,10 +13,13 @@ pub enum ProviderChoice {
     /// Native Claude (Anthropic OAuth/API). `claude-subprocess` is kept as a
     /// hidden alias for old scripts; the Claude Code CLI subprocess transport
     /// has been removed.
-    #[value(alias = "claude-subprocess")]
+    /// `anthropic` / `claude-code`: the ids the Factr runtime saves in config.yaml for this login.
+    #[value(alias = "claude-subprocess", alias = "anthropic", alias = "claude-code")]
     Claude,
     #[value(alias = "claude-api", alias = "anthropic-key", alias = "claude-key")]
     AnthropicApi,
+    /// `openai-codex` / `chatgpt`: the ids the Factr runtime saves in config.yaml for the ChatGPT login.
+    #[value(alias = "openai-codex", alias = "chatgpt", alias = "chatgpt-codex")]
     Openai,
     #[value(
         alias = "openai-key",
@@ -440,7 +443,7 @@ pub async fn run_gateway(
     // An explicit `--provider` (the desktop passes one when it finds local
     // Ollama) is not overridden by a profile that only says "auto"; that
     // profile's model belongs to its own provider, so it is not borrowed either.
-    let cli_explicit = !matches!(provider_choice, ProviderChoice::YoloAuto);
+    let cli_explicit = !matches!(provider_choice, ProviderChoice::Auto);
     // An explicit --provider/--model (or FACTR_*) outranks what config.yaml holds; the profile only
     // fills what the flags left absent (see `profile::boot_pick`).
     let boot = factr_gateway::profile::boot_pick(cli_explicit, model, &profile_defaults);
@@ -891,6 +894,24 @@ fn factr_learning() -> factr_gateway::learn::Learning {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_provider_ids_the_factr_runtime_saves_parse_as_engine_providers() {
+        use super::ProviderChoice;
+        use clap::ValueEnum;
+        // config.yaml's `model.provider` is written by the Factr runtime; at the next boot the engine
+        // reads it back. An id it cannot parse made the gateway refuse to start.
+        for (saved, engine) in [
+            ("openai-codex", ProviderChoice::Openai),
+            ("chatgpt", ProviderChoice::Openai),
+            ("anthropic", ProviderChoice::Claude),
+            ("claude-code", ProviderChoice::Claude),
+            ("auto", ProviderChoice::Auto),
+            ("yolo-auto", ProviderChoice::YoloAuto),
+        ] {
+            assert_eq!(ProviderChoice::from_str(saved, true), Ok(engine), "{saved}");
+        }
+    }
+
     #[test]
     fn the_factr_command_may_be_a_path_with_spaces_or_a_program_with_args() {
         let dir = std::env::temp_dir().join(format!("factr cmd {}", std::process::id()));

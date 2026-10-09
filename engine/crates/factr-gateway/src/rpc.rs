@@ -59,6 +59,7 @@ pub(crate) fn put_config(home: &std::path::Path, config: &Value) -> Result<(), (
 }
 mod projects;
 mod provider_state;
+pub(crate) use provider_state::runtime_provider_id;
 mod side_agents;
 mod spawn_tree;
 mod subagents;
