@@ -595,11 +595,6 @@ export function toggleFileBrowserOpen() {
   const open = restoreMinimizedTreeSide(fileBrowserSide()) || !$fileBrowserOpen.get()
   $fileBrowserOpen.set(open)
   setTreeSideCollapsed(fileBrowserSide(), !open)
-
-  // Opening the right sidebar shows every tool in it (Terminal, Files, Changes, Browser), not just the last one open.
-  if (open) {
-    restoreHiddenTreeSideTabs(fileBrowserSide())
-  }
 }
 
 export function setFileBrowserOpen(open: boolean) {
