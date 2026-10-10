@@ -590,6 +590,12 @@ impl Conn {
         })
     }
 
+    /// Whether `session.create` on this connection runs the lazy bundled-skills seed: only an
+    /// interactive window's (the WebSocket `run`), never a headless run, replay or the driver.
+    fn seeds_skills_for_new_chats(&self) -> bool {
+        self.window.load(Ordering::Acquire)
+    }
+
     /// Send one harness request and await its direct reply.
     async fn call(&self, request: Value) -> Result<Value> {
         let link = self.route(&request).await?;
@@ -1943,9 +1949,12 @@ impl Conn {
                 }
                 // A fresh desktop install has no skills on disk until the bundled ones are seeded:
                 // when the store is empty, run the one-shot seed and wait for it (at most
-                // SKILLS_SEED_CHAT_WAIT) so this chat's first turn already sees them. Without a
-                // Factr backend (a benchmark run) this is skipped and nothing waits.
-                if let Some(features) = self.config.features.as_ref() {
+                // SKILLS_SEED_CHAT_WAIT) so this chat's first turn already sees them. Only a desktop
+                // window's chat seeds: a headless `POST /api/agent/run` (cron, bots) never does, and
+                // without a Factr backend (a benchmark run) this is skipped and nothing waits.
+                if self.seeds_skills_for_new_chats()
+                    && let Some(features) = self.config.features.as_ref()
+                {
                     features.seed_bundled_skills_for_chat(crate::features::SKILLS_SEED_CHAT_WAIT).await;
                 }
                 let profile = crate::profile::current();
