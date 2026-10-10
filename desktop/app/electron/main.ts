@@ -4342,6 +4342,8 @@ async function resolveFactrBackend(backendArgs) {
         ),
         FACTR_BACKEND_DEFAULTS: path.join(pythonRoot, 'defaults.json'),
         FACTR_BACKEND_TOOLS_DIR: path.join(pythonRoot, 'tools'),
+        // The bundle is signed and precompiled at build time: never write __pycache__ into it.
+        PYTHONDONTWRITEBYTECODE: '1',
         // Tool schemas alone exceed Ollama's default 4k window; engine warms to this.
         FACTR_OLLAMA_NUM_CTX: process.env.FACTR_OLLAMA_NUM_CTX || '32768'
       },
