@@ -37,6 +37,8 @@
     "dist:mac": "npm run build && npm run builder -- --mac",
     "build:engine": "cross-env FACTR_RELEASE_BUILD=1 cargo build --release --manifest-path ../../engine/Cargo.toml",
     "stage:backend-python": "node scripts/stage-backend-python.mjs",
+    "verify:backend-python": "node scripts/stage-backend-python.mjs --verify build/backend-python",
+    "verify:app": "node scripts/verify-packaged-app.mjs",
     "dist:mac:dmg": "npm run build && npm run builder -- --mac dmg",
     "dist:mac:zip": "npm run build && npm run builder -- --mac zip",
     "dist:win": "npm run build && npm run builder -- --win",
