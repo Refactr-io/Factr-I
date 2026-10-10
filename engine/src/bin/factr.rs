@@ -13,6 +13,9 @@ struct GatewayArgs {
     host: String,
     port: u16,
     allow_remote: bool,
+    /// A `FACTR_PROVIDER` the engine does not support (and no `--provider` replaced it): the engine
+    /// starts on no provider and says so, rather than exiting or picking another.
+    unsupported_env: Option<String>,
 }
 
 fn profile_home(root: &Path, name: &str) -> anyhow::Result<PathBuf> {
@@ -119,9 +122,14 @@ fn parse_gateway_args(args: &[String]) -> anyhow::Result<GatewayArgs> {
     // No --provider: `auto` (the logged-in provider), never a catalog entry that needs a key.
     let mut provider = factr::factr_runtime::ProviderChoice::Auto;
     let mut model = None;
+    let mut unsupported_env = None;
     // Private deployment: one configured provider and model from the environment.
-    if let Ok(p) = std::env::var("FACTR_PROVIDER") {
-        provider = ValueEnum::from_str(&p, true).map_err(|e| anyhow::anyhow!(e))?;
+    // Empty counts as unset.
+    if let Some(p) = std::env::var("FACTR_PROVIDER").ok().filter(|p| !p.trim().is_empty()) {
+        match factr::factr_runtime::loose_provider_choice(&p) {
+            Some(choice) => provider = choice,
+            None => unsupported_env = Some(p),
+        }
     }
     if let Ok(m) = std::env::var("FACTR_MODEL") {
         model = Some(m);
@@ -149,6 +157,8 @@ fn parse_gateway_args(args: &[String]) -> anyhow::Result<GatewayArgs> {
             "--provider" | "-p" => {
                 provider = ValueEnum::from_str(take(&mut i, value)?, true)
                     .map_err(|e| anyhow::anyhow!(e))?;
+                // An explicit flag replaces the environment's value, valid or not.
+                unsupported_env = None;
             }
             "--model" | "-m" => model = Some(take(&mut i, value)?.to_string()),
             "--host" => host = take(&mut i, value)?.to_string(),
@@ -164,6 +174,7 @@ fn parse_gateway_args(args: &[String]) -> anyhow::Result<GatewayArgs> {
         host,
         port,
         allow_remote,
+        unsupported_env,
     })
 }
 
@@ -319,6 +330,7 @@ fn main() -> Result<()> {
             &args.host,
             args.port,
             args.allow_remote,
+            args.unsupported_env.as_deref(),
         ))
 }
 
@@ -428,6 +440,60 @@ mod tests {
         assert!(parse_gateway_args(&["serve".to_string(), "--token-stdin".to_string()]).is_ok());
     }
 
+    /// FACTR_PROVIDER is process-wide: the tests that set it hold this.
+    static PROVIDER_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_provider_env<T>(value: Option<&str>, body: impl FnOnce() -> T) -> T {
+        let _guard = PROVIDER_ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let before = std::env::var_os("FACTR_PROVIDER");
+        // SAFETY: FACTR_PROVIDER is only touched under PROVIDER_ENV.
+        match value {
+            Some(v) => unsafe { std::env::set_var("FACTR_PROVIDER", v) },
+            None => unsafe { std::env::remove_var("FACTR_PROVIDER") },
+        }
+        let out = body();
+        match before {
+            Some(v) => unsafe { std::env::set_var("FACTR_PROVIDER", v) },
+            None => unsafe { std::env::remove_var("FACTR_PROVIDER") },
+        }
+        out
+    }
+
+    /// The scored benchmarks' exact argv: explicit provider and model, whatever FACTR_PROVIDER says.
+    #[test]
+    fn the_benchmark_argv_parses_to_openai_gpt_6_luna_under_any_factr_provider() {
+        use factr::factr_runtime::ProviderChoice;
+        let argv = ["--provider", "openai", "--model", "gpt-6-luna", "serve", "--host", "127.0.0.1", "--port", "0", "--token-stdin"]
+            .map(str::to_string);
+        for env in [None, Some("anthropic"), Some("ollama"), Some("auto"), Some("not-a-provider"), Some("")] {
+            let args = with_provider_env(env, || parse_gateway_args(&argv)).unwrap_or_else(|e| panic!("{env:?}: {e}"));
+            assert_eq!(args.provider, ProviderChoice::Openai, "{env:?}");
+            assert_eq!(args.model.as_deref(), Some("gpt-6-luna"));
+            assert_eq!((args.host.as_str(), args.port, args.allow_remote), ("127.0.0.1", 0, false));
+            assert_eq!(args.unsupported_env, None, "{env:?}: the flag replaced the environment's value");
+        }
+    }
+
+    /// An unknown FACTR_PROVIDER no longer exits the engine: it starts on no provider (never `auto`'s
+    /// pick, see `run_gateway`) and reports the value. A known one still selects its provider.
+    #[test]
+    fn an_unknown_factr_provider_starts_without_a_provider_instead_of_exiting() {
+        use factr::factr_runtime::ProviderChoice;
+        let argv = ["serve", "--host", "127.0.0.1", "--port", "0"].map(str::to_string);
+        let bad = with_provider_env(Some("not-a-provider"), || parse_gateway_args(&argv)).unwrap();
+        assert_eq!(bad.unsupported_env.as_deref(), Some("not-a-provider"));
+        assert_eq!(bad.provider, ProviderChoice::Auto);
+        let good = with_provider_env(Some("anthropic"), || parse_gateway_args(&argv)).unwrap();
+        assert_eq!((good.provider, good.unsupported_env), (ProviderChoice::Claude, None));
+        // The login catalog's spellings resolve too (one lenient resolver, not a second table).
+        let loose = with_provider_env(Some("huggingface"), || parse_gateway_args(&argv)).unwrap();
+        assert_eq!((loose.provider, loose.unsupported_env), (ProviderChoice::HuggingFace, None));
+        // An explicit --provider that is invalid is still an error: a flag is the caller's to fix.
+        let flag = ["serve", "--provider", "not-a-provider"].map(str::to_string);
+        assert!(with_provider_env(None, || parse_gateway_args(&flag)).is_err());
+        assert_eq!(with_provider_env(Some(" "), || parse_gateway_args(&argv)).unwrap().unsupported_env, None, "empty is unset");
+    }
+
     #[test]
     fn desktop_gateway_arguments_parse_without_cli_dispatch() {
         let args = [
@@ -440,7 +506,7 @@ mod tests {
             "0",
         ]
         .map(str::to_string);
-        let args = parse_gateway_args(&args).unwrap();
+        let args = with_provider_env(None, || parse_gateway_args(&args)).unwrap();
         assert_eq!(args.host, "127.0.0.1");
         assert_eq!(args.port, 0);
         assert!(!args.allow_remote);
