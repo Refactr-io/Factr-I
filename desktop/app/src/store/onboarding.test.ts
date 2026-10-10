@@ -1142,3 +1142,39 @@ describe('onboarding error text', () => {
     expect(result.message).toBe('Could not reach http://127.0.0.1:8000/v1.')
   })
 })
+
+describe('saveOnboardingApiKey: a failed model save says why', () => {
+  it('keeps the first line of a long server reason instead of only "could not save"', async () => {
+    vi.spyOn(notifications, 'notifyError').mockImplementation(() => '')
+    installApiMock(async ({ path }: { path: string }) => {
+      if (path === '/api/env') {
+        return { ok: true }
+      }
+
+      if (path.startsWith('/api/model/options')) {
+        return { providers: [{ authenticated: true, models: ['gpt-5.1'], name: 'OpenAI', settable: true, slug: 'openai' }] }
+      }
+
+      if (path.startsWith('/api/model/recommended-default')) {
+        return { provider: 'openai', model: '' }
+      }
+
+      if (path === '/api/model/set') {
+        throw new Error(
+          '400: {"detail":"ChatGPT or Codex Subscription is not connected: no API key or login was found for it. Add one with `factr auth add openai-codex`, or pick a connected provider in /model.\\n  Details: No Codex credentials stored."}'
+        )
+      }
+
+      throw new Error(`unexpected api path: ${path}`)
+    })
+
+    const result = await saveOnboardingApiKey('OPENAI_API_KEY', 'fake-key', 'OpenAI', {
+      requestGateway: (async () => ({})) as OnboardingContext['requestGateway']
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toContain('Factr-I could not save the selected model.')
+    expect(result.message).toContain('ChatGPT or Codex Subscription is not connected')
+    expect(result.message).not.toContain('Details:')
+  })
+})

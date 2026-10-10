@@ -191,7 +191,16 @@ export const isConnectivityError = (raw: string) =>
 const errMessage = (e: unknown, fallback = 'Something went wrong. Try again.') => {
   const raw = e instanceof Error ? e.message : String(e)
 
-  return isSetupServiceDown(raw) ? SETUP_SERVICE_DOWN : readableError(e, fallback).message
+  if (isSetupServiceDown(raw)) {
+    return SETUP_SERVICE_DOWN
+  }
+
+  const { detail, message } = readableError(e, fallback)
+  // A long server reason is summarized to the fallback; keep its first line so the
+  // message still says why (e.g. which provider is not connected), not just "could not save".
+  const cause = message === fallback ? detail?.split(/\\n|\n/)[0]?.trim() : ''
+
+  return cause ? `${fallback} ${cause.length > 240 ? `${cause.slice(0, 239)}…` : cause}` : message
 }
 
 // One plain sentence for every way a provider sign-in can fail (start, poll,
