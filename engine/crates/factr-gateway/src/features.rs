@@ -108,6 +108,10 @@ pub struct Features {
 /// A one-shot `skills seed` copies ~60 small skill folders; it measured ~0.5 s.
 const SKILLS_SEED_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// How long a new chat on an empty skill store waits for that seed, so its first turn sees the
+/// bundled skills; a slower seed finishes in the background and the chat starts anyway.
+pub const SKILLS_SEED_CHAT_WAIT: Duration = Duration::from_secs(3);
+
 /// Whether the one skill store (`$FACTR_HOME/skills`) holds no skill at all.
 fn skill_store_is_empty() -> bool {
     factr_base::skill::SkillRegistry::load_global().map_or(true, |registry| registry.list().is_empty())
@@ -166,6 +170,18 @@ impl Features {
                 }
             })
             .await
+    }
+
+    /// For a new chat: when the skill store is empty, run the one-shot seed and wait for it at most
+    /// `wait` (it keeps running past that). Returns whether skills were copied within the wait.
+    /// A store that already has skills returns at once and spawns nothing.
+    pub async fn seed_bundled_skills_for_chat(self: &std::sync::Arc<Self>, wait: Duration) -> bool {
+        if !skill_store_is_empty() {
+            return false;
+        }
+        let features = std::sync::Arc::clone(self);
+        let seed = tokio::spawn(async move { features.seed_bundled_skills_once().await });
+        matches!(tokio::time::timeout(wait, seed).await, Ok(Ok(true)))
     }
 
     async fn run_skills_seed(&self) -> Result<u64> {
@@ -623,6 +639,59 @@ mod tests {
         let g = Features::new(vec![script.to_string_lossy().into_owned()]);
         assert!(!g.seed_bundled_skills_once().await);
         assert_eq!(std::fs::read_to_string(&calls).unwrap().lines().count(), 1);
+
+        match previous {
+            Some(v) => unsafe { std::env::set_var("FACTR_HOME", v) },
+            None => unsafe { std::env::remove_var("FACTR_HOME") },
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A new chat on an empty store waits (bounded) for the seed, so its first turn sees the skills;
+    /// a seed slower than the wait does not hold the chat; a store with skills spawns nothing.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_new_chat_waits_a_bounded_time_for_the_seed() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("features-chat-seed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let previous = std::env::var_os("FACTR_HOME");
+        let write_script = |name: &str, delay: &str| {
+            let (calls, script) = (dir.join(format!("{name}.calls")), dir.join(name));
+            std::fs::write(&script, format!(
+                "#!/bin/sh\necho \"$@\" >> '{}'\nsleep {delay}\nmkdir -p \"$FACTR_HOME/skills/demo\"\nprintf -- '---\\nname: demo\\ndescription: d\\n---\\nbody\\n' > \"$FACTR_HOME/skills/demo/SKILL.md\"\necho '{{\"copied\": 1, \"total_bundled\": 1}}'\n",
+                calls.display())).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            (calls, script.to_string_lossy().into_owned())
+        };
+
+        // A quick seed: the chat waits for it and the store holds the skill afterwards.
+        let home = dir.join("quick");
+        std::fs::create_dir_all(&home).unwrap();
+        unsafe { std::env::set_var("FACTR_HOME", &home) };
+        let (calls, script) = write_script("quick-seed", "0.3");
+        let f = std::sync::Arc::new(Features::new(vec![script.clone()]));
+        assert!(f.seed_bundled_skills_for_chat(Duration::from_secs(3)).await, "seeded within the wait");
+        assert!(home.join("skills/demo/SKILL.md").is_file(), "the first turn sees the seeded skill");
+        // Skills on disk now: a second chat returns at once and spawns nothing.
+        let g = std::sync::Arc::new(Features::new(vec![script]));
+        let started = Instant::now();
+        assert!(!g.seed_bundled_skills_for_chat(Duration::from_secs(3)).await);
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert_eq!(std::fs::read_to_string(&calls).unwrap().lines().count(), 1, "spawned once");
+
+        // A slow seed: the chat stops waiting at the bound; the seed still finishes behind it.
+        let home = dir.join("slow");
+        std::fs::create_dir_all(&home).unwrap();
+        unsafe { std::env::set_var("FACTR_HOME", &home) };
+        let (_, script) = write_script("slow-seed", "2");
+        let f = std::sync::Arc::new(Features::new(vec![script]));
+        let started = Instant::now();
+        assert!(!f.seed_bundled_skills_for_chat(Duration::from_millis(300)).await, "not within the wait");
+        assert!(started.elapsed() < Duration::from_millis(1500), "the wait is bounded");
+        assert!(f.seed_bundled_skills_once().await, "the seed finished in the background");
+        assert!(home.join("skills/demo/SKILL.md").is_file());
 
         match previous {
             Some(v) => unsafe { std::env::set_var("FACTR_HOME", v) },

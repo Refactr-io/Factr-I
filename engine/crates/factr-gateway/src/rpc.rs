@@ -1942,12 +1942,11 @@ impl Conn {
                     crate::profile::apply_saved_custom_endpoint(&home);
                 }
                 // A fresh desktop install has no skills on disk until the bundled ones are seeded:
-                // do it once, in the background, so `skill_manage` and the skill list see them
-                // from the next turn. Without a Factr backend (a benchmark run) this is skipped.
-                if let Some(features) = self.config.features.clone() {
-                    tokio::spawn(async move {
-                        features.seed_bundled_skills_once().await;
-                    });
+                // when the store is empty, run the one-shot seed and wait for it (at most
+                // SKILLS_SEED_CHAT_WAIT) so this chat's first turn already sees them. Without a
+                // Factr backend (a benchmark run) this is skipped and nothing waits.
+                if let Some(features) = self.config.features.as_ref() {
+                    features.seed_bundled_skills_for_chat(crate::features::SKILLS_SEED_CHAT_WAIT).await;
                 }
                 let profile = crate::profile::current();
                 let cwd = p["cwd"]
