@@ -11,6 +11,25 @@ import type { ErrorSurface } from './error-surface'
 // per-provider variants: no provider has credentials, so nothing is connected.
 const NO_CREDENTIALS_RE = /\bcredentials not available\b/i
 
+// The engine's readiness text for a provider with no credential: "No usable credentials found for Claude."
+const NO_USABLE_CREDENTIALS_RE = /\bNo usable credentials found for ([^\n]+?)\.(?:\s|$)/i
+
+/** The plain sentence for the engine's "No usable credentials found for <X>." readiness text, or null for
+ *  any other text. `savedProvider`: config.yaml's saved provider (`setup.status` `saved_provider`); null
+ *  means the user never chose one, so <X> is only the engine's fallback and is not named. Undefined (an
+ *  engine that does not report it) keeps the raw text. */
+export function noUsableCredentialsMessage(raw: null | string | undefined, savedProvider: null | string | undefined): null | string {
+  const provider = raw?.match(NO_USABLE_CREDENTIALS_RE)?.[1]?.trim()
+
+  if (!provider || savedProvider === undefined) {
+    return null
+  }
+
+  return savedProvider?.trim()
+    ? `Your saved provider ${provider} has no usable credentials. Open Settings > Providers to sign in again or choose another.`
+    : 'No AI provider is connected yet. Open Settings > Providers (or sign in) to choose one.'
+}
+
 const STATUS_PATTERNS: readonly RegExp[] = [
   /\bstatus(?:\s+code)?\s*[:=]?\s*(\d{3})\b/i,
   /\bHTTP(?:\/\d(?:\.\d)?)?\s*(\d{3})\b/i,

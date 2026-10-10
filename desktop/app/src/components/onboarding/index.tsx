@@ -388,7 +388,7 @@ export function DesktopOnboardingOverlay({
           </Button>
         ) : null}
         <div className="grid gap-3 p-5">
-          {reason ? <ReasonNotice reason={reason} /> : null}
+          {reason ? <ReasonNotice detail={onboarding.reasonDetail} reason={reason} /> : null}
           {ready ? (
             showPicker ? (
               <Picker ctx={ctx} />
@@ -407,10 +407,18 @@ export function DesktopOnboardingOverlay({
 // The launch reason is a prompt ("why am I seeing this"), not an error. Only
 // rendered for meaningful caller-supplied reasons (defaults are filtered out
 // upstream), so it never shows the generic "no provider configured" noise.
-function ReasonNotice({ reason }: { reason: string }) {
+function ReasonNotice({ detail, reason }: { detail?: null | string; reason: string }) {
+  const { t } = useI18n()
+
   return (
     <div className="rounded-2xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-tertiary)/40 px-4 py-3 text-sm text-muted-foreground">
       {reason}
+      {detail && detail !== reason ? (
+        <details className="mt-1.5 text-xs">
+          <summary className="cursor-pointer select-none">{t.notifications.details}</summary>
+          <p className="mt-1 break-words font-mono">{detail}</p>
+        </details>
+      ) : null}
     </div>
   )
 }

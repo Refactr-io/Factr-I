@@ -1,3 +1,5 @@
+import { noUsableCredentialsMessage } from './provider-error-display'
+
 export interface SetupStatusSnapshot {
   provider_configured?: boolean
   /** Additive launch-profile fields (newer backends only; absent on older
@@ -12,6 +14,8 @@ export interface SetupStatusSnapshot {
   error_code?: string
   retryable?: boolean
   retry_after?: number
+  /** config.yaml's saved provider; null when the user never saved one (newer engines only). */
+  saved_provider?: null | string
 }
 
 export interface RuntimeCheckSnapshot {
@@ -41,6 +45,8 @@ export interface RuntimeReadinessResult {
   model?: string
   ready: boolean
   reason: null | string
+  /** The raw engine text when `reason` is a plainer rewording of it (for a Details line). */
+  reasonDetail?: string
   source: 'fallback' | 'runtime_check' | 'setup_status'
 }
 
@@ -106,6 +112,16 @@ export async function fetchRuntimeReadinessSignals(
 export function interpretRuntimeReadiness(
   signals: RuntimeReadinessSignals,
   options: RuntimeReadinessOptions = {}
+): RuntimeReadinessResult {
+  const result = interpretRawRuntimeReadiness(signals, options)
+  const plain = result.reason ? noUsableCredentialsMessage(result.reason, signals.setup?.saved_provider) : null
+
+  return plain ? { ...result, reason: plain, reasonDetail: result.reason ?? undefined } : result
+}
+
+function interpretRawRuntimeReadiness(
+  signals: RuntimeReadinessSignals,
+  options: RuntimeReadinessOptions
 ): RuntimeReadinessResult {
   const defaultReason = options.defaultReason ?? DEFAULT_NOT_READY_REASON
   const unknownReady = options.unknownReady ?? false

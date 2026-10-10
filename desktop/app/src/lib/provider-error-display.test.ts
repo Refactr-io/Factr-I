@@ -4,7 +4,13 @@ import { TRANSLATIONS } from '@/i18n'
 
 import { errorRecoveryPlan } from './error-surface'
 import { errorCardText } from './error-surface-copy'
-import { inferErrorSurface, isRawProviderDump, providerErrorStatus, tidyErrorDetails } from './provider-error-display'
+import {
+  inferErrorSurface,
+  isRawProviderDump,
+  noUsableCredentialsMessage,
+  providerErrorStatus,
+  tidyErrorDetails
+} from './provider-error-display'
 
 const thread = TRANSLATIONS.en.assistant.thread
 
@@ -98,5 +104,33 @@ describe('raw dumps', () => {
     expect(isRawProviderDump('x\n  response: {"a":1}')).toBe(true)
     expect(isRawProviderDump('<html>Internal Server Error upstream</html>')).toBe(true)
     expect(isRawProviderDump('Factr could not start the assistant for this chat.')).toBe(false)
+  })
+})
+
+describe('noUsableCredentialsMessage', () => {
+  it('does not name a provider the user never chose', () => {
+    for (const raw of ['No usable credentials found for Claude.', 'No usable credentials found for openai-compatible.']) {
+      expect(noUsableCredentialsMessage(raw, null)).toBe(
+        'No AI provider is connected yet. Open Settings > Providers (or sign in) to choose one.'
+      )
+    }
+  })
+
+  it('names the saved provider when there is one', () => {
+    expect(noUsableCredentialsMessage('No usable credentials found for huggingface.', 'huggingface')).toBe(
+      'Your saved provider huggingface has no usable credentials. Open Settings > Providers to sign in again or choose another.'
+    )
+    expect(
+      noUsableCredentialsMessage(
+        'No usable credentials found for openai. setup.status reports configured credentials, but runtime resolution still failed.',
+        'openai-codex'
+      )
+    ).toContain('Your saved provider openai has no usable credentials.')
+  })
+
+  it('leaves other text, and engines that do not report the saved provider, alone', () => {
+    expect(noUsableCredentialsMessage('The custom endpoint https://h/v1 needs an API key and none was found.', null)).toBeNull()
+    expect(noUsableCredentialsMessage('No usable credentials found for Claude.', undefined)).toBeNull()
+    expect(noUsableCredentialsMessage(null, null)).toBeNull()
   })
 })

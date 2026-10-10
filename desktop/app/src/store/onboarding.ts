@@ -67,6 +67,8 @@ export interface DesktopOnboardingState {
   mode: OnboardingMode
   providers: null | OAuthProvider[]
   reason: null | string
+  /** The raw engine text behind a reworded `reason` (shown as Details). */
+  reasonDetail?: null | string
   requested: boolean
   /** True when the user explicitly chose "I'll choose a provider later" on the
    *  first-run picker. Persisted to localStorage so the blocking overlay never
@@ -214,7 +216,8 @@ function signInDidNotFinish(provider: OAuthProvider, raw: unknown): { message: s
 const patch = (update: Partial<DesktopOnboardingState>) =>
   $desktopOnboarding.set({ ...$desktopOnboarding.get(), ...update })
 
-const setFlow = (flow: OnboardingFlow) => patch(flow.status === 'idle' ? { flow } : { flow, reason: null })
+const setFlow = (flow: OnboardingFlow) =>
+  patch(flow.status === 'idle' ? { flow } : { flow, reason: null, reasonDetail: null })
 
 const sessionIdFor = (flow: OnboardingFlow) => ('start' in flow && flow.start ? flow.start.session_id : undefined)
 
@@ -517,7 +520,7 @@ export function requestDesktopOnboarding(reason = DEFAULT_ONBOARDING_REASON) {
     return
   }
 
-  patch({ reason: reason.trim() || DEFAULT_ONBOARDING_REASON, requested: true })
+  patch({ reason: reason.trim() || DEFAULT_ONBOARDING_REASON, reasonDetail: null, requested: true })
 }
 
 /** Credential warning delivered passively (session create/activate/resume
@@ -571,6 +574,7 @@ export function startManualOnboarding(reason: null | string = DEFAULT_MANUAL_ONB
     // `null` opts out of the prompt banner entirely (e.g. when the user already
     // picked a specific provider and we auto-start its sign-in).
     reason: reason ? reason.trim() || DEFAULT_ONBOARDING_REASON : null,
+    reasonDetail: null,
     flow: { status: 'idle' }
   })
   void refreshProviders()
@@ -593,6 +597,7 @@ export function startManualLocalEndpoint(reason: null | string = null, profile?:
     localEndpoint: true,
     mode: 'apikey',
     reason: reason ? reason.trim() || DEFAULT_ONBOARDING_REASON : null,
+    reasonDetail: null,
     flow: { status: 'idle' }
   })
 }
@@ -731,7 +736,7 @@ export async function refreshOnboarding(ctx: OnboardingContext, stillWanted?: ()
   const reason = runtime.reason || state.reason || DEFAULT_ONBOARDING_REASON
 
   writeCachedConfigured(false)
-  patch({ configured: false, reason })
+  patch({ configured: false, reason, reasonDetail: runtime.reason ? (runtime.reasonDetail ?? null) : (state.reasonDetail ?? null) })
 
   if (state.providers !== null && !state.requested) {
     return false

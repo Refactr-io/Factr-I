@@ -114,3 +114,32 @@ describe('runtimeReadinessDisplay', () => {
     ).toBe('needs_setup')
   })
 })
+
+describe('interpretRuntimeReadiness: the engine\'s "No usable credentials" text', () => {
+  const failing = (saved: null | string | undefined) =>
+    interpretRuntimeReadiness({
+      setup: { provider_configured: false, ...(saved === undefined ? {} : { saved_provider: saved }) },
+      setupError: null,
+      runtime: { ok: false, error: 'No usable credentials found for Claude.', provider: 'Claude' },
+      runtimeError: null
+    })
+
+  it('reads as "nothing connected yet" on a first run, with the raw text kept as the detail', () => {
+    const result = failing(null)
+
+    expect(result.ready).toBe(false)
+    expect(result.reason).toBe('No AI provider is connected yet. Open Settings > Providers (or sign in) to choose one.')
+    expect(result.reasonDetail).toBe('No usable credentials found for Claude.')
+  })
+
+  it('names the saved provider when one is saved', () => {
+    expect(failing('anthropic').reason).toBe(
+      'Your saved provider Claude has no usable credentials. Open Settings > Providers to sign in again or choose another.'
+    )
+  })
+
+  it('keeps the raw text when the engine does not say what is saved', () => {
+    expect(failing(undefined)).toMatchObject({ reason: 'No usable credentials found for Claude.' })
+    expect(failing(undefined).reasonDetail).toBeUndefined()
+  })
+})
