@@ -2,7 +2,7 @@
 // Build-time only: the shipped app never needs clang or Xcode tools.
 import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdirSync, renameSync, rmSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const script = fileURLToPath(import.meta.url)
@@ -16,8 +16,11 @@ export function buildCommandScreenshotMonitor({
 } = {}) {
   if (platform !== 'darwin') return null
   const output = resolve(distDir, 'native/command-screenshot-monitor')
-  const staging = `${output}.${process.pid}.tmp`
-  mkdirSync(dirname(output), { recursive: true })
+  // The linker signs with the output's file name and hashes it into LC_UUID: compile under the final
+  // name in a per-process directory so two builds of the same source are byte-identical.
+  const stagingDir = `${output}.${process.pid}.tmp`
+  const staging = resolve(stagingDir, basename(output))
+  mkdirSync(stagingDir, { recursive: true })
   try {
     // Pin the SDK explicitly: a bare `xcrun clang` inherits the host default
     // SDK, which may be newer than the active linker (unknown-arch .tbd stubs
@@ -36,7 +39,7 @@ export function buildCommandScreenshotMonitor({
     console.log(`built ${output} (arm64 + x86_64)`)
     return output
   } finally {
-    rmSync(staging, { force: true })
+    rmSync(stagingDir, { recursive: true, force: true })
   }
 }
 

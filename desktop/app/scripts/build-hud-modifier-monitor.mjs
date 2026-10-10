@@ -2,7 +2,7 @@
 // Host-built helper. Windows uses its in-box .NET Framework compiler; no SDK download.
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const script = fileURLToPath(import.meta.url)
@@ -35,9 +35,12 @@ export function buildHudModifierMonitor({
   }
   if (!['darwin', 'linux', 'win32'].includes(platform)) return null
   const output = resolve(distDir, hudModifierBinaryRelativePath(platform, arch))
-  const staging = `${output}.${process.pid}.tmp${platform === 'win32' ? '.exe' : ''}`
+  // The macOS linker signs with the output's file name and hashes it into LC_UUID: compile under the
+  // final name in a per-process directory so two builds of the same source are byte-identical.
+  const stagingDir = `${output}.${process.pid}.tmp`
+  const staging = resolve(stagingDir, basename(output))
   const source = name => resolve(root, 'electron/native', name)
-  mkdirSync(dirname(output), { recursive: true })
+  mkdirSync(stagingDir, { recursive: true })
   try {
     if (platform === 'darwin') {
       execFileSync(
@@ -99,7 +102,7 @@ export function buildHudModifierMonitor({
     console.warn(String(error.stderr || error.message))
     return null
   } finally {
-    rmSync(staging, { force: true })
+    rmSync(stagingDir, { recursive: true, force: true })
   }
 }
 

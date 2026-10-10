@@ -19,7 +19,7 @@ afterEach(() => {
 describe('buildCommandScreenshotMonitor argv', () => {
   it('names the macOS SDK explicitly so driver and linker agree', () => {
     const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-argv-'))
-    const staging = path.resolve(distDir, `native/command-screenshot-monitor.${process.pid}.tmp`)
+    const staging = path.resolve(distDir, `native/command-screenshot-monitor.${process.pid}.tmp/command-screenshot-monitor`)
     fs.mkdirSync(path.dirname(staging), { recursive: true })
     fs.writeFileSync(staging, 'staged')
 
