@@ -193,6 +193,7 @@ import {
 } from './desktop-uninstall'
 import { describeDevCdpDecision, resolveDevCdpPort } from './dev-cdp'
 import { installEmbedReferer } from './embed-referer'
+import { engineProviderArgs } from './engine-provider'
 import { engineTokenLaunch } from './engine-token'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import {
@@ -4308,25 +4309,9 @@ async function resolveFactrBackend(backendArgs) {
       throw new Error(`The bundled Factr-I feature runtime is missing: ${python}`)
     }
 
-    let provider = process.env.FACTR_PROVIDER?.trim() || ''
-    let model = process.env.FACTR_MODEL?.trim() || ''
-
-    if (!provider) {
-      try {
-        const response = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(350) })
-        const tags = (await response.json()).models
-        const names = Array.isArray(tags) ? tags.map(item => item.name).filter(Boolean) : []
-
-        if (names.length) {
-          provider = 'ollama'
-          model = names.includes('qwen3.8:27b') ? 'qwen3.8:27b' : names[0]
-        }
-      } catch {
-        // No local Ollama server; the engine's deferred-auth mode opens for API-key setup.
-      }
-    }
-
-    const args = [...(provider ? ['--provider', provider] : []), ...(model ? ['--model', model] : []), ...backendArgs]
+    // Only an explicit FACTR_PROVIDER / FACTR_MODEL becomes a flag. Otherwise the engine picks the
+    // provider itself: the pick saved in config.yaml, else the signed-in provider.
+    const args = [...engineProviderArgs(process.env), ...backendArgs]
 
     return {
       kind: 'factr',
