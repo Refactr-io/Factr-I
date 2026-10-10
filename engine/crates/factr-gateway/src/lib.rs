@@ -385,10 +385,21 @@ async fn respond(stream: &mut TcpStream, status: &str, body: &Value) -> Result<(
 /// A `/api/model/set` body with its engine provider id replaced by the runtime's. `Err`: the engine
 /// provider has no runtime route, so the pick cannot be saved (said plainly instead of the runtime's
 /// "Unknown provider"). A body that is not a JSON object passes unchanged.
+///
+/// The engine's `openai` row is both the ChatGPT login and the OpenAI API key; the runtime keeps
+/// them apart (`openai-codex` / `openai-api`), so the id follows the credential actually present
+/// ([`rpc::runtime_saved_provider`]): a ChatGPT sign-in stays `openai-codex` even when a key exists
+/// too, and only a key-only user is saved as `openai-api`.
 fn runtime_model_set_body(body: &[u8]) -> std::result::Result<Vec<u8>, String> {
+    runtime_model_set_body_with(body, rpc::runtime_saved_provider)
+}
+
+fn runtime_model_set_body_with(body: &[u8], saved_id: impl Fn(&str) -> String) -> std::result::Result<Vec<u8>, String> {
     let Ok(mut value) = serde_json::from_slice::<Value>(body) else { return Ok(body.to_vec()) };
     let Some(provider) = value.get("provider").and_then(Value::as_str).map(str::to_owned) else { return Ok(body.to_vec()) };
-    match rpc::runtime_provider_id(&provider) {
+    let id = rpc::runtime_provider_id(&provider)
+        .map(|id| if provider.trim().eq_ignore_ascii_case("openai") { saved_id(&provider) } else { id.to_string() });
+    match id {
         Some(id) if id == provider => Ok(body.to_vec()),
         Some(id) => {
             value["provider"] = json!(id);
@@ -1583,11 +1594,35 @@ impl SkillOrigins {
 
 #[cfg(test)]
 mod model_set_tests {
-    use super::{Request, runtime_model_set_body, with_body};
+    use super::{Request, runtime_model_set_body, runtime_model_set_body_with, with_body};
     use serde_json::{Value, json};
 
+    fn provider_after_with(body: Value, openai_id: &str) -> Result<String, String> {
+        runtime_model_set_body_with(body.to_string().as_bytes(), |_| openai_id.to_string())
+            .map(|b| serde_json::from_slice::<Value>(&b).unwrap()["provider"].as_str().unwrap_or_default().to_string())
+    }
+
+    /// As signed in to ChatGPT (the credential-dependent id is `openai-codex`).
     fn provider_after(body: Value) -> Result<String, String> {
-        runtime_model_set_body(body.to_string().as_bytes()).map(|b| serde_json::from_slice::<Value>(&b).unwrap()["provider"].as_str().unwrap_or_default().to_string())
+        provider_after_with(body, "openai-codex")
+    }
+
+    #[test]
+    fn an_openai_pick_is_saved_under_the_id_of_the_credential_actually_present() {
+        let pick = json!({"scope": "main", "provider": "openai", "model": "gpt-5.5"});
+        // ChatGPT sign-in (with or without a key too): the runtime's ChatGPT provider.
+        assert_eq!(provider_after_with(pick.clone(), "openai-codex").unwrap(), "openai-codex");
+        // Only an API key: the runtime's API-key provider, not the ChatGPT one it would reject.
+        assert_eq!(provider_after_with(pick, "openai-api").unwrap(), "openai-api");
+        assert_eq!(provider_after_with(json!({"provider": "OpenAI", "model": "gpt-5.5"}), "openai-api").unwrap(), "openai-api");
+        // Explicit runtime ids are never switched by the credential state.
+        for explicit in ["openai-codex", "openai-api"] {
+            assert_eq!(provider_after_with(json!({"provider": explicit, "model": "m"}), "openai-api").unwrap(), explicit);
+            assert_eq!(provider_after_with(json!({"provider": explicit, "model": "m"}), "openai-codex").unwrap(), explicit);
+        }
+        // The rest of the body is kept.
+        let body = runtime_model_set_body_with(br#"{"scope":"main","provider":"openai","model":"gpt-5.5","confirm_expensive_model":true}"#, |_| "openai-api".into()).unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&body).unwrap(), json!({"scope":"main","provider":"openai-api","model":"gpt-5.5","confirm_expensive_model":true}));
     }
 
     #[test]
