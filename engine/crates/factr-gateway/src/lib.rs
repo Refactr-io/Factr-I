@@ -1164,7 +1164,16 @@ async fn handle(
         // the same skills dir (the engine passes it FACTR_HOME); the registry
         // here only reads and toggles what is installed.
         ("GET", "/api/skills") => {
-            let registry = factr_base::skill::SkillRegistry::shared_snapshot();
+            let mut registry = factr_base::skill::SkillRegistry::shared_snapshot();
+            // A fresh install's store is empty until Factr's bundled skills are seeded; seed them
+            // now, once, so the list is not blank (only where a Factr backend is configured).
+            if registry.list().is_empty() {
+                if let Some(features) = config.features.as_ref() {
+                    if features.seed_bundled_skills_once().await {
+                        registry = factr_base::skill::SkillRegistry::shared_snapshot();
+                    }
+                }
+            }
             let disabled = factr_base::skill::disabled_skill_names();
             let origin = SkillOrigins::load();
             let skills: Vec<Value> = registry

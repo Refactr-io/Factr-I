@@ -971,6 +971,21 @@ def do_reset(name: str, restore: bool = False, console: Optional[Console] = None
     _finish_change(c, invalidate_cache)
 
 
+def do_seed() -> None:
+    """Seed the bundled skills into the skill store (``factr skills seed``).
+
+    The desktop engine calls this lazily, the first time the skill list is
+    requested while the store holds no skills, so a fresh install shows its
+    bundled skills without a reload. Same manifest rules as every other sync:
+    user-deleted skills stay deleted and an opt-out marker seeds essentials only.
+    Prints one JSON line ``{"copied": n, "total_bundled": n}`` for the caller.
+    """
+    from tools.skills_sync import sync_skills
+    result = sync_skills(quiet=True)
+    print(json.dumps({"copied": len(result.get("copied", [])),
+                      "total_bundled": result.get("total_bundled", 0)}), flush=True)
+
+
 def do_list_modified(console: Optional[Console] = None, as_json: bool = False) -> None:
     """List bundled skills the user has edited (which `factr update` keeps)."""
     from tools.skills_sync_bundled_ops import list_user_modified_bundled_skills
@@ -1359,6 +1374,7 @@ _CLI_ACTIONS = {
     "reset": lambda a: do_reset(a.name, restore=getattr(a, "restore", False),
                                 skip_confirm=getattr(a, "yes", False)),
     "list-modified": lambda a: do_list_modified(as_json=getattr(a, "json", False)),
+    "seed": lambda a: do_seed(),
     "diff": lambda a: do_diff(a.name),
     "opt-out": lambda a: do_opt_out(remove=getattr(a, "remove", False),
                                     skip_confirm=getattr(a, "yes", False)),

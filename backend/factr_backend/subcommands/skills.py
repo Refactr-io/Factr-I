@@ -101,6 +101,11 @@ def build_skills_parser(subparsers, *, cmd_skills: Callable) -> None:
         help="Also delete the current copy and re-copy the bundled version")
     add_yes_flag(skills_reset, "Skip confirmation prompt when using --restore")
 
+    skills_subparsers.add_parser(
+        "seed", help="Seed the bundled skills into the skill store now",
+        description="Copy the bundled skills into the skill store (the same sync "
+            "`factr update` runs). User-deleted skills are not re-added.")
+
     skills_list_modified = skills_subparsers.add_parser(
         "list-modified", help="List bundled skills you've edited (which `factr update` keeps)",
         description="Show the bundled skills whose local copy differs from the version last "
