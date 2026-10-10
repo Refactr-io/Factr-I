@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.0.5-dev.1 (unreleased; the release will be v0.0.5)
+
+The 0.0.4 engine plus the sign-in, onboarding and UI work from pull request #2. The engine's labelling and classify
+behaviour is unchanged from 0.0.4.
+
+- Sign-in and onboarding: first-run sign-in works for every method in the desktop gateway's chat-only (Python-off)
+  mode. User-initiated writes (model and API-key saves, endpoint validation, the recommended-default read after
+  sign-in, voice, profile soul) start the Python runtime on demand instead of returning 404 `feature_not_requested`;
+  boot probes and `POST /api/factr/update` stay gated. Onboarding saves the provider the user signed in with, never the
+  first row of the model list, and errors show readable text instead of a raw "Error invoking remote method ... 404".
+  Without `--provider` the engine now resolves to auto, so a fresh install without Ollama no longer lands on an API-key
+  provider the backend does not know.
+- Model picker and provider ids: `POST /api/model/set` rewrites engine provider ids to the runtime's ids and refuses,
+  with a plain message, providers the runtime cannot save (listed as `settable: false`); Settings and the onboarding
+  "Change" picker list only providers that can be saved. A default model saved from a chat is written under the
+  runtime's id (`openai-codex` for the ChatGPT login, `openai-api` with only a key, `anthropic`, `muse`; `gemini-api`
+  keeps its id) and the engine accepts these ids at boot. The onboarding confirm card shows the price for a pick saved
+  under `openai-codex`.
+- Packaging: `stage:backend-python` copies symlinks verbatim and fails the build if a bundled symlink is absolute or
+  escapes the staged tree (the macOS app used to carry absolute links into the build folder and failed code signing).
+- UI: the right sidebar opens on a Browser whose blank page lists Files, Terminal and Changes, each as a closeable tab
+  in one tab strip; the sidebar toggle keeps the user's hidden-tab choice, and folding a side by dragging updates its
+  toggle. Dragging a sidebar too narrow folds it without collapsing the other. The empty chat shows one short greeting
+  for the time of day or the weekend instead of the large wordmark and tagline. Sidebar projects use a folder icon.
+  Settings sub-page tabs hug their labels and share one width. The dark theme uses a lighter gray set for the window,
+  menus, dialogs and Settings; the dithered and lattice-grid marks are replaced by a plain spinner.
+- Tests: new gateway tests replay every onboarding flow in chat-only and feature mode; two intermittent test failures
+  are fixed (an OpenAI endpoint test that read env vars without the test env lock, and a Radix focus timer that fired
+  after jsdom teardown). A real sign-in against a live provider is not covered by tests.
+- The Windows, Linux and macOS builds of the app are not signed (no Developer ID, notarization or Authenticode).
+
 ## v0.0.4 (2026-10-10)
 
 Design and evidence: `docs/design/v004.md`; cost work: `docs/design/v004-cost.md`.
