@@ -1,8 +1,9 @@
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, describe, expect, it, test } from 'vitest'
 
 import {
   type AgentNoticePayload,
   clearAgentNotice,
+  isRoutineTransportNotice,
   nativeNoticeInput,
   noticeToToast,
   showAgentNotice,
@@ -189,4 +190,47 @@ test('the urgent pair maps to a global native input carrying the text as its bod
 
   expect(restored?.kind).toBe('credits')
   expect(restored?.body).toBe('✓ Credit access restored')
+})
+
+describe('routine transport notices', () => {
+  it.each([
+    'opening websocket',
+    'checking websocket',
+    'connecting',
+    'reconnecting...',
+    'retrying (2/4)',
+    'https cooldown 30s',
+    'https fallback: websocket closed by peer'
+  ])('treats %j as routine', text => {
+    expect(isRoutineTransportNotice(text)).toBe(true)
+  })
+
+  it.each([
+    'connection refused',
+    '401',
+    'opening websocket failed: 401 unauthorized',
+    'https fallback: connection refused',
+    "⚠ 'a' is unavailable; falling back to 'b'",
+    'incomplete response: max_tokens',
+    '',
+    undefined
+  ])('does not treat %j as routine', text => {
+    expect(isRoutineTransportNotice(text)).toBe(false)
+  })
+
+  it('renders a routine turn notice as a short info toast with a stable id', () => {
+    expect(noticeToToast({ key: 'turn.notice', level: 'warn', text: 'opening websocket' })).toEqual({
+      durationMs: 2500,
+      id: 'turn.notice',
+      kind: 'info',
+      message: 'opening websocket'
+    })
+  })
+
+  it('keeps a real turn notice as a sticky warning', () => {
+    expect(noticeToToast({ key: 'turn.notice', level: 'warn', text: 'connection refused' })).toMatchObject({
+      durationMs: 0,
+      kind: 'warning'
+    })
+  })
 })

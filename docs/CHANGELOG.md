@@ -5,6 +5,8 @@
 The 0.0.4 engine plus the sign-in, onboarding and UI work from pull request #2. The engine's labelling and classify
 behaviour is unchanged from 0.0.4.
 
+- Desktop: a "Run history" entry in the left rail (advanced mode) and on the Command center Usage tab opens the agent run history page (runs, tokens and cost).
+- Desktop: routine provider transport progress ("opening websocket", retries, HTTPS fallback) now shows as a brief info toast instead of a sticky warning; real failures still warn. Desktop-only; the engine and benchmarked behaviour are unchanged.
 - Sign-in and onboarding: first-run sign-in works for every method in the desktop gateway's chat-only (Python-off)
   mode. User-initiated writes (model and API-key saves, endpoint validation, the recommended-default read after
   sign-in, voice, profile soul) start the Python runtime on demand instead of returning 404 `feature_not_requested`;

@@ -43,6 +43,26 @@ export function stripGlyph(text: string): string {
   return text.replace(LEADING_GLYPH, '')
 }
 
+// The engine's per-turn `turn.notice` carries provider transport progress
+// ("opening websocket", "checking websocket", "https cooldown 30s") alongside
+// real warnings (model substitution, incomplete response). Only the former is
+// routine. Anything with a failure word or a leading warning glyph is never.
+export const TURN_NOTICE_KEY = 'turn.notice'
+
+const ROUTINE_TRANSPORT =
+  /^(?:(?:opening|checking|reconnecting|connecting)(?: to)?(?: the)?(?: persistent)?(?: websocket| connection| server| stream)?|retrying(?: \(\d+\/\d+\))?|https (?:cooldown|fallback)\b.*)\.{0,3}$/i
+
+const FAILURE_WORDS = /refused|error|fail|denied|unauthori[sz]ed|forbidden|invalid|expired|timed? ?out|\b[45]\d\d\b|limit|unavailable|⚠|✕|✗/i
+
+/** Whether a notice line is routine transport progress, not a problem. */
+export function isRoutineTransportNotice(text: string | undefined): boolean {
+  const line = (text ?? '').trim()
+
+  return line.length > 0 && ROUTINE_TRANSPORT.test(line) && !FAILURE_WORDS.test(line)
+}
+
+const ROUTINE_NOTICE_MS = 2500
+
 /** A `$12.34` money token, as the backend notice policy formats amounts. */
 const MONEY = /\$(\d+(?:\.\d{2})?)/g
 
@@ -113,6 +133,12 @@ export function noticeToToast(payload: AgentNoticePayload | undefined): Notifica
 
   if (!text) {
     return null
+  }
+
+  // Routine transport progress: a quiet info toast that clears itself. It keeps
+  // the notice key, so it replaces (never stacks with) the previous turn's.
+  if (payload?.key === TURN_NOTICE_KEY && isRoutineTransportNotice(text)) {
+    return { durationMs: ROUTINE_NOTICE_MS, id: TURN_NOTICE_KEY, kind: 'info', message: text }
   }
 
   const isTtl = payload?.kind === 'ttl'
