@@ -128,6 +128,69 @@ pub fn saved_pick_applies(config: &crate::Config) -> bool {
     config.profile_model_applies || PICKED_HERE.lock().unwrap_or_else(|e| e.into_inner()).contains(&config.home)
 }
 
+/// What the desktop shows when ChatGPT is the saved pick but only the OpenAI API key could serve it.
+pub const CHATGPT_LOGIN_MISSING: &str =
+    "Your ChatGPT sign-in has expired or is missing; sign in again, or choose the OpenAI API key explicitly.";
+
+/// The profile's saved provider exactly as config.yaml spells it (`openai-codex`, `custom`, ...).
+fn saved_raw_provider(config: &crate::Config) -> Option<String> {
+    let dir = factr_base::factr_config::home().unwrap_or_else(|| PathBuf::from(&config.home));
+    std::fs::read_to_string(dir.join("config.yaml")).ok().and_then(|raw| parse_config(&raw).0)
+}
+
+/// The user's saved pick is ChatGPT (`openai-codex`) and new chats follow it. Cheap (no auth read):
+/// the gate in front of [`chatgpt_login_missing`]. Never true for an explicit `--model` start (a
+/// benchmark), whatever config.yaml says.
+pub fn chatgpt_saved_pick(config: &crate::Config) -> bool {
+    saved_pick_applies(config) && saved_raw_provider(config).is_some_and(|p| p.trim().eq_ignore_ascii_case("openai-codex"))
+}
+
+/// Whether a ChatGPT pick would be silently billed to the OpenAI API key: the engine's auth order
+/// (valid ChatGPT login, then API key, then an expired login) picks the key when there is no valid
+/// login. Only then; with a valid login, or with no key at all, nothing changes.
+pub fn chatgpt_pick_would_bill_api_key(chatgpt_saved_pick: bool, chatgpt_login_valid: bool, api_key_present: bool) -> bool {
+    chatgpt_saved_pick && !chatgpt_login_valid && api_key_present
+}
+
+/// [`chatgpt_pick_would_bill_api_key`] over the live credential state.
+pub fn chatgpt_login_missing(config: &crate::Config) -> bool {
+    if !chatgpt_saved_pick(config) {
+        return false;
+    }
+    let status = factr_base::auth::AuthStatus::check_fast();
+    let valid = factr_base::provider_catalog::resolve_login_provider_loose("openai")
+        .is_some_and(|d| status.state_for_provider(d) == factr_base::auth::AuthState::Available);
+    chatgpt_pick_would_bill_api_key(true, valid, factr_base::provider_catalog::load_api_key("OPENAI_API_KEY").is_some())
+}
+
+/// The OpenAI-compatible endpoint a saved `custom` / `local` pick names (`model.base_url`, written by
+/// the desktop's custom-endpoint onboarding), when config.yaml holds one.
+pub fn saved_custom_base_url(raw: &str) -> Option<String> {
+    let config = serde_yaml::from_str::<Value>(raw).unwrap_or(Value::Null);
+    let provider = config["model"]["provider"].as_str().map(str::trim).unwrap_or_default().to_ascii_lowercase();
+    if !matches!(provider.as_str(), "custom" | "local" | "openai-compatible" | "openai_compatible" | "compat") {
+        return None;
+    }
+    config["model"]["base_url"].as_str().map(str::trim).filter(|u| !u.is_empty()).map(str::to_owned)
+}
+
+/// Point the engine's OpenAI-compatible route at the saved custom endpoint (`FACTR_OPENAI_COMPAT_API_BASE`;
+/// a localhost endpoint then needs no key) and, when config.yaml names one, its key variable
+/// (`model.key_env`, a pointer, never the secret). Returns the base URL applied. Callers only use this
+/// when the saved pick is what runs: at boot when config.yaml chose the provider, and when a pick is
+/// saved in this run. Explicit `--provider` starts never reach it.
+pub fn apply_saved_custom_endpoint(home: &std::path::Path) -> Option<String> {
+    let raw = std::fs::read_to_string(home.join("config.yaml")).ok()?;
+    let base = saved_custom_base_url(&raw)?;
+    factr_base::env::set_var("FACTR_OPENAI_COMPAT_API_BASE", &base);
+    let config = serde_yaml::from_str::<Value>(&raw).unwrap_or(Value::Null);
+    match config["model"]["key_env"].as_str().map(str::trim).filter(|k| !k.is_empty()) {
+        Some(key_env) => factr_base::env::set_var("FACTR_OPENAI_COMPAT_API_KEY_NAME", key_env),
+        None => factr_base::env::remove_var("FACTR_OPENAI_COMPAT_API_KEY_NAME"),
+    }
+    Some(base)
+}
+
 /// How a new chat's model was pinned.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Pinned {
@@ -276,6 +339,29 @@ pub fn mcp_servers_body(raw: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::{effective_default, mcp_servers_body, parse_config, persona, persona_for, DEFAULT_PERSONA};
+
+    #[test]
+    fn the_chatgpt_guard_fires_only_for_a_chatgpt_pick_with_no_valid_login_and_a_key() {
+        use super::chatgpt_pick_would_bill_api_key as bills;
+        // (saved ChatGPT pick that applies, valid login, API key present) -> flagged
+        assert!(bills(true, false, true), "no valid login + key: the key would be billed");
+        assert!(!bills(true, true, true), "valid login wins in the engine's order");
+        assert!(!bills(true, false, false), "no key: nothing to bill silently");
+        assert!(!bills(false, false, true), "not a ChatGPT pick (or an explicit --model start)");
+        // The benchmark: explicit argv (pick does not apply), valid login, no key.
+        assert!(!bills(false, true, false));
+    }
+
+    #[test]
+    fn only_a_custom_or_local_pick_carries_its_base_url() {
+        use super::saved_custom_base_url as base;
+        assert_eq!(base("model:\n  provider: custom\n  default: m\n  base_url: http://127.0.0.1:8080/v1\n").as_deref(), Some("http://127.0.0.1:8080/v1"));
+        assert_eq!(base("model:\n  provider: local\n  base_url: ' http://h/v1 '\n").as_deref(), Some("http://h/v1"));
+        assert_eq!(base("model:\n  provider: openai-codex\n  base_url: http://h/v1\n"), None);
+        assert_eq!(base("model:\n  provider: huggingface\n  base_url: http://h/v1\n"), None);
+        assert_eq!(base("model:\n  provider: custom\n  base_url: ''\n"), None);
+        assert_eq!(base(""), None);
+    }
 
     #[test]
     fn a_headless_run_has_no_default_persona_but_honours_a_written_soul() {

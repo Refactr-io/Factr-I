@@ -687,6 +687,9 @@ pub fn clear_missing_login() {
     *MISSING_LOGIN.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
+/// `/api/status` `missing_login` on a fresh install: nothing saved, no credential anywhere.
+pub const NO_PROVIDER_CONNECTED: &str = "no AI provider is connected yet; sign in to a provider or add an API key";
+
 pub fn missing_login() -> Option<String> {
     MISSING_LOGIN.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
@@ -946,7 +949,7 @@ async fn handle(
                 // Why the last daily database backup failed (null: fine or not yet run).
                 "backup_error": factr_base::migrate::backup_error(),
                 // Why the provider has no login (null: it has one): a runner fails fast on this.
-                "missing_login": missing_login(),
+                "missing_login": missing_login().or_else(|| rpc::no_provider_connected(&config).then(|| NO_PROVIDER_CONNECTED.to_string())),
             });
             respond(&mut stream, "200 OK", &body).await
         }
@@ -1037,6 +1040,8 @@ async fn handle(
         // The same payload as the `model.options` RPC; the onboarding and model picker read it over HTTP.
         ("GET", "/api/model/options") => {
             let include_unconfigured = auth::query_param(req.query.as_deref().unwrap_or_default(), "include_unconfigured").is_some_and(|v| v == "1" || v == "true");
+            // A sign-in written since the last read (the onboarding's device-code login) must show here.
+            reload_if_credentials_moved(&config).await;
             respond(&mut stream, "200 OK", &rpc::model_options(&config, Vec::new(), include_unconfigured)).await
         }
         // The saved config: defaults beneath it, the profile's config.yaml on top (what a PUT wrote).
@@ -1497,6 +1502,12 @@ async fn handle(
                 oauth_credentials_moved(&OAUTH_SEEN, home); // first sight: take the baseline
             }
             let proxied = proxy_http(stream, &req, &features, false).await;
+            // A custom / local endpoint saved just now (`model.base_url`) is what the next chat calls.
+            if req.method == "POST" && path == "/api/model/set" && profile::saved_pick_applies(&config)
+                && let Some(home) = factr_base::factr_config::home()
+            {
+                profile::apply_saved_custom_endpoint(&home);
+            }
             let moved = factr_home.is_some_and(|home| oauth_credentials_moved(&OAUTH_SEEN, &home));
             if sets_key || moved {
                 let config = config.clone();

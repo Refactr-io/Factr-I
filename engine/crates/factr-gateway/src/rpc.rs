@@ -46,7 +46,35 @@ pub(crate) fn model_options(config: &Config, current_models: Vec<String>, includ
     if let Some(effort) = default_new_chat_effort(&provider) {
         options["reasoning_effort"] = json!(effort);
     }
+    if crate::profile::chatgpt_login_missing(config) {
+        options["chatgpt_login_missing"] = json!(true);
+        options["warning"] = json!(crate::profile::CHATGPT_LOGIN_MISSING);
+    }
     options
+}
+
+/// A fresh install: config.yaml saves no provider and no provider has a real credential (a keyless
+/// local endpoint such as Ollama does not count: nothing says it runs). With a login or key anywhere,
+/// or any saved pick, `false`; also for a start with an explicit `--model` (a runner or benchmark),
+/// whose missing login the engine reports itself.
+pub(crate) fn no_provider_connected(config: &Config) -> bool {
+    if !config.profile_model_applies {
+        return false;
+    }
+    let dir = factr_base::factr_config::home().unwrap_or_else(|| std::path::PathBuf::from(&config.home));
+    let saved = std::fs::read_to_string(dir.join("config.yaml")).ok().and_then(|raw| crate::profile::parse_config(&raw).0);
+    saved.is_none() && !provider_state::any_credential()
+}
+
+/// Whether a `session.create` lands on the ChatGPT route: no explicit model/provider (the saved pick),
+/// or an explicit one that resolves to the engine's `openai` (ChatGPT) provider.
+fn targets_chatgpt(p: &Value) -> bool {
+    let text = |key: &str| p[key].as_str().map(str::trim).filter(|v| !v.is_empty());
+    let provider = text("provider").or_else(|| text("model").and_then(factr_base::provider::provider_for_model));
+    match provider {
+        None => text("model").is_none(),
+        Some(provider) => factr_base::provider_catalog::resolve_login_provider_loose(provider).is_some_and(|d| d.id == "openai"),
+    }
 }
 
 /// What a new chat on `provider` runs at when the request names no effort.
@@ -1501,9 +1529,20 @@ impl Conn {
             }
             "setup.runtime_check" => {
                 crate::reload_if_credentials_moved(&self.config).await;
-                Ok(provider_state::runtime_check(&self.config.provider, &self.config.model, p["provider"].as_str().filter(|r| !r.is_empty())))
+                // The pick new chats start on (the saved one, else the startup model), not the boot model.
+                let (model, provider) = crate::profile::effective_default(&self.config);
+                let requested = p["provider"].as_str().filter(|r| !r.is_empty());
+                let mut check = provider_state::runtime_check(&provider, &model, requested);
+                if requested.is_none() && crate::profile::chatgpt_login_missing(&self.config) {
+                    check["ok"] = json!(false);
+                    check["reason"] = json!("chatgpt_login_missing");
+                    check["error"] = json!(crate::profile::CHATGPT_LOGIN_MISSING);
+                }
+                Ok(check)
             }
             "model.options" => {
+                // A sign-in that landed since the last probe (onboarding: reload.env, then this) must show.
+                crate::reload_if_credentials_moved(&self.config).await;
                 // The served provider's models come from the session's catalog when one is named.
                 let listed = match p["session_id"].as_str().filter(|s| !s.is_empty()) {
                     Some(id) => tokio::time::timeout(Duration::from_secs(3), self.call(json!({ "req": "list_models", "session_id": id }))).await.ok().and_then(Result::ok),
@@ -1884,6 +1923,24 @@ impl Conn {
             "gateway.capabilities" => Ok(json!({ "per_session_exclusive_submit": false })),
             "client.capabilities" => Ok(json!({ "server_requests": ["approval"] })),
             "session.create" => {
+                // ChatGPT picked, no valid ChatGPT login, an OpenAI API key present: the engine would
+                // bill the key. Say so and start nothing (an explicit pick of another route is not stopped).
+                if crate::profile::chatgpt_saved_pick(&self.config) && targets_chatgpt(p) {
+                    crate::reload_if_credentials_moved(&self.config).await;
+                    if crate::profile::chatgpt_login_missing(&self.config) {
+                        return Err(RpcError {
+                            code: -32001,
+                            message: crate::profile::CHATGPT_LOGIN_MISSING.into(),
+                            data: Some(json!({ "reason": "chatgpt_login_missing", "provider": "openai-codex" })),
+                        });
+                    }
+                }
+                // A saved custom / local endpoint (`model.base_url`) is what the OpenAI-compatible route serves.
+                if crate::profile::saved_pick_applies(&self.config)
+                    && let Some(home) = factr_base::factr_config::home()
+                {
+                    crate::profile::apply_saved_custom_endpoint(&home);
+                }
                 let profile = crate::profile::current();
                 let cwd = p["cwd"]
                     .as_str()
@@ -3309,6 +3366,9 @@ Reply ONLY with a single JSON object on one line:\n\
             .map_err(|_| RpcError::internal(anyhow!("the feature backend restarted; try again")))?;
         features.touch(method, "forwarded-rpc");
         if reply.get("error").is_none() && crate::changes_credentials(method) {
+            // The next readiness read must see the new credential, not the cached snapshot.
+            factr_base::auth::AuthStatus::invalidate_cache();
+            crate::reload_if_credentials_moved(&self.config).await;
             let (config, provider) = (self.config.clone(), params["provider"].as_str().map(str::to_string));
             tokio::spawn(async move { crate::notify_auth_changed(&config, provider.as_deref()).await });
         }
@@ -4326,6 +4386,113 @@ mod tests {
         assert_eq!((first["provider_configured"].clone(), first_check["ok"].clone()), (json!(false), json!(false)), "no login yet");
         assert_eq!(next["provider_configured"], true, "{next}");
         assert_eq!(next_check["ok"], true, "{next_check}");
+    }
+
+    /// A connection on a fresh Factr home (`FACTR_HOME` = `FACTR_CONFIG_HOME` = `<tmp>/factr`, env set
+    /// under ENV_LOCK by the caller), its config tweaked by `edit`.
+    fn conn_on_home(name: &str, edit: impl FnOnce(&mut Config)) -> (Arc<Conn>, std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let factr = dir.join("factr");
+        std::fs::create_dir_all(&factr).unwrap();
+        // SAFETY: env is only touched under ENV_LOCK.
+        unsafe {
+            std::env::set_var("FACTR_HOME", &factr);
+            std::env::set_var("FACTR_CONFIG_HOME", &factr);
+            std::env::remove_var("OPENAI_API_KEY");
+        }
+        crate::register_credentials();
+        let (mut config, home) = test_config(name);
+        edit(Arc::get_mut(&mut config).unwrap());
+        let observer = Observer::open(&home, "p", "m", None).unwrap();
+        let hub = Arc::new(Hub::default());
+        let (to_ws, _rx) = mpsc::channel::<Message>(8);
+        let client = Arc::new(Client { id: hub.next_client_id(), to_ws: to_ws.clone(), sessions: Mutex::new(Default::default()) });
+        factr_base::auth::AuthStatus::invalidate_cache();
+        (Conn::new(config, to_ws, hub, client, observer, false, "invoke_agent", None, None), dir, factr)
+    }
+
+    const FAKE_LOGIN_VALID: &str = r#"{"credential_pool":{"openai-codex":[{"auth_type":"oauth","access_token":"fake-access","refresh_token":"fake-refresh","expires_at":"2999-01-01T00:00:00Z"}]}}"#;
+    const FAKE_LOGIN_EXPIRED: &str = r#"{"credential_pool":{"openai-codex":[{"auth_type":"oauth","access_token":"fake-access","refresh_token":"fake-refresh","expires_at":"2001-01-01T00:00:00Z"}]}}"#;
+
+    fn restore_env(before: [(&str, Option<std::ffi::OsString>); 3]) {
+        for (k, v) in before {
+            // SAFETY: env is only touched under ENV_LOCK.
+            match v { Some(v) => unsafe { std::env::set_var(k, v) }, None => unsafe { std::env::remove_var(k) } }
+        }
+    }
+
+    fn env_before() -> [(&'static str, Option<std::ffi::OsString>); 3] {
+        ["FACTR_HOME", "FACTR_CONFIG_HOME", "OPENAI_API_KEY"].map(|k| (k, std::env::var_os(k)))
+    }
+
+    /// Audit B #3: the onboarding signs in, calls `reload.env`, then reads `model.options`. A ChatGPT
+    /// login written in between must show as authenticated on that very read.
+    #[tokio::test]
+    async fn model_options_see_a_sign_in_that_landed_since_the_last_read() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = env_before();
+        let (conn, dir, factr) = conn_on_home("opts-live", |_| {});
+        let openai = |o: &Value| o["providers"].as_array().unwrap().iter().any(|r| r["slug"] == "openai" && r["authenticated"] == true);
+        let first = conn.dispatch("model.options", &json!({})).await.unwrap();
+        std::fs::write(factr.join("auth.json"), FAKE_LOGIN_VALID).unwrap();
+        let next = conn.dispatch("model.options", &json!({})).await.unwrap();
+        restore_env(before);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!openai(&first), "no login yet: {first}");
+        assert!(openai(&next), "the new login shows: {next}");
+    }
+
+    /// Audit B #3: `setup.runtime_check` reports the pick new chats start on, not the boot model.
+    #[tokio::test]
+    async fn runtime_check_reports_the_picked_model_not_the_boot_model() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = env_before();
+        let (conn, dir, factr) = conn_on_home("check-pick", |c| {
+            c.provider = "OpenAI".into();
+            c.model = "boot-model".into();
+        });
+        std::fs::write(factr.join("auth.json"), FAKE_LOGIN_VALID).unwrap();
+        std::fs::write(factr.join("config.yaml"), "model:\n  provider: openai-codex\n  default: gpt-5.6-luna\n").unwrap();
+        let check = conn.dispatch("setup.runtime_check", &json!({})).await.unwrap();
+        restore_env(before);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!((check["model"].as_str(), check["provider"].as_str(), check["ok"].as_bool()), (Some("gpt-5.6-luna"), Some("openai"), Some(true)), "{check}");
+    }
+
+    /// Audit B #6: ChatGPT is the saved pick, there is no valid ChatGPT login, and an OpenAI API key
+    /// exists. The engine's auth order would bill the key; the gateway says so and starts no chat.
+    #[tokio::test]
+    async fn a_chatgpt_pick_without_a_valid_login_is_not_billed_to_the_api_key() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = env_before();
+        let (conn, dir, factr) = conn_on_home("chatgpt-guard", |c| {
+            c.provider = "OpenAI".into();
+            c.model = "gpt-6-luna".into();
+        });
+        std::fs::write(factr.join("config.yaml"), "model:\n  provider: openai-codex\n  default: gpt-6-luna\n").unwrap();
+        std::fs::write(factr.join("auth.json"), FAKE_LOGIN_EXPIRED).unwrap();
+        // SAFETY: env is only touched under ENV_LOCK.
+        unsafe { std::env::set_var("OPENAI_API_KEY", "sk-fake-test-only-0000") };
+        std::fs::write(factr.join(".env"), "OPENAI_API_KEY=sk-fake-test-only-0000\n").unwrap();
+        factr_base::auth::AuthStatus::invalidate_cache();
+        let created = conn.dispatch("session.create", &json!({})).await;
+        let check = conn.dispatch("setup.runtime_check", &json!({})).await.unwrap();
+        let options = conn.dispatch("model.options", &json!({})).await.unwrap();
+        // An explicit pick of the API-key route is the user's choice: not stopped.
+        let explicit_key = super::targets_chatgpt(&json!({ "provider": "openai-api", "model": "gpt-6-luna" }));
+        // A valid login again: nothing is flagged.
+        std::fs::write(factr.join("auth.json"), FAKE_LOGIN_VALID).unwrap();
+        factr_base::auth::AuthStatus::invalidate_cache();
+        let valid = crate::profile::chatgpt_login_missing(&conn.config);
+        restore_env(before);
+        let _ = std::fs::remove_dir_all(&dir);
+        let err = created.err().expect("no chat is started");
+        assert_eq!((err.code, err.message.as_str()), (-32001, crate::profile::CHATGPT_LOGIN_MISSING));
+        assert_eq!((check["ok"].as_bool(), check["reason"].as_str()), (Some(false), Some("chatgpt_login_missing")), "{check}");
+        assert_eq!(options["warning"], crate::profile::CHATGPT_LOGIN_MISSING, "{options}");
+        assert!(!explicit_key);
+        assert!(!valid, "a valid ChatGPT login is never flagged");
     }
 
     pub(super) fn test_conn(name: &str) -> Arc<Conn> {
