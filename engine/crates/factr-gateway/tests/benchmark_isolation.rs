@@ -108,6 +108,13 @@ async fn the_benchmark_start_resolves_as_on_main_whatever_config_yaml_says() {
         let options = get(port, "/api/model/options").await;
         task.abort();
         assert_eq!(status["missing_login"], Value::Null, "{name}: {status}");
+        // The same keys as on main: nothing added to the benchmark start's status.
+        let keys: Vec<&str> = status.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            ["auth_required", "backup_error", "deployment", "engine", "gateway_running", "gateway_state", "missing_login", "sha", "version"],
+            "{name}: {status}"
+        );
         assert_eq!((info["model"].as_str(), info["provider"].as_str()), (Some("gpt-6-luna"), Some("OpenAI")), "{name}: {info}");
         assert_eq!((options["model"].as_str(), options["provider"].as_str()), (Some("gpt-6-luna"), Some("OpenAI")), "{name}: {options}");
         let openai = options["providers"].as_array().unwrap().iter().find(|r| r["slug"] == "openai").cloned().unwrap_or_default();
@@ -126,6 +133,14 @@ async fn the_benchmark_start_resolves_as_on_main_whatever_config_yaml_says() {
     task.abort();
     assert_eq!(fresh["missing_login"].as_str(), Some(factr_gateway::NO_PROVIDER_CONNECTED), "{fresh}");
     assert_eq!(saved["missing_login"], Value::Null, "{saved}");
+
+    // An unsupported provider (the engine started on none) is the one case that adds `provider_error`.
+    let home = fresh_home(&root, "unsupported");
+    factr_gateway::profile::note_unsupported_provider("bogus-provider", true);
+    let (port, task) = serve(config(&home, "OpenAI", "gpt-6-luna", false)).await;
+    let unsupported = get(port, "/api/status").await;
+    task.abort();
+    assert!(unsupported["provider_error"].as_str().is_some_and(|m| m.contains("bogus-provider")), "{unsupported}");
 
     let _ = std::fs::remove_dir_all(&root);
 }

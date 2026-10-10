@@ -944,7 +944,7 @@ async fn handle(
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/api/health") => respond(&mut stream, "200 OK", &public).await,
         ("GET", "/api/status") => {
-            let body = json!({
+            let mut body = json!({
                 "version": config.version,
                 // The build this engine was compiled from; the desktop checks it against its bundle manifest.
                 "sha": build_sha(),
@@ -958,9 +958,12 @@ async fn handle(
                 "backup_error": factr_base::migrate::backup_error(),
                 // Why the provider has no login (null: it has one): a runner fails fast on this.
                 "missing_login": missing_login().or_else(|| rpc::no_provider_connected(&config).then(|| NO_PROVIDER_CONNECTED.to_string())),
-                // The configured provider is one the engine cannot serve (null: fine): choose another.
-                "provider_error": profile::provider_setup_error(),
             });
+            // The configured provider is one the engine cannot serve: choose another. Only present
+            // then, so every other start (a benchmark run among them) answers exactly as before.
+            if let Some(error) = profile::provider_setup_error() {
+                body["provider_error"] = json!(error);
+            }
             respond(&mut stream, "200 OK", &body).await
         }
         _ if !token_ok => {
