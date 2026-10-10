@@ -29,7 +29,7 @@ fn factr_knows(d: LoginProviderDescriptor) -> bool {
 /// for an engine catalog id: a different spelling for the few that differ, `None` for an engine
 /// provider the runtime has no route for (chats can still use it, but it cannot be saved as a
 /// default there), and any other id unchanged.
-pub(crate) fn runtime_provider_id(id: &str) -> Option<&str> {
+pub fn runtime_provider_id(id: &str) -> Option<&str> {
     match id.trim().to_ascii_lowercase().as_str() {
         "openai" => Some("openai-codex"),
         "claude" | "anthropic-api" => Some("anthropic"),
@@ -47,7 +47,7 @@ pub(crate) fn runtime_provider_id(id: &str) -> Option<&str> {
 /// can read the saved default too. The engine's `openai` covers the ChatGPT login and an API key; with
 /// only a key it is the runtime's `openai-api`. An engine-only provider keeps its engine id (the runtime
 /// has no route for it either way). The engine reads every one of these back (catalog aliases), at boot too.
-pub(crate) fn runtime_saved_provider(id: &str) -> String {
+pub fn runtime_saved_provider(id: &str) -> String {
     if id.trim().eq_ignore_ascii_case("openai") {
         let status = AuthStatus::check_fast();
         let chatgpt = resolve_login_provider_loose("openai").is_some_and(|d| has_login(d, &status));
@@ -55,9 +55,11 @@ pub(crate) fn runtime_saved_provider(id: &str) -> String {
             return "openai-api".to_string();
         }
     }
-    // `gemini-api` stays: the runtime's `gemini` boots the engine's Gemini CLI runtime instead.
+    // Not the runtime's `gemini`: read back, the engine boots its Gemini CLI runtime for that id.
+    // `google-ai-studio` is the API-key route in both: the runtime's alias of its `gemini` (AI Studio)
+    // and the engine's alias of `gemini-api`.
     if id.trim().eq_ignore_ascii_case("gemini-api") {
-        return id.to_string();
+        return "google-ai-studio".to_string();
     }
     runtime_provider_id(id).unwrap_or(id).to_string()
 }
@@ -207,14 +209,36 @@ fn other_configured(provider: &str) -> bool {
 }
 
 pub(super) fn setup_status(provider: &str) -> Value {
+    // The engine started without a provider (the configured one is unsupported): not configured, and why.
+    if let Some(error) = crate::profile::provider_setup_error() {
+        return json!({
+            "provider_configured": false, "ready": true,
+            "other_providers": other_configured(provider), "inference_provider": provider, "error": error,
+        });
+    }
     json!({
         "provider_configured": configured(provider), "ready": true,
         "other_providers": other_configured(provider), "inference_provider": provider,
     })
 }
 
+/// Any provider has a usable credential (a login, or a key for one that needs a key). A keyless
+/// local endpoint (LM Studio, Ollama) does not count: it is not something the user signed in to.
+pub fn any_provider_configured() -> bool {
+    let status = AuthStatus::check_fast();
+    offered().iter().any(|d| match d.target {
+        LoginProviderTarget::OpenAiCompatible(p) => p.requires_api_key && load_api_key(p.api_key_env).is_some(),
+        _ => authenticated(*d, &status),
+    })
+}
+
 /// `requested`: an explicit provider to check strictly, else the served one.
 pub(super) fn runtime_check(provider: &str, model: &str, requested: Option<&str>) -> Value {
+    if requested.is_none()
+        && let Some(error) = crate::profile::provider_setup_error()
+    {
+        return json!({ "ok": false, "provider": provider, "model": model, "source": "engine", "error": error });
+    }
     let (provider, model) = match requested {
         Some(r) if resolve_login_provider_loose(r).map(|d| d.id) != resolve_login_provider_loose(provider).map(|d| d.id) => {
             (r, resolve_login_provider_loose(r).and_then(default_model).unwrap_or(model))
@@ -366,8 +390,8 @@ mod tests {
             assert_eq!(runtime_saved_provider("Claude"), "anthropic");
             assert_eq!(runtime_saved_provider("groq"), "groq", "engine-only: kept, the runtime cannot use it anyway");
             // Every id written here resolves to the engine provider it came from.
-            assert_eq!(runtime_saved_provider("gemini-api"), "gemini-api");
-            for (saved, engine) in [("openai-codex", "openai"), ("openai-api", "openai-api"), ("anthropic", "claude"), ("muse", "meta-muse")] {
+            assert_eq!(runtime_saved_provider("gemini-api"), "google-ai-studio");
+            for (saved, engine) in [("openai-codex", "openai"), ("openai-api", "openai-api"), ("anthropic", "claude"), ("muse", "meta-muse"), ("google-ai-studio", "gemini-api")] {
                 assert_eq!(resolve_login_provider_loose(saved).map(|d| d.id), Some(engine), "{saved}");
             }
         });
@@ -516,6 +540,48 @@ mod tests {
                 assert_eq!(runtime_check(label, "m", None)["ok"], true, "{label} with {var}");
                 std::fs::remove_file(env).unwrap();
             }
+        });
+    }
+
+    #[test]
+    fn an_unsupported_saved_provider_is_reported_until_another_is_picked() {
+        isolated(|| {
+            let home = std::path::Path::new(&std::env::var("FACTR_CONFIG_HOME").unwrap()).to_path_buf();
+            let saved = "model:\n  provider: kimi-coding-cn\n  default: kimi-k2\nunknown_key: kept\n";
+            std::fs::write(home.join("config.yaml"), saved).unwrap();
+            // Something else is signed in: still not "configured", and never served in its place.
+            std::fs::write(home.join(".env"), "OPENAI_API_KEY=test-key\n").unwrap();
+            crate::profile::note_unsupported_provider("kimi-coding-cn", false);
+            let status = setup_status("kimi-coding-cn");
+            assert_eq!(status["provider_configured"], false);
+            let error = status["error"].as_str().unwrap();
+            assert!(error.contains("`kimi-coding-cn`") && error.contains("Settings"), "{error}");
+            let check = runtime_check("kimi-coding-cn", "m", None);
+            assert_eq!((check["ok"].clone(), check["error"].as_str()), (json!(false), Some(error)));
+            // Checking a provider the user is choosing is unaffected.
+            assert_eq!(runtime_check("kimi-coding-cn", "m", Some("openai"))["ok"], true);
+            assert_eq!(std::fs::read_to_string(home.join("config.yaml")).unwrap(), saved, "the saved file is untouched");
+            // The user picks another provider (config.yaml changes): the error is gone.
+            std::fs::write(home.join("config.yaml"), "model:\n  provider: openai-codex\n  default: gpt-5.5\n").unwrap();
+            assert_eq!(crate::profile::provider_setup_error(), None);
+            assert!(setup_status("openai").get("error").is_none());
+            // An unknown FACTR_PROVIDER reads the same way.
+            crate::profile::note_unsupported_provider("bogus", true);
+            assert!(setup_status("bogus")["error"].as_str().unwrap().contains("FACTR_PROVIDER"));
+            crate::profile::clear_unsupported_provider();
+        });
+    }
+
+    #[test]
+    fn only_a_credential_counts_as_configured_not_a_keyless_local_endpoint() {
+        isolated(|| {
+            assert!(!any_provider_configured(), "fresh home: LM Studio / Ollama need no key but are not sign-ins");
+            let env = std::path::Path::new(&std::env::var("FACTR_CONFIG_HOME").unwrap()).join(".env");
+            std::fs::write(&env, "GROQ_API_KEY=test-key\n").unwrap();
+            assert!(any_provider_configured());
+            std::fs::write(&env, "ANTHROPIC_API_KEY=test-key\n").unwrap();
+            assert!(any_provider_configured());
+            std::fs::remove_file(env).unwrap();
         });
     }
 

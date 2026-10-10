@@ -27,6 +27,9 @@ pub mod profile;
 mod rewind;
 mod undo;
 mod rpc;
+pub use rpc::{any_provider_configured, runtime_provider_id, runtime_saved_provider};
+/// The auto chain's local-Ollama step, for the binary that probes the server.
+pub use factr_provider_core::selection::{PREFERRED_LOCAL_OLLAMA_MODEL, auto_local_ollama_model, pick_local_ollama_model};
 mod sessions_rest;
 mod surface_sessions;
 mod skill_slash;
@@ -914,6 +917,8 @@ async fn handle(
                 "backup_error": factr_base::migrate::backup_error(),
                 // Why the provider has no login (null: it has one): a runner fails fast on this.
                 "missing_login": missing_login(),
+                // The configured provider is one the engine cannot serve (null: fine): choose another.
+                "provider_error": profile::provider_setup_error(),
             });
             respond(&mut stream, "200 OK", &body).await
         }

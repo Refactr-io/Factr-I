@@ -156,6 +156,10 @@ where
         set(route(model, provider)).await?;
         return Ok(Pinned::On { model: model.to_string(), provider: provider.map(str::to_owned) });
     }
+    // Started without a provider (the configured one is unsupported): never a default of our choosing.
+    if let Some(error) = provider_setup_error() {
+        anyhow::bail!(error);
+    }
     let (model, provider) = effective_default(config);
     let error = match set(route(&model, Some(&provider))).await {
         Ok(()) => return Ok(Pinned::On { model, provider: Some(provider) }),
@@ -168,6 +172,53 @@ where
         .await
         .map_err(|startup| anyhow::anyhow!("the saved model {model} failed ({error:#}) and so did the startup model {}: {startup:#}", config.model))?;
     Ok(Pinned::FellBack { wanted: model, error: format!("{error:#}"), model: config.model.clone(), provider: config.provider.clone() })
+}
+
+/// A provider the engine was told to start on (config.yaml's `model.provider`, or `FACTR_PROVIDER`)
+/// that it cannot serve. The engine still starts so the UI is reachable, but serves no provider of
+/// its own choosing: new chats without an explicit model are refused with this message until the user
+/// picks another provider (config.yaml's provider changes). The file itself is never rewritten here.
+struct UnsupportedProvider {
+    message: String,
+    /// config.yaml's `model.provider` when it was noted: the error lasts while the file still says this.
+    saved_at_boot: Option<String>,
+}
+
+static UNSUPPORTED_PROVIDER: std::sync::Mutex<Option<UnsupportedProvider>> = std::sync::Mutex::new(None);
+
+fn saved_provider() -> Option<String> {
+    let home = factr_base::factr_config::home()?;
+    parse_config(&std::fs::read_to_string(home.join("config.yaml")).ok()?).0
+}
+
+/// The readable error for a provider the engine cannot serve. `from_env`: it came from `FACTR_PROVIDER`
+/// rather than config.yaml. Printed once to stderr as well.
+pub fn note_unsupported_provider(value: &str, from_env: bool) {
+    let message = if from_env {
+        format!("FACTR_PROVIDER is set to `{value}`, which the Factr-I engine does not support; no provider was started. Unset it or choose another provider in Settings.")
+    } else {
+        format!("The saved provider `{value}` (config.yaml model.provider) is not supported by the Factr-I engine; no provider was started. Choose another provider in Settings.")
+    };
+    eprintln!("factr: warning: {message}");
+    *UNSUPPORTED_PROVIDER.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some(UnsupportedProvider { message, saved_at_boot: saved_provider() });
+}
+
+/// `Some(message)` while the engine runs without a provider because the one it was told to use is
+/// unsupported. Clears itself once config.yaml names another provider (the user picked one).
+pub fn provider_setup_error() -> Option<String> {
+    let mut slot = UNSUPPORTED_PROVIDER.lock().unwrap_or_else(|e| e.into_inner());
+    let unsupported = slot.as_ref()?;
+    if saved_provider() != unsupported.saved_at_boot {
+        *slot = None;
+        return None;
+    }
+    Some(unsupported.message.clone())
+}
+
+#[cfg(test)]
+pub(crate) fn clear_unsupported_provider() {
+    *UNSUPPORTED_PROVIDER.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 /// What the profile may fill in at boot.
@@ -447,6 +498,24 @@ mod tests {
         // a startup model that fails too is an error, not a third guess
         let (_, set) = engine(&["sol", "luna"]);
         assert!(super::pin_new_chat_model(&config, &serde_json::json!({}), set).await.is_err());
+        unsafe { std::env::remove_var("FACTR_CONFIG_HOME") };
+    }
+
+    #[tokio::test]
+    async fn without_a_served_provider_a_new_chat_is_refused_unless_it_names_its_model() {
+        let (config, dir) = with_home("pin-unsupported", |dir| (config_in(dir, false), dir.to_path_buf()));
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::set_var("FACTR_CONFIG_HOME", &dir) };
+        std::fs::write(dir.join("config.yaml"), "model:\n  default: k2\n  provider: tencent-tokenhub\n").unwrap();
+        super::note_unsupported_provider("tencent-tokenhub", false);
+        let (seen, set) = engine(&[]);
+        let err = super::pin_new_chat_model(&config, &serde_json::json!({}), set).await.unwrap_err();
+        assert!(format!("{err:#}").contains("tencent-tokenhub"), "{err:#}");
+        assert!(seen.lock().unwrap().is_empty(), "no model of the engine's choosing is set");
+        let (_, set) = engine(&[]);
+        let params = serde_json::json!({ "model": "gpt-5.6-terra", "provider": "openai" });
+        assert!(super::pin_new_chat_model(&config, &params, set).await.is_ok(), "an explicit pick is the user's");
+        super::clear_unsupported_provider();
         unsafe { std::env::remove_var("FACTR_CONFIG_HOME") };
     }
 
