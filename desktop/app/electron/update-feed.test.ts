@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { compareSemver, createUpdateFeed, parseSemver, RELEASES_PAGE_URL } from './update-feed'
+import { compareSemver, createUpdateFeed, parseSemver, RELEASES_PAGE_URL, serverWaitMs } from './update-feed'
 
 const release = (over: Record<string, unknown> = {}) => ({
   tag_name: 'v0.2.0',
@@ -11,9 +11,9 @@ const release = (over: Record<string, unknown> = {}) => ({
   ...over
 })
 
-const reply = (status: number, body: unknown = {}, etag: string | null = null) => ({
+const reply = (status: number, body: unknown = {}, etag: string | null = null, extra: Record<string, string> = {}) => ({
   status,
-  headers: { get: (n: string) => (n.toLowerCase() === 'etag' ? etag : null) },
+  headers: { get: (n: string) => (n.toLowerCase() === 'etag' ? etag : (extra[n.toLowerCase()] ?? null)) },
   json: async () => body
 })
 
@@ -86,6 +86,7 @@ describe('update feed check', () => {
     const limited = await feed.check()
 
     expect(limited).toMatchObject({ error: 'check-failed', updateAvailable: true })
+    advance(16 * 60_000)
     const offline = await feed.check()
 
     expect(offline).toMatchObject({ error: 'check-failed', message: 'offline' })
@@ -124,6 +125,53 @@ describe('update feed check', () => {
     expect(f).toHaveBeenCalledTimes(1)
     advance(31_000)
     await feed.check({ force: true })
+    expect(f).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('update feed backoff', () => {
+  const headers = (h: Record<string, string>) => ({ get: (n: string) => h[n.toLowerCase()] ?? null })
+
+  it('reads Retry-After seconds or date, and the rate-limit reset when nothing is left', () => {
+    const now = Date.parse('2026-10-10T12:00:00Z')
+
+    expect(serverWaitMs(headers({ 'retry-after': '120' }), now)).toBe(120_000)
+    expect(serverWaitMs(headers({ 'retry-after': 'Sat, 10 Oct 2026 12:05:00 GMT' }), now)).toBe(300_000)
+    expect(serverWaitMs(headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(now / 1000 + 600) }), now)).toBe(600_000)
+    expect(serverWaitMs(headers({ 'x-ratelimit-remaining': '12', 'x-ratelimit-reset': String(now / 1000 + 600) }), now)).toBe(0)
+    expect(serverWaitMs(headers({ 'retry-after': '999999999' }), now)).toBe(24 * 3600_000)
+    expect(serverWaitMs(headers({ 'retry-after': 'soon' }), now)).toBe(0)
+    expect(serverWaitMs(headers({}), now)).toBe(0)
+  })
+
+  it('does not ask again right after a failure, then retries after the backoff', async () => {
+    const f = vi.fn()
+    f.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(reply(200, release(), 'e'))
+    const { feed, advance } = setup('0.1.0', f)
+
+    expect(await feed.check()).toMatchObject({ error: 'check-failed' })
+    expect(await feed.check()).toMatchObject({ error: 'check-failed' })
+    advance(60_000)
+    expect(await feed.check()).toMatchObject({ error: 'check-failed' })
+    expect(f).toHaveBeenCalledTimes(1)
+
+    // A forced check (the user pressing "Check now") may retry after the 30 s floor.
+    expect(await feed.check({ force: true })).toMatchObject({ updateAvailable: true })
+    expect(f).toHaveBeenCalledTimes(2)
+    expect((await feed.check()).error).toBeUndefined()
+  })
+
+  it('honours the server wait even for forced checks', async () => {
+    const f = vi.fn()
+    f.mockResolvedValueOnce(reply(429, {}, null, { 'retry-after': '3600' })).mockResolvedValueOnce(reply(200, release()))
+    const { feed, advance } = setup('0.1.0', f)
+
+    expect(await feed.check()).toMatchObject({ message: 'GitHub rate limit reached.' })
+    advance(30 * 60_000)
+    await feed.check({ force: true })
+    expect(f).toHaveBeenCalledTimes(1)
+    advance(31 * 60_000)
+    expect(await feed.check({ force: true })).toMatchObject({ updateAvailable: true })
     expect(f).toHaveBeenCalledTimes(2)
   })
 })

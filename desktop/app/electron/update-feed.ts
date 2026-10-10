@@ -12,6 +12,10 @@ export const RELEASES_PAGE_URL = `${RELEASE_URL_PREFIX}releases/latest`
 
 const MIN_INTERVAL_MS = 6 * 60 * 60 * 1000
 const FORCE_FLOOR_MS = 30 * 1000
+// After a failed check, wait this long before asking again (a forced check: FORCE_FLOOR_MS),
+// or longer when GitHub says when to come back.
+const FAIL_BACKOFF_MS = 15 * 60 * 1000
+const MAX_SERVER_WAIT_MS = 24 * 60 * 60 * 1000
 const TIMEOUT_MS = 8000
 const NOTES_MAX = 2000
 
@@ -97,6 +101,35 @@ export function compareSemver(a: Semver, b: Semver): number {
   return 0
 }
 
+/**
+ * How long GitHub asked us to wait, in ms (0 when it did not say): `Retry-After` (seconds or an
+ * HTTP date), else `x-ratelimit-reset` (epoch seconds) when `x-ratelimit-remaining` is 0. Capped at 24 h.
+ */
+export function serverWaitMs(headers: { get: (name: string) => string | null }, nowMs: number): number {
+  const clamp = (ms: number) => (Number.isFinite(ms) && ms > 0 ? Math.min(ms, MAX_SERVER_WAIT_MS) : 0)
+  const retryAfter = headers.get('retry-after')?.trim()
+
+  if (retryAfter) {
+    if (/^\d+$/.test(retryAfter)) {
+      return clamp(Number(retryAfter) * 1000)
+    }
+
+    const at = Date.parse(retryAfter)
+
+    if (!Number.isNaN(at)) {
+      return clamp(at - nowMs)
+    }
+  }
+
+  const reset = headers.get('x-ratelimit-reset')?.trim()
+
+  if (reset && /^\d+$/.test(reset) && headers.get('x-ratelimit-remaining')?.trim() === '0') {
+    return clamp(Number(reset) * 1000 - nowMs)
+  }
+
+  return 0
+}
+
 export function isReleaseUrl(url: unknown): url is string {
   return typeof url === 'string' && url.startsWith(RELEASE_URL_PREFIX)
 }
@@ -106,6 +139,11 @@ export function createUpdateFeed(deps: FeedDeps) {
   let etag: string | null = null
   let last: FeedStatus | null = null
   let lastAt = 0
+  // The most recent failed check, kept until a check succeeds: repeated calls (renderer polls,
+  // window focus) return it instead of hitting GitHub again until the backoff has passed.
+  let failure: FeedStatus | null = null
+  let failedAt = 0
+  let retryAt = 0
 
   const base = (extra: Partial<FeedStatus>): FeedStatus => ({
     supported: true,
@@ -115,13 +153,30 @@ export function createUpdateFeed(deps: FeedDeps) {
     ...extra
   })
 
-  const fail = (message: string): FeedStatus =>
-    last ? { ...last, error: 'check-failed', message } : base({ error: 'check-failed', message })
+  const fail = (message: string, waitMs = 0): FeedStatus => {
+    failedAt = now()
+    retryAt = failedAt + waitMs
+    failure = last ? { ...last, error: 'check-failed', message } : base({ error: 'check-failed', message })
+
+    return failure
+  }
+
+  const succeeded = () => {
+    failure = null
+    retryAt = 0
+  }
 
   async function check({ force = false }: { force?: boolean } = {}): Promise<FeedStatus> {
-    const age = now() - lastAt
+    const t = now()
 
-    if (last && !last.error && age < (force ? FORCE_FLOOR_MS : MIN_INTERVAL_MS)) {
+    // A server-requested wait binds forced checks too; otherwise back off after any failure.
+    if (failure && (t < retryAt || t - failedAt < (force ? FORCE_FLOOR_MS : FAIL_BACKOFF_MS))) {
+      return failure
+    }
+
+    const age = t - lastAt
+
+    if (last && !failure && age < (force ? FORCE_FLOOR_MS : MIN_INTERVAL_MS)) {
       return last
     }
 
@@ -149,6 +204,7 @@ export function createUpdateFeed(deps: FeedDeps) {
     }
 
     if (res.status === 304 && last) {
+      succeeded()
       lastAt = now()
       last = { ...last, fetchedAt: lastAt }
 
@@ -158,6 +214,7 @@ export function createUpdateFeed(deps: FeedDeps) {
     if (res.status === 404) {
       // No release published yet: nothing to offer, not an error.
       etag = null
+      succeeded()
       lastAt = now()
       last = base({})
 
@@ -165,7 +222,10 @@ export function createUpdateFeed(deps: FeedDeps) {
     }
 
     if (res.status !== 200) {
-      return fail(res.status === 403 || res.status === 429 ? 'GitHub rate limit reached.' : `GitHub returned ${res.status}.`)
+      return fail(
+        res.status === 403 || res.status === 429 ? 'GitHub rate limit reached.' : `GitHub returned ${res.status}.`,
+        serverWaitMs(res.headers, now())
+      )
     }
 
     let body: Record<string, unknown>
@@ -177,6 +237,7 @@ export function createUpdateFeed(deps: FeedDeps) {
     }
 
     etag = res.headers.get('etag')
+    succeeded()
     lastAt = now()
 
     const latest = parseSemver(body?.tag_name)
