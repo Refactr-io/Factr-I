@@ -60,6 +60,29 @@ pub fn auto_default_provider(availability: ProviderAvailability) -> ActiveProvid
     }
 }
 
+/// The Ollama model `serve` starts on when no model was named: [`PREFERRED_LOCAL_OLLAMA_MODEL`] when
+/// installed, else the first model the server lists (`None`: it lists none).
+pub const PREFERRED_LOCAL_OLLAMA_MODEL: &str = "qwen3.8:27b";
+
+pub fn pick_local_ollama_model(installed: &[String]) -> Option<String> {
+    installed
+        .iter()
+        .find(|m| m.as_str() == PREFERRED_LOCAL_OLLAMA_MODEL)
+        .or_else(|| installed.first())
+        .cloned()
+}
+
+/// The last step of the auto chain, after [`auto_default_provider`] would fall through to its
+/// credential-less `Claude`: a convenience default to a local Ollama server, taken ONLY when nothing is
+/// configured (no explicit or saved provider or model) and nothing is signed in, and the server lists
+/// at least one model. `None` keeps today's behaviour.
+pub fn auto_local_ollama_model(anything_configured: bool, installed: &[String]) -> Option<String> {
+    if anything_configured {
+        return None;
+    }
+    pick_local_ollama_model(installed)
+}
+
 pub fn parse_provider_hint(value: &str) -> Option<ActiveProvider> {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" | "anthropic" => Some(ActiveProvider::Claude),
@@ -373,6 +396,18 @@ pub fn fallback_sequence(active: ActiveProvider) -> Vec<ActiveProvider> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_local_ollama_default_only_applies_when_nothing_is_configured() {
+        let models = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        let installed = models(&["llama3:8b", "qwen3.8:27b"]);
+        assert_eq!(auto_local_ollama_model(false, &installed).as_deref(), Some("qwen3.8:27b"), "preferred when installed");
+        assert_eq!(auto_local_ollama_model(false, &models(&["llama3:8b", "phi4"])).as_deref(), Some("llama3:8b"), "else the first");
+        assert_eq!(auto_local_ollama_model(false, &[]), None, "a server with no models is not a default");
+        assert_eq!(auto_local_ollama_model(true, &installed), None, "a credential or saved provider always wins");
+        // The credential chain itself is unchanged: with nothing available it still ends at Claude.
+        assert_eq!(auto_default_provider(ProviderAvailability::default()), ActiveProvider::Claude);
+    }
 
     #[test]
     fn parses_provider_hints() {
