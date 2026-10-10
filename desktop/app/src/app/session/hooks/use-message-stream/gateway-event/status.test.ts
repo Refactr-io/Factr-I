@@ -88,4 +88,43 @@ describe('gateway `error` event → error card + toast', () => {
     expect(toast.message).toBe(serverCopy)
     expect(toast.detail).toBeUndefined()
   })
+
+  it('reads a raw provider 401 dump as a plain sentence and keeps the tidied dump as detail', () => {
+    const raw = [
+      'OpenAI-compatible chat request failed',
+      '  endpoint: https://api.example.com/v1/chat/completions',
+      '  model: gpt-x',
+      '  auth: api key',
+      '  status: 401 Unauthorized',
+      '  response: {"error":{"message":"Incorrect API key provided: sk-stub"}}',
+      'Hint: check network connectivity, DNS/TLS, that the base URL includes the API version (usually /v1), and that the model exists on the provider.'
+    ].join('\n')
+
+    const { ctx, failAssistantMessage } = errorContext(raw)
+
+    handleStatusEvent(ctx)
+
+    expect(failAssistantMessage).toHaveBeenCalledWith(
+      'sess-1',
+      raw,
+      1_700_000_100,
+      expect.objectContaining({ code: 'provider_key_rejected' })
+    )
+    const toast = $notifications.get()[0]
+    expect(toast.message).toMatch(/^The provider rejected the key or login\./)
+    expect(toast.message).not.toMatch(/endpoint|response|sk-stub|Hint/)
+    expect(toast.detail).toContain('status: 401 Unauthorized')
+    expect(toast.detail).not.toMatch(/Hint:/)
+  })
+
+  it('never makes an HTML body the toast message', () => {
+    const raw = 'chat request failed\n  status: 418\n  response: <html><body>teapot</body></html>'
+    const { ctx } = errorContext(raw)
+
+    handleStatusEvent(ctx)
+
+    const toast = $notifications.get()[0]
+    expect(toast.message).not.toMatch(/<html|teapot/)
+    expect(toast.detail).toContain('<html>')
+  })
 })

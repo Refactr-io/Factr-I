@@ -4179,6 +4179,30 @@ export const en: Translations = {
         streaming: 'The connection dropped before the reply finished. Retry to send it again.'
       },
       errorCodes: {
+        no_provider: {
+          title: 'No AI provider is connected yet',
+          body: 'Open Settings > Providers (or sign in) to choose one.'
+        },
+        provider_key_rejected: {
+          title: 'The provider rejected the key or login',
+          body: 'Check the key or sign in again in Settings > Providers, then send your message again.'
+        },
+        provider_model_missing: {
+          title: 'The provider does not have this model',
+          body: 'Choose another model, then send your message again.'
+        },
+        provider_model_not_installed: {
+          title: 'The provider does not have this model',
+          body: 'Check that the model is installed on your local server (for Ollama: ollama pull <model>), or choose another model.'
+        },
+        provider_rate_limited: {
+          title: 'Rate limited, retrying',
+          body: provider => `${provider} is limiting requests. Factr-I retries on its own; wait a moment.`
+        },
+        provider_server_error: {
+          title: 'The provider had a server error',
+          body: provider => `${provider} returned a server error. Retry in a moment or switch provider.`
+        },
         auth: {
           title: provider => `${provider} rejected your sign-in`,
           body: provider =>
@@ -4304,6 +4328,7 @@ export const en: Translations = {
       errorOpenFactrFolder: 'Open Factr-I folder',
       errorOpenFactrFolderFailed: 'Could not open the Factr-I folder',
       errorUpdateApiKey: 'Update API key',
+      errorOpenProviders: 'Open Providers',
       errorSignInAgain: provider => `Sign in to ${provider} again`,
       errorOauthExpired: provider =>
         `Your ${provider} sign-in has expired or was revoked. Sign in again to keep chatting.`,

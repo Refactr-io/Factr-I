@@ -49,7 +49,15 @@ export const ERROR_CODE_KEYS = [
   'empty_response',
   'loop_error',
   'SESSION_NOT_OWNED',
-  'disk_full'
+  'disk_full',
+  // Read by the desktop from raw engine error text when no descriptor came with it
+  // (lib/provider-error-display.ts): display-only, the engine never sends these.
+  'no_provider',
+  'provider_key_rejected',
+  'provider_model_missing',
+  'provider_model_not_installed',
+  'provider_rate_limited',
+  'provider_server_error'
 ] as const
 
 export type ErrorCodeKey = (typeof ERROR_CODE_KEYS)[number]
@@ -229,6 +237,8 @@ export interface ErrorRecoveryPlan {
   openFactrFolder: boolean
   /** Settings → Keys deep link (auth, api_key). */
   updateApiKey: boolean
+  /** Settings → Providers deep link (no provider connected yet). */
+  openProviders: boolean
   /** Re-run the provider's OAuth sign-in (auth, oauth). */
   signInAgain: boolean
   /** Open the live session model menu (switches THIS session); Settings → Models deep link fallback when no chat surface
@@ -250,6 +260,10 @@ const CODE_PLANS: Partial<Record<ErrorCodeKey, Partial<ErrorRecoveryPlan>>> = {
   disk_full: { openFactrFolder: true, retry: true },
   loop_error: { startNewSession: true },
   model_not_found: { chooseModel: true, retry: false },
+  no_provider: { openProviders: true, retry: false },
+  provider_key_rejected: { retry: false },
+  provider_model_missing: { chooseModel: true, retry: false },
+  provider_model_not_installed: { chooseModel: true, retry: false },
   payload_too_large: { compress: true, retry: false, startNewSession: true }
 }
 
@@ -262,6 +276,7 @@ export function errorRecoveryPlan(surface: ErrorSurface | null | undefined): Err
     compress: false,
     editMessage: false,
     openFactrFolder: false,
+    openProviders: false,
     // Retry re-runs the failed prompt in place. Suppressed when the classifier
     // says the failure is deterministic — except for a credential rejection,
     // where fixing the credential changes the outcome and Retry is the

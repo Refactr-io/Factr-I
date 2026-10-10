@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest'
+
+import { TRANSLATIONS } from '@/i18n'
+
+import { errorRecoveryPlan } from './error-surface'
+import { errorCardText } from './error-surface-copy'
+import { inferErrorSurface, isRawProviderDump, providerErrorStatus, tidyErrorDetails } from './provider-error-display'
+
+const thread = TRANSLATIONS.en.assistant.thread
+
+const dump = (endpoint: string, status: string, hint: string) =>
+  [
+    'OpenAI-compatible chat request failed',
+    `  endpoint: ${endpoint}`,
+    '  model: stub-model',
+    '  auth: api key',
+    `  status: ${status}`,
+    '  response: {"error":{"message":"x"}}',
+    hint
+  ].join('\n')
+
+const LOCAL_HINT =
+  'Local endpoint hint: make sure the server is running, the base URL includes /v1, the selected model is loaded, and the server supports streaming POST /chat/completions.'
+
+const REMOTE_HINT = 'Hint: check network connectivity, DNS/TLS, that the base URL includes the API version (usually /v1).'
+
+const title = (raw: string) => errorCardText(thread, inferErrorSurface(raw)).title
+const body = (raw: string) => errorCardText(thread, inferErrorSurface(raw)).body
+
+describe('no provider configured', () => {
+  const raw =
+    'Claude credentials not available. Run `factr login claude` first. (retried after reloading auth from disk: Claude credentials not available. Run `factr login claude` first.)'
+
+  it('reads as a plain "connect a provider" card with a Providers link and no Retry', () => {
+    expect(title(raw)).toBe('No AI provider is connected yet')
+    expect(body(raw)).toBe('Open Settings > Providers (or sign in) to choose one.')
+    const plan = errorRecoveryPlan(inferErrorSurface(raw))
+    expect(plan.openProviders).toBe(true)
+    expect(plan.retry).toBe(false)
+  })
+
+  it('collapses the repeated "retried after reloading" text in Details', () => {
+    expect(tidyErrorDetails(raw)).toBe('Claude credentials not available. Run `factr login claude` first.')
+  })
+
+  it('keeps a retry that failed differently', () => {
+    const different = 'A failed (retried after reloading auth from disk: B failed)'
+    expect(tidyErrorDetails(different)).toBe(different)
+  })
+})
+
+describe('provider HTTP status', () => {
+  it('401: the provider rejected the key or login, without the local-endpoint hint', () => {
+    const raw = dump('http://127.0.0.1:8080/v1/chat/completions', '401 Unauthorized', LOCAL_HINT)
+    expect(title(raw)).toBe('The provider rejected the key or login')
+    expect(tidyErrorDetails(raw)).not.toMatch(/Local endpoint hint/)
+    expect(tidyErrorDetails(raw)).toContain('status: 401 Unauthorized')
+  })
+
+  it('404 on a remote provider: the provider does not have this model', () => {
+    const raw = dump('https://api.example.com/v1/chat/completions', '404 Not Found', REMOTE_HINT)
+    expect(title(raw)).toBe('The provider does not have this model')
+    expect(body(raw)).not.toMatch(/install|ollama/i)
+    expect(errorRecoveryPlan(inferErrorSurface(raw)).chooseModel).toBe(true)
+    expect(tidyErrorDetails(raw)).not.toMatch(/Hint:/)
+  })
+
+  it('404 on a local endpoint keeps a short "is the model installed" hint', () => {
+    const raw = dump('http://localhost:11434/v1/chat/completions', '404 Not Found', LOCAL_HINT)
+    expect(title(raw)).toBe('The provider does not have this model')
+    expect(body(raw)).toMatch(/installed on your local server/)
+    expect(tidyErrorDetails(raw)).toContain('Local endpoint hint')
+  })
+
+  it('429: rate limited, retrying', () => {
+    expect(title(dump('https://api.example.com/v1', '429 Too Many Requests', ''))).toBe('Rate limited, retrying')
+  })
+
+  it.each(['500 Internal Server Error', '502 Bad Gateway', '503 Service Unavailable'])('%s: a server error', status => {
+    const raw = dump('https://api.example.com/v1', status, '')
+    expect(title(raw)).toBe('The provider had a server error')
+    expect(errorRecoveryPlan(inferErrorSurface(raw)).retry).toBe(true)
+  })
+
+  it('reads other status spellings', () => {
+    expect(providerErrorStatus('Anthropic API error (401 Unauthorized): invalid x-api-key')).toBe(401)
+    expect(providerErrorStatus('model request: HTTP 429')).toBe(429)
+  })
+
+  it('does not read a status from text that is not about a provider call', () => {
+    expect(inferErrorSurface('HTTP 404: session not found')).toBeNull()
+    expect(inferErrorSurface('Something unrelated happened')).toBeNull()
+  })
+})
+
+describe('raw dumps', () => {
+  it('flags response bodies and HTML, not plain sentences', () => {
+    expect(isRawProviderDump('x\n  response: {"a":1}')).toBe(true)
+    expect(isRawProviderDump('<html>Internal Server Error upstream</html>')).toBe(true)
+    expect(isRawProviderDump('Factr could not start the assistant for this chat.')).toBe(false)
+  })
+})

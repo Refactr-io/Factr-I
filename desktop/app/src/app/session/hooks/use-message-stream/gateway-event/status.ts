@@ -5,6 +5,7 @@ import { textPart } from '@/lib/chat-messages'
 import { coerceGatewayText } from '@/lib/chat-runtime'
 import type { ErrorSurface } from '@/lib/error-surface'
 import { errorCardText } from '@/lib/error-surface-copy'
+import { inferErrorSurface, isRawProviderDump, tidyErrorDetails } from '@/lib/provider-error-display'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import { type AgentNoticePayload, clearAgentNotice, nativeNoticeInput, showAgentNotice } from '@/store/agent-notices'
 import { clearClarifyRequest } from '@/store/clarify'
@@ -192,11 +193,14 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
     // as a classified turn: a live-owner refusal (SESSION_NOT_OWNED, #106217)
     // is deterministic — Retry hits the same wall, only a new chat helps —
     // and disk-full is a machine problem, not a provider one.
+    // A raw provider/engine error (no provider connected, HTTP 401/404/429/5xx) is
+    // read the same way the inline card reads it, so the toast leads with the plain
+    // sentence and keeps the raw text as its detail (display only).
     const surface: ErrorSurface | null = isSessionNotOwnedError(new Error(errorMessage))
       ? { code: 'SESSION_NOT_OWNED', layer: 'gateway', retryable: false }
       : isDiskFullErrorMessage(errorMessage)
         ? { code: 'disk_full', layer: 'disk', retryable: false }
-        : null
+        : inferErrorSurface(errorMessage)
 
     // When a code was recovered, the glossed card sentence explains it better
     // than the raw refusal. When none was, the server's own text IS the plain
@@ -204,7 +208,11 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
     // pre-turn failures — agent init, resume, cancelled-before-ready), and
     // burying it under a generic "couldn't finish" gloss would hide the one
     // instruction the user needs.
-    const card = surface ? errorCardText(TRANSLATIONS[getRuntimeI18nLocale()].assistant.thread, surface) : null
+    // A raw dump (endpoint block, response body, HTML) is never the main line: it
+    // falls back to the generic sentence with the dump as the detail.
+    const rawDump = !surface && isRawProviderDump(errorMessage)
+    const thread = TRANSLATIONS[getRuntimeI18nLocale()].assistant.thread
+    const card = surface || rawDump ? errorCardText(thread, surface) : null
     const toastMessage = card ? `${card.title}. ${card.body}` : errorMessage
 
     // A turn that errors out has also ended — drop any open blocking prompt
@@ -245,7 +253,7 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
       // No Retry action: assistant-ui's reload is per-thread, and for the
       // codes recovered above a retry would fail identically anyway.
       notify({
-        detail: surface ? errorMessage : undefined,
+        detail: card ? tidyErrorDetails(errorMessage) : undefined,
         id: `gateway-error:${errorMessage}`,
         kind: 'error',
         message: toastMessage,
