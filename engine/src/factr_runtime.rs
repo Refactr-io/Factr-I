@@ -46,7 +46,7 @@ pub enum ProviderChoice {
         alias = "moonshot-coding"
     )]
     Kimi,
-    #[value(alias = "302.ai")]
+    #[value(alias = "302.ai", alias = "302ai")]
     Ai302,
     Baseten,
     #[value(alias = "conifer-api")]
@@ -58,9 +58,9 @@ pub enum ProviderChoice {
     #[value(alias = "fpt-ai", alias = "fptcloud", alias = "fpt-cloud")]
     Fpt,
     Firmware,
-    #[value(alias = "hugging-face", alias = "hf")]
+    #[value(alias = "hugging-face", alias = "hf", alias = "huggingface")]
     HuggingFace,
-    #[value(alias = "moonshot")]
+    #[value(alias = "moonshot", alias = "moonshotai")]
     MoonshotAi,
     Nebius,
     Scaleway,
@@ -70,7 +70,7 @@ pub enum ProviderChoice {
     Mistral,
     #[value(alias = "pplx")]
     Perplexity,
-    #[value(alias = "together", alias = "together-ai")]
+    #[value(alias = "together", alias = "together-ai", alias = "togetherai")]
     TogetherAi,
     #[value(alias = "deep-infra")]
     Deepinfra,
@@ -429,40 +429,171 @@ async fn init_provider_for_serve(
     Ok(provider)
 }
 
+/// What `serve` starts on, before any provider is built.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartupResolution {
+    pub provider: ProviderChoice,
+    pub model: Option<String>,
+    /// A config.yaml provider that names one of Factr's provider profiles (`FACTR_NAMED_PROVIDER_PROFILE`).
+    pub named_profile: Option<String>,
+    /// Becomes `Config::profile_model_applies` (see `profile::boot_pick`).
+    pub profile_model_applies: bool,
+    /// config.yaml's provider when the engine cannot serve it: it starts on none rather than another.
+    pub unsupported: Option<String>,
+}
+
+/// Boot precedence: an explicit `--provider`/`--model` (or FACTR_*) outranks what config.yaml holds;
+/// the profile only fills what the flags left absent (see `profile::boot_pick`). A saved provider id
+/// the parser does not know is resolved through the login catalog (ids, aliases, display names); one
+/// that still does not resolve is reported as `unsupported`, never replaced by another provider.
+pub fn resolve_startup(
+    cli: ProviderChoice,
+    model: Option<&str>,
+    profile: &factr_gateway::profile::ProfileDefaults,
+    is_named_profile: impl Fn(&str) -> bool,
+) -> StartupResolution {
+    // An explicit `--provider` is not overridden by a profile that only says "auto"; that profile's
+    // model belongs to its own provider, so it is not borrowed either.
+    let cli_explicit = !matches!(cli, ProviderChoice::Auto);
+    let boot = factr_gateway::profile::boot_pick(cli_explicit, model, profile);
+    let mut resolution = StartupResolution {
+        provider: cli,
+        model: boot.model.map(str::to_owned),
+        named_profile: None,
+        profile_model_applies: boot.profile_model_applies,
+        unsupported: None,
+    };
+    // A bare `--model` names its own provider: derived from the model id, never from config.yaml.
+    if let Some(choice) = boot.model_provider.and_then(|name| ProviderChoice::from_str(name, true).ok()) {
+        resolution.provider = choice;
+    }
+    if let Some(provider) = boot.profile_provider {
+        match ProviderChoice::from_str(provider, true) {
+            Ok(choice) => resolution.provider = choice,
+            Err(_) if is_named_profile(provider) => {
+                resolution.named_profile = Some(provider.to_string());
+                resolution.provider = ProviderChoice::OpenaiCompatible;
+            }
+            Err(_) => match loose_provider_choice(provider) {
+                Some(choice) => resolution.provider = choice,
+                None => resolution.unsupported = Some(provider.to_string()),
+            },
+        }
+    }
+    resolution
+}
+
+/// A provider id, alias or display name the login catalog knows, as the engine's choice.
+pub fn loose_provider_choice(value: &str) -> Option<ProviderChoice> {
+    ProviderChoice::from_str(value, true).ok().or_else(|| {
+        crate::provider_catalog::resolve_login_provider_loose(value)
+            .and_then(|d| ProviderChoice::from_str(d.id, true).ok())
+    })
+}
+
+/// The local Ollama server: `OLLAMA_HOST` (`host`, `host:port` or a URL; a bind-all host means this
+/// machine), else `http://127.0.0.1:11434`.
+pub fn ollama_base_url() -> String {
+    ollama_base_url_from(std::env::var("OLLAMA_HOST").ok().as_deref())
+}
+
+fn ollama_base_url_from(host: Option<&str>) -> String {
+    let host = host.map(str::trim).filter(|h| !h.is_empty()).unwrap_or("127.0.0.1:11434");
+    let (scheme, rest) = match host.split_once("://") {
+        Some((scheme, rest)) => (scheme, rest),
+        None => ("http", host),
+    };
+    let rest = rest.trim_end_matches('/');
+    let (name, port) = match rest.rsplit_once(':') {
+        Some((name, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => (name, port),
+        _ => (rest, "11434"),
+    };
+    let name = match name {
+        "" | "0.0.0.0" | "[::]" | "::" => "127.0.0.1",
+        other => other,
+    };
+    format!("{scheme}://{name}:{port}")
+}
+
+/// The models a local Ollama lists (`GET /api/tags`), within a short timeout. `None`: not reachable.
+pub async fn local_ollama_models(base_url: &str) -> Option<Vec<String>> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_millis(300))
+        .timeout(std::time::Duration::from_millis(1500))
+        .no_proxy()
+        .build()
+        .ok()?;
+    let body: serde_json::Value = client
+        .get(format!("{}/api/tags", base_url.trim_end_matches('/')))
+        .send()
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    Some(
+        body["models"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|m| m["name"].as_str().or_else(|| m["model"].as_str()))
+            .map(str::to_owned)
+            .collect(),
+    )
+}
+
 pub async fn run_gateway(
     provider_choice: &ProviderChoice,
     model: Option<&str>,
     host: &str,
     port: u16,
     allow_remote: bool,
+    unsupported_env: Option<&str>,
 ) -> Result<()> {
     // Before any provider is built: the Factr login must be readable by the startup init.
     factr_gateway::register_credentials();
     let profile_defaults = factr_gateway::profile::current();
-    let mut effective_provider = *provider_choice;
-    // An explicit `--provider` (the desktop passes one when it finds local
-    // Ollama) is not overridden by a profile that only says "auto"; that
-    // profile's model belongs to its own provider, so it is not borrowed either.
-    let cli_explicit = !matches!(provider_choice, ProviderChoice::Auto);
-    // An explicit --provider/--model (or FACTR_*) outranks what config.yaml holds; the profile only
-    // fills what the flags left absent (see `profile::boot_pick`).
-    let boot = factr_gateway::profile::boot_pick(cli_explicit, model, &profile_defaults);
-    let profile_provider = boot.profile_provider;
-    // A bare `--model` names its own provider: derived from the model id, never from config.yaml.
-    if let Some(choice) = boot.model_provider.and_then(|name| ProviderChoice::from_str(name, true).ok()) {
-        effective_provider = choice;
+    let resolved = resolve_startup(*provider_choice, model, &profile_defaults, |name| {
+        crate::config::config().providers.contains_key(name)
+    });
+    if let Some(name) = &resolved.named_profile {
+        crate::env::set_var("FACTR_NAMED_PROVIDER_PROFILE", name);
     }
-    if let Some(provider) = profile_provider {
-        effective_provider = match ProviderChoice::from_str(provider, true) {
-            Ok(choice) => choice,
-            Err(_) if crate::config::config().providers.contains_key(provider) => {
-                crate::env::set_var("FACTR_NAMED_PROVIDER_PROFILE", provider);
-                ProviderChoice::OpenaiCompatible
-            }
-            Err(_) => {
-                anyhow::bail!("Factr profile selects unsupported engine provider `{provider}`")
-            }
+    // A provider the engine cannot serve (an unknown FACTR_PROVIDER, or a saved one): start so the UI
+    // is reachable, but on no provider of our choosing; the gateway reports why (see `profile`).
+    let unsupported = match (unsupported_env, &resolved.unsupported) {
+        (Some(value), _) => Some((value.to_string(), true)),
+        (None, Some(value)) => Some((value.clone(), false)),
+        (None, None) => None,
+    };
+    if let Some((value, from_env)) = &unsupported {
+        factr_gateway::profile::note_unsupported_provider(value, *from_env);
+    }
+    let mut effective_provider = resolved.provider;
+    // Nothing is served for an unsupported provider, so no model is claimed for it either.
+    let mut effective_model = resolved.model.clone().filter(|_| unsupported.is_none());
+    // The last step of the auto chain: nothing configured, nothing signed in, a local Ollama with models.
+    if unsupported.is_none()
+        && matches!(effective_provider, ProviderChoice::Auto)
+        && effective_model.is_none()
+        && profile_defaults.provider.is_none()
+        && std::env::var_os("FACTR_PROVIDER").is_none()
+        && std::env::var_os("FACTR_NAMED_PROVIDER_PROFILE").is_none()
+        && crate::config::config().provider.default_provider.is_none()
+    {
+        let anything_configured = factr_gateway::any_provider_configured();
+        let installed = if anything_configured {
+            Vec::new()
+        } else {
+            local_ollama_models(&ollama_base_url()).await.unwrap_or_default()
         };
+        if let Some(model) = factr_gateway::auto_local_ollama_model(anything_configured, &installed) {
+            eprintln!("factr: no provider configured or signed in; using local Ollama ({model})");
+            effective_provider = ProviderChoice::Ollama;
+            effective_model = Some(model);
+        }
     }
     if matches!(effective_provider, ProviderChoice::OpenaiCompatible)
         && std::env::var_os("FACTR_NAMED_PROVIDER_PROFILE").is_none()
@@ -476,7 +607,7 @@ pub async fn run_gateway(
         // details and credentials for the selected OpenAI-compatible transport.
         crate::env::set_var("FACTR_NAMED_PROVIDER_PROFILE", provider);
     }
-    let effective_model = boot.model;
+    let effective_model = effective_model.as_deref();
     let socket =
         crate::storage::runtime_dir().join(format!("factr-{}.sock", std::process::id()));
     server::set_socket_path(&socket.to_string_lossy());
@@ -507,7 +638,26 @@ pub async fn run_gateway(
     if matches!(effective_provider, ProviderChoice::Ollama)
         || std::env::var("FACTR_PROVIDER").ok().as_deref() == Some("ollama")
     {
-        let base = effective_model.unwrap_or("qwen3.8:27b");
+        // `--provider ollama` without `--model`: the preferred default when installed, else an
+        // installed model; a server listing none is said plainly (the warm below then fails).
+        let picked = match effective_model {
+            Some(_) => None,
+            None => match local_ollama_models(&ollama_base_url()).await {
+                Some(installed) if installed.is_empty() => {
+                    eprintln!(
+                        "factr: error: Ollama at {} has no models installed; run `ollama pull {}` or pass --model",
+                        ollama_base_url(),
+                        factr_gateway::PREFERRED_LOCAL_OLLAMA_MODEL
+                    );
+                    None
+                }
+                Some(installed) => factr_gateway::pick_local_ollama_model(&installed),
+                None => None,
+            },
+        };
+        let base = effective_model
+            .or(picked.as_deref())
+            .unwrap_or(factr_gateway::PREFERRED_LOCAL_OLLAMA_MODEL);
         match warm_ollama_serving_context(base).await {
             Some(alias) => {
                 serve_model = Some(alias);
@@ -519,11 +669,16 @@ pub async fn run_gateway(
     }
     // A provider with no key yet must not stop the gateway: the desktop needs it
     // up to show key setup, and a saved key hot-initialises via auth-changed.
-    let provider = match init_provider_for_serve(effective_provider, serve_model.as_deref()).await {
-        Ok(provider) => provider,
-        Err(err) => {
-            eprintln!("factr: model provider not ready ({err:#}); serving until a key is added");
-            Arc::new(provider::MultiProvider::new_fast())
+    let provider = if unsupported.is_some() {
+        // The same not-ready state; new chats are refused until a provider is chosen (see `profile`).
+        Arc::new(provider::MultiProvider::new_fast())
+    } else {
+        match init_provider_for_serve(effective_provider, serve_model.as_deref()).await {
+            Ok(provider) => provider,
+            Err(err) => {
+                eprintln!("factr: model provider not ready ({err:#}); serving until a key is added");
+                Arc::new(provider::MultiProvider::new_fast())
+            }
         }
     };
     // Catalog enrichment (GET /api/ps) only runs on fetch_models. Until then
@@ -550,7 +705,11 @@ pub async fn run_gateway(
     // the fallback: before the account's catalog loads it can answer the provider's catalog default
     // (gpt-6-astra) for a model that was set explicitly (gpt-5.6-luna).
     let provider_model = serve_model.clone().filter(|m| !m.trim().is_empty()).unwrap_or_else(|| provider.model());
-    let provider_name = served_provider_label(effective_provider, provider.name());
+    let provider_name = match &unsupported {
+        // Reported as the provider the user configured, never the stand-in's name.
+        Some((value, _)) => value.clone(),
+        None => served_provider_label(effective_provider, provider.name()),
+    };
     let refine_provider = provider.clone();
     let startup_model = provider_model.clone();
     let complete: factr_gateway::Complete =
@@ -602,7 +761,7 @@ pub async fn run_gateway(
             provider: provider_name,
             model: provider_model,
             reasoning_efforts,
-            profile_model_applies: boot.profile_model_applies,
+            profile_model_applies: resolved.profile_model_applies,
             home: crate::storage::factr_dir()?.to_string_lossy().into_owned(),
             complete: Some(complete),
             features: features.clone(),
@@ -912,6 +1071,264 @@ mod tests {
         ] {
             assert_eq!(ProviderChoice::from_str(saved, true), Ok(engine), "{saved}");
         }
+    }
+
+    /// `run_gateway`'s provider resolution exactly as it was before `resolve_startup` (main 8aa455d),
+    /// kept verbatim as the baseline the isolation tests compare against. `Err`: the old engine exited.
+    fn legacy_resolution(
+        provider_choice: ProviderChoice,
+        model: Option<&str>,
+        profile_defaults: &factr_gateway::profile::ProfileDefaults,
+        is_named_profile: impl Fn(&str) -> bool,
+    ) -> anyhow::Result<(ProviderChoice, Option<String>, Option<String>, bool)> {
+        let mut named = None;
+        let mut effective_provider = provider_choice;
+        let cli_explicit = !matches!(provider_choice, ProviderChoice::Auto);
+        let boot = factr_gateway::profile::boot_pick(cli_explicit, model, profile_defaults);
+        let profile_provider = boot.profile_provider;
+        if let Some(choice) = boot.model_provider.and_then(|name| ProviderChoice::from_str(name, true).ok()) {
+            effective_provider = choice;
+        }
+        if let Some(provider) = profile_provider {
+            effective_provider = match ProviderChoice::from_str(provider, true) {
+                Ok(choice) => choice,
+                Err(_) if is_named_profile(provider) => {
+                    named = Some(provider.to_string());
+                    ProviderChoice::OpenaiCompatible
+                }
+                Err(_) => {
+                    anyhow::bail!("Factr profile selects unsupported engine provider `{provider}`")
+                }
+            };
+        }
+        Ok((effective_provider, boot.model.map(str::to_owned), named, boot.profile_model_applies))
+    }
+
+    fn saved(provider: Option<&str>, model: Option<&str>) -> factr_gateway::profile::ProfileDefaults {
+        factr_gateway::profile::ProfileDefaults {
+            provider: provider.map(str::to_owned),
+            model: model.map(str::to_owned),
+            ..Default::default()
+        }
+    }
+
+    /// The scored benchmarks ran `--provider openai --model gpt-6-luna serve ...`. Whatever config.yaml
+    /// holds, the resolved provider, model, named profile and model-follow flag are what the old engine
+    /// resolved, and nothing is reported unsupported.
+    #[test]
+    fn the_benchmark_argv_resolves_exactly_as_before_under_any_config_yaml() {
+        let profiles = [
+            saved(None, None),
+            saved(Some("openai-codex"), Some("gpt-6-astra")),
+            saved(Some("openai-codex"), None),
+            saved(Some("huggingface"), Some("some/model")),
+            saved(Some("garbage-provider"), Some("x")),
+            saved(Some("anthropic"), Some("claude-fable-5")),
+            saved(Some("auto"), Some("cloud-model")),
+            saved(Some("ollama"), Some("qwen3.8:27b")),
+            saved(None, Some("gpt-5.6-sol")),
+        ];
+        for profile in &profiles {
+            for named in [false, true] {
+                let is_named = |_: &str| named;
+                let old = legacy_resolution(ProviderChoice::Openai, Some("gpt-6-luna"), profile, is_named).unwrap();
+                let new = resolve_startup(ProviderChoice::Openai, Some("gpt-6-luna"), profile, is_named);
+                assert_eq!(
+                    (new.provider, new.model.clone(), new.named_profile.clone(), new.profile_model_applies),
+                    old,
+                    "{profile:?}"
+                );
+                assert_eq!(new.provider, ProviderChoice::Openai);
+                assert_eq!(new.model.as_deref(), Some("gpt-6-luna"));
+                assert_eq!(new.unsupported, None);
+            }
+        }
+    }
+
+    /// Off the benchmark path too, every case the old engine started on resolves the same; only the
+    /// cases where it exited now start, on no provider, with the saved id reported.
+    #[test]
+    fn resolution_only_differs_where_the_old_engine_exited() {
+        let providers = [None, Some("openai-codex"), Some("anthropic"), Some("auto"), Some("ollama"), Some("my-profile"),
+            Some("huggingface"), Some("kimi-coding-cn"), Some("azure-foundry"), Some("garbage")];
+        let models = [None, Some("gpt-5.6-sol"), Some("local-model")];
+        let clis = [ProviderChoice::Auto, ProviderChoice::Openai, ProviderChoice::Ollama, ProviderChoice::Claude];
+        for p in providers {
+            for m in models {
+                let profile = saved(p, m);
+                for cli in clis {
+                    for cli_model in [None, Some("gpt-6-luna")] {
+                        let is_named = |name: &str| name == "my-profile";
+                        let new = resolve_startup(cli, cli_model, &profile, is_named);
+                        match legacy_resolution(cli, cli_model, &profile, is_named) {
+                            Ok(old) => {
+                                // huggingface: the old engine could not parse its own id; the only
+                                // other change is that it now does (see the aliases on ProviderChoice).
+                                if p == Some("huggingface") && old.0 != new.provider {
+                                    panic!("huggingface parsed by the old engine too: {old:?}");
+                                }
+                                assert_eq!((new.provider, new.model.clone(), new.named_profile.clone(), new.profile_model_applies), old, "{cli:?} {cli_model:?} {profile:?}");
+                                assert_eq!(new.unsupported, None);
+                            }
+                            Err(_) => {
+                                let id = p.unwrap();
+                                if id == "huggingface" {
+                                    assert_eq!(new.provider, ProviderChoice::HuggingFace);
+                                    assert_eq!(new.unsupported, None);
+                                } else {
+                                    assert_eq!(new.unsupported.as_deref(), Some(id), "{cli:?} {profile:?}");
+                                    assert_eq!(new.provider, cli, "never another provider");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Audit A: every id in backend/factr_backend/auth.py `_REGISTRY_ROWS` can land in config.yaml's
+    /// `model.provider`. The engine starts on each: on that provider when it serves it, otherwise on
+    /// none, with the id reported (it never exits and never picks another provider).
+    #[test]
+    fn every_provider_id_the_python_runtime_can_save_starts_the_engine_without_another_provider() {
+        let python_ids = [
+            "openai-codex", "openai-api", "qwen-oauth", "lmstudio", "copilot", "gemini", "zai",
+            "kimi-coding", "kimi-coding-cn", "stepfun", "arcee", "gmi", "actual", "minimax",
+            "anthropic", "alibaba", "alibaba-coding-plan", "minimax-cn", "deepseek", "xai", "nvidia",
+            "ai-gateway", "opencode-zen", "opencode-go", "kilocode", "huggingface", "xiaomi",
+            "tencent-tokenhub", "tencent-tokenplan", "ollama-cloud", "bedrock", "vertex", "azure-foundry",
+        ];
+        let mut unsupported = Vec::new();
+        for id in python_ids {
+            let r = resolve_startup(ProviderChoice::Auto, None, &saved(Some(id), Some("m")), |_| false);
+            match r.unsupported {
+                Some(u) => {
+                    assert_eq!(u, id);
+                    assert_eq!(r.provider, ProviderChoice::Auto, "{id}: no provider of the engine's choosing is resolved");
+                    unsupported.push(id);
+                }
+                None => assert_ne!(r.provider, ProviderChoice::Auto, "{id}"),
+            }
+        }
+        eprintln!("saved ids the engine starts without a provider on: {unsupported:?}");
+        assert!(!unsupported.contains(&"huggingface"), "the engine's own provider");
+    }
+
+    /// Every id the engine itself saves in config.yaml (`config.set model` -> `runtime_saved_provider`)
+    /// reads back as the same engine provider at the next boot.
+    #[test]
+    fn every_provider_id_the_engine_saves_reads_back_as_the_same_provider() {
+        let _lock = crate::storage::lock_test_env();
+        for choice in ProviderChoice::value_variants().iter().copied().filter(|c| *c != ProviderChoice::Auto) {
+            let saved_id = factr_gateway::runtime_saved_provider(choice.as_arg_value());
+            let back = loose_provider_choice(&saved_id);
+            // `openai-api` is the API-key half of the engine's `openai`; both are the same served route.
+            let same = back == Some(choice)
+                || (choice == ProviderChoice::Openai && back == Some(ProviderChoice::OpenaiApi))
+                || (choice == ProviderChoice::AnthropicApi && back == Some(ProviderChoice::Claude));
+            assert!(same, "{:?} saved as `{saved_id}` reads back as {back:?}", choice);
+        }
+    }
+
+    /// The Python runtime's provider ids and aliases (registry rows, `_PROVIDER_ALIASES`, model-provider
+    /// plugin names and aliases), read from its source.
+    fn python_provider_ids() -> std::collections::BTreeSet<String> {
+        let backend = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../backend");
+        let quoted = |text: &str| -> Vec<String> {
+            text.split('"').skip(1).step_by(2).map(str::to_owned).collect()
+        };
+        let mut ids: std::collections::BTreeSet<String> = ["openrouter", "custom", "auto"].map(str::to_owned).into();
+        let auth = std::fs::read_to_string(backend.join("factr_backend/auth.py")).unwrap();
+        let rows = &auth[auth.find("_REGISTRY_ROWS: Tuple").unwrap()..auth.find("PROVIDER_REGISTRY: Dict").unwrap()];
+        let mut after_config = false;
+        for line in rows.lines().map(str::trim) {
+            if let Some(rest) = line.strip_prefix("(\"").or_else(|| line.split_once("ProviderConfig(\"").map(|(_, r)| r)) {
+                ids.insert(rest.split('"').next().unwrap().to_owned());
+            } else if after_config && line.starts_with('"') {
+                ids.insert(quoted(line)[0].clone());
+            }
+            after_config = line.ends_with("ProviderConfig(");
+        }
+        let aliases = &auth[auth.find("_PROVIDER_ALIASES: Dict").unwrap()..];
+        ids.extend(quoted(&aliases[..aliases.find('}').unwrap()]));
+        for plugin in std::fs::read_dir(backend.join("plugins/model-providers")).unwrap().flatten() {
+            let Ok(src) = std::fs::read_to_string(plugin.path().join("__init__.py")) else { continue };
+            for part in src.split("name=\"").skip(1) {
+                ids.insert(part.split('"').next().unwrap().to_owned());
+            }
+            for part in src.split("aliases=(").skip(1) {
+                ids.extend(quoted(&part[..part.find(')').unwrap_or(part.len())]));
+            }
+        }
+        ids
+    }
+
+    /// Requirement C: every provider id the engine writes into config.yaml parses in the Python
+    /// runtime too. The engine-only providers (no route in the runtime: `runtime_provider_id` is
+    /// `None`, the model picker marks them not settable) are the one listed exception.
+    #[test]
+    fn every_provider_id_the_engine_saves_parses_in_the_python_runtime() {
+        let _lock = crate::storage::lock_test_env();
+        let python = python_provider_ids();
+        assert!(python.contains("openai-codex") && python.contains("huggingface") && python.contains("google-ai-studio"), "{python:?}");
+        let mut engine_only = Vec::new();
+        for choice in ProviderChoice::value_variants().iter().copied().filter(|c| *c != ProviderChoice::Auto) {
+            let id = choice.as_arg_value();
+            let saved_id = factr_gateway::runtime_saved_provider(id);
+            if python.contains(saved_id.to_ascii_lowercase().as_str()) {
+                continue;
+            }
+            assert!(
+                factr_gateway::runtime_provider_id(id).is_none(),
+                "the engine saves `{saved_id}` for {choice:?}, which the Python runtime does not parse"
+            );
+            engine_only.push(saved_id);
+        }
+        eprintln!("engine-only providers saved under their engine id: {engine_only:?}");
+    }
+
+    #[test]
+    fn ollama_host_is_read_like_ollama_reads_it() {
+        assert_eq!(ollama_base_url_from(None), "http://127.0.0.1:11434");
+        assert_eq!(ollama_base_url_from(Some("")), "http://127.0.0.1:11434");
+        assert_eq!(ollama_base_url_from(Some("0.0.0.0")), "http://127.0.0.1:11434");
+        assert_eq!(ollama_base_url_from(Some("0.0.0.0:12000")), "http://127.0.0.1:12000");
+        assert_eq!(ollama_base_url_from(Some("10.0.0.8:11500")), "http://10.0.0.8:11500");
+        assert_eq!(ollama_base_url_from(Some("https://box.local/")), "https://box.local:11434");
+        assert_eq!(ollama_base_url_from(Some("http://box.local:9/")), "http://box.local:9");
+    }
+
+    /// A stub Ollama on a random port (never the real one): one canned reply per connection.
+    async fn stub_ollama(body: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let reply = format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                let _ = socket.write_all(reply.as_bytes()).await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn the_ollama_probe_lists_installed_models_and_is_none_when_unreachable() {
+        let url = stub_ollama(r#"{"models":[{"name":"llama3:8b"},{"name":"qwen3.8:27b"}]}"#).await;
+        let models = local_ollama_models(&url).await.unwrap();
+        assert_eq!(models, ["llama3:8b", "qwen3.8:27b"]);
+        assert_eq!(factr_gateway::auto_local_ollama_model(false, &models).as_deref(), Some("qwen3.8:27b"));
+        assert_eq!(factr_gateway::auto_local_ollama_model(true, &models), None);
+        let empty = stub_ollama(r#"{"models":[]}"#).await;
+        assert_eq!(local_ollama_models(&empty).await, Some(Vec::new()));
+        // A port nothing listens on: unreachable, quickly.
+        let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap().local_addr().unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(local_ollama_models(&format!("http://{closed}")).await, None);
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
     }
 
     #[test]
