@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { buildTimeIso } from './utils.mjs'
+
 /** `{version, sha}` from the binary's own `__version`; null when it can't run here (cross-arch, old build). */
 export function probeEngine(binary, exec = execFileSync) {
   try {
@@ -18,7 +20,7 @@ export function probeEngine(binary, exec = execFileSync) {
   }
 }
 
-export function buildManifest({ engine, stage, desktopVersion, builtAt = new Date().toISOString() }) {
+export function buildManifest({ engine, stage, desktopVersion, builtAt = buildTimeIso() }) {
   const body = {
     schema: 1,
     builtAt,

@@ -30,7 +30,7 @@ import { mkdirSync, writeFileSync } from "fs"
 import { resolve, join, relative } from "path"
 import { execSync } from "child_process"
 
-import { isMain } from "./utils.mjs"
+import { buildTimeIso, isMain } from "./utils.mjs"
 
 const STAMP_SCHEMA_VERSION = 1
 
@@ -153,7 +153,7 @@ function main() {
     schemaVersion: STAMP_SCHEMA_VERSION,
     commit: stamp.commit,
     branch: stamp.branch,
-    builtAt: new Date().toISOString(),
+    builtAt: buildTimeIso(),
     dirty: stamp.dirty,
     source: stamp.source
   }
