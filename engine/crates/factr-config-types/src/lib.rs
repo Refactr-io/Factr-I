@@ -370,6 +370,15 @@ pub struct AgentsConfig {
     /// (default: the active model).
     #[serde(default)]
     pub repl_sub_model: Option<String>,
+    /// Reasoning effort of `classify` sub-calls: `none`, `low`, `medium`, `high`, `xhigh` or `inherit`.
+    /// Default `inherit` (the main agent's effort); a lower effort is an explicit opt-in. The main
+    /// agent's effort is unchanged. Env: `FACTR_REPL_SUB_EFFORT` (beats this).
+    #[serde(default)]
+    pub repl_sub_effort: Option<String>,
+    /// Reasoning effort of `llm_query` / `llm_query_batch` (reading, summarising): same values; default
+    /// `inherit` (the main agent's effort). Env: `FACTR_REPL_QUERY_EFFORT` (beats this).
+    #[serde(default)]
+    pub repl_query_effort: Option<String>,
 }
 
 fn default_auto_verify_timeout_s() -> u64 {
@@ -405,6 +414,8 @@ impl Default for AgentsConfig {
             environment_snapshot: default_verify_on_stop(),
             repl: default_verify_on_stop(),
             repl_sub_model: None,
+            repl_sub_effort: None,
+            repl_query_effort: None,
         }
     }
 }

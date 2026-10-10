@@ -552,3 +552,31 @@ async fn api_requests_carry_a_cache_key_that_is_stable_per_session_and_distinct_
     assert_ne!(a, in_session("session-b").await.unwrap());
     assert_eq!(a, prompt_cache_key_for(Some("session-a"), &first));
 }
+
+/// The REPL sub-calls (`classify`, `llm_query`) run on a fork of the session provider pinned to their own
+/// effort. The request body carries exactly the effort the provider holds, a fork starts from the main
+/// agent's effort, and pinning the fork leaves the main agent's effort alone.
+#[tokio::test]
+async fn a_fork_pinned_to_the_sub_call_effort_sends_it_and_leaves_the_main_effort() {
+    let _lock = factr_base::storage::lock_test_env();
+    let effort_in_request = |p: &OpenAIProvider| {
+        p.response_request_for_model("gpt-6-luna", &[], &[], "system", false)["reasoning"]["effort"].clone()
+    };
+    let main = OpenAIProvider::new(prewarm_test_credentials());
+    main.set_reasoning_effort("medium").unwrap();
+    assert_eq!(effort_in_request(&main), serde_json::json!("medium"));
+
+    let fork = main.fork();
+    assert_eq!(fork.reasoning_effort().as_deref(), Some("medium"), "a fork inherits the main effort until it is pinned");
+    fork.set_reasoning_effort("low").unwrap();
+    assert_eq!(fork.reasoning_effort().as_deref(), Some("low"));
+    assert_eq!(main.reasoning_effort().as_deref(), Some("medium"), "pinning the fork does not touch the main agent");
+    assert_eq!(effort_in_request(&main), serde_json::json!("medium"));
+
+    // The same setting on a provider builds the sub-call request body; `none` is sent as such.
+    for effort in ["low", "none"] {
+        let sub = OpenAIProvider::new(prewarm_test_credentials());
+        sub.set_reasoning_effort(effort).unwrap();
+        assert_eq!(effort_in_request(&sub), serde_json::json!(effort));
+    }
+}

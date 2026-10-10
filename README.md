@@ -31,7 +31,7 @@ uv), the packaging steps for macOS (dmg, zip), Windows (NSIS) and Linux (AppImag
 and every environment variable are in [docs/BUILDING.md](docs/BUILDING.md). Cutting a release and how
 installed apps get updates: [docs/RELEASING.md](docs/RELEASING.md).
 
-The current version is `v0.0.0`. CI is in `.github/workflows/ci.yml`, tagged releases in
+The current version is `v0.0.4`. CI is in `.github/workflows/ci.yml`, tagged releases in
 `.github/workflows/release.yml` (unsigned builds).
 
 ## Data locations

@@ -730,8 +730,9 @@ async fn tool_descriptions_stay_under_token_cap() {
 /// The REPL description carries the real limits of the tool; it is sent only once the tool is loaded.
 #[tokio::test]
 async fn repl_description_stays_under_its_own_cap() {
-    // Raised from 190 to 215 for the `classify` helper (the tool is deferred: not in the first-request prefix).
-    const REPL_DESCRIPTION_TOKEN_CAP: usize = 215;
+    // Raised from 190 to 215 for the `classify` helper, to 275 for the 0.0.4 labelling rules (the tool is
+    // deferred: not in the first-request prefix).
+    const REPL_DESCRIPTION_TOKEN_CAP: usize = 275;
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
     let defs = registry.definitions(None).await;

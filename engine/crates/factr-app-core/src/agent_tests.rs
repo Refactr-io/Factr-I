@@ -2243,6 +2243,8 @@ async fn a_persona_keeps_the_harness_addenda_agents_md_and_skill_index() {
 #[tokio::test]
 async fn the_first_request_prefix_stays_under_its_token_ceiling() {
     use factr_learn::entries::{EntryKind, EntryStore, MAX_PROMPT_CHARS, NewEntry, Scope};
+    // v0.0.4: the REPL labelling rules (one classify cell, text only, no verification pass, the exact answer
+    // line in the final reply) add 64 tokens (system 2600 -> 2664): 4791 vs the 4727 below; `FACTR_COST_LEGACY=1` drops them and measures 4727 again.
     // v0.0.2 round E: the missing-library rule and the installers field are ON by default (=0 drops each);
     // the bg wording stays opt-in. Default prefix now 4727 tokens (system 2600 + tool schemas 2127):
     // +47 vs the 4680 of round C / ee4ec5d (system 2553), +45 vs v0.0.1 (4682).
@@ -2257,7 +2259,7 @@ async fn the_first_request_prefix_stays_under_its_token_ceiling() {
     // large-input guidance 4371. The margin is one new parameter on one tool at
     // the per-description caps of `tool/tests.rs` (tool description 20 + parameter description
     // 25 = 45): a change bigger than that re-measures here.
-    const MEASURED_TOKENS: usize = 4727;
+    const MEASURED_TOKENS: usize = 4791;
     const CEILING_TOKENS: usize = MEASURED_TOKENS + 20 + 25;
     let _lock = crate::storage::lock_test_env();
     let home = tempfile::tempdir().unwrap();

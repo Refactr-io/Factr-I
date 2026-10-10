@@ -93,6 +93,228 @@ mod repl_python_tests {
 }
 
 #[cfg(test)]
+mod sub_effort_tests {
+    use super::*;
+    use crate::provider::{EventStream, Provider};
+    use std::sync::Mutex;
+
+    /// A model that records the effort it is asked to run at and echoes it in its one-shot answer.
+    struct EffortProbe {
+        effort: Mutex<Option<String>>,
+        refuses: bool,
+    }
+
+    #[async_trait]
+    impl Provider for EffortProbe {
+        async fn complete(&self, _: &[crate::message::Message], _: &[crate::message::ToolDefinition], _: &str, _: Option<&str>) -> Result<EventStream> {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+        fn name(&self) -> &str {
+            "probe"
+        }
+        fn model(&self) -> String {
+            "probe-model".into()
+        }
+        fn set_model(&self, _: &str) -> Result<()> {
+            Ok(())
+        }
+        fn reasoning_effort(&self) -> Option<String> {
+            self.effort.lock().unwrap().clone()
+        }
+        fn set_reasoning_effort(&self, effort: &str) -> Result<()> {
+            if self.refuses {
+                anyhow::bail!("not supported by this model");
+            }
+            *self.effort.lock().unwrap() = Some(effort.to_string());
+            Ok(())
+        }
+        fn fork(&self) -> Arc<dyn Provider> {
+            Arc::new(EffortProbe { effort: Mutex::new(self.reasoning_effort()), refuses: self.refuses })
+        }
+        async fn complete_simple_with_usage(&self, _: &str, _: &str) -> Result<factr_provider_core::SimpleCompletion> {
+            Ok(factr_provider_core::SimpleCompletion {
+                text: format!("ran at {:?}", self.reasoning_effort()),
+                usage: Some(factr_provider_core::SimpleUsage { input: 900, output: 70, cache_read: 512, cache_write: 0 }),
+            })
+        }
+    }
+
+    fn main_thread(effort: &str) -> Arc<EffortProbe> {
+        Arc::new(EffortProbe { effort: Mutex::new(Some(effort.into())), refuses: false })
+    }
+
+    #[tokio::test]
+    async fn a_sub_call_runs_at_the_sub_effort_and_the_main_effort_is_untouched() {
+        let main = main_thread("medium");
+        let fork = main.fork();
+        let (used, pinned, configured) = apply_sub_effort(fork.as_ref(), Ok(Some("low".into())));
+        assert_eq!((used.as_deref(), pinned.as_deref(), configured.as_deref()), (Some("low"), Some("low"), Some("low")));
+        let reply = sub_call_on(fork, "s", "p", used).await.unwrap();
+        assert_eq!(reply.text, "ran at Some(\"low\")");
+        assert_eq!(main.reasoning_effort().as_deref(), Some("medium"), "the main agent's effort is unchanged");
+        // The usage the provider reported comes back for the classify log.
+        assert_eq!((reply.input_tokens, reply.output_tokens, reply.cached_tokens, reply.reasoning_tokens), (Some(900), Some(70), Some(512), None));
+        assert_eq!(reply.effort.as_deref(), Some("low"));
+    }
+
+    #[test]
+    fn an_unknown_refused_or_inherited_effort_falls_back_to_the_main_effort() {
+        for setting in [Ok(None), Err("repl sub-call effort 'minimal' is not supported".to_string())] {
+            let fork = main_thread("medium").fork();
+            assert_eq!(apply_sub_effort(fork.as_ref(), setting), (Some("medium".to_string()), None, None));
+        }
+        let refusing = EffortProbe { effort: Mutex::new(Some("high".into())), refuses: true };
+        assert_eq!(apply_sub_effort(&refusing, Ok(Some("low".into()))), (Some("high".to_string()), None, Some("low".to_string())), "a model that refuses `low` keeps the main effort but still reports what was configured");
+    }
+}
+
+#[cfg(test)]
+mod sub_setting_tests {
+    use super::*;
+    use crate::provider::{EventStream, Provider};
+    use std::sync::Mutex;
+
+    /// Accepts any effort when it is set, but its API answers 400 to `low` (a catalog that overstated it).
+    struct ApiRefusesLow(Mutex<Option<String>>);
+
+    #[async_trait]
+    impl Provider for ApiRefusesLow {
+        async fn complete(&self, _: &[crate::message::Message], _: &[crate::message::ToolDefinition], _: &str, _: Option<&str>) -> Result<EventStream> {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+        fn name(&self) -> &str {
+            "refuser"
+        }
+        fn model(&self) -> String {
+            "m".into()
+        }
+        fn set_model(&self, _: &str) -> Result<()> {
+            Ok(())
+        }
+        fn reasoning_effort(&self) -> Option<String> {
+            self.0.lock().unwrap().clone()
+        }
+        fn set_reasoning_effort(&self, effort: &str) -> Result<()> {
+            *self.0.lock().unwrap() = Some(effort.to_string());
+            Ok(())
+        }
+        fn fork(&self) -> Arc<dyn Provider> {
+            Arc::new(ApiRefusesLow(Mutex::new(self.reasoning_effort())))
+        }
+        async fn complete_simple_with_usage(&self, _: &str, _: &str) -> Result<factr_provider_core::SimpleCompletion> {
+            if self.reasoning_effort().as_deref() == Some("low") {
+                anyhow::bail!("400 Unsupported value: reasoning effort 'low' is not supported with this model");
+            }
+            Ok(factr_provider_core::SimpleCompletion { text: format!("ok at {:?}", self.reasoning_effort()), usage: None })
+        }
+    }
+
+    /// Its setter refuses `none` (the catalog lists no such effort for the model).
+    struct EffortRefusesSet(Mutex<Option<String>>);
+
+    #[async_trait]
+    impl Provider for EffortRefusesSet {
+        async fn complete(&self, _: &[crate::message::Message], _: &[crate::message::ToolDefinition], _: &str, _: Option<&str>) -> Result<EventStream> {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+        fn name(&self) -> &str {
+            "luna"
+        }
+        fn model(&self) -> String {
+            "m".into()
+        }
+        fn set_model(&self, _: &str) -> Result<()> {
+            Ok(())
+        }
+        fn reasoning_effort(&self) -> Option<String> {
+            self.0.lock().unwrap().clone()
+        }
+        fn set_reasoning_effort(&self, effort: &str) -> Result<()> {
+            if effort == "none" {
+                anyhow::bail!("unsupported");
+            }
+            *self.0.lock().unwrap() = Some(effort.to_string());
+            Ok(())
+        }
+        fn fork(&self) -> Arc<dyn Provider> {
+            Arc::new(EffortRefusesSet(Mutex::new(self.reasoning_effort())))
+        }
+        async fn complete_simple_with_usage(&self, _: &str, _: &str) -> Result<factr_provider_core::SimpleCompletion> {
+            Ok(factr_provider_core::SimpleCompletion { text: "ok".into(), usage: None })
+        }
+    }
+
+    #[test]
+    fn classify_and_queries_inherit_by_default_and_each_has_its_own_setting() {
+        assert_eq!(factr_learn::host::resolve_sub_effort(None, None, false), Ok(None), "classify inherits the main effort unless the user sets one");
+        assert_eq!(factr_learn::host::resolve_sub_effort(Some("low"), None, false), Ok(Some("low".into())));
+        assert_eq!(factr_learn::host::resolve_query_effort(None, None, false), Ok(None), "reading and summarising keep the main effort");
+        assert_eq!(factr_learn::host::resolve_query_effort(Some("medium"), Some("high"), false), Ok(Some("high".into())));
+        assert!(factr_learn::host::resolve_query_effort(None, Some("minimal"), false).is_err());
+        assert_eq!(factr_learn::host::resolve_query_effort(None, Some("low"), true), Ok(None));
+    }
+
+    #[test]
+    fn the_setting_is_resolved_once_per_provider_with_effective_efforts() {
+        let main = ApiRefusesLow(Mutex::new(Some("medium".into())));
+        let setting = resolve_setting(&main, Ok(Some("low".into())), Ok(None));
+        assert_eq!(setting.model, "refuser/m");
+        assert_eq!(setting.main_effort.as_deref(), Some("medium"), "kept so a change of the main effort re-resolves an inherited one");
+        assert_eq!((setting.classify_pin.as_deref(), setting.classify_effective.as_str()), (Some("low"), "low"));
+        assert_eq!((setting.query_pin.as_deref(), setting.query_effective.as_str()), (None, "medium"));
+        assert_eq!(setting.pin(SubKind::Classify), Some("low"));
+        assert_eq!(setting.effective(SubKind::Query), "medium");
+        assert_eq!(main.reasoning_effort().as_deref(), Some("medium"), "probing never touches the session's own effort");
+    }
+
+    #[tokio::test]
+    async fn a_setter_refused_effort_is_reported_as_requested_not_as_the_inherited_one() {
+        // The model refuses `none` when it is set (like gpt-6-luna): the call runs at the main effort, and
+        // the log must say it asked for `none`.
+        let refusing = EffortRefusesSet(Mutex::new(Some("medium".into())));
+        let setting = resolve_setting(&refusing, Ok(Some("none".into())), Ok(None));
+        assert_eq!((setting.classify_pin.as_deref(), setting.classify_configured.as_deref(), setting.classify_effective.as_str()), (None, Some("none"), "medium"));
+        assert_eq!(setting.query_configured, None);
+        let make = || -> Result<Arc<dyn factr_provider_core::Provider>> { Ok(refusing.fork()) };
+        let reply = call_with_fallback(make, "s2", "p", setting.pin(SubKind::Classify), setting.configured(SubKind::Classify), setting.effective(SubKind::Classify)).await.unwrap();
+        assert_eq!((reply.requested_effort.as_deref(), reply.effort.as_deref()), (Some("none"), Some("medium")));
+    }
+
+    #[test]
+    fn only_effort_complaints_count_as_an_effort_refusal() {
+        assert!(is_effort_refusal("400 Unsupported value: reasoning effort 'low' is not supported", "low"));
+        assert!(is_effort_refusal("400 Unsupported value: 'low' is not supported with this model. Supported values are: 'medium'.", "low"), "the value alone, without the word effort");
+        assert!(!is_effort_refusal("400 Unsupported value: 'temperature' is not supported with this model.", "low"));
+        assert!(!is_effort_refusal("429 too many requests", "low"));
+        assert!(!is_effort_refusal("400 prompt is too long", "low"));
+    }
+
+    #[tokio::test]
+    async fn an_api_refusal_of_the_pinned_effort_falls_back_to_the_main_effort_for_that_call() {
+        let main = ApiRefusesLow(Mutex::new(Some("medium".into())));
+        let make = || -> Result<Arc<dyn factr_provider_core::Provider>> { Ok(main.fork()) };
+        let reply = call_with_fallback(make, "fallback-session", "p", Some("low"), Some("low"), "low").await.unwrap();
+        assert_eq!(reply.text, "ok at Some(\"medium\")");
+        assert_eq!(reply.effort.as_deref(), Some("medium"), "the log shows the effort the call really ran at");
+        assert_eq!((reply.requested_effort.as_deref(), reply.refused_ms.is_some()), (Some("low"), true), "the refused attempt is reported");
+        // Memoised: the session's resolved setting no longer pins the refused effort, so later calls go once.
+        assert!(effort_refused("fallback-session", "refuser/m", "low"));
+        let mut setting = resolve_setting(&main, Ok(Some("low".into())), Ok(None));
+        forget_refused_pins(&mut setting, "fallback-session");
+        assert_eq!((setting.classify_pin.as_deref(), setting.classify_effective.as_str()), (None, "medium"));
+        let reply = call_with_fallback(make, "fallback-session", "p", setting.pin(SubKind::Classify), setting.configured(SubKind::Classify), setting.effective(SubKind::Classify)).await.unwrap();
+        assert_eq!((reply.refused_ms, reply.effort.as_deref()), (None, Some("medium")), "the second call is sent once");
+        // Another session is not affected.
+        let mut other = resolve_setting(&main, Ok(Some("low".into())), Ok(None));
+        forget_refused_pins(&mut other, "another-session");
+        assert_eq!(other.classify_pin.as_deref(), Some("low"));
+        // Unpinned calls and other errors are not touched by the fallback.
+        let reply = call_with_fallback(make, "s", "p", None, None, "medium").await.unwrap();
+        assert_eq!(reply.text, "ok at Some(\"medium\")");
+    }
+}
+
+#[cfg(test)]
 mod spawn_policy_tests {
     use super::*;
     use std::collections::HashSet;
@@ -327,6 +549,260 @@ fn tail(error: &str) -> &str {
     }
 }
 
+/// Which REPL sub-call: `classify` (the main agent's effort unless the user pins one) or `llm_query` / `llm_query_batch`
+/// (reading and summarising: the main agent's effort unless configured).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SubKind {
+    Classify,
+    Query,
+}
+
+fn sub_effort_setting(kind: SubKind) -> Result<Option<String>, String> {
+    let legacy = factr_learn::host::cost_legacy();
+    let agents = &crate::config::config().agents;
+    match kind {
+        SubKind::Classify => factr_learn::host::resolve_sub_effort(
+            agents.repl_sub_effort.as_deref(),
+            std::env::var("FACTR_REPL_SUB_EFFORT").ok().as_deref(),
+            legacy,
+        ),
+        SubKind::Query => factr_learn::host::resolve_query_effort(
+            agents.repl_query_effort.as_deref(),
+            std::env::var("FACTR_REPL_QUERY_EFFORT").ok().as_deref(),
+            legacy,
+        ),
+    }
+}
+
+/// Pin `provider` (a fork: its own state) to the sub-call effort. Returns (the effort the call runs with,
+/// the effort pinned, the effort the user configured, if any). Unpinned (`None`) when the setting is
+/// `inherit`, unknown, or refused by the model (a warning, never fatal): the call then runs at whatever the
+/// fork inherited, and the configured value is still reported so the log shows the refusal.
+fn apply_sub_effort(provider: &dyn factr_provider_core::Provider, setting: Result<Option<String>, String>) -> (Option<String>, Option<String>, Option<String>) {
+    match setting {
+        Ok(Some(effort)) => match provider.set_reasoning_effort(&effort) {
+            Ok(()) => return (Some(effort.clone()), Some(effort.clone()), Some(effort)),
+            Err(error) => {
+                crate::logging::warn(&format!("repl sub-call effort {effort} refused: unsupported by model ({error}); using the main agent's effort"));
+                return (provider.reasoning_effort(), None, Some(effort));
+            }
+        },
+        Ok(None) => {}
+        Err(message) => crate::logging::warn(&message),
+    }
+    (provider.reasoning_effort(), None, None)
+}
+
+/// What a session's sub-calls run on, resolved once: the model id and, per kind, the effort pinned (`None`:
+/// inherit) and the effective effort (what the request carries; empty when unknown).
+#[derive(Clone, Debug, Default, PartialEq)]
+struct SubSetting {
+    model: String,
+    /// The main agent's effort when this was resolved: an inherited effort follows it.
+    main_effort: Option<String>,
+    classify_pin: Option<String>,
+    classify_effective: String,
+    /// What the user configured (`None`: inherit), kept even when the model refused it.
+    classify_configured: Option<String>,
+    query_pin: Option<String>,
+    query_effective: String,
+    query_configured: Option<String>,
+}
+
+impl SubSetting {
+    fn pin(&self, kind: SubKind) -> Option<&str> {
+        match kind {
+            SubKind::Classify => self.classify_pin.as_deref(),
+            SubKind::Query => self.query_pin.as_deref(),
+        }
+    }
+    fn configured(&self, kind: SubKind) -> Option<&str> {
+        match kind {
+            SubKind::Classify => self.classify_configured.as_deref(),
+            SubKind::Query => self.query_configured.as_deref(),
+        }
+    }
+    fn effective(&self, kind: SubKind) -> &str {
+        match kind {
+            SubKind::Classify => &self.classify_effective,
+            SubKind::Query => &self.query_effective,
+        }
+    }
+}
+
+/// A fork of the session's provider on the REPL sub-model (never changes the session's own model or effort).
+fn sub_fork(session_id: &str) -> Result<Arc<dyn factr_provider_core::Provider>> {
+    let provider = crate::provider::session_provider_fork(session_id).context("no active model provider")?;
+    let chosen = factr_base::factr_config::aux_model(factr_base::factr_config::AuxConsumer::ReplSub)
+        .or_else(|| crate::config::config().agents.repl_sub_model.clone());
+    if let Some(sub) = chosen.as_deref() {
+        if let Err(error) = provider.set_model(sub) {
+            crate::logging::warn(&format!("repl_sub_model {sub}: {error}"));
+        }
+    }
+    Ok(provider)
+}
+
+fn resolve_setting(provider: &dyn factr_provider_core::Provider, classify: Result<Option<String>, String>, query: Result<Option<String>, String>) -> SubSetting {
+    // One probe fork per kind: a refusal or fallback is decided, and logged, here, once.
+    let mut out = SubSetting { model: format!("{}/{}", provider.name(), provider.model()), main_effort: provider.reasoning_effort(), ..Default::default() };
+    for (kind, setting) in [(SubKind::Classify, classify), (SubKind::Query, query)] {
+        let probe = provider.fork();
+        let (effective, pinned, configured) = apply_sub_effort(probe.as_ref(), setting);
+        let text = effective.unwrap_or_default();
+        match kind {
+            SubKind::Classify => (out.classify_pin, out.classify_effective, out.classify_configured) = (pinned, text, configured),
+            SubKind::Query => (out.query_pin, out.query_effective, out.query_configured) = (pinned, text, configured),
+        }
+    }
+    out
+}
+
+static SUB_SETTINGS: OnceLock<StdMutex<HashMap<String, Arc<SubSetting>>>> = OnceLock::new();
+
+/// The session's sub-call setting, resolved on its first sub-call (or cell) and kept; resolved again only
+/// if the sub-model or the main agent's effort changes (an inherited effort, the cache key and the log
+/// follow the effort the requests really carry).
+fn session_sub_setting(session_id: &str) -> Arc<SubSetting> {
+    let Ok(provider) = sub_fork(session_id) else { return Arc::default() };
+    let model = format!("{}/{}", provider.name(), provider.model());
+    let main_effort = provider.reasoning_effort();
+    let mut map = SUB_SETTINGS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(known) = map.get(session_id).filter(|s| s.model == model && s.main_effort == main_effort) {
+        return known.clone();
+    }
+    let mut setting = resolve_setting(
+        provider.as_ref(),
+        sub_effort_setting(SubKind::Classify),
+        sub_effort_setting(SubKind::Query),
+    );
+    forget_refused_pins(&mut setting, session_id);
+    note_pinned_once(session_id, &setting);
+    let setting = Arc::new(setting);
+    map.insert(session_id.to_string(), setting.clone());
+    setting
+}
+
+/// Logged once per session: a classify effort the user configured is in force (never a silent default).
+fn note_pinned_once(session_id: &str, setting: &SubSetting) {
+    static SEEN: OnceLock<StdMutex<std::collections::HashSet<String>>> = OnceLock::new();
+    let Some(configured) = setting.classify_configured.as_deref() else { return };
+    if SEEN.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner()).insert(session_id.to_string()) {
+        crate::logging::info(&format!("repl classify effort pinned to {configured} by FACTR_REPL_SUB_EFFORT / agents.repl_sub_effort (effective: {})", setting.classify_effective));
+    }
+}
+
+/// Efforts the API refused, per (session, sub-model): never pinned again in that session.
+static REFUSED_EFFORTS: OnceLock<StdMutex<std::collections::HashSet<(String, String, String)>>> = OnceLock::new();
+
+fn effort_refused(session_id: &str, model: &str, effort: &str) -> bool {
+    REFUSED_EFFORTS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner()).contains(&(session_id.into(), model.into(), effort.into()))
+}
+
+/// Remember that the API refused `effort` for this session's sub-model and drop the resolved setting, so every
+/// later sub-call goes straight to the main agent's effort (one refused request per session, not one per call).
+fn note_effort_refused(session_id: &str, model: &str, effort: &str) {
+    REFUSED_EFFORTS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner()).insert((session_id.into(), model.into(), effort.into()));
+    if let Some(map) = SUB_SETTINGS.get() {
+        map.lock().unwrap_or_else(|e| e.into_inner()).remove(session_id);
+    }
+}
+
+/// A pin the API refused before is dropped: that kind inherits the main agent's effort.
+fn forget_refused_pins(setting: &mut SubSetting, session_id: &str) {
+    let main = setting.main_effort.clone().unwrap_or_default();
+    if setting.classify_pin.as_deref().is_some_and(|e| effort_refused(session_id, &setting.model, e)) {
+        (setting.classify_pin, setting.classify_effective) = (None, main.clone());
+    }
+    if setting.query_pin.as_deref().is_some_and(|e| effort_refused(session_id, &setting.model, e)) {
+        (setting.query_pin, setting.query_effective) = (None, main);
+    }
+}
+
+/// A provider error that says the pinned effort was refused (not a transport problem): it names the effort,
+/// reasoning, or the pinned value itself (`'low'`), and says it is not supported.
+fn is_effort_refusal(error: &str, pin: &str) -> bool {
+    let text = error.to_ascii_lowercase();
+    let names_it = text.contains("effort") || text.contains("reasoning") || text.contains(&format!("'{}'", pin.to_ascii_lowercase()));
+    names_it && ["unsupported", "not supported", "invalid", "not available", "does not support"].iter().any(|w| text.contains(w))
+}
+
+/// One REPL sub-model call on a fork of the session's provider at the session's sub-call effort. If the
+/// API refuses the pinned effort, that call (and a logged-once note) falls back to the main agent's effort.
+async fn sub_call(session_id: &str, prompt: &str, kind: SubKind) -> Result<factr_learn::host::SubReply> {
+    let setting = session_sub_setting(session_id);
+    call_with_fallback(|| sub_fork(session_id), session_id, prompt, setting.pin(kind), setting.configured(kind), setting.effective(kind)).await
+}
+
+async fn call_with_fallback(
+    make_fork: impl Fn() -> Result<Arc<dyn factr_provider_core::Provider>>,
+    session_id: &str,
+    prompt: &str,
+    pin: Option<&str>,
+    configured: Option<&str>,
+    effective: &str,
+) -> Result<factr_learn::host::SubReply> {
+    let provider = make_fork()?;
+    let model = format!("{}/{}", provider.name(), provider.model());
+    if let Some(effort) = pin {
+        let _ = provider.set_reasoning_effort(effort);
+    }
+    let shown = (!effective.is_empty()).then(|| effective.to_string());
+    let clock = std::time::Instant::now();
+    match sub_call_on(provider, session_id, prompt, shown).await {
+        Err(error) if pin.is_some_and(|p| is_effort_refusal(&error.to_string(), p)) => {
+            let refused_ms = clock.elapsed().as_millis() as u64;
+            let pinned = pin.unwrap_or_default();
+            if !effort_refused(session_id, &model, pinned) {
+                crate::logging::warn(&format!("the API refused the sub-call effort {pinned}: {error}; this session's sub-calls use the main agent's effort"));
+            }
+            note_effort_refused(session_id, &model, pinned);
+            let main = make_fork()?;
+            let inherited = main.reasoning_effort();
+            let mut reply = sub_call_on(main, session_id, prompt, inherited).await?;
+            // The refused request happened: the classify log gets a row for it (its latency, the refusal).
+            reply.requested_effort = Some(pinned.to_string());
+            reply.refused_ms = Some(refused_ms);
+            Ok(reply)
+        }
+        Ok(mut reply) => {
+            // The configured value (even one the model refused when the setting was resolved), else what ran.
+            reply.requested_effort = configured.or(pin).map(str::to_string).or_else(|| reply.effort.clone());
+            Ok(reply)
+        }
+        other => other,
+    }
+}
+
+async fn sub_call_on(
+    provider: Arc<dyn factr_provider_core::Provider>,
+    session_id: &str,
+    prompt: &str,
+    effort: Option<String>,
+) -> Result<factr_learn::host::SubReply> {
+    let provider_name = provider.name().to_string();
+    let model = provider.model();
+    let started = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    let clock = std::time::Instant::now();
+    let result = provider.complete_simple_with_usage(prompt, SUBQUERY_SYSTEM).await;
+    let latency_ms = clock.elapsed().as_millis() as u64;
+    match &result {
+        Ok(reply) => super::report_aux_model_call("REPL subquery", session_id, provider_name, model, started, reply.usage, None),
+        Err(error) => super::report_aux_model_call("REPL subquery", session_id, provider_name, model, started, None, Some(&error.to_string())),
+    }
+    result.map(|reply| factr_learn::host::SubReply {
+        text: reply.text,
+        input_tokens: reply.usage.map(|u| u.input),
+        output_tokens: reply.usage.map(|u| u.output),
+        cached_tokens: reply.usage.map(|u| u.cache_read),
+        // The providers do not report reasoning tokens separately (the stream's usage event has none).
+        reasoning_tokens: None,
+        latency_ms,
+        effort,
+        ..Default::default()
+    })
+}
+
 #[async_trait]
 impl Tool for ReplTool {
     fn name(&self) -> &str {
@@ -334,7 +810,7 @@ impl Tool for ReplTool {
     }
 
     fn description(&self) -> &str {
-        factr_learn::TOOL_DESCRIPTION
+        factr_learn::tool_description()
     }
 
     fn parameters_schema(&self) -> Value {
@@ -354,51 +830,21 @@ impl Tool for ReplTool {
         // Before the cell's compute clock starts: the worker runs on the session environment.
         super::bash::await_session_venv().await;
         let session_id = ctx.session_id.clone();
-        let llm_query: factr_learn::LlmQuery = Arc::new(move |prompt: String| {
+        let sub_setting = session_sub_setting(&ctx.session_id);
+        let llm_query: factr_learn::LlmQuery = {
             let session_id = session_id.clone();
-            Box::pin(async move {
-                let provider =
-                    crate::provider::session_provider_fork(&session_id).context("no active model provider")?;
-                // The fork has its own state, so this never changes the session's model.
-                let chosen = factr_base::factr_config::aux_model(factr_base::factr_config::AuxConsumer::ReplSub)
-                    .or_else(|| crate::config::config().agents.repl_sub_model.clone());
-                if let Some(sub) = chosen.as_deref() {
-                    if let Err(error) = provider.set_model(sub) {
-                        crate::logging::warn(&format!("repl_sub_model {sub}: {error}"));
-                    }
-                }
-                let provider_name = provider.name().to_string();
-                let model = provider.model();
-                let started = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as i64;
-                let result = provider
-                    .complete_simple_with_usage(&prompt, SUBQUERY_SYSTEM)
-                    .await;
-                match &result {
-                    Ok(reply) => super::report_aux_model_call(
-                        "REPL subquery",
-                        &session_id,
-                        provider_name,
-                        model,
-                        started,
-                        reply.usage,
-                        None,
-                    ),
-                    Err(error) => super::report_aux_model_call(
-                        "REPL subquery",
-                        &session_id,
-                        provider_name,
-                        model,
-                        started,
-                        None,
-                        Some(&error.to_string()),
-                    ),
-                }
-                result.map(|reply| reply.text)
+            Arc::new(move |prompt: String| {
+                let session_id = session_id.clone();
+                Box::pin(async move { sub_call(&session_id, &prompt, SubKind::Query).await.map(|reply| reply.text) })
             })
-        });
+        };
+        let llm_query_meta: factr_learn::host::LlmQueryMeta = {
+            let session_id = session_id.clone();
+            Arc::new(move |prompt: String| {
+                let session_id = session_id.clone();
+                Box::pin(async move { sub_call(&session_id, &prompt, SubKind::Classify).await })
+            })
+        };
         let session_id = ctx.session_id.clone();
         let session_for_host = ctx.session_id.clone();
         let goal: factr_learn::host::HostFn = Arc::new(move |op_json: String| {
@@ -428,6 +874,10 @@ impl Tool for ReplTool {
             })
         });
         let extra = factr_learn::host::ExtraHostFns {
+            llm_query_meta: Some(llm_query_meta),
+            sub_effort: sub_setting.effective(SubKind::Classify).to_string(),
+            sub_requested: sub_setting.configured(SubKind::Classify).unwrap_or_default().to_string(),
+            sub_model: sub_setting.model.clone(),
             goal,
             heartbeat,
             spawn_subagent: {

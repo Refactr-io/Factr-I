@@ -29,13 +29,36 @@ const RSS_POLL: Duration = Duration::from_millis(100);
 pub const MAX_LOAD_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_QUERY_CHARS: usize = 200_000;
 pub const MAX_HOST_CALLS: usize = 16;
+/// Default number of sub-queries a batch runs at once; `FACTR_BATCH_CONCURRENCY` overrides it
+/// (see [`batch_concurrency`]).
 pub const BATCH_CONCURRENCY: usize = 8;
 pub const MAX_BATCH_PROMPTS: usize = 64;
 pub const MAX_BATCH_BYTES: usize = 2_000_000;
+/// Longest backoff wait the worker may ask the engine for.
+const MAX_SLEEP_MS: u64 = 8_000;
 
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 /// Recursive model call used by `llm_query(prompt)`.
 pub type LlmQuery = Arc<dyn Fn(String) -> BoxFuture<Result<String>> + Send + Sync>;
+/// One sub-model reply with what the provider reported about the call. Used by `classify` only, to
+/// log per-chunk cost; a field the provider does not report is `None`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SubReply {
+    pub text: String,
+    pub input_tokens: Option<u64>,
+    pub output_tokens: Option<u64>,
+    pub cached_tokens: Option<u64>,
+    pub reasoning_tokens: Option<u64>,
+    pub latency_ms: u64,
+    /// The reasoning effort the call ran with (`None`: the model default or the inherited effort).
+    pub effort: Option<String>,
+    /// The effort the call asked for (differs from `effort` when the API refused it and the call fell back).
+    pub requested_effort: Option<String>,
+    /// When the API refused the requested effort first: how long that refused request took (ms).
+    pub refused_ms: Option<u64>,
+}
+/// [`LlmQuery`] that also reports usage and latency.
+pub type LlmQueryMeta = Arc<dyn Fn(String) -> BoxFuture<Result<SubReply>> + Send + Sync>;
 /// `refine(op_json)` where `op_json` is `{"op":"run","instructions":...,"global":...}`
 /// or `{"op":"status"}`; mirrors factr-learn's `refine.run()`/`refine.status()`. Like
 /// the model-callable `refine` tool, this only *schedules* a refinement
@@ -47,6 +70,15 @@ pub type HostFn = Arc<dyn Fn(String) -> BoxFuture<Result<String>> + Send + Sync>
 /// Optional REPL host hooks beyond `llm_query` / `refine`.
 #[derive(Clone)]
 pub struct ExtraHostFns {
+    /// Sub-model call with usage (for the `classify` log); `None` falls back to the plain `llm_query`.
+    pub llm_query_meta: Option<LlmQueryMeta>,
+    /// The reasoning effort sub-calls run with, part of `classify`'s cache key (empty: inherited).
+    pub sub_effort: String,
+    /// The effort the user configured for `classify` (empty: inherit). Differs from `sub_effort` when the
+    /// model refused it; the classify log carries both.
+    pub sub_requested: String,
+    /// The provider/model id sub-calls run on, part of `classify`'s cache key (empty: unknown).
+    pub sub_model: String,
     pub goal: HostFn,
     pub heartbeat: HostFn,
     pub spawn_subagent: HostFn,
@@ -65,6 +97,10 @@ impl Default for ExtraHostFns {
             })
         }
         Self {
+            llm_query_meta: None,
+            sub_effort: String::new(),
+            sub_requested: String::new(),
+            sub_model: String::new(),
             goal: unavailable("goal"),
             heartbeat: unavailable("heartbeat"),
             spawn_subagent: unavailable("spawn_subagent"),
@@ -331,8 +367,11 @@ impl ReplHost {
         }
         let worker = guard.as_mut().expect("worker present");
         let worker_pid = worker.pid;
+        let mut cfg = classify_cfg(&|key| std::env::var(key).ok(), &extra.sub_effort, &extra.sub_model);
+        cfg["requested_effort"] = json!(extra.sub_requested);
+        let stamp = log_stamp(session, next_cell(session), std::env::var("FACTR_RUN_ID").ok().as_deref());
         let result = tokio::select! {
-            result = drive(worker, code, workdir, &llm_query, &refine, &extra) => result,
+            result = drive(worker, code, workdir, &llm_query, &refine, &extra, &cfg, &stamp) => result,
             _ = wait_for_rss_limit(worker_pid, memory_limit) => {
                 let _ = worker.child.start_kill();
                 *guard = None;
@@ -482,8 +521,11 @@ async fn drive(
     llm_query: &LlmQuery,
     refine: &Refine,
     extra: &ExtraHostFns,
+    cfg: &Value,
+    stamp: &serde_json::Map<String, Value>,
 ) -> Result<(String, Option<String>, Option<String>, usize)> {
-    send(worker, json!({"op": "run", "code": code})).await?;
+    send(worker, json!({"op": "run", "code": code, "cfg": cfg})).await?;
+    let conc = cfg["concurrency"].as_u64().map_or(BATCH_CONCURRENCY, |n| n as usize);
     let mut host_calls = 0;
     let mut compute_left = COMPUTE_TIMEOUT;
     let mut host_left = HOST_WAIT_TIMEOUT;
@@ -524,6 +566,24 @@ async fn drive(
                     host_calls,
                 ));
             }
+            // The classify log is bookkeeping: it never spends the cell's host-call budget.
+            Some("call") if msg["fn"].as_str() == Some("classify_log") => {
+                let reply = match classify_log(msg["args"][0].as_str().unwrap_or_default(), stamp) {
+                    Ok(()) => json!({"op": "reply", "value": ""}),
+                    Err(err) => json!({"op": "reply", "error": format!("{err:#}")}),
+                };
+                send(worker, reply).await?;
+            }
+            // A backoff wait the worker asks the engine to spend: it must not count as the cell's compute
+            // (the clock only runs while the engine waits on the worker) or its host calls.
+            // Bounded by what is left of the cell's model-call wait, so a loop of sleeps cannot hold the cell.
+            Some("call") if msg["fn"].as_str() == Some("sleep_ms") => {
+                let ms = msg["args"][0].as_str().and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+                let ms = sleep_allowed(ms, host_left);
+                tokio::time::sleep(Duration::from_millis(ms)).await;
+                host_left = host_left.saturating_sub(Duration::from_millis(ms));
+                send(worker, json!({"op": "reply", "value": ""})).await?;
+            }
             Some("call") => {
                 host_calls += 1;
                 if host_calls > MAX_HOST_CALLS {
@@ -536,13 +596,18 @@ async fn drive(
                 }
                 let arg = msg["args"][0].as_str().unwrap_or_default().to_string();
                 let started = Instant::now();
-                let allowance = if msg["fn"].as_str() == Some("llm_query_batch") { batch_allowance(&arg) } else { Duration::ZERO };
+                let is_batch = matches!(msg["fn"].as_str(), Some("llm_query_batch" | "llm_query_batch_meta"));
+                let allowance = if is_batch { batch_allowance(&arg, conc) } else { Duration::ZERO };
                 let call = async { match msg["fn"].as_str() {
                     Some("llm_query") => match within_query_cap(arg.clone()) {
                         Ok(prompt) => llm_query(prompt).await,
                         Err(err) => Err(err),
                     },
-                    Some("llm_query_batch") => llm_query_batch(&llm_query, &arg).await,
+                    Some("llm_query_batch") => llm_query_batch_with(llm_query, &arg, conc).await,
+                    Some("llm_query_batch_meta") => {
+                        let meta = extra.llm_query_meta.clone().unwrap_or_else(|| meta_from_plain(llm_query.clone()));
+                        llm_query_batch_meta(&meta, &arg, conc).await
+                    }
                     Some("load_path") => load_path(workdir, &arg).await,
                     Some("load") => load(workdir, &arg).await,
                     Some("refine") => refine(truncate(arg, MAX_QUERY_CHARS)).await,
@@ -584,9 +649,249 @@ async fn drive(
     }
 }
 
-fn batch_allowance(prompts_json: &str) -> Duration {
+/// How long a `sleep_ms` request may wait: at most [`MAX_SLEEP_MS`] and never more than the cell's
+/// remaining model-call wait.
+fn sleep_allowed(ms: u64, host_left: Duration) -> u64 {
+    ms.min(MAX_SLEEP_MS).min(host_left.as_millis().min(u128::from(u64::MAX)) as u64)
+}
+
+/// Extra wait a batch earns: one wave allowance per 8 prompts (or per `concurrency`, if lower). Raising the
+/// concurrency never shortens it: a throttled wide batch is as slow as a narrow one, and a timeout drops every
+/// call in flight.
+fn batch_allowance(prompts_json: &str, concurrency: usize) -> Duration {
     let n = serde_json::from_str::<Vec<Value>>(prompts_json).map_or(0, |v| v.len().min(MAX_BATCH_PROMPTS));
-    BATCH_WAVE_ALLOWANCE * n.div_ceil(BATCH_CONCURRENCY) as u32
+    BATCH_WAVE_ALLOWANCE * n.div_ceil(concurrency.clamp(1, BATCH_CONCURRENCY)) as u32
+}
+
+/// This session's next cell number (1, 2, ...), counted by the engine: it survives worker restarts.
+fn next_cell(session: &str) -> u64 {
+    static CELLS: std::sync::OnceLock<std::sync::Mutex<HashMap<String, u64>>> = std::sync::OnceLock::new();
+    let mut cells = CELLS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    let n = cells.entry(session.to_string()).or_insert(0);
+    *n += 1;
+    *n
+}
+
+/// Fields the engine adds to every classify log row: `session`, `cell` and, when `FACTR_RUN_ID` is set,
+/// `run_id`. With them, `call_id`, `chunk` and `classify_call` (which restart in a new worker) are unique.
+fn log_stamp(session: &str, cell: u64, run_id: Option<&str>) -> serde_json::Map<String, Value> {
+    let mut stamp = serde_json::Map::new();
+    stamp.insert("session".into(), json!(session.chars().take(LOG_STRING_MAX).collect::<String>()));
+    stamp.insert("cell".into(), json!(cell));
+    if let Some(run) = run_id.map(str::trim).filter(|r| !r.is_empty()) {
+        stamp.insert("run_id".into(), json!(run.chars().take(LOG_STRING_MAX).collect::<String>()));
+    }
+    stamp
+}
+
+/// How many sub-queries a batch runs at once: `FACTR_BATCH_CONCURRENCY` (1 to 64), else 8. The 0.0.3
+/// value (8) under `FACTR_COST_LEGACY=1`.
+pub fn batch_concurrency() -> usize {
+    concurrency_from(&|key| std::env::var(key).ok())
+}
+
+fn concurrency_from(env: &dyn Fn(&str) -> Option<String>) -> usize {
+    if legacy_from(env) {
+        return BATCH_CONCURRENCY;
+    }
+    env("FACTR_BATCH_CONCURRENCY")
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| (1..=MAX_BATCH_PROMPTS).contains(n))
+        .unwrap_or(BATCH_CONCURRENCY)
+}
+
+/// `FACTR_COST_LEGACY=1` in the process environment.
+pub fn cost_legacy() -> bool {
+    legacy_from(&|key| std::env::var(key).ok())
+}
+
+/// Reasoning efforts a sub-call may be pinned to. `minimal` is not one: the sub-model's API rejects it.
+pub const SUB_EFFORTS: [&str; 5] = ["none", "low", "medium", "high", "xhigh"];
+
+/// The reasoning effort `classify` sub-calls run with. `env` (`FACTR_REPL_SUB_EFFORT`) beats `configured`
+/// (`agents.repl_sub_effort`). `Ok(None)` means "inherit the main agent's effort", the default: the effort is
+/// the user's, never hard-coded here. A lower effort is an explicit opt-in. An unknown value is an error naming
+/// the allowed ones; the caller falls back to the main effort.
+pub fn resolve_sub_effort(configured: Option<&str>, env: Option<&str>, legacy: bool) -> Result<Option<String>, String> {
+    resolve_effort(configured, env, legacy, None)
+}
+
+/// Effort of `llm_query` / `llm_query_batch` (reading, summarising, extraction): `FACTR_REPL_QUERY_EFFORT`,
+/// else `agents.repl_query_effort`, else the main agent's effort.
+pub fn resolve_query_effort(configured: Option<&str>, env: Option<&str>, legacy: bool) -> Result<Option<String>, String> {
+    resolve_effort(configured, env, legacy, None)
+}
+
+fn resolve_effort(configured: Option<&str>, env: Option<&str>, legacy: bool, default: Option<&str>) -> Result<Option<String>, String> {
+    if legacy {
+        return Ok(None);
+    }
+    let pick = [env, configured].into_iter().flatten().map(str::trim).find(|v| !v.is_empty());
+    let Some(value) = pick else { return Ok(default.map(str::to_string)) };
+    let value = value.to_ascii_lowercase();
+    if value == "inherit" {
+        return Ok(None);
+    }
+    if SUB_EFFORTS.contains(&value.as_str()) {
+        return Ok(Some(value));
+    }
+    Err(format!(
+        "repl sub-call effort '{value}' is not supported (use {} or inherit); using the main agent's effort",
+        SUB_EFFORTS.join("|")
+    ))
+}
+
+/// `FACTR_COST_LEGACY=1`: the 0.0.3 cost behaviour, for A/B runs.
+pub fn legacy_from(env: &dyn Fn(&str) -> Option<String>) -> bool {
+    env("FACTR_COST_LEGACY").is_some_and(|v| v.trim() == "1")
+}
+
+fn num_env(env: &dyn Fn(&str) -> Option<String>, key: &str, default: u64, min: u64, max: u64) -> u64 {
+    env(key).and_then(|v| v.trim().parse::<u64>().ok()).filter(|n| (min..=max).contains(n)).unwrap_or(default)
+}
+
+fn opt_num_env(env: &dyn Fn(&str) -> Option<String>, key: &str, min: u64, max: u64) -> Option<u64> {
+    env(key).and_then(|v| v.trim().parse::<u64>().ok()).filter(|n| (min..=max).contains(n))
+}
+
+/// The `classify` settings the worker gets with every cell (it runs without the engine's
+/// environment). Defaults are the 0.0.4 behaviour; `FACTR_COST_LEGACY=1` selects the 0.0.3 one.
+/// `effort` and `model` are the effective sub-call effort and model, part of the result cache key.
+pub fn classify_cfg(env: &dyn Fn(&str) -> Option<String>, effort: &str, model: &str) -> Value {
+    json!({
+        "legacy": legacy_from(env),
+        "format": if env("FACTR_CLASSIFY_FORMAT").is_some_and(|v| v.trim().eq_ignore_ascii_case("codes")) { "codes" } else { "json" },
+        // null: not set by the user, the worker picks 80/48000 or 40/24000 from the data (see python_worker.py).
+        "chunk_items": opt_num_env(env, "FACTR_CLASSIFY_CHUNK_ITEMS", 1, 500),
+        "chunk_chars": opt_num_env(env, "FACTR_CLASSIFY_CHUNK_CHARS", 500, 150_000),
+        "dedupe": env("FACTR_CLASSIFY_DEDUPE").is_some_and(|v| v.trim() == "1"),
+        "log": env("FACTR_CLASSIFY_LOG").is_some_and(|v| !v.trim().is_empty()),
+        "concurrency": concurrency_from(env),
+        "effort": effort,
+        "model": model,
+    })
+}
+
+/// Which keys a `classify` log row may carry, by `type`: nothing else is written. `call` is one sub-call
+/// attempt, `occ` one input occurrence with its final label (null if the job failed before labelling it), `job`
+/// one per `classify` with its outcome (the names a record-level comparison reads).
+const LOG_KEYS: [(&str, &[&str]); 3] = [
+    ("call", &["type", "call_id", "classify_call", "pass", "wave", "attempt", "chunk_size", "records_count", "input_tokens", "output_tokens", "reasoning_tokens", "cached_tokens", "latency_ms", "ts_start_ms", "ts_end_ms", "effort", "requested_effort", "effort_fallback", "format", "votes", "model", "legacy", "dedupe", "chunk_items", "chunk_chars", "chunk_source", "concurrency", "prompt_chars", "reply_chars", "error", "refusal", "transport_error", "validation_failure", "results"]),
+    ("occ", &["type", "classify_call", "occ", "h", "label", "effort", "truncated", "cached", "deduped", "chunk", "pos"]),
+    ("job", &["type", "classify_call", "status", "error", "records", "distinct", "cached", "to_label", "unlabelled", "votes", "format", "effort", "requested_effort", "effort_fallback", "model", "legacy", "dedupe", "chunk_items", "chunk_chars", "chunk_source", "concurrency"]),
+];
+/// Keys the engine itself adds to every row (see [`log_stamp`]); a row may not carry them on its own.
+const STAMP_KEYS: [&str; 3] = ["session", "cell", "run_id"];
+const LOG_ROW_MAX: usize = 262_144;
+const LOG_STRING_MAX: usize = 1_000;
+
+fn is_hash16(value: &Value) -> bool {
+    value.as_str().is_some_and(|h| h.len() == 16 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// One log row, re-serialised from only the keys its event allows with plain values (numbers, booleans,
+/// null, short strings; hashes must be 16 hex; `results` is a list of `[hash, label]`), or `None`.
+fn clean_log_row(line: &str, stamp: &serde_json::Map<String, Value>) -> Option<String> {
+    if line.len() > LOG_ROW_MAX {
+        return None;
+    }
+    let row: Value = serde_json::from_str(line).ok()?;
+    let object = row.as_object()?;
+    let allowed = LOG_KEYS.iter().find(|(kind, _)| object.get("type").and_then(Value::as_str) == Some(*kind))?.1;
+    let mut clean = serde_json::Map::new();
+    for (key, value) in object {
+        if !allowed.contains(&key.as_str()) {
+            continue;
+        }
+        let ok = match (key.as_str(), value) {
+            ("h", v) => is_hash16(v),
+            ("results", Value::Array(rows)) => rows.iter().all(|r| {
+                r.as_array().is_some_and(|p| p.len() == 2 && is_hash16(&p[0]) && p[1].as_str().is_some_and(|l| l.chars().count() <= LOG_STRING_MAX))
+            }),
+            (_, Value::Null | Value::Bool(_) | Value::Number(_)) => true,
+            (_, Value::String(text)) => text.chars().count() <= LOG_STRING_MAX,
+            _ => false,
+        };
+        if !ok {
+            return None;
+        }
+        clean.insert(key.clone(), value.clone());
+    }
+    // Worker-local ids restart in a new worker: prefixed with the session and cell they belong to.
+    let scope = format!("{}/{}", stamp.get("session").and_then(Value::as_str).unwrap_or(""), stamp.get("cell").map(Value::to_string).unwrap_or_default());
+    for key in ["call_id", "chunk"] {
+        if let Some(Value::String(id)) = clean.get(key) {
+            let scoped = format!("{scope}/{id}");
+            clean.insert(key.into(), json!(scoped));
+        }
+    }
+    for key in STAMP_KEYS {
+        clean.remove(key);
+    }
+    clean.extend(stamp.iter().map(|(k, v)| (k.clone(), v.clone())));
+    serde_json::to_string(&Value::Object(clean)).ok()
+}
+
+/// `FACTR_CLASSIFY_LOG`: `{pid}` expands to this engine's process id; a directory gets `classify-<pid>.jsonl`.
+fn log_path(setting: &str, pid: u32) -> PathBuf {
+    let path = PathBuf::from(setting.replace("{pid}", &pid.to_string()));
+    if path.is_dir() { path.join(format!("classify-{pid}.jsonl")) } else { path }
+}
+
+static LOG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static LOG_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn append_rows(path: &Path, rows: &[String]) -> Result<()> {
+    use std::io::Write;
+    let _one_writer = LOG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        bail!("{}: refusing to write the classify log through a symlink", path.display());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options.open(path)?;
+    let meta = file.metadata()?;
+    if !meta.is_file() {
+        bail!("{}: the classify log must be a regular file", path.display());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = meta.permissions().mode() & 0o777;
+        if mode != 0o600 {
+            bail!("{}: the classify log exists with mode {mode:o}, not 600; refusing to append to a file others can read or write", path.display());
+        }
+    }
+    for row in rows {
+        // One write per row: with O_APPEND a row is never interleaved with another engine's.
+        let mut bytes = row.clone().into_bytes();
+        bytes.push(b'\n');
+        file.write_all(&bytes)?;
+    }
+    Ok(())
+}
+
+/// Append the worker's `classify` log rows (hashes and counts only; anything else is dropped) to
+/// `FACTR_CLASSIFY_LOG`. A write failure is reported once on stderr and never fails the cell.
+fn classify_log(lines: &str, stamp: &serde_json::Map<String, Value>) -> Result<()> {
+    let Some(setting) = std::env::var("FACTR_CLASSIFY_LOG").ok().filter(|p| !p.trim().is_empty()) else {
+        return Ok(());
+    };
+    let rows: Vec<String> = lines.lines().filter_map(|line| clean_log_row(line, stamp)).collect();
+    if rows.is_empty() {
+        return Ok(());
+    }
+    if let Err(err) = append_rows(&log_path(&setting, std::process::id()), &rows) {
+        if !LOG_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            eprintln!("factr: the classify log could not be written: {err:#}");
+        }
+    }
+    Ok(())
 }
 
 /// A prompt over the cap is an explicit error for the caller, never silently cut.
@@ -650,9 +955,62 @@ pub async fn load(workdir: Option<&Path>, path: &str) -> Result<String> {
 }
 
 /// Host side of `llm_query_batch`: `prompts_json` is a JSON array of strings.
-/// Runs up to 8 sub-queries at once and returns a JSON array of replies in
+/// Runs up to [`batch_concurrency`] sub-queries at once and returns a JSON array of replies in
 /// order; a failed item becomes an error string, not a failure of the call.
 pub async fn llm_query_batch(llm_query: &LlmQuery, prompts_json: &str) -> Result<String> {
+    llm_query_batch_with(llm_query, prompts_json, batch_concurrency()).await
+}
+
+async fn llm_query_batch_with(llm_query: &LlmQuery, prompts_json: &str, concurrency: usize) -> Result<String> {
+    let q = llm_query.clone();
+    let results = run_batch(prompts_json, concurrency, move |p| q(p)).await?;
+    let replies: Vec<String> = results
+        .into_iter()
+        .map(|(_, _, r)| match r {
+            Ok(text) => text,
+            Err(err) => format!("Error: {err:#}"),
+        })
+        .collect();
+    Ok(serde_json::to_string(&replies)?)
+}
+
+/// Like [`llm_query_batch`], but each reply is an object `{"t": text, "e": error or null, "i": input
+/// tokens, "o": output tokens, "c": cached tokens, "r": reasoning tokens, "ms": latency, "s": ms after the
+/// batch started that the call got its concurrency slot, "f": effort the call ran at, "q": effort it asked
+/// for, "x": ms a first request took that the API refused for its effort, or null}` (a token count the
+/// provider did not report is null; a failed call's latency is the time it took to fail). Used by `classify`.
+pub async fn llm_query_batch_meta(meta: &LlmQueryMeta, prompts_json: &str, concurrency: usize) -> Result<String> {
+    let m = meta.clone();
+    let results = run_batch(prompts_json, concurrency, move |p| m(p)).await?;
+    let replies: Vec<Value> = results
+        .into_iter()
+        .map(|(at, took, r)| match r {
+            Ok(r) => json!({"t": r.text, "e": null, "i": r.input_tokens, "o": r.output_tokens, "c": r.cached_tokens, "r": r.reasoning_tokens, "ms": r.latency_ms, "s": at, "f": r.effort, "q": r.requested_effort, "x": r.refused_ms}),
+            Err(err) => json!({"t": "", "e": format!("Error: {err:#}"), "i": null, "o": null, "c": null, "r": null, "ms": took, "s": at, "f": null, "q": null, "x": null}),
+        })
+        .collect();
+    Ok(serde_json::to_string(&replies)?)
+}
+
+/// A [`LlmQueryMeta`] over a plain [`LlmQuery`]: timed, with no usage.
+pub fn meta_from_plain(plain: LlmQuery) -> LlmQueryMeta {
+    Arc::new(move |prompt: String| {
+        let plain = plain.clone();
+        Box::pin(async move {
+            let started = Instant::now();
+            let text = plain(prompt).await?;
+            Ok(SubReply { text, latency_ms: started.elapsed().as_millis() as u64, ..Default::default() })
+        })
+    })
+}
+
+/// Every prompt through `call`, at most `concurrency` at once, in order: (ms after the batch started that the
+/// call got its slot, ms it took, result).
+async fn run_batch<T: Send + 'static>(
+    prompts_json: &str,
+    concurrency: usize,
+    call: impl Fn(String) -> BoxFuture<Result<T>>,
+) -> Result<Vec<(u64, u64, Result<T>)>> {
     let prompts: Vec<String> = serde_json::from_str(prompts_json)
         .context("llm_query_batch expects a JSON list of strings")?;
     if prompts.is_empty() {
@@ -668,28 +1026,29 @@ pub async fn llm_query_batch(llm_query: &LlmQuery, prompts_json: &str) -> Result
     if total > MAX_BATCH_BYTES {
         bail!("llm_query_batch: {total} bytes of input, the limit is {MAX_BATCH_BYTES}");
     }
-    let gate = Arc::new(tokio::sync::Semaphore::new(BATCH_CONCURRENCY));
+    let gate = Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
     let mut jobs = tokio::task::JoinSet::new();
+    let batch_start = Instant::now();
     for (index, prompt) in prompts.into_iter().enumerate() {
-        let call = within_query_cap(prompt).map(|p| llm_query(p));
+        let started = within_query_cap(prompt).map(|p| call(p));
         let gate = gate.clone();
         jobs.spawn(async move {
             let _slot = gate.acquire_owned().await;
-            (index, match call {
+            let at = batch_start.elapsed();
+            let result = match started {
                 Ok(call) => call.await,
                 Err(err) => Err(err),
-            })
+            };
+            let took = batch_start.elapsed().saturating_sub(at);
+            (index, at.as_millis() as u64, took.as_millis() as u64, result)
         });
     }
-    let mut replies = vec![String::new(); jobs.len()];
+    let mut replies: Vec<Option<(u64, u64, Result<T>)>> = (0..jobs.len()).map(|_| None).collect();
     while let Some(done) = jobs.join_next().await {
-        let (index, result) = done.context("llm_query_batch task failed")?;
-        replies[index] = match result {
-            Ok(text) => text,
-            Err(err) => format!("Error: {err:#}"),
-        };
+        let (index, at, took, result) = done.context("llm_query_batch task failed")?;
+        replies[index] = Some((at, took, result));
     }
-    Ok(serde_json::to_string(&replies)?)
+    Ok(replies.into_iter().map(|r| r.expect("every job reported")).collect())
 }
 
 #[cfg(test)]
@@ -717,9 +1076,9 @@ mod batch_tests {
 
     #[test]
     fn batch_wait_scales_with_waves() {
-        assert_eq!(batch_allowance("not json"), Duration::ZERO);
-        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 8])), BATCH_WAVE_ALLOWANCE);
-        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 64])), BATCH_WAVE_ALLOWANCE * 8);
+        assert_eq!(batch_allowance("not json", 8), Duration::ZERO);
+        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 8]), 8), BATCH_WAVE_ALLOWANCE);
+        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 64]), 8), BATCH_WAVE_ALLOWANCE * 8);
     }
 
     fn json_list(items: &[String]) -> String {
@@ -759,5 +1118,175 @@ mod batch_tests {
         assert!(llm_query_batch(&q, "not json").await.is_err());
         let empty = llm_query_batch(&q, "[]").await.unwrap_err().to_string();
         assert!(empty.contains("list is empty"), "{empty}");
+    }
+
+    fn env_of<'a>(vars: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key| vars.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string())
+    }
+
+    #[test]
+    fn cost_switches_default_to_the_new_behaviour_and_parse_strictly() {
+        let cfg = classify_cfg(&env_of(&[]), "low", "m");
+        assert_eq!(cfg, json!({"legacy": false, "format": "json", "chunk_items": null, "chunk_chars": null, "dedupe": false, "log": false, "concurrency": 8, "effort": "low", "model": "m"}));
+        let set = [
+            ("FACTR_CLASSIFY_FORMAT", "CODES"), ("FACTR_CLASSIFY_CHUNK_ITEMS", "80"), ("FACTR_CLASSIFY_CHUNK_CHARS", "30000"),
+            ("FACTR_CLASSIFY_DEDUPE", "1"), ("FACTR_CLASSIFY_LOG", "/tmp/x.jsonl"), ("FACTR_BATCH_CONCURRENCY", "16"),
+        ];
+        let cfg = classify_cfg(&env_of(&set), "", "");
+        assert_eq!(cfg, json!({"legacy": false, "format": "codes", "chunk_items": 80, "chunk_chars": 30000, "dedupe": true, "log": true, "concurrency": 16, "effort": "", "model": ""}));
+        // Out of range or garbage falls back to the default, never to something silly.
+        let bad = [("FACTR_CLASSIFY_CHUNK_ITEMS", "0"), ("FACTR_CLASSIFY_CHUNK_CHARS", "9999999"), ("FACTR_BATCH_CONCURRENCY", "x"), ("FACTR_CLASSIFY_FORMAT", "yaml")];
+        let cfg = classify_cfg(&env_of(&bad), "", "");
+        assert_eq!((cfg["chunk_items"].as_u64(), cfg["chunk_chars"].as_u64(), cfg["concurrency"].as_u64(), cfg["format"].as_str()), (None, None, Some(8), Some("json")));
+        assert_eq!(concurrency_from(&env_of(&[("FACTR_BATCH_CONCURRENCY", "65")])), 8);
+    }
+
+    #[test]
+    fn the_master_switch_restores_the_0_0_3_values() {
+        let all = [("FACTR_COST_LEGACY", "1"), ("FACTR_BATCH_CONCURRENCY", "16"), ("FACTR_REPL_SUB_EFFORT", "none")];
+        assert_eq!(concurrency_from(&env_of(&all)), 8);
+        assert_eq!(classify_cfg(&env_of(&all), "", "")["legacy"], true);
+        assert!(!legacy_from(&env_of(&[("FACTR_COST_LEGACY", "0")])));
+        assert_eq!(resolve_sub_effort(None, Some("none"), true), Ok(None));
+    }
+
+    #[test]
+    fn sub_effort_defaults_to_inherit_and_rejects_unknown_values() {
+        assert_eq!(resolve_sub_effort(None, None, false), Ok(None), "never hard-coded: the main agent's effort");
+        assert_eq!(resolve_sub_effort(Some("low"), None, false), Ok(Some("low".into())), "a cheaper effort is an explicit setting");
+        assert_eq!(resolve_sub_effort(Some("high"), None, false), Ok(Some("high".into())));
+        assert_eq!(resolve_sub_effort(Some("high"), Some(" None "), false), Ok(Some("none".into())), "the env beats the config");
+        assert_eq!(resolve_sub_effort(Some(""), Some(""), false), Ok(None));
+        assert_eq!(resolve_sub_effort(Some("inherit"), None, false), Ok(None));
+        for bad in ["minimal", "max", "swarm", "fast", "lo"] {
+            let err = resolve_sub_effort(None, Some(bad), false).unwrap_err();
+            assert!(err.contains(bad) && err.contains("none|low|medium|high|xhigh") && err.contains("main agent's effort"), "{err}");
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_concurrency_is_a_parameter_and_the_wait_follows_it() {
+        let (live, peak) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let prompts: Vec<String> = (0..20).map(|i| format!("p{i}")).collect();
+        let out = llm_query_batch_with(&counting(live, peak.clone()), &json_list(&prompts), 3).await.unwrap();
+        assert_eq!(serde_json::from_str::<Vec<String>>(&out).unwrap().len(), 20);
+        assert_eq!(peak.load(Ordering::SeqCst), 3);
+        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 64]), 16), BATCH_WAVE_ALLOWANCE * 8, "16-wide never earns less than 8-wide");
+        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 64]), 4), BATCH_WAVE_ALLOWANCE * 16, "narrower earns more");
+        assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 64]), 0), BATCH_WAVE_ALLOWANCE * 64, "never divides by zero");
+    }
+
+    #[tokio::test]
+    async fn the_meta_batch_returns_usage_per_reply_in_order_and_errors_as_objects() {
+        let meta: LlmQueryMeta = Arc::new(|prompt: String| {
+            Box::pin(async move {
+                if prompt == "bad" {
+                    return Err(anyhow!("429"));
+                }
+                Ok(SubReply { text: prompt.to_uppercase(), input_tokens: Some(10), output_tokens: Some(2), cached_tokens: Some(0), reasoning_tokens: None, latency_ms: 7, effort: Some("low".into()), ..Default::default() })
+            })
+        });
+        let out = llm_query_batch_meta(&meta, &json_list(&["a".into(), "bad".into(), "c".into()]), 2).await.unwrap();
+        let rows: Vec<Value> = serde_json::from_str(&out).unwrap();
+        assert!(rows[0]["s"].is_u64(), "the slot time is reported: {}", rows[0]);
+        assert_eq!(rows[0], json!({"t": "A", "e": null, "i": 10, "o": 2, "c": 0, "r": null, "ms": 7, "s": rows[0]["s"], "f": "low", "q": null, "x": null}));
+        assert_eq!(rows[1]["e"], "Error: 429");
+        assert!(rows[1]["ms"].is_u64() && rows[1]["s"].is_u64(), "a failed call still has its timing: {}", rows[1]);
+        assert_eq!(rows[2]["t"], "C");
+        // Without a metered closure the plain query is timed and carries no usage.
+        let plain = meta_from_plain(counting(Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0))));
+        let out = llm_query_batch_meta(&plain, &json_list(&["p1".into()]), 2).await.unwrap();
+        let rows: Vec<Value> = serde_json::from_str(&out).unwrap();
+        assert_eq!((rows[0]["t"].as_str(), rows[0]["i"].is_null(), rows[0]["e"].is_null()), (Some("p1:2"), true, true));
+    }
+
+    #[test]
+    fn log_rows_are_validated_and_stripped_host_side() {
+        let call = r#"{"type":"call","call_id":"1.1","classify_call":1,"pass":0,"wave":1,"attempt":1,"chunk_size":2,"records_count":2,"input_tokens":5,"output_tokens":null,"effort":"low","format":"codes","error":"reject: missing","refusal":false,"transport_error":false,"validation_failure":false,"results":[["0123456789abcdef","spam"]],"prompt":"SECRET TEXT"}"#;
+        let stamp = log_stamp("sess", 4, Some("item-7"));
+        let clean: Value = serde_json::from_str(&clean_log_row(call, &stamp).unwrap()).unwrap();
+        assert!(clean.get("prompt").is_none(), "unknown keys are dropped");
+        assert_eq!((clean["results"][0][1].as_str(), clean["error"].as_str(), clean["call_id"].as_str()), (Some("spam"), Some("reject: missing"), Some("sess/4/1.1")));
+        let occ = r#"{"type":"occ","classify_call":1,"occ":3,"h":"0123456789abcdef","label":"spam","truncated":false,"cached":false,"deduped":true,"chunk":"1.1","pos":0,"text":"x","session":"forged"}"#;
+        let clean: Value = serde_json::from_str(&clean_log_row(occ, &stamp).unwrap()).unwrap();
+        assert_eq!(clean, json!({"type":"occ","classify_call":1,"occ":3,"h":"0123456789abcdef","label":"spam","truncated":false,"cached":false,"deduped":true,"chunk":"sess/4/1.1","pos":0,"session":"sess","cell":4,"run_id":"item-7"}));
+        let job = r#"{"type":"job","classify_call":1,"status":"failed","unlabelled":3,"error":"transport: 503"}"#;
+        let clean: Value = serde_json::from_str(&clean_log_row(job, &log_stamp("s", 1, None)).unwrap()).unwrap();
+        assert_eq!((clean["status"].as_str(), clean["unlabelled"].as_i64(), clean.get("run_id").is_none()), (Some("failed"), Some(3), true));
+        for bad in [
+            "not json",
+            r#"{"type":"other"}"#,
+            r#"{"event":"call","call_id":"1.1"}"#,
+            r#"{"type":"occ","occ":0,"h":"short","label":"x"}"#,
+            r#"{"type":"occ","occ":0,"h":"0123456789abcdef","label":{"a":1}}"#,
+            r#"{"type":"call","results":[["0123456789abcdef","a","extra"]]}"#,
+            r#"{"type":"call","results":[["not-a-hash","a"]]}"#,
+        ] {
+            assert!(clean_log_row(bad, &stamp).is_none(), "{bad}");
+        }
+        let long = format!(r#"{{"type":"occ","occ":0,"h":"0123456789abcdef","label":"{}"}}"#, "x".repeat(LOG_STRING_MAX + 1));
+        assert!(clean_log_row(&long, &stamp).is_none(), "a long string is not a label");
+        assert!(clean_log_row(&format!(r#"{{"type":"call","model":"{}"}}"#, "y".repeat(LOG_ROW_MAX)), &stamp).is_none());
+        // The engine counts cells per session; a worker restart does not reset them.
+        assert_eq!((next_cell("cells-a"), next_cell("cells-a"), next_cell("cells-b")), (1, 2, 1));
+    }
+
+    #[test]
+    fn a_backoff_sleep_never_outlasts_the_cells_remaining_wait() {
+        assert_eq!(sleep_allowed(1_500, Duration::from_secs(120)), 1_500);
+        assert_eq!(sleep_allowed(60_000, Duration::from_secs(120)), MAX_SLEEP_MS, "capped per request");
+        assert_eq!(sleep_allowed(5_000, Duration::from_millis(700)), 700, "never past the cell's wait");
+        assert_eq!(sleep_allowed(5_000, Duration::ZERO), 0, "an exhausted wait cannot be slept on");
+    }
+
+    #[test]
+    fn the_log_path_expands_pid_and_a_directory_gets_a_per_engine_file() {
+        assert_eq!(log_path("/tmp/x-{pid}.jsonl", 7), PathBuf::from("/tmp/x-7.jsonl"));
+        let dir = std::env::temp_dir().join(format!("logdir-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(log_path(dir.to_str().unwrap(), 9), dir.join("classify-9.jsonl"));
+        let file = dir.join("one.jsonl");
+        assert_eq!(log_path(file.to_str().unwrap(), 9), file);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_log_is_private_append_only_one_row_per_write_and_never_through_a_symlink() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("logw-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("log.jsonl");
+        let handles: Vec<_> = (0..4)
+            .map(|t| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    for n in 0..50 {
+                        append_rows(&path, &[format!(r#"{{"type":"call","call_id":"{}","attempt":{n}}}"#, t * 100 + n)]).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text.lines().count(), 200);
+        assert!(text.lines().all(|l| serde_json::from_str::<Value>(l).is_ok()), "no interleaved rows");
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        // A log someone else can read or write is refused, not appended to.
+        let open = dir.join("open.jsonl");
+        std::fs::write(&open, "").unwrap();
+        std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let err = append_rows(&open, &["{}".into()]).unwrap_err().to_string();
+        assert!(err.contains("mode 644"), "{err}");
+        assert_eq!(std::fs::read_to_string(&open).unwrap(), "");
+        let link = dir.join("link.jsonl");
+        std::os::unix::fs::symlink(&path, &link).unwrap();
+        let err = append_rows(&link, &["{}".into()]).unwrap_err().to_string();
+        assert!(err.contains("symlink"), "{err}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 200);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -321,6 +321,45 @@ fn in_virtualenv(python: &Path) -> bool {
         || python.parent().and_then(Path::parent).is_some_and(|v| v.join("pyvenv.cfg").is_file())
 }
 
+/// Arguments for creating the session venv. Never `--seed` / ensurepip unless `seed` (the base
+/// interpreter has no pip): the venv sees the base's site packages, and `uv pip install --python`
+/// needs no pip inside the venv.
+fn venv_args(uv: bool, base: &Path, dir: &Path, seed: bool) -> Vec<OsString> {
+    let mut a: Vec<OsString> = if uv { vec!["venv".into(), "--system-site-packages".into(), "--python".into(), base.into()] } else { vec!["-m".into(), "venv".into(), "--system-site-packages".into()] };
+    if seed && uv {
+        a.insert(1, "--seed".into());
+    } else if !uv && !seed {
+        a.push("--without-pip".into());
+    }
+    a.push(dir.into());
+    a
+}
+
+/// Whether the base interpreter can import pip. Spawns python once; only run on the no-uv path.
+fn base_has_pip(base: &Path) -> bool {
+    std::process::Command::new(base)
+        .args(["-c", "import importlib.util;print(importlib.util.find_spec(\"pip\") is not None)"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "True")
+}
+
+/// A venv made without pip has no `bin/pip`: a bare `pip install` in bash would reach the system pip
+/// and its unwritable site packages. Tiny shims route `pip`/`pip3` to the venv python's `-m pip`.
+fn write_pip_shims(bin: &Path) {
+    for name in ["pip", "pip3"] {
+        let f = bin.join(name);
+        if f.exists() {
+            continue;
+        }
+        if std::fs::write(&f, "#!/bin/sh\nexec \"$(dirname \"$0\")/python\" -m pip \"$@\"\n").is_ok() {
+            #[cfg(unix)]
+            let _ = std::fs::set_permissions(&f, std::os::unix::fs::PermissionsExt::from_mode(0o755));
+        }
+    }
+}
+
 /// Build the session venv in `dir`: sweep dead engines' leftovers, then `uv venv` (else
 /// `python3 -m venv`) with the base interpreter's site packages, in its own process group.
 fn create_session_venv(gate: &VenvGate, base: &Path, uv: Option<PathBuf>, dir: &Path) -> bool {
@@ -328,13 +367,15 @@ fn create_session_venv(gate: &VenvGate, base: &Path, uv: Option<PathBuf>, dir: &
     let _ = std::fs::remove_dir_all(dir);
     let mut cmd = match uv {
         Some(uv) => {
-            let mut c = std::process::Command::new(uv);
-            c.args(["venv", "--seed", "--system-site-packages", "--python"]).arg(base).arg(dir);
+            let mut c = std::process::Command::new(&uv);
+            c.args(venv_args(true, base, dir, false));
             c
         }
         None => {
+            // `ensurepip` is the costly part of `python -m venv`: skip it whenever the base interpreter
+            // already ships pip, which the venv then reaches through the system site packages.
             let mut c = std::process::Command::new(base);
-            c.args(["-m", "venv", "--system-site-packages"]).arg(dir);
+            c.args(venv_args(false, base, dir, !base_has_pip(base)));
             c
         }
     };
@@ -356,6 +397,9 @@ fn create_session_venv(gate: &VenvGate, base: &Path, uv: Option<PathBuf>, dir: &
     gate.child_group.store(0, std::sync::atomic::Ordering::SeqCst);
     let _ = std::fs::remove_dir_all(&scratch);
     let bin = dir.join("bin");
+    if finished {
+        write_pip_shims(&bin);
+    }
     finished && (is_executable_file(&bin.join("python3")) || is_executable_file(&bin.join("python")))
 }
 
@@ -656,6 +700,40 @@ mod tests {
         let real = std::fs::canonicalize(d.path()).unwrap();
         assert_eq!(canonical_lenient(&d.path().join("a/b/c")), Some(real.join("a/b/c")));
         assert_eq!(canonical_lenient(d.path()), Some(real));
+    }
+
+    #[test]
+    fn venv_command_lines_skip_pip_seeding_unless_the_base_has_none() {
+        let (b, d) = (Path::new("/b/python3"), Path::new("/t/v"));
+        let v = |uv, seed| venv_args(uv, b, d, seed).iter().map(|a| a.to_string_lossy().into_owned()).collect::<Vec<_>>().join(" ");
+        assert_eq!(v(true, false), "venv --system-site-packages --python /b/python3 /t/v");
+        assert_eq!(v(true, true), "venv --seed --system-site-packages --python /b/python3 /t/v");
+        assert_eq!(v(false, false), "-m venv --system-site-packages --without-pip /t/v");
+        assert_eq!(v(false, true), "-m venv --system-site-packages /t/v");
+    }
+
+    #[test]
+    fn pip_detection_reads_the_base_interpreters_answer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let say = |name: &str, out: &str| {
+            let f = tmp.path().join(name);
+            std::fs::write(&f, format!("#!/bin/sh\necho {out}\n")).unwrap();
+            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+            f
+        };
+        assert!(base_has_pip(&say("yes", "True")));
+        assert!(!base_has_pip(&say("no", "False")));
+        assert!(!base_has_pip(&tmp.path().join("missing")));
+    }
+
+    #[test]
+    fn pip_shims_route_to_the_venv_python_and_never_overwrite() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("pip3"), "real").unwrap();
+        write_pip_shims(tmp.path());
+        assert!(std::fs::read_to_string(tmp.path().join("pip")).unwrap().contains("-m pip"));
+        assert_eq!(std::fs::read_to_string(tmp.path().join("pip3")).unwrap(), "real");
+        assert!(std::fs::metadata(tmp.path().join("pip")).unwrap().permissions().mode() & 0o111 != 0);
     }
 
     fn exe(dir: &Path, name: &str) -> PathBuf {

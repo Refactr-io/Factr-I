@@ -702,3 +702,46 @@ async fn an_exception_reports_the_traceback_from_the_cell() {
     assert!(error.starts_with("Traceback") && error.contains("in f") && error.ends_with("ZeroDivisionError: division by zero"), "{error}");
     assert!(!error.contains("python_worker") && !error.contains("asyncio"), "{error}");
 }
+
+/// Real worker and host: `classify` takes the default (json) path with usage metering, the log lands in the
+/// file `FACTR_CLASSIFY_LOG` names (hashes and counts only), and writing it spends no host-call budget.
+#[tokio::test(flavor = "multi_thread")]
+async fn classify_logs_per_chunk_without_spending_host_calls_or_leaking_text() {
+    let h = host!();
+    // A directory: each engine process writes its own `classify-<pid>.jsonl` in it.
+    let dir = std::env::temp_dir().join(format!("classify-log-{}-{}", std::process::id(), rand_suffix()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join(format!("classify-{}.jsonl", std::process::id()));
+    // SAFETY: this test is the only one in the binary that reads or sets this variable.
+    unsafe { std::env::set_var("FACTR_CLASSIFY_LOG", &dir) };
+    let meta: factr_learn::host::LlmQueryMeta = Arc::new(|prompt: String| {
+        Box::pin(async move {
+            let rows: Vec<&str> = prompt.split("Items:\n").nth(1).unwrap().lines().collect();
+            let text = rows.iter().map(|l| l.split_once(". ").unwrap().0).map(|id| format!("\"{id}\":\"no\"")).collect::<Vec<_>>().join(",");
+            let text = format!("{{{text}}}");
+            Ok(factr_learn::host::SubReply { text, input_tokens: Some(500), output_tokens: Some(40), cached_tokens: Some(0), reasoning_tokens: None, latency_ms: 12, effort: Some("low".into()), ..Default::default() })
+        })
+    });
+    let extra = factr_learn::host::ExtraHostFns { llm_query_meta: Some(meta), sub_effort: "low".into(), ..Default::default() };
+    let out = h
+        .run("s", "r = await classify(['secret one', 'secret two', 'secret one'], ['yes', 'no'])\nr", None, upper(), no_refine(), extra, MEMORY_LIMIT)
+        .await
+        .unwrap();
+    unsafe { std::env::remove_var("FACTR_CLASSIFY_LOG") };
+    assert_eq!(out.error, None);
+    assert_eq!(out.value.as_deref(), Some("['no', 'no', 'no']"));
+    assert_eq!(out.host_calls, 1, "one batch call; the log frames are not counted");
+    let text = std::fs::read_to_string(&log).unwrap();
+    #[cfg(unix)]
+    assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&log).unwrap().permissions()) & 0o777, 0o600);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!text.contains("secret"), "{text}");
+    let chunk: serde_json::Value = text.lines().map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap()).find(|r| r["type"] == "call").unwrap();
+    assert_eq!((chunk["chunk_size"].as_i64(), chunk["input_tokens"].as_i64(), chunk["effort"].as_str()), (Some(3), Some(500), Some("low")), "defaults: no dedupe");
+    assert_eq!((chunk["format"].as_str(), chunk["chunk_items"].as_i64(), chunk["chunk_chars"].as_i64(), chunk["chunk_source"].as_str()), (Some("json"), Some(80), Some(48000), Some("default-80")));
+    // The engine stamps every row with the session and its cell, and scopes the worker-local ids by them.
+    assert_eq!(chunk["session"], "s");
+    assert!(chunk["cell"].as_u64().is_some_and(|c| c >= 1), "{chunk}");
+    assert!(chunk["call_id"].as_str().unwrap().starts_with(&format!("s/{}/", chunk["cell"])), "{chunk}");
+    assert!(text.lines().any(|l| l.contains("\"type\":\"job\"") && l.contains("\"status\":\"ok\"")), "{text}");
+}

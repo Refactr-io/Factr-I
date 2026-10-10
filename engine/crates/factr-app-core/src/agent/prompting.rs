@@ -277,9 +277,18 @@ impl Agent {
 /// Without the macOS sandbox the worker runs only on an explicit `FACTR_REPL_PYTHON`, with bash's
 /// network and file access, so the network line must say so.
 fn repl_guidance(sandboxed: bool) -> String {
+    repl_guidance_for(sandboxed, factr_learn::host::cost_legacy())
+}
+
+/// The 0.0.4 labelling sentence (one classify cell, text only, no verification pass); the 0.0.3 text
+/// (`legacy`, `FACTR_COST_LEGACY=1`) has none of it.
+const LABELLING_RULES: &str = "Label the whole set in ONE `classify` cell after at most one look at the file; pass only the text to judge (dates and ids stay in code); never classify the same records twice to verify. The final reply must contain the exact answer line the task asks for. ";
+
+fn repl_guidance_for(sandboxed: bool, legacy: bool) -> String {
+    let rules = if legacy { "" } else { LABELLING_RULES };
     let network = if sandboxed { "no network" } else { "network and files as in bash (no sandbox here)" };
     format!(
-        "## Recursive REPL\n\nLoad the `repl` tool with `load_tools` to keep large inputs in persistent Python variables: `await load(path, start, length)` reads a slice, `await llm_query(prompt)` asks a sub-model (a plain model call: no tools, not subject to the run's tool policy), `await llm_query_batch(prompts)` runs up to 64 at once, `await classify(items, labels, guidance=None, votes=1)` returns one validated label per item (a list, one batch call per wave). Use them for judgment work (classify, extract, summarise) on focused slices; to count by a judged property, `classify` every record and count the list. Sub-calls see only the prompt: put the records in it, from variables, never retyped; a prompt over 200000 characters is an error. For data work use this REPL, not `python3 -c` (one-shot checks only). Engine features: `await refine('run', instructions)`, `await goal(op, objective)`, `await heartbeat(op, ...)`, `await spawn_subagent(prompt, name)` (refused unless the `delegate` tool is allowed), `await agent_message(action, message, target)`. Every helper is async: always `await` it. Print only what you need. Limits: the standard library plus the packages of the same Python that `python` runs in bash, {network}, 20 s of compute per cell (a longer cell is interrupted and keeps its variables), a memory cap (a worker over it is restarted), variables persist between calls.\n"
+        "## Recursive REPL\n\nLoad the `repl` tool with `load_tools` to keep large inputs in persistent Python variables: `await load(path, start, length)` reads a slice, `await llm_query(prompt)` asks a sub-model (a plain model call: no tools, not subject to the run's tool policy), `await llm_query_batch(prompts)` runs up to 64 at once, `await classify(items, labels, guidance=None, votes=1)` returns one validated label per item (a list, one batch call per wave). Use them for judgment work (classify, extract, summarise) on focused slices; to count by a judged property, `classify` every record and count the list. {rules}Sub-calls see only the prompt: put the records in it, from variables, never retyped; a prompt over 200000 characters is an error. For data work use this REPL, not `python3 -c` (one-shot checks only). Engine features: `await refine('run', instructions)`, `await goal(op, objective)`, `await heartbeat(op, ...)`, `await spawn_subagent(prompt, name)` (refused unless the `delegate` tool is allowed), `await agent_message(action, message, target)`. Every helper is async: always `await` it. Print only what you need. Limits: the standard library plus the packages of the same Python that `python` runs in bash, {network}, 20 s of compute per cell (a longer cell is interrupted and keeps its variables), a memory cap (a worker over it is restarted), variables persist between calls.\n"
     )
 }
 
@@ -328,6 +337,17 @@ fn push_addenda(split: &mut crate::prompt::SplitSystemPrompt, addenda: &str) {
 #[cfg(test)]
 mod addenda_snapshot_tests {
     use super::*;
+
+    #[test]
+    fn the_labelling_rules_are_in_the_guidance_and_the_legacy_switch_drops_exactly_them() {
+        let new = repl_guidance_for(true, false);
+        let old = repl_guidance_for(true, true);
+        for rule in ["ONE `classify` cell", "at most one look", "pass only the text to judge", "never classify the same records twice to verify", "exact answer line the task asks for"] {
+            assert!(new.contains(rule) && !old.contains(rule), "{rule}");
+        }
+        assert_eq!(new.replace(LABELLING_RULES, ""), old, "the 0.0.3 text is the new one minus the rules");
+        assert!(old.contains("`classify` every record and count the list. Sub-calls see only"));
+    }
 
     #[test]
     fn every_helper_the_repl_guidance_names_is_defined_by_the_worker() {

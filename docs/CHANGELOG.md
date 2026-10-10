@@ -1,5 +1,60 @@
 # Changelog
 
+## v0.0.4 (2026-10-10)
+
+Design and evidence: `docs/design/v004.md`; cost work: `docs/design/v004-cost.md`.
+
+- Classify defaults (see `docs/design/v004-cost.md`, "Defaults and evidence"): reasoning effort inherits the user's setting; the format is a JSON
+  object (compact `id:letter` codes are opt-in, `FACTR_CLASSIFY_FORMAT=codes`); dedupe and the cache are opt-in (`FACTR_CLASSIFY_DEDUPE=1`);
+  chunk size, when `FACTR_CLASSIFY_CHUNK_ITEMS` / `FACTR_CLASSIFY_CHUNK_CHARS` are unset, is 80 items / 48000 characters for at most 6 distinct labels and a
+  median record length of at most 600 characters, else 40 / 24000; classify log rows carry `chunk_source` (`default-80`, `default-40`, `user`).
+  Evidence is dev slices of short records with 2 and 6 labels: first test spam -0.15, trec -0.22 points (lower bound exactly -1.00, not passing the strict
+  rule); replication on 13 fresh windows spam +0.19 (lower bound +0.00), trec +0.02 (lower bound -0.20); run-to-run noise about 0.3 points; 49% fewer
+  sub-calls, 7 to 14% fewer output tokens, 28% less wall time. No measurable difference within about 1 point on tested data. Workloads with more than
+  6 labels (about 10 labels, say) stay at 40 / 24000 and see no call reduction; the rule must not be widened without new evidence on more-label data.
+  Users with long records, many labels or small local models should set `FACTR_CLASSIFY_CHUNK_ITEMS=40`. Tried and rejected: low effort (-3.5 points),
+  compact codes as default, 16-wide concurrency, omitting the reasoning summary, one-call wording in the guidance.
+- Cheaper, faster long-context labelling (each piece has its own switch; `FACTR_COST_LEGACY=1` restores 0.0.3):
+  `classify` sub-calls use the main agent's reasoning effort by default (`inherit`); a lower effort is an explicit, opt-in
+  setting (`FACTR_REPL_SUB_EFFORT`, `agents.repl_sub_effort`: `none|low|medium|high|xhigh|inherit`; `minimal` is rejected), logged once per session when active,
+  and `llm_query` keeps the main effort unless `FACTR_REPL_QUERY_EFFORT` is set. The classify log carries `requested_effort` (configured) and `effort` (used),
+  and `effort_fallback: true` when the model refused the configured value. Measured on dev data, `low` cut output tokens per record 41% but lowered record accuracy
+  94.9% -> 91.4% (trec_coarse entity recall 0.89 -> 0.70), so it is not recommended by default; `none` is not supported by gpt-6-luna;
+  `classify` has an opt-in `id:letter` line format (quoted code table) and strict validation (no more "not spam" accepted as "spam") and still
+  reads a JSON object; transport errors retry the same chunk with backoff and never halve the other chunks,
+  validation failures re-ask only the failing ids; opt-in dedupe labels identical records once and a per-session cache
+  makes repeats free (`FACTR_CLASSIFY_DEDUPE=1`); `votes=1` is the documented default; concurrency and chunk size
+  are configurable (`FACTR_BATCH_CONCURRENCY`, `FACTR_CLASSIFY_CHUNK_ITEMS`, `FACTR_CLASSIFY_CHUNK_CHARS`); `FACTR_CLASSIFY_LOG=<path>` writes per-chunk tokens, latency and per-record hashes (no text); the
+  environment line can show the head of the first large non-code file (`FACTR_ENV_HEAD=1`, off by default) and the REPL guidance
+  asks for one classify cell. Environment-line heads are limited to regular, non-secret text data files and marked untrusted. First-request prefix 4727 -> 4791 tokens.
+  Hardening after an adversarial pass: size and content-filter errors halve down to single records (a refusal of a
+  whole wave stops), authentication / unsupported-setting errors stop at once, a transport error no longer spends the
+  invalid-reply budget, a failed job names the unlabelled items and keeps the labels it got (votes=1: a second call asks
+  only for the missing ones), backoff waits are bounded by the cell's remaining wait; `1. A` lines, symbol-only labels,
+  numeric labels in JSON and single-letter labels are handled; one label needs no sub-call; lone surrogates no longer
+  break the worker protocol. The log now writes the row types and names a record-level comparison reads (`type=call` per
+  sub-call with its own timing and an engine-made `error` category, `type=occ` per occurrence with `h`, `occ`, `chunk`,
+  `pos`), for the legacy path too. A free simulator (`factr-learn/tests/classify_sim.py`) runs `classify` over 2,000
+  synthetic records against a scripted provider on a virtual clock (a model, not a measurement).
+  Second hardening pass: an API refusal of the sub-call effort is remembered for the session (one refused request,
+  not one per call; logged as its own row; cache and log use the effort really used); the host wait allowance no
+  longer shrinks with higher concurrency; context-length refusals halve until they fit and never count as a systemic
+  stop (only a whole wave of other refusals does); a content-filtered record is isolated alone; a fatal error stops
+  the later batches of the wave; preflight counts the worst case of voting; rejection messages carry categories and
+  ids only; chunks are balanced and long prompts go first. Log rows gain `session`, `cell`, `run_id`
+  (`FACTR_RUN_ID`), the chunk settings, `prompt_chars` / `reply_chars`, `requested_effort`, per-batch timestamps,
+  per-occurrence provenance without dedupe, and a `job` row; a failed job still logs every occurrence; an existing log
+  file that is not mode 600 is refused. The environment-line file head is now opt-in (`FACTR_ENV_HEAD=1`) and is read
+  through one descriptor (`O_NOFOLLOW`, `fstat`, at most 4 KB).
+
+- Lighter session venv creation: no pip is installed into the venv. uv path: `uv venv --system-site-packages` (no
+  `--seed`); fallback: `python -m venv --system-site-packages --without-pip`, with ensurepip seeding only when the base
+  interpreter cannot import pip (one tiny `python -c` check, only in that branch). pip stays reachable through the
+  system site packages (`<venv python> -m pip install`, and `pip`/`pip3` shims in the venv `bin`). Process-tree peak at
+  engine start (macOS, median of 8): uv 70.9 -> 53.8 MiB, no-uv 141.7 -> 44.9 MiB; the child is visible for ~0.1 s
+  instead of ~2 s (no more 8 s outliers seen: 2 of 8 before, 0 of 8 after); ready time unchanged (~0.14 s); the
+  install-then-import scenario passes with and without uv (wall 4.3 s -> 1.8 s with uv).
+
 ## v0.0.3 (released 2026-10-08)
 
 Design and evidence: `docs/design/v003.md`.
