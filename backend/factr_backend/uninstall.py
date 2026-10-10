@@ -67,6 +67,13 @@ def get_project_root() -> Path:
     return Path(__file__).parent.parent.resolve()
 
 
+def is_bundled_source(project_root: Path) -> bool:
+    """True when the code runs from the desktop app's bundled backend (``<Resources>/backend-python/source``).
+    That tree is part of the signed app bundle: the desktop's cleanup script removes the bundle as a
+    whole after this process exits, so deleting pieces of it here would only break the signature."""
+    return project_root.name == "source" and project_root.parent.name == "backend-python"
+
+
 _SHELL_RC_NAMES = (".bashrc", ".bash_profile", ".profile", ".zshrc", ".zprofile")
 
 
@@ -262,7 +269,7 @@ _GATEWAY_SERVICE_REMOVERS = {
 
 
 def _factr_path_markers(factr_home: Path, *, include_managed_bin: bool = False) -> list[str]:
-    """Prefixes identifying Factr-owned User-PATH entries (prefix match sweeps git\cmd, git\bin,
+    r"""Prefixes identifying Factr-owned User-PATH entries (prefix match sweeps git\cmd, git\bin,
     node...). ``include_managed_bin`` adds ``<root>\bin`` (launchers + managed uv) — only when that
     dir is about to be deleted, so a keep-data uninstall keeps the working uv resolvable."""
     root = str(factr_home).rstrip("\\/")
@@ -661,8 +668,11 @@ def _perform_uninstall(
         log_warn(f"Could not remove desktop GUI artifacts: {e}")
 
     # 4. Remove installation directory (code) — we may be running from inside it.
-    log_info("Removing installation directory...")
-    _rmtree_step(project_root)
+    if is_bundled_source(project_root):
+        log_info(f"Leaving {project_root} to the app removal (it is part of the app bundle)")
+    else:
+        log_info("Removing installation directory...")
+        _rmtree_step(project_root)
     # 4b. Windows installer tooling (PortableGit, Node, gateway-service) is not user data:
     #     safe to remove in keep-data mode too.
     if windows:
