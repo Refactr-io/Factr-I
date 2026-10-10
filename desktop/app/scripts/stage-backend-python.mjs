@@ -1,5 +1,5 @@
 // Build-time only: make forwarded Factr features work without a user Python install.
-import { cpSync, existsSync, mkdirSync, realpathSync, rmSync, copyFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, readlinkSync, mkdirSync, realpathSync, rmSync, copyFileSync, writeFileSync } from 'node:fs'
 import { execFileSync, spawnSync } from 'node:child_process'
 import path from 'node:path'
 
@@ -32,6 +32,28 @@ const targets = {
   },
 }
 
+// Fail the build on any symlink that is absolute or points outside `root` (breaks codesign and relocation).
+export function badSymlinks(root) {
+  const bad = []
+  const walk = dir => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name)
+      if (e.isSymbolicLink()) {
+        const t = readlinkSync(p)
+        const rel = path.relative(root, path.resolve(dir, t))
+        if (path.isAbsolute(t) || rel.startsWith('..') || path.isAbsolute(rel)) bad.push(`${path.relative(root, p)} -> ${t}`)
+      } else if (e.isDirectory()) walk(p)
+    }
+  }
+  walk(root)
+  return bad
+}
+if (process.argv[2] === '--check') {
+  const bad = badSymlinks(path.resolve(process.argv[3]))
+  if (bad.length) { console.error(`Bad symlinks:\n${bad.join('\n')}`); process.exit(1) }
+  process.exit(0)
+}
+
 const key = `${process.platform}-${process.arch}`
 const target = targets[key]
 if (!target) {
@@ -49,10 +71,10 @@ const pythonBin = path.join(runtime, target.pythonRel)
 if (!existsSync(pythonBin)) throw new Error(`Python runtime missing: ${pythonBin}`)
 rmSync(stage, { recursive: true, force: true })
 mkdirSync(stage, { recursive: true })
-cpSync(runtime, path.join(stage, 'runtime'), { recursive: true })
+cpSync(runtime, path.join(stage, 'runtime'), { recursive: true, verbatimSymlinks: true })
 const stagedPython = path.join(stage, 'runtime', target.pythonRel)
 if (process.env.FACTR_BACKEND_PYTHON_PACKAGES) {
-  cpSync(packages, path.join(stage, 'packages'), { recursive: true })
+  cpSync(packages, path.join(stage, 'packages'), { recursive: true, verbatimSymlinks: true })
 } else {
   execFileSync(
     'uv',
@@ -97,4 +119,6 @@ writeFileSync(
   path.join(stage, 'stage.json'),
   JSON.stringify({ factrSha: git(['rev-parse', 'HEAD']), factrDirty: git(['status', '--porcelain', '-uno']) !== '', pythonVersion: version })
 )
+const offenders = badSymlinks(stage)
+if (offenders.length) throw new Error(`Staged tree has absolute or escaping symlinks:\n${offenders.join('\n')}`)
 console.log(`Staged Factr Python runtime at ${stage} (${key})`)

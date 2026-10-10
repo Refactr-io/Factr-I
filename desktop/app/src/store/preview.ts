@@ -560,6 +560,18 @@ export function openBrowserTab() {
   openPreview(current?.target ?? blankPage())
 }
 
+/** The right sidebar's resting tab: a Browser, made only when none exists (never a duplicate blank). */
+export function ensureBrowserTab() {
+  const tabs = $previewTabs.get()
+
+  if (!tabs.some(tab => tab.target.kind === 'url')) {
+    const id = mintBrowserTabId()
+
+    $previewTabs.set([...tabs, { id, target: blankPage() }])
+    selectRightRailTab(id)
+  }
+}
+
 /** Another Browser, always — the strip's "+". */
 export function newBrowserTab() {
   const id = mintBrowserTabId()

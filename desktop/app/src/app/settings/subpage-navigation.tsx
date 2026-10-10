@@ -17,7 +17,7 @@ export function SettingsSubpageHeader({ group, child }: { group: OverlayNavGroup
         {pages.length > 1 && (
           <div
             aria-label={group.label}
-            className="no-scrollbar mt-3 flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-(--ui-bg-tertiary) p-0.5"
+            className="no-scrollbar mt-3 inline-grid max-w-full auto-cols-fr grid-flow-col gap-0.5 overflow-x-auto rounded-lg bg-(--ui-bg-tertiary) p-0.5"
             role="tablist"
           >
             {pages.map(page => {
@@ -27,7 +27,7 @@ export function SettingsSubpageHeader({ group, child }: { group: OverlayNavGroup
                 <button
                   aria-selected={active}
                   className={cn(
-                    'h-7 shrink-0 rounded-md px-3 text-[0.8125rem] transition-colors duration-150 motion-reduce:transition-none',
+                    'h-7 whitespace-nowrap rounded-md px-4 text-[0.8125rem] transition-colors duration-150 motion-reduce:transition-none',
                     active
                       ? 'bg-(--ui-chat-surface-background) font-medium text-foreground shadow-[0_1px_1px_color-mix(in_srgb,var(--ui-text-primary)_10%,transparent)]'
                       : 'text-(--ui-text-secondary) hover:text-foreground'

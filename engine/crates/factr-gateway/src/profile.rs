@@ -95,8 +95,11 @@ pub fn effective_default(config: &crate::Config) -> (String, String) {
     }
     match saved_model {
         Some(model) => {
+            // The engine's own id: the runtime saves `openai-codex` for the ChatGPT login, which the
+            // engine routes as `openai` (a raw id it cannot route fell back to the boot provider).
             let provider = saved_provider
-                .filter(|p| factr_base::provider_catalog::resolve_login_provider_loose(p).is_some())
+                .and_then(|p| factr_base::provider_catalog::resolve_login_provider_loose(&p))
+                .map(|d| d.id.to_string())
                 .unwrap_or_else(|| config.provider.clone());
             (model, provider)
         }
@@ -316,6 +319,22 @@ mod tests {
         let out = body(&dir);
         match before { Some(v) => unsafe { std::env::set_var("FACTR_CONFIG_HOME", v) }, None => unsafe { std::env::remove_var("FACTR_CONFIG_HOME") } }
         out
+    }
+
+    #[test]
+    fn a_chatgpt_pick_saved_by_the_runtime_routes_new_chats_to_openai_whatever_the_engine_booted_on() {
+        with_home("codex-pick", |dir| {
+            // Fresh install: the engine booted on `auto` with no login (served label "Claude"); onboarding
+            // then saved the ChatGPT pick through the runtime, which writes its own id.
+            let mut config = config_in(dir, false);
+            config.provider = "Claude".into();
+            config.model = "claude-default".into();
+            std::fs::write(dir.join("config.yaml"), "model:\n  default: gpt-5.5\n  provider: openai-codex\n").unwrap();
+            let (model, provider) = effective_default(&config);
+            assert_eq!((model.as_str(), provider.as_str()), ("gpt-5.5", "openai"));
+            let route = factr_base::provider::MultiProvider::model_switch_request_for_session_route(&model, Some(&provider), None);
+            assert!(route.starts_with("openai") && route.ends_with("gpt-5.5") && !route.starts_with("claude"), "{route}");
+        });
     }
 
     #[test]

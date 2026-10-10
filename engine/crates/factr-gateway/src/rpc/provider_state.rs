@@ -25,6 +25,43 @@ fn factr_knows(d: LoginProviderDescriptor) -> bool {
     )
 }
 
+/// The provider id the Factr runtime (which owns `/api/model/set` and config.yaml's saved pick) takes
+/// for an engine catalog id: a different spelling for the few that differ, `None` for an engine
+/// provider the runtime has no route for (chats can still use it, but it cannot be saved as a
+/// default there), and any other id unchanged.
+pub(crate) fn runtime_provider_id(id: &str) -> Option<&str> {
+    match id.trim().to_ascii_lowercase().as_str() {
+        "openai" => Some("openai-codex"),
+        "claude" | "anthropic-api" => Some("anthropic"),
+        "gemini-api" => Some("gemini"),
+        "meta-muse" => Some("muse"),
+        "302ai" | "baseten" | "belvedir" | "celeris" | "cerebras" | "chutes" | "comtegra" | "conifer"
+        | "cortecs" | "cursor" | "firmware" | "fpt" | "grok-build" | "groq" | "mistral" | "moonshotai"
+        | "openai-compatible" | "orcarouter" | "perplexity" | "scaleway" | "stackit" | "togetherai"
+        | "yolo-auto" => None,
+        _ => Some(id),
+    }
+}
+
+/// The provider id to save in config.yaml for an engine pick: the runtime's id, so the Factr runtime
+/// can read the saved default too. The engine's `openai` covers the ChatGPT login and an API key; with
+/// only a key it is the runtime's `openai-api`. An engine-only provider keeps its engine id (the runtime
+/// has no route for it either way). The engine reads every one of these back (catalog aliases), at boot too.
+pub(crate) fn runtime_saved_provider(id: &str) -> String {
+    if id.trim().eq_ignore_ascii_case("openai") {
+        let status = AuthStatus::check_fast();
+        let chatgpt = resolve_login_provider_loose("openai").is_some_and(|d| has_login(d, &status));
+        if !chatgpt && load_api_key("OPENAI_API_KEY").is_some() {
+            return "openai-api".to_string();
+        }
+    }
+    // `gemini-api` stays: the runtime's `gemini` boots the engine's Gemini CLI runtime instead.
+    if id.trim().eq_ignore_ascii_case("gemini-api") {
+        return id.to_string();
+    }
+    runtime_provider_id(id).unwrap_or(id).to_string()
+}
+
 /// The catalog the engine offers: `login_providers()` without the factr-only rows.
 fn offered() -> Vec<LoginProviderDescriptor> {
     login_providers().iter().copied().filter(|d| !is_factr_only(*d)).collect()
@@ -234,7 +271,8 @@ pub(super) fn model_options(provider: &str, model: &str, current_models: Vec<Str
                 },
                 model,
             );
-            let mut row = json!({ "slug": d.id, "name": d.display_name, "total_models": models.len(), "models": models, "is_current": is_current, "authenticated": auth });
+            // `settable`: a pick here can be saved as the default (`/api/model/set`); pickers that save hide the rest.
+            let mut row = json!({ "slug": d.id, "name": d.display_name, "total_models": models.len(), "models": models, "is_current": is_current, "authenticated": auth, "settable": runtime_provider_id(d.id).is_some() });
             if !models.is_empty() {
                 row["capabilities"] = served_capabilities(d.id, &models, efforts, served_model);
             }
@@ -293,6 +331,46 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(dir);
         out
+    }
+
+    #[test]
+    fn rows_say_whether_a_pick_can_be_saved_as_the_default() {
+        isolated(|| {
+            // Fresh install of an older build: the served row is an engine-only API-key provider.
+            let options = model_options("yolo-auto", "yolo", Vec::new(), true, &[], "yolo");
+            let row = |slug: &str| options["providers"].as_array().unwrap().iter().find(|r| r["slug"] == slug).cloned();
+            assert_eq!(row("yolo-auto").unwrap()["settable"], json!(false));
+            assert_eq!(row("openai").unwrap()["settable"], json!(true));
+            assert_eq!(row("claude").unwrap()["settable"], json!(true));
+        });
+        assert_eq!(runtime_provider_id("openai"), Some("openai-codex"));
+        assert_eq!(runtime_provider_id("OpenAI"), Some("openai-codex"));
+        assert_eq!(runtime_provider_id("cursor"), None);
+        assert_eq!(runtime_provider_id("openrouter"), Some("openrouter"));
+    }
+
+    #[test]
+    fn a_saved_default_uses_the_runtimes_id_and_the_engine_reads_it_back() {
+        isolated(|| {
+            let key = std::env::var_os("OPENAI_API_KEY");
+            // SAFETY: env is only touched under ENV_LOCK (held by `isolated`).
+            unsafe { std::env::remove_var("OPENAI_API_KEY") };
+            let codex = runtime_saved_provider("openai");
+            unsafe { std::env::set_var("OPENAI_API_KEY", "sk-test-not-real") };
+            let key_only = runtime_saved_provider("OpenAI");
+            match key {
+                Some(key) => unsafe { std::env::set_var("OPENAI_API_KEY", key) },
+                None => unsafe { std::env::remove_var("OPENAI_API_KEY") },
+            }
+            assert_eq!((codex.as_str(), key_only.as_str()), ("openai-codex", "openai-api"));
+            assert_eq!(runtime_saved_provider("Claude"), "anthropic");
+            assert_eq!(runtime_saved_provider("groq"), "groq", "engine-only: kept, the runtime cannot use it anyway");
+            // Every id written here resolves to the engine provider it came from.
+            assert_eq!(runtime_saved_provider("gemini-api"), "gemini-api");
+            for (saved, engine) in [("openai-codex", "openai"), ("openai-api", "openai-api"), ("anthropic", "claude"), ("muse", "meta-muse")] {
+                assert_eq!(resolve_login_provider_loose(saved).map(|d| d.id), Some(engine), "{saved}");
+            }
+        });
     }
 
     #[test]

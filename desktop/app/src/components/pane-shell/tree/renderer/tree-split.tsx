@@ -30,12 +30,12 @@ import {
   $collapsedTreeSides,
   $hiddenTreePanes,
   $narrowViewport,
+  collapseTreeSide,
   isCollapsePane,
   paneRootSide,
   persistTree,
   presetSplitWeights,
   setTreeGroupMinimized,
-  setTreeSideCollapsed,
   setTreeSplitWeights
 } from '../store'
 
@@ -120,6 +120,7 @@ function useSubtreeOverrides(paneIds: readonly string[]): TrackContext['override
 
 /** Pixels past a side pane's minimum width at which releasing the sash collapses the side. */
 const SIDE_COLLAPSE_OVERDRAG_PX = 20
+const SIDE_COLLAPSE_WIDE_FRACTION = 0.6
 
 export function TreeSplit({
   node,
@@ -519,22 +520,45 @@ export function TreeSplit({
         // A collapsible side pane (the session list) dragged well past its minimum folds the whole
         // side away, like the top-bar toggle. Checked before the `moved` test: a list already resting at
         // its minimum has nothing to move, yet the overshoot is exactly the gesture.
+        // Only the side pane the sash sits against can fold; a neighbour that merely donated space through the
+        // cascade (the session list while the right panel is dragged) must never collapse as a side effect.
+        const sideAt = (index: number) => {
+          // Any collapsible tab makes the zone a side (the right panel's visible tabs may be just a Browser tile, which isn't flagged).
+          const id = sashTracks[index]?.paneIds.find(
+            pane => paneChrome(paneFor(pane)).collapsible || pane.startsWith('preview-tile:')
+          )
+
+          return id ? paneRootSide(id) : null
+        }
+
+        const total = lastPlan ? lastPlan.sizes.reduce((sum, size) => sum + size, 0) : 0
+
         const overdragSide =
           lastPlan && horizontal
-            ? sashTracks
-                .map((track, index) => {
-                  const shrinks = index <= aIndex ? lastShift < 0 : lastShift > 0
-                  const overshoot = Math.abs(lastShift) - Math.max(0, track.initial - track.min)
-                  const id = track.paneIds[0]
-                  const side = id && paneChrome(paneFor(id)).collapsible ? paneRootSide(id) : null
+            ? [aIndex, bIndex]
+                .map(near => {
+                  const track = sashTracks[near]
+                  const side = sideAt(near)
 
-                  return track.fixed && side && shrinks && overshoot > SIDE_COLLAPSE_OVERDRAG_PX ? side : null
+                  if (!track?.fixed || !side) {
+                    return null
+                  }
+
+                  const shrinks = near === aIndex ? lastShift < 0 : lastShift > 0
+                  const overshoot = Math.abs(lastShift) - Math.max(0, track.initial - track.min)
+
+                  if (shrinks) {
+                    return overshoot > SIDE_COLLAPSE_OVERDRAG_PX ? side : null
+                  }
+
+                  // Pushed absurdly wide (over ~60% of the row): fold it away; the toggle brings it back.
+                  return total > 0 && lastPlan!.sizes[near] > total * SIDE_COLLAPSE_WIDE_FRACTION ? side : null
                 })
                 .find(Boolean)
             : null
 
         if (overdragSide) {
-          setTreeSideCollapsed(overdragSide, true)
+          collapseTreeSide(overdragSide)
         } else if (lastPlan && lastPlan.moved !== 0) {
           // Dragged a tool panel down to its collapsed header? Fold the zone
           // to its rail instead of persisting a sliver — and DON'T write the

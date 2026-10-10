@@ -5,6 +5,7 @@ import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import {
   restoreHiddenTreeSideTabs,
   restoreMinimizedTreeSide,
+  revealTreePane,
   setTreeSideCollapsed,
   type TreeSide
 } from '@/components/pane-shell/tree/store'
@@ -616,6 +617,7 @@ export const $revealInTreeRequest = atom<null | string>(null)
 
 export function revealFileInTree(path: string): void {
   setFileBrowserOpen(true)
+  revealTreePane('files')
   $revealInTreeRequest.set(path)
 }
 

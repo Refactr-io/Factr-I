@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { getGlobalModelOptions } from '@/factr'
 
-import { catalogProviderMatches, modelOptionsQueryKey, requestModelOptions } from './model-options'
+import { catalogProviderMatches, modelOptionsQueryKey, requestModelOptions, savableProviders } from './model-options'
 
 const globalOptions = { model: 'example/model-a', provider: 'example-provider', providers: [] }
 
@@ -220,5 +220,18 @@ describe('catalogProviderMatches', () => {
     expect(catalogProviderMatches(cloudflare, 'Cloudflare')).toBe(true)
     expect(catalogProviderMatches(cloudflare, 'custom:cloudflare')).toBe(true)
     expect(catalogProviderMatches(cloudflare, 'openrouter')).toBe(false)
+  })
+})
+
+describe('savableProviders', () => {
+  it('drops only rows the gateway marks unsettable', () => {
+    const rows = [
+      { slug: 'openai', name: 'OpenAI', settable: true },
+      { slug: 'groq', name: 'Groq', settable: false },
+      { slug: 'custom', name: 'Custom' }
+    ]
+
+    expect(savableProviders(rows).map(r => r.slug)).toEqual(['openai', 'custom'])
+    expect(savableProviders(undefined)).toEqual([])
   })
 })

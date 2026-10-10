@@ -59,6 +59,7 @@ pub(crate) fn put_config(home: &std::path::Path, config: &Value) -> Result<(), (
 }
 mod projects;
 mod provider_state;
+pub(crate) use provider_state::{runtime_provider_id, runtime_saved_provider};
 mod side_agents;
 mod spawn_tree;
 mod subagents;
@@ -2868,7 +2869,8 @@ impl Conn {
             Some(provider) => provider,
             None => crate::profile::effective_default(&self.config).1,
         };
-        settings::save_default_model(Path::new(&self.config.home), model, &provider)?;
+        // Saved under the runtime's id (`openai-codex`, not `openai`): the Factr runtime reads this file too.
+        settings::save_default_model(Path::new(&self.config.home), model, &runtime_saved_provider(&provider))?;
         // From now on this process follows the saved pick, even if it was started with an explicit model.
         crate::profile::note_pick_saved(&self.config);
         Ok(())
@@ -4466,11 +4468,30 @@ mod tests {
     async fn a_saved_pick_names_the_models_own_provider_and_a_swarm_effort_is_never_the_default() {
         let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let conn = test_conn("persist-owner");
-        // The served provider is "p"; a pick that names no provider is saved under the model's own.
-        conn.persist_default_model("gpt-5.6-luna", None).unwrap();
+        // Credentials are read from homes with none in them (no key, no login): the test's own.
+        let creds = std::env::temp_dir().join(format!("persist-owner-creds-{}", std::process::id()));
+        std::fs::create_dir_all(&creds).unwrap();
+        let before: Vec<_> = ["OPENAI_API_KEY", "FACTR_HOME", "FACTR_CONFIG_HOME"].iter().map(|k| (*k, std::env::var_os(k))).collect();
+        // SAFETY: env is only touched under ENV_LOCK.
+        unsafe {
+            std::env::remove_var("OPENAI_API_KEY");
+            std::env::set_var("FACTR_HOME", &creds);
+            std::env::set_var("FACTR_CONFIG_HOME", &conn.config.home);
+        }
+        factr_base::auth::AuthStatus::invalidate_cache();
+        // The served provider is "p"; a pick that names no provider is saved under the model's own, in the
+        // runtime's spelling (the ChatGPT login is its `openai-codex`) so the runtime can read it too.
+        let saved = conn.persist_default_model("gpt-5.6-luna", None);
+        for (k, v) in before {
+            match v { Some(v) => unsafe { std::env::set_var(k, v) }, None => unsafe { std::env::remove_var(k) } }
+        }
+        let _ = std::fs::remove_dir_all(&creds);
+        saved.unwrap();
         let dir = std::path::PathBuf::from(&conn.config.home);
         let (provider, model, _) = crate::profile::parse_config(&std::fs::read_to_string(dir.join("config.yaml")).unwrap());
-        assert_eq!((provider.as_deref(), model.as_deref()), (Some("openai"), Some("gpt-5.6-luna")));
+        assert_eq!((provider.as_deref(), model.as_deref()), (Some("openai-codex"), Some("gpt-5.6-luna")));
+        // The engine reads that id back as its own `openai` (the next boot parses it too: factr_runtime tests).
+        assert_eq!(factr_base::provider_catalog::resolve_login_provider_loose("openai-codex").map(|d| d.id), Some("openai"));
         // A model no provider claims stays on the one being served.
         let other = test_conn("persist-owner-local");
         let other_dir = std::path::PathBuf::from(&other.config.home);

@@ -504,6 +504,133 @@ describe('OAuth onboarding', () => {
     expect(setIndex).toBeGreaterThan(recommendedIndex)
   })
 
+  it('saves the signed-in provider, never the unkeyed provider the engine booted on', async () => {
+    const calls: { body?: unknown; path: string }[] = []
+
+    installApiMock(async ({ body, path }: { body?: unknown; path: string }) => {
+      calls.push({ body, path })
+
+      if (path === '/api/providers/oauth/openai-codex/submit') {
+        return { ok: true, status: 'approved' }
+      }
+
+      if (path.startsWith('/api/model/options')) {
+        // Fresh install: the engine serves an API-key provider with no key, listed first.
+        return {
+          provider: 'yolo-auto',
+          model: 'yolo',
+          providers: [
+            { authenticated: false, is_current: true, models: ['yolo'], name: 'Yolo-Auto', slug: 'yolo-auto' },
+            { authenticated: true, is_current: false, models: ['gpt-5.5'], name: 'OpenAI', slug: 'openai' }
+          ]
+        }
+      }
+
+      if (path.startsWith('/api/model/recommended-default?')) {
+        return { provider: 'openai-codex', model: 'gpt-5.5' }
+      }
+
+      if (path === '/api/model/set') {
+        return { ok: true, provider: 'openai-codex', model: 'gpt-5.5' }
+      }
+
+      throw new Error(`unexpected api path: ${path}`)
+    })
+
+    const requestGateway: OnboardingContext['requestGateway'] = async method => {
+      if (method === 'reload.env') {
+        return {} as never
+      }
+
+      if (method === 'setup.status') {
+        return { provider_configured: true } as never
+      }
+
+      if (method === 'setup.runtime_check') {
+        return { ok: true } as never
+      }
+
+      throw new Error(`unexpected gateway method: ${method}`)
+    }
+
+    $desktopOnboarding.set(
+      baseState({
+        flow: {
+          status: 'awaiting_user',
+          provider: makeOAuthProvider('openai-codex', 'ChatGPT'),
+          start: { auth_url: 'https://auth.example/', expires_in: 600, flow: 'pkce', session_id: 'codex-session' },
+          code: 'fresh-code'
+        },
+        requested: true
+      })
+    )
+
+    await submitOnboardingCode(onboardingContext(requestGateway))
+
+    expect(calls.find(c => c.path === '/api/model/set')?.body).toMatchObject({
+      model: 'gpt-5.5',
+      provider: 'openai-codex'
+    })
+    expect(calls.some(c => c.path.includes('provider=yolo-auto'))).toBe(false)
+    expect(calls.some(c => c.path === '/api/model/recommended-default?provider=openai-codex')).toBe(true)
+    expect($desktopOnboarding.get().flow.status).toBe('confirming_model')
+  })
+
+  it('saves no model when nothing matches the sign-in and no listed provider has credentials', async () => {
+    const calls: string[] = []
+
+    installApiMock(async ({ path }: { path: string }) => {
+      calls.push(path)
+
+      if (path === '/api/providers/oauth/example-oauth/submit') {
+        return { ok: true, status: 'approved' }
+      }
+
+      if (path.startsWith('/api/model/options')) {
+        return {
+          providers: [
+            { authenticated: false, is_current: true, models: ['yolo'], name: 'Yolo-Auto', slug: 'yolo-auto' }
+          ]
+        }
+      }
+
+      throw new Error(`unexpected api path: ${path}`)
+    })
+
+    const requestGateway: OnboardingContext['requestGateway'] = async method => {
+      if (method === 'reload.env') {
+        return {} as never
+      }
+
+      if (method === 'setup.status') {
+        return { provider_configured: true } as never
+      }
+
+      if (method === 'setup.runtime_check') {
+        return { ok: true } as never
+      }
+
+      throw new Error(`unexpected gateway method: ${method}`)
+    }
+
+    $desktopOnboarding.set(
+      baseState({
+        flow: {
+          status: 'awaiting_user',
+          provider: makeOAuthProvider('example-oauth', 'Example Portal'),
+          start: { auth_url: 'https://portal.example/auth', expires_in: 600, flow: 'pkce', session_id: 's' },
+          code: 'fresh-code'
+        },
+        requested: true
+      })
+    )
+
+    await submitOnboardingCode(onboardingContext(requestGateway))
+
+    expect(calls).not.toContain('/api/model/set')
+    expect($desktopOnboarding.get().flow.status).not.toBe('error')
+  })
+
   it('does not advance when the default model assignment is not persisted', async () => {
     const model = 'openai/gpt-5.5-pro'
     installApiMock(async ({ path }: { path: string }) => {
@@ -919,5 +1046,56 @@ describe('setOnboardingModel', () => {
       expect(flow.label).toBe('OpenAI OAuth (ChatGPT)')
       expect(flow.saving).toBe(false)
     }
+  })
+})
+
+describe('onboarding error text', () => {
+  const ipc404 = (reason: string) =>
+    new Error(
+      `Error invoking remote method 'factr:api': Error: Factr API 404: {"error":"${reason}","reason":"${reason}"}`
+    )
+
+  it('maps a gated or unsupported engine route to the setup-service message', async () => {
+    for (const reason of ['feature_not_requested', 'not_supported_by_engine']) {
+      installApiMock(async () => {
+        throw ipc404(reason)
+      })
+
+      const result = await saveOnboardingLocalEndpoint('http://127.0.0.1:8000/v1', '', {
+        onCompleted: vi.fn(),
+        requestGateway: vi.fn()
+      })
+
+      expect(result.ok).toBe(false)
+      expect(result.message).toBe("Factr-I's setup service didn't start. Restart Factr-I and try again.")
+      expect(result.message).not.toMatch(/Error invoking|404/)
+    }
+  })
+
+  it('shows the real error, not "Could not reach", when the probe fails for a non-network reason', async () => {
+    installApiMock(async () => {
+      throw new Error('Unexpected token < in JSON at position 0')
+    })
+
+    const result = await saveOnboardingLocalEndpoint('http://127.0.0.1:8000/v1', '', {
+      onCompleted: vi.fn(),
+      requestGateway: vi.fn()
+    })
+
+    expect(result.message).toContain('Unexpected token')
+    expect(result.message).not.toContain('Could not reach')
+  })
+
+  it('keeps "Could not reach" for real connectivity failures', async () => {
+    installApiMock(async () => {
+      throw new Error('fetch failed: ECONNREFUSED')
+    })
+
+    const result = await saveOnboardingLocalEndpoint('http://127.0.0.1:8000/v1', '', {
+      onCompleted: vi.fn(),
+      requestGateway: vi.fn()
+    })
+
+    expect(result.message).toBe('Could not reach http://127.0.0.1:8000/v1.')
   })
 })

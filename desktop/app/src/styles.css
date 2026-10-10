@@ -468,7 +468,7 @@
     /* Classic recessed "inset" — a crisp 1px inner shadow at the TOP edge.
        :root.dark bumps the alpha since a dark card swallows shadow. Removed on
        focus (the focus border carries the state). */
-    --dt-input-inset: inset 0 1px 1px color-mix(in srgb, #000 10%, transparent);
+    --dt-input-inset: none;
     /* Hovered inactive tab: deepen it AWAY from the lighter active surface, so
        hover can never be mistaken for selected. Dark mode needs more — black
        over a dark gutter shows less. */
@@ -609,18 +609,18 @@
     --theme-accent-soft: #242424;
     --theme-midground: #d5d9e2;
     --theme-warm: #d5d9e2;
-    --theme-background-seed: #0a0a0a;
+    --theme-background-seed: #161616;
     --theme-sidebar-seed: #151515;
-    --theme-card-seed: #151515;
-    --theme-elevated-seed: #151515;
+    --theme-card-seed: #1e1e1e;
+    --theme-elevated-seed: #262626;
     --theme-bubble-seed: #242424;
     --theme-mix-chrome: 100%;
     --theme-mix-card: 100%;
     --theme-mix-elevated: 100%;
     --theme-mix-bubble: 100%;
-    --theme-neutral-chrome: #0a0a0a;
+    --theme-neutral-chrome: #161616;
     --theme-neutral-sidebar: #151515;
-    --theme-neutral-card: #151515;
+    --theme-neutral-card: #1e1e1e;
     --dt-primary-foreground: #0a0a0a;
     --dt-primary-solid-foreground: #0a0a0a;
 
@@ -635,7 +635,7 @@
     --composer-ring-strength: 1.3;
     --backdrop-invert-mul: 0;
     /* Dark mode: a dark card needs a stronger black inset to show the recess. */
-    --dt-input-inset: inset 0 1px 1px color-mix(in srgb, #000 38%, transparent);
+    --dt-input-inset: none;
     --ui-tab-hover-darken: 6%;
     /* Dark needs a lighter resting border than light mode. */
     --dt-input-border: 4%;
@@ -686,12 +686,23 @@
   }
 
   :root[data-factr-glass] body {
-    background: color-mix(in srgb, var(--shell-window-bg) var(--translucency-glass-keep, 100%), transparent);
+    /* The frame is tinted a step darker than its theme colour, so once it turns see-through it still reads as
+       the frame around the (opaque) block instead of merging into it. */
+    background: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--shell-window-bg), black 12%) calc(var(--translucency-glass-keep, 100%) * 0.7),
+      transparent
+    );
   }
 
-  /* Dark: a translucent near-black frame reads mid-grey over the vibrancy; keep it close to the panels. */
+  /* Dark: a near-black frame turns mid-grey over the vibrancy, so it keeps a deeper tint floor than light
+     (52%; the default intensity alone would leave 71%) and still lets the blurred desktop show through. */
   :root.dark[data-factr-glass] body {
-    background: color-mix(in srgb, var(--shell-window-bg) max(94%, var(--translucency-glass-keep, 100%)), transparent);
+    background: color-mix(
+      in srgb,
+      color-mix(in srgb, var(--shell-window-bg), black 19%) max(52%, var(--translucency-glass-keep, 100%)),
+      transparent
+    );
   }
 
   /* Sidebar scope: the window frame (rail, titlebar row, margins) is one
@@ -841,8 +852,9 @@
   }
 }
 
+/* The dithered checker marker is retired everywhere (labels, cursors, loaders): no checkered glyph in the UI. */
 .dither {
-  background: repeating-conic-gradient(currentColor 0% 25%, transparent 0% 50%) 0 0 / 0.125rem 0.125rem;
+  display: none !important;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -1875,18 +1887,6 @@ body.guest-pointer-lock :is(webview, iframe) {
   justify-content: center;
   padding-bottom: var(--composer-measured-height);
   text-align: center;
-}
-
-[data-slot='aui_intro'] > div {
-  max-width: var(--composer-width);
-}
-
-[data-slot='aui_intro'] p:last-child {
-  max-width: 34rem;
-  margin-inline: auto;
-  color: var(--ui-text-tertiary);
-  font-size: 0.875rem;
-  line-height: 1.45;
 }
 
 .fit-text {
@@ -3838,8 +3838,10 @@ html[data-hud-window] [data-slot='popover-content'] {
 
 :root[data-factr-mode='dark'] {
   --shell-window-bg: var(--ui-bg-chrome);
-  --shell-block-bg: var(--ui-bg-sidebar);
-  --shell-list-bg: color-mix(in srgb, var(--ui-bg-sidebar), var(--ui-base) 4%);
+  /* A clear step lighter than the (see-through) frame, as in System Settings: the content block is the solid,
+     lighter surface and the frame around it is the glass. */
+  --shell-block-bg: color-mix(in srgb, var(--ui-bg-sidebar), white 6%);
+  --shell-list-bg: color-mix(in srgb, var(--shell-block-bg), var(--ui-base) 4%);
   --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), white 5%);
   --shell-tab-active-bg: color-mix(in srgb, var(--shell-block-bg), white 6%);
 }
@@ -3929,17 +3931,13 @@ html[data-hud-window] [data-slot='popover-content'] {
   border: 1px solid color-mix(in srgb, var(--ui-text-primary) 9%, transparent);
   background: var(--menu-glass-tint);
   backdrop-filter: blur(22px) saturate(170%);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, white 70%, transparent),
-    0 6px 16px -8px rgb(0 0 0 / 0.18);
+  box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.18);
 }
 
 :root.dark .menu-glass {
   --menu-glass-tint: color-mix(in srgb, #060606 72%, transparent);
 
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, white 7%, transparent),
-    0 6px 16px -8px rgb(0 0 0 / 0.5);
+  box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.5);
 }
 
 @media (prefers-reduced-transparency: reduce) {

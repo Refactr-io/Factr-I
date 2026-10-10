@@ -116,7 +116,8 @@ fn select_profile(args: &[String]) -> anyhow::Result<Option<String>> {
 
 fn parse_gateway_args(args: &[String]) -> anyhow::Result<GatewayArgs> {
     use clap::ValueEnum;
-    let mut provider = factr::factr_runtime::ProviderChoice::YoloAuto;
+    // No --provider: `auto` (the logged-in provider), never a catalog entry that needs a key.
+    let mut provider = factr::factr_runtime::ProviderChoice::Auto;
     let mut model = None;
     // Private deployment: one configured provider and model from the environment.
     if let Ok(p) = std::env::var("FACTR_PROVIDER") {
@@ -443,6 +444,11 @@ mod tests {
         assert_eq!(args.host, "127.0.0.1");
         assert_eq!(args.port, 0);
         assert!(!args.allow_remote);
+        // The desktop passes no --provider on a fresh machine: that is `auto` (the logged-in provider),
+        // never an API-key catalog entry such as yolo-auto that the user has no key for.
+        if std::env::var_os("FACTR_PROVIDER").is_none() {
+            assert_eq!(args.provider, factr::factr_runtime::ProviderChoice::Auto);
+        }
     }
 
     #[test]

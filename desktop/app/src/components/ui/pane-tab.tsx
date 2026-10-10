@@ -23,7 +23,7 @@ const TAB_HORIZONTAL = 'my-1 min-w-0 max-w-48 self-stretch rounded-md'
 
 // A closeable tab's floor keeps short labels left of the close button.
 // A floor, not padding — a tab already wider than it pays nothing.
-const TAB_CLOSEABLE = 'min-w-13'
+const TAB_CLOSEABLE = 'min-w-28'
 
 const TAB_VERTICAL =
   'w-full max-h-48 justify-center not-first:border-t not-first:border-t-(--ui-stroke-quaternary) [writing-mode:vertical-rl]'

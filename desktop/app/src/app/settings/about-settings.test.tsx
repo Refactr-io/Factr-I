@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { atom } from 'nanostores'
+import type { atom } from 'nanostores'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { en } from '@/i18n/en'

@@ -32,10 +32,8 @@ import { WorkspaceAddButton } from './workspace-header'
 
 // A bare color dot (no icon) or an icon glyph — tinted by `color` when set, else
 // the lead's default tertiary. The glyph wrapper centers + caps size either way.
-// Auto-discovered repos (git lanes Desktop found by scanning disk, not rows in
-// projects.db) get the `repo` glyph so a glance tells explicit projects
-// (`folder-library`) apart from incidental disk/session findings.
-export function projectIcon({ color, icon, isAuto, isNoProject }: SidebarProjectTree) {
+// A project is a folder, drawn as one: closed, or open while its sessions are listed under it.
+export function projectIcon({ color, icon, isNoProject }: SidebarProjectTree, open = false) {
   if (color && !icon) {
     return (
       <SidebarRowLeadGlyph>
@@ -47,7 +45,7 @@ export function projectIcon({ color, icon, isAuto, isNoProject }: SidebarProject
   return (
     <SidebarRowLeadGlyph style={color ? { color } : undefined}>
       <Codicon
-        name={icon || (isNoProject ? 'home' : isAuto ? 'repo' : 'folder-library')}
+        name={icon || (isNoProject ? 'home' : open ? 'folder-opened' : 'folder')}
         size={SIDEBAR_LEAD_ICON_SIZE}
       />
     </SidebarRowLeadGlyph>
@@ -165,10 +163,10 @@ export function ProjectOverviewRow({
       dragHandleProps={dragHandleProps}
       leadClassName="overflow-visible"
     >
-      {projectIcon(project)}
+      {projectIcon(project, preview.length > 0)}
     </SidebarRowGrab>
   ) : (
-    <SidebarRowLead>{projectIcon(project)}</SidebarRowLead>
+    <SidebarRowLead>{projectIcon(project, preview.length > 0)}</SidebarRowLead>
   )
 
   const labelLink = (

@@ -552,7 +552,8 @@ pub const OPENAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     auth_kind: LoginProviderAuthKind::OAuth,
     auth_state_key: LoginProviderAuthStateKey::OpenAi,
     auth_status_method: "OAuth",
-    aliases: &[],
+    // The Factr runtime's ids for this ChatGPT login (what its sign-in and config.yaml use).
+    aliases: &["openai-codex", "chatgpt", "chatgpt-codex"],
     menu_detail: "requires ChatGPT Plus or Pro subscription",
     recommended: true,
     target: LoginProviderTarget::OpenAi,

@@ -11,6 +11,7 @@ import {
   cycleTreeTabInFocusedZone,
   isPaneVisible,
   layoutHasRootSide,
+  revealTreePane,
   togglePaneVisible,
   toggleTargetZoneTabStrip
 } from '@/components/pane-shell/tree/store'
@@ -182,6 +183,7 @@ export function useKeybinds(deps: KeybindRuntimeDeps): void {
 
   const showFiles = () => {
     setFileBrowserOpen(true)
+    revealTreePane('files')
     setTerminalTakeover(false)
   }
 

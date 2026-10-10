@@ -71,8 +71,8 @@ describe('sidebar collapse persistence', () => {
       const { registry } = await import('@/contrib/registry')
 
       const disposers = [
-        registry.register({ area: 'panes', id: 'sessions', data: { placement: 'left' } }),
-        registry.register({ area: 'panes', id: 'bots', data: { placement: 'left' } }),
+        registry.register({ area: 'panes', id: 'sessions', data: { hideOnly: true, placement: 'left' } }),
+        registry.register({ area: 'panes', id: 'bots', data: { hideOnly: true, placement: 'left' } }),
         registry.register({ area: 'panes', id: 'workspace', data: { placement: 'main' } }),
         registry.register({ area: 'panes', id: 'files', data: { placement: 'right' } }),
         registry.register({ area: 'panes', id: 'review', data: { placement: 'right' } })
@@ -132,8 +132,8 @@ describe('sidebar collapse persistence', () => {
       const { registry } = await import('@/contrib/registry')
 
       const disposers = [
-        registry.register({ area: 'panes', id: 'sessions', data: { placement: 'left' } }),
-        registry.register({ area: 'panes', id: 'bots', data: { placement: 'left' } }),
+        registry.register({ area: 'panes', id: 'sessions', data: { hideOnly: true, placement: 'left' } }),
+        registry.register({ area: 'panes', id: 'bots', data: { hideOnly: true, placement: 'left' } }),
         registry.register({ area: 'panes', id: 'workspace', data: { placement: 'main' } }),
         registry.register({ area: 'panes', id: 'files', data: { placement: 'right' } })
       ]

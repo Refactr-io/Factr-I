@@ -1,176 +1,113 @@
 import { useState } from 'react'
 
-import { capitalize, normalize } from '@/lib/text'
-
-import introCopyJsonl from './intro-copy.jsonl?raw'
-import { Wordmark } from './wordmark'
-
-type IntroCopy = {
-  headline: string
-  body: string
-}
-
-type IntroCopyRecord = IntroCopy & {
-  personality: string
-}
-
 export type IntroProps = {
+  /** Kept for callers that still pass a personality; the greeting no longer depends on it. */
   personality?: string
+  /** Re-rolls the greeting (a new chat passes a new seed). */
   seed?: number
 }
 
-const NEUTRAL_PERSONALITIES = new Set(['', 'default', 'none', 'neutral'])
+type Moment = 'afternoon' | 'evening' | 'morning' | 'night' | 'weekday' | 'weekend'
 
-const FALLBACK_COPY: IntroCopy[] = [
-  {
-    headline: 'What are we moving today?',
-    body: "Send a bug, branch, plan, or rough idea. I'll inspect the repo and turn it into the next concrete step."
-  },
-  {
-    headline: "What's on your mind?",
-    body: "Bring the code, question, or stuck part. I'll read the room before making changes."
-  },
-  {
-    headline: 'What should Factr-I look at?',
-    body: "Send the task, failing path, or half-formed plan. I'll help turn it into action."
-  },
-  {
-    headline: 'Where should we start?',
-    body: "Bring the problem, goal, or file. I'll inspect first and keep the next step concrete."
-  },
-  {
-    headline: 'What needs attention?',
-    body: "Send the context you have. I'll help sort it into a plan or a fix."
-  }
+// One short line on an empty chat. A phrase with a moment only shows then (a morning line in the morning, a
+// weekend line on Saturday or Sunday); the rest fit any time.
+export const GREETINGS: readonly (readonly [string, Moment?])[] = [
+  ["Fresh light, fresh start.", 'morning'],
+  ["Early hours, clear head.", 'morning'],
+  ["Morning. Kettle on?", 'morning'],
+  ["A quiet morning start.", 'morning'],
+  ["Up with the sun?", 'morning'],
+  ["Morning, welcome in.", 'morning'],
+  ["First cup, first thought.", 'morning'],
+  ["Slow morning, good company.", 'morning'],
+  ["Afternoon, hello again.", 'afternoon'],
+  ["A gentle afternoon.", 'afternoon'],
+  ["Midday, still going?", 'afternoon'],
+  ["Tea and afternoon light.", 'afternoon'],
+  ["How's the afternoon?", 'afternoon'],
+  ["Afternoon lull, welcome.", 'afternoon'],
+  ["Evening light, easy pace.", 'evening'],
+  ["Evening, welcome in.", 'evening'],
+  ["Lamp on, evening in.", 'evening'],
+  ["Evening, take a seat.", 'evening'],
+  ["Winding down together?", 'evening'],
+  ["A calm evening ahead.", 'evening'],
+  ["Dusk settles in.", 'evening'],
+  ["Late, and still curious.", 'night'],
+  ["The quiet hours.", 'night'],
+  ["Night owl, hello.", 'night'],
+  ["Up late again?", 'night'],
+  ["Starlight and a lamp.", 'night'],
+  ["Midnight company.", 'night'],
+  ["Quiet night, clear mind.", 'night'],
+  ["The house is asleep.", 'night'],
+  ["A slow weekend hello.", 'weekend'],
+  ["Weekend, unhurried.", 'weekend'],
+  ["No rush this weekend.", 'weekend'],
+  ["Weekend tinkering?", 'weekend'],
+  ["Weekend, welcome in.", 'weekend'],
+  ["Another weekday, hello.", 'weekday'],
+  ["Weekday rhythm, steady.", 'weekday'],
+  ["A fresh workday.", 'weekday'],
+  ["Back for the week?", 'weekday'],
+  ["Hello, you."],
+  ["Good to see you."],
+  ["Pull up a chair."],
+  ["What are you making?"],
+  ["Hello again."],
+  ["Quiet desk, open mind."],
+  ["A blank page awaits."],
+  ["Tea's warm."],
+  ["Where were we?"],
+  ["Ready when you are."],
+  ["Small steps count."],
+  ["Something new to build?"],
+  ["Slow and steady."],
+  ["Hi there, friend."],
+  ["Room to think."],
+  ["Curious about something?"],
+  ["One thing at a time."],
+  ["Glad you're here!"],
+  ["Ideas welcome here."],
+  ["Mug in hand?"],
+  ["Clear head, warm cup."],
+  ["What's next?"],
+  ["Quiet focus."],
+  ["A good place to start."],
+  ["Thinking out loud?"],
+  ["Picking up the thread?"],
 ]
 
-function normalizeKey(value?: string): string {
-  return normalize(value)
+/** The moments that hold at `date`: its part of the day, and weekend or weekday. */
+export function momentsAt(date: Date): Moment[] {
+  const hour = date.getHours()
+  const day = date.getDay()
+  const part: Moment = hour >= 5 && hour < 12 ? 'morning' : hour >= 12 && hour < 17 ? 'afternoon' : hour >= 17 && hour < 22 ? 'evening' : 'night'
+
+  return [part, day === 0 || day === 6 ? 'weekend' : 'weekday']
 }
 
-function titleize(value: string): string {
-  return value
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .map(capitalize)
-    .join(' ')
+/** Half the time a phrase for the current moment, otherwise one that fits any time. `seed` picks within the pool. */
+export function pickGreeting(seed: number, date = new Date()): string {
+  const now = momentsAt(date)
+  const timed = GREETINGS.filter(([, moment]) => moment && now.includes(moment))
+  const anytime = GREETINGS.filter(([, moment]) => !moment)
+  const pool = timed.length > 0 && Math.abs(seed) % 2 === 0 ? timed : anytime
+
+  return pool[Math.floor(Math.abs(seed) / 2) % pool.length]![0]
 }
 
-function isIntroCopyRecord(value: unknown): value is IntroCopyRecord {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-
-  const record = value as Record<string, unknown>
-
-  return (
-    typeof record.personality === 'string' &&
-    typeof record.headline === 'string' &&
-    typeof record.body === 'string' &&
-    Boolean(record.personality.trim()) &&
-    Boolean(record.headline.trim()) &&
-    Boolean(record.body.trim())
-  )
-}
-
-function parseIntroCopy(raw: string): Record<string, IntroCopy[]> {
-  const byPersonality: Record<string, IntroCopy[]> = {}
-
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim()
-
-    if (!trimmed) {
-      continue
-    }
-
-    try {
-      const parsed: unknown = JSON.parse(trimmed)
-
-      if (!isIntroCopyRecord(parsed)) {
-        continue
-      }
-
-      const key = normalizeKey(parsed.personality)
-      byPersonality[key] ??= []
-      byPersonality[key].push({
-        headline: parsed.headline.trim(),
-        body: parsed.body.trim()
-      })
-    } catch {
-      // Bad generated copy should not break the whole desktop app.
-    }
-  }
-
-  return byPersonality
-}
-
-const INTRO_COPY_BY_PERSONALITY = parseIntroCopy(introCopyJsonl)
-
-function neutralCopy(): IntroCopy[] {
-  return INTRO_COPY_BY_PERSONALITY.none || INTRO_COPY_BY_PERSONALITY.default || FALLBACK_COPY
-}
-
-function fallbackCopyForPersonality(personalityKey: string): IntroCopy[] {
-  if (NEUTRAL_PERSONALITIES.has(personalityKey)) {
-    return neutralCopy()
-  }
-
-  const label = titleize(personalityKey)
-
-  return [
-    {
-      headline: `${label} mode is on. What should we work on?`,
-      body: "Send the task, file, or rough idea. I'll use your configured voice and keep the work grounded in this repo."
-    },
-    {
-      headline: `What does ${label} Factr-I need to see?`,
-      body: "Bring the context or the stuck part. I'll adapt to your configured personality."
-    },
-    {
-      headline: `${label} mode is ready.`,
-      body: "Send the problem, file, or idea. I'll follow the personality you've configured."
-    },
-    {
-      headline: `What should ${label} Factr-I tackle?`,
-      body: "Drop the task here. I'll keep the work grounded in the repo."
-    },
-    {
-      headline: 'Where should we begin?',
-      body: `Give me the context and I'll answer in ${label} mode.`
-    }
-  ]
-}
-
-function pickCopy(copies: IntroCopy[], seed = 0): IntroCopy {
-  return copies[Math.abs(seed) % copies.length] || FALLBACK_COPY[0]
-}
-
-const WORDMARK = 'FACTR-I'
-
-function resolveCopy(personality?: string, seed?: number): IntroCopy {
-  const personalityKey = normalizeKey(personality)
-
-  const copies = NEUTRAL_PERSONALITIES.has(personalityKey)
-    ? INTRO_COPY_BY_PERSONALITY[personalityKey] || neutralCopy()
-    : INTRO_COPY_BY_PERSONALITY[personalityKey] || fallbackCopyForPersonality(personalityKey)
-
-  return pickCopy(copies, seed)
-}
-
-export function Intro({ personality, seed }: IntroProps) {
+export function Intro({ seed }: IntroProps) {
   const [mountSeed] = useState(() => Math.floor(Math.random() * 100000))
-  const copy = resolveCopy(personality, mountSeed + (seed ?? 0))
 
   return (
     <div
-      className="pointer-events-none flex w-full min-w-0 flex-col items-center justify-center px-0.5 py-6 text-center text-muted-foreground sm:px-6 lg:px-8"
+      className="pointer-events-none flex w-full min-w-0 flex-col items-center justify-center px-0.5 py-6 text-center sm:px-6 lg:px-8"
       data-slot="aui_intro"
     >
-      <div className="w-full min-w-0">
-        <Wordmark className="mb-1" text={WORDMARK} width="min(34rem, calc(100% - 1rem))" />
-
-        <p className="m-0 text-center leading-normal tracking-tight">{copy.body}</p>
-      </div>
+      <h1 className="m-0 max-w-[26ch] text-balance text-[2rem] leading-[1.15] font-medium tracking-tight text-foreground/80">
+        {pickGreeting(mountSeed + (seed ?? 0))}
+      </h1>
     </div>
   )
 }

@@ -204,3 +204,30 @@ describe('ModelPickerDialog search ranking', () => {
     })
   })
 })
+
+describe('ModelPickerDialog savable rows', () => {
+  const WITH_ENGINE_ONLY: ModelOptionsResult = {
+    model: 'gpt-5.5',
+    provider: 'openai',
+    providers: [
+      { slug: 'openai', name: 'OpenAI', models: ['gpt-5.5'], is_current: true, authenticated: true, settable: true },
+      { slug: 'groq', name: 'Groq', models: ['llama-3.3-70b'], authenticated: true, settable: false }
+    ]
+  }
+
+  it('hides providers that cannot be saved as the default when the pick is saved', async () => {
+    vi.mocked(requestModelOptions).mockResolvedValue(WITH_ENGINE_ONLY)
+    renderPicker({ currentModel: 'gpt-5.5', currentProvider: 'openai', savableOnly: true })
+
+    expect(await screen.findByText('gpt-5.5')).toBeTruthy()
+    expect(screen.queryByText('llama-3.3-70b')).toBeNull()
+  })
+
+  it('keeps every provider for an in-chat pick', async () => {
+    vi.mocked(requestModelOptions).mockResolvedValue(WITH_ENGINE_ONLY)
+    renderPicker({ currentModel: 'gpt-5.5', currentProvider: 'openai' })
+
+    expect(await screen.findByText('gpt-5.5')).toBeTruthy()
+    expect(screen.getByText('llama-3.3-70b')).toBeTruthy()
+  })
+})

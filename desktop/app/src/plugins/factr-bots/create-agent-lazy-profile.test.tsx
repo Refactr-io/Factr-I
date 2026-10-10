@@ -157,8 +157,13 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  // Radix FocusScope dispatches its unmount auto-focus event from a
+  // setTimeout(0). Let it fire while jsdom is still alive; otherwise it can
+  // land after the environment is torn down and surface as an unhandled
+  // "parameter 1 is not of type 'Event'" error that fails the whole run.
+  await new Promise(resolve => setTimeout(resolve, 0))
 })
 
 describe('materializing the draft profile', () => {

@@ -30,6 +30,8 @@ export interface PaneMirror<T> {
   /** Center docks: the strip slot (stack before this pane id). */
   before?: (tile: T) => null | string | undefined
   minWidth: string
+  /** Fixed zone width for a tile that rides a sidebar (omitted = a flex zone). */
+  width?: (tile: T) => string | undefined
   title: (key: string) => string
   /** Custom lead NODE for the tile's tab (rendered before the label). A live,
    *  self-subscribing component (e.g. a session's status dot) so the strip needn't
@@ -91,6 +93,7 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
           },
           lifecycleKeepAlive: cfg.lifecycleKeepAlive?.(key),
           minWidth: cfg.minWidth,
+          width: cfg.width?.(tile),
           newTab: cfg.newTab?.(key),
           // Every mirrored tile is a full workspace surface docked beside main —
           // and closeable, which is what keeps its tab when it lands in a zone of

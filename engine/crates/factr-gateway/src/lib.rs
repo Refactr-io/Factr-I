@@ -379,6 +379,33 @@ async fn respond(stream: &mut TcpStream, status: &str, body: &Value) -> Result<(
     Ok(())
 }
 
+/// A `/api/model/set` body with its engine provider id replaced by the runtime's. `Err`: the engine
+/// provider has no runtime route, so the pick cannot be saved (said plainly instead of the runtime's
+/// "Unknown provider"). A body that is not a JSON object passes unchanged.
+fn runtime_model_set_body(body: &[u8]) -> std::result::Result<Vec<u8>, String> {
+    let Ok(mut value) = serde_json::from_slice::<Value>(body) else { return Ok(body.to_vec()) };
+    let Some(provider) = value.get("provider").and_then(Value::as_str).map(str::to_owned) else { return Ok(body.to_vec()) };
+    match rpc::runtime_provider_id(&provider) {
+        Some(id) if id == provider => Ok(body.to_vec()),
+        Some(id) => {
+            value["provider"] = json!(id);
+            Ok(value.to_string().into_bytes())
+        }
+        None => {
+            let name = factr_base::provider_catalog::resolve_login_provider_loose(&provider).map_or(provider.as_str(), |d| d.display_name);
+            Err(format!("{name} can be used in a chat, but Factr-I cannot save it as the default model yet."))
+        }
+    }
+}
+
+/// `req` with its body (already read in full) replaced, and the declared length to match.
+fn with_body(req: &Request, body: Vec<u8>) -> Request {
+    let mut headers = req.headers.clone();
+    headers.retain(|(k, _)| !k.eq_ignore_ascii_case("content-length") && !k.eq_ignore_ascii_case("transfer-encoding"));
+    headers.push(("Content-Length".to_string(), body.len().to_string()));
+    Request { method: req.method.clone(), path: req.path.clone(), query: req.query.clone(), headers, body_prefix: body }
+}
+
 /// Reverse-proxy one request (or WebSocket upgrade) to the Factr feature
 /// backend. The client's credential is replaced by the backend's private
 /// token; bytes then flow both ways untouched.
@@ -495,13 +522,42 @@ fn capabilities_request(req: &Request) -> bool {
     // Sign-in (start / poll / submit / cancel / disconnect) is a user action. Only the bare list
     // GET `/api/providers/oauth` stays a boot probe (the onboarding falls back to API-key setup).
     let oauth_action = path.strip_prefix("/api/providers/oauth/").is_some_and(|r| !r.is_empty());
+    // Voice (`/api/audio/*`: transcribe, speak, tts-lease) is the user pressing the mic or the
+    // read-aloud button. `/api/profiles/<name>/soul` read/save is the profile switcher the user
+    // opened. `POST /api/factr/update` is deliberately NOT here: it runs `factr update`, which
+    // downloads and installs code.
+    let profile_soul = path
+        .strip_prefix("/api/profiles/")
+        .and_then(|r| r.strip_suffix("/soul"))
+        .is_some_and(|name| !name.is_empty() && !name.contains('/'));
+    if profile_soul || under("/api/audio") {
+        return true;
+    }
     if read {
         // `/api/actions/<name>/status` is the progress poll of a user-started action
         // (Settings > Messaging > Restart polls gateway-restart).
-        return under("/api/tools/toolsets") || under("/api/tools/computer-use") || under("/api/actions") || oauth_action;
+        // `GET /api/model/recommended-default` is sent only after a sign-in or key save succeeded
+        // (onboarding's model confirm), never at boot.
+        return under("/api/tools/toolsets")
+            || under("/api/tools/computer-use")
+            || under("/api/actions")
+            || oauth_action
+            || path == "/api/model/recommended-default";
     }
     // `POST /api/gateway/restart` (and the other gateway actions) is the user pressing a button.
-    under("/api/gateway") || under("/api/actions") || under("/api/tools") || under("/api/skills") || under("/api/mcp") || under("/api/providers/oauth")
+    // `POST /api/model/set` (onboarding's model confirm, the model picker) and `PUT /api/model/moa`
+    // are writes the user made; the Python runtime owns the model-assignment logic.
+    // `PUT`/`DELETE /api/env` (save / remove an API key) and every `/api/providers` write (OAuth,
+    // `POST /api/providers/validate` for a local or custom endpoint, custom-endpoint edits) are the
+    // user signing in; the onboarding sends them from the chat route, without `feature=1`.
+    under("/api/model")
+        || under("/api/env")
+        || under("/api/providers")
+        || under("/api/gateway")
+        || under("/api/actions")
+        || under("/api/tools")
+        || under("/api/skills")
+        || under("/api/mcp")
 }
 
 fn bundled_defaults() -> Value {
@@ -1389,6 +1445,17 @@ async fn handle(
                 .await;
             }
             let features = config.features.clone().expect("checked");
+            // Pickers list the engine's provider ids; the runtime that saves the pick knows some of them
+            // under another id (`openai` is its `openai-codex`) and some not at all.
+            let mut rewritten = None;
+            if req.method == "POST" && path == "/api/model/set" {
+                let body = read_body(&mut stream, &req).await?;
+                match runtime_model_set_body(&body) {
+                    Ok(body) => rewritten = Some(with_body(&req, body)),
+                    Err(detail) => return respond(&mut stream, "400 Bad Request", &json!({ "detail": detail })).await,
+                }
+            }
+            let req = rewritten.as_ref().unwrap_or(&req);
             let sets_key = matches!(req.method.as_str(), "PUT" | "DELETE") && path == "/api/env";
             // A provider OAuth login (submit / poll to approval) or logout writes Factr's auth store, not `.env`.
             let oauth = path.starts_with("/api/providers/oauth");
@@ -1449,6 +1516,49 @@ impl SkillOrigins {
 }
 
 #[cfg(test)]
+mod model_set_tests {
+    use super::{Request, runtime_model_set_body, with_body};
+    use serde_json::{Value, json};
+
+    fn provider_after(body: Value) -> Result<String, String> {
+        runtime_model_set_body(body.to_string().as_bytes()).map(|b| serde_json::from_slice::<Value>(&b).unwrap()["provider"].as_str().unwrap_or_default().to_string())
+    }
+
+    #[test]
+    fn a_model_set_names_the_runtimes_provider_id_or_says_it_cannot_be_saved() {
+        // The ChatGPT login is `openai` to the engine and `openai-codex` to the runtime that saves the pick.
+        assert_eq!(provider_after(json!({"scope": "main", "provider": "openai", "model": "gpt-5.5"})).unwrap(), "openai-codex");
+        assert_eq!(provider_after(json!({"scope": "main", "provider": "anthropic-api", "model": "m"})).unwrap(), "anthropic");
+        // Ids the runtime already knows pass unchanged (theirs or shared).
+        for same in ["openai-codex", "openrouter", "custom", "deepseek"] {
+            assert_eq!(provider_after(json!({"provider": same, "model": "m"})).unwrap(), same);
+        }
+        // An engine-only provider is refused in words, never the runtime's "Unknown provider".
+        let err = provider_after(json!({"provider": "yolo-auto", "model": "yolo"})).unwrap_err();
+        assert!(err.contains("Yolo-Auto") && !err.contains("Unknown provider"), "{err}");
+        assert!(provider_after(json!({"provider": "groq", "model": "m"})).is_err());
+        // Not a JSON object with a provider: forwarded as sent.
+        assert_eq!(runtime_model_set_body(b"not json").unwrap(), b"not json");
+        assert_eq!(runtime_model_set_body(br#"{"scope":"main"}"#).unwrap(), br#"{"scope":"main"}"#);
+    }
+
+    #[test]
+    fn a_rewritten_body_declares_its_own_length() {
+        let req = Request {
+            method: "POST".into(),
+            path: "/api/model/set".into(),
+            query: None,
+            headers: vec![("content-length".into(), "3".into()), ("x-other".into(), "1".into())],
+            body_prefix: b"abc".to_vec(),
+        };
+        let out = with_body(&req, b"abcdef".to_vec());
+        assert_eq!(out.header("content-length"), Some("6"));
+        assert_eq!(out.header("x-other"), Some("1"));
+        assert_eq!(out.body_prefix, b"abcdef");
+    }
+}
+
+#[cfg(test)]
 mod skill_origin_tests {
     use super::*;
 
@@ -1492,6 +1602,20 @@ mod capabilities_gate_tests {
             ("DELETE", "/api/providers/oauth/openai-codex"),
             ("POST", "/api/gateway/restart"),
             ("GET", "/api/actions/gateway-restart/status"),
+            ("POST", "/api/model/set"),
+            ("PUT", "/api/model/moa"),
+            ("GET", "/api/model/recommended-default"),
+            ("PUT", "/api/env"),
+            ("DELETE", "/api/env"),
+            ("POST", "/api/providers/validate"),
+            ("POST", "/api/providers/custom-endpoints"),
+            ("POST", "/api/providers/custom-endpoints/validate"),
+            ("POST", "/api/providers/custom-endpoints/e1/activate"),
+            ("POST", "/api/audio/transcribe"),
+            ("POST", "/api/audio/speak"),
+            ("POST", "/api/audio/tts-lease"),
+            ("GET", "/api/profiles/default/soul"),
+            ("PUT", "/api/profiles/default/soul"),
         ] {
             assert!(capabilities_request(&req(method, path)), "{method} {path}");
         }
@@ -1503,10 +1627,21 @@ mod capabilities_gate_tests {
             ("GET", "/api/tools/toolsetsx"),
             ("GET", "/api/config"),
             ("GET", "/api/providers/oauth"),
+            ("GET", "/api/model/auxiliary"),
+            ("GET", "/api/env"),
+            ("POST", "/api/envx"),
+            ("GET", "/api/providers/custom-endpoints"),
+            ("POST", "/api/providersx/validate"),
+            ("GET", "/api/modelx/set"),
+            ("POST", "/api/modelx/set"),
             ("GET", "/api/providers/oauthx/start"),
             ("POST", "/api/toolsx"),
             ("GET", "/api/gateway/status"),
             ("GET", "/api/actionsx/y"),
+            ("POST", "/api/factr/update"),
+            ("GET", "/api/profiles/soul"),
+            ("GET", "/api/profiles/a/b/soul"),
+            ("POST", "/api/audiox/speak"),
         ] {
             assert!(!capabilities_request(&req(method, path)), "{method} {path}");
         }

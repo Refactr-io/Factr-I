@@ -35,6 +35,7 @@ import { useI18n } from '@/i18n'
 import { isCodeSkewRestartRequired } from '@/lib/code-skew-error'
 import { AlertTriangle, Cpu, Loader2 } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
+import { savableProviders } from '@/lib/model-options'
 import { cn } from '@/lib/utils'
 import { setMainModelAssignment } from '@/store/model-assignment'
 import { notifyError, readableError } from '@/store/notifications'
@@ -321,7 +322,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
         }
 
         setMainModel({ model: modelInfo.model, provider: modelInfo.provider })
-        setProviders(modelOptions.providers || [])
+        setProviders(savableProviders(modelOptions.providers))
 
         if (replaceSelection) {
           setSelectedProvider(modelInfo.provider)
@@ -663,7 +664,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
         return
       }
 
-      setProviders(options.providers || [])
+      setProviders(savableProviders(options.providers))
       const refreshedRow = options.providers?.find(p => p.slug === slug)
       const fallbackModel = refreshedRow?.models?.[0] ?? ''
       setSelectedModel(nextModel || fallbackModel)

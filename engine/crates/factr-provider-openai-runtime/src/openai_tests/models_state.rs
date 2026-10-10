@@ -300,6 +300,14 @@ fn test_service_tier_can_be_changed_while_a_request_snapshot_is_held() {
 /// endpoints. If these ever diverge, OpenAI returns 401.
 #[test]
 fn openai_catalog_and_chat_endpoints_agree_on_credential_shape() {
+    // `responses_url` reads the API-base override env vars, which sibling
+    // tests set while holding the env lock. Hold it too and clear them, or a
+    // concurrent override (or the developer's own env) breaks the assertion.
+    let _guard = factr_base::storage::lock_test_env();
+    let _a = EnvVarGuard::remove("FACTR_OPENAI_API_BASE");
+    let _b = EnvVarGuard::remove("OPENAI_BASE_URL");
+    let _c = EnvVarGuard::remove("OPENAI_API_BASE");
+
     // API-key-shaped credential: no refresh token, no id token.
     let api_key_creds = CodexCredentials {
         access_token: "sk-platform-key".to_string(),

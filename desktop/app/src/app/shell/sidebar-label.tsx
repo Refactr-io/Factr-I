@@ -4,9 +4,11 @@ import { cn } from '@/lib/utils'
 
 interface SidebarPanelLabelProps extends React.ComponentProps<'span'> {
   dotClassName?: string
+  /** Drop the dithered marker (empty states read cleaner without it). */
+  hideDot?: boolean
 }
 
-export function SidebarPanelLabel({ children, className, dotClassName, ...props }: SidebarPanelLabelProps) {
+export function SidebarPanelLabel({ children, className, dotClassName, hideDot, ...props }: SidebarPanelLabelProps) {
   return (
     <span
       className={cn(
@@ -15,7 +17,9 @@ export function SidebarPanelLabel({ children, className, dotClassName, ...props 
       )}
       {...props}
     >
-      <span aria-hidden="true" className={cn('dither inline-block size-2 shrink-0 rounded-xs', dotClassName)} />
+      {!hideDot && (
+        <span aria-hidden="true" className={cn('dither inline-block size-2 shrink-0 rounded-xs', dotClassName)} />
+      )}
       <span className="min-w-0 truncate leading-none">{children}</span>
     </span>
   )
