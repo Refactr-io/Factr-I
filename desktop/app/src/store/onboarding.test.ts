@@ -12,6 +12,7 @@ import {
   refreshOnboarding,
   refreshOnboardingProviders,
   requestDesktopOnboarding,
+  saveOnboardingApiKey,
   saveOnboardingLocalEndpoint,
   setOnboardingModel,
   submitOnboardingCode
@@ -576,7 +577,7 @@ describe('OAuth onboarding', () => {
     expect($desktopOnboarding.get().flow.status).toBe('confirming_model')
   })
 
-  it('saves no model when nothing matches the sign-in and no listed provider has credentials', async () => {
+  it('saves no other provider when the signed-in one is not listed, and says so', async () => {
     const calls: string[] = []
 
     installApiMock(async ({ path }: { path: string }) => {
@@ -589,7 +590,8 @@ describe('OAuth onboarding', () => {
       if (path.startsWith('/api/model/options')) {
         return {
           providers: [
-            { authenticated: false, is_current: true, models: ['yolo'], name: 'Yolo-Auto', slug: 'yolo-auto' }
+            { authenticated: false, is_current: true, models: ['yolo'], name: 'Yolo-Auto', slug: 'yolo-auto' },
+            { authenticated: true, models: ['llama3:8b'], name: 'Ollama', settable: true, slug: 'ollama' }
           ]
         }
       }
@@ -628,7 +630,48 @@ describe('OAuth onboarding', () => {
     await submitOnboardingCode(onboardingContext(requestGateway))
 
     expect(calls).not.toContain('/api/model/set')
-    expect($desktopOnboarding.get().flow.status).not.toBe('error')
+    const flow = $desktopOnboarding.get().flow
+    expect(flow.status).toBe('error')
+    expect(flow.status === 'error' ? flow.message : '').toContain('Example Portal')
+  })
+
+  it('reports an API key whose provider is not listed instead of saving another provider', async () => {
+    const calls: string[] = []
+
+    installApiMock(async ({ path }: { path: string }) => {
+      calls.push(path)
+
+      if (path === '/api/env') {
+        return { ok: true }
+      }
+
+      if (path.startsWith('/api/model/options')) {
+        return {
+          providers: [{ authenticated: true, models: ['llama3:8b'], name: 'Ollama', settable: true, slug: 'ollama' }]
+        }
+      }
+
+      throw new Error(`unexpected api path: ${path}`)
+    })
+
+    const requestGateway: OnboardingContext['requestGateway'] = async method => {
+      if (method === 'reload.env') {
+        return {} as never
+      }
+
+      throw new Error(`unexpected gateway method: ${method}`)
+    }
+
+    const result = await saveOnboardingApiKey(
+      'FIREWORKS_API_KEY',
+      'fake-key',
+      'Fireworks',
+      onboardingContext(requestGateway)
+    )
+
+    expect(calls).not.toContain('/api/model/set')
+    expect(result.ok).toBe(false)
+    expect(result.message).toContain('Fireworks')
   })
 
   it('does not advance when the default model assignment is not persisted', async () => {
