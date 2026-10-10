@@ -250,6 +250,13 @@ pub fn normalize_api_base(raw: &str) -> Option<String> {
     Some(trimmed.trim_end_matches('/').to_string())
 }
 
+/// Whether an API base names a machine on this computer or the local network (loopback, `*.local`,
+/// private / link-local / CGNAT IPv4, unique-local / link-local IPv6): the hosts plain `http` is
+/// accepted for, and where a self-hosted endpoint usually takes no key.
+pub fn api_base_is_local_network(raw: &str) -> bool {
+    url::Url::parse(raw.trim()).ok().and_then(|u| u.host_str().map(allows_insecure_http_host)).unwrap_or(false)
+}
+
 fn allows_insecure_http_host(host: &str) -> bool {
     let host = host.trim();
     let host = host
@@ -363,6 +370,17 @@ mod tests {
             normalize_api_base("http://[fd00::1]:8080/v1").as_deref(),
             Some("http://[fd00::1]:8080/v1")
         );
+    }
+
+    #[test]
+    fn local_network_api_bases_are_told_apart_from_public_ones() {
+        for local in ["http://127.0.0.1:8080/v1", "http://localhost:1234/v1", "http://[::1]:8000/v1", "http://box.local:8000/v1",
+            "https://192.168.1.25/v1", "http://10.0.0.8:11434/v1", "http://172.16.4.2/v1", "http://[fd00::1]:8080/v1"] {
+            assert!(api_base_is_local_network(local), "{local}");
+        }
+        for public in ["https://api.openai.com/v1", "http://8.8.8.8/v1", "https://example.com/v1", "not a url", ""] {
+            assert!(!api_base_is_local_network(public), "{public}");
+        }
     }
 
     #[test]

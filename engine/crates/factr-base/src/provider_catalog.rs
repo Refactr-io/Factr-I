@@ -93,7 +93,9 @@ pub fn resolve_openai_compatible_profile_with_api_key_hint(
         resolved.default_model = Some(model);
     }
 
-    if api_base_uses_localhost(&resolved.api_base) {
+    // A self-hosted endpoint on this machine or the local network (private ranges, `*.local`)
+    // usually takes no key; a key, when one is set, is still sent.
+    if api_base_uses_localhost(&resolved.api_base) || api_base_is_local_network(&resolved.api_base) {
         resolved.requires_api_key = false;
     }
 
@@ -1094,7 +1096,9 @@ pub fn openai_compatible_profile_is_configured(profile: OpenAiCompatibleProfile)
         return false;
     }
 
-    if profile.id == OPENAI_COMPAT_PROFILE.id && api_base_uses_localhost(&resolved.api_base) {
+    if profile.id == OPENAI_COMPAT_PROFILE.id
+        && (api_base_uses_localhost(&resolved.api_base) || api_base_is_local_network(&resolved.api_base))
+    {
         return true;
     }
 

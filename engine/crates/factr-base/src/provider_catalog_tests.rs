@@ -942,6 +942,30 @@ fn matrix_openai_compatible_localhost_override_allows_no_auth() {
 }
 
 #[test]
+fn matrix_openai_compatible_local_network_endpoint_allows_no_auth_and_public_needs_a_key() {
+    let _lock = crate::storage::lock_test_env();
+    let _guard = EnvGuard::save(&[
+        "FACTR_OPENAI_COMPAT_API_BASE",
+        "FACTR_OPENAI_COMPAT_API_KEY_NAME",
+        "FACTR_OPENAI_COMPAT_LOCAL_ENABLED",
+        "OPENAI_COMPAT_API_KEY",
+    ]);
+    crate::env::remove_var("FACTR_OPENAI_COMPAT_API_KEY_NAME");
+    crate::env::remove_var("FACTR_OPENAI_COMPAT_LOCAL_ENABLED");
+    crate::env::remove_var("OPENAI_COMPAT_API_KEY");
+
+    for local in ["http://192.168.1.25:8000/v1", "http://box.local:8080/v1", "http://[::1]:8000/v1"] {
+        crate::env::set_var("FACTR_OPENAI_COMPAT_API_BASE", local);
+        let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
+        assert!(!resolved.requires_api_key, "{local}");
+        assert!(openai_compatible_profile_is_configured(OPENAI_COMPAT_PROFILE), "{local}");
+    }
+    crate::env::set_var("FACTR_OPENAI_COMPAT_API_BASE", "https://llm.example.com/v1");
+    assert!(resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE).requires_api_key);
+    assert!(!openai_compatible_profile_is_configured(OPENAI_COMPAT_PROFILE));
+}
+
+#[test]
 fn matrix_load_api_key_reads_the_environment_and_ignores_legacy_env_files() {
     let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
