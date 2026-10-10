@@ -195,6 +195,7 @@ import {
 } from './desktop-uninstall'
 import { describeDevCdpDecision, resolveDevCdpPort } from './dev-cdp'
 import { installEmbedReferer } from './embed-referer'
+import { engineProviderArgs } from './engine-provider'
 import { engineTokenLaunch } from './engine-token'
 import { createAmbientClaimArbiter } from './event-dedupe'
 import {
@@ -204,7 +205,6 @@ import {
   terminalScriptExtension,
   tuiResumeArgs
 } from './external-terminal'
-import { factrHome } from './factr-home'
 import { engineMismatch, parseFactrManifest } from './factr-manifest'
 import { type FaviconIo, resolveFavicon } from './favicon'
 import { findGitBash as _findGitBash } from './find-git-bash'
@@ -4310,25 +4310,9 @@ async function resolveFactrBackend(backendArgs) {
       throw new Error(`The bundled Factr-I feature runtime is missing: ${python}`)
     }
 
-    let provider = process.env.FACTR_PROVIDER?.trim() || ''
-    let model = process.env.FACTR_MODEL?.trim() || ''
-
-    if (!provider) {
-      try {
-        const response = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(350) })
-        const tags = (await response.json()).models
-        const names = Array.isArray(tags) ? tags.map(item => item.name).filter(Boolean) : []
-
-        if (names.length) {
-          provider = 'ollama'
-          model = names.includes('qwen3.8:27b') ? 'qwen3.8:27b' : names[0]
-        }
-      } catch {
-        // No local Ollama server; the engine's deferred-auth mode opens for API-key setup.
-      }
-    }
-
-    const args = [...(provider ? ['--provider', provider] : []), ...(model ? ['--model', model] : []), ...backendArgs]
+    // Only an explicit FACTR_PROVIDER / FACTR_MODEL becomes a flag. Otherwise the engine picks the
+    // provider itself: the pick saved in config.yaml, else the signed-in provider.
+    const args = [...engineProviderArgs(process.env), ...backendArgs]
 
     return {
       kind: 'factr',
@@ -16593,49 +16577,8 @@ app.on('will-quit', () => {
   // Drop the app's own power-save blocker with the app; the OS releases it on exit anyway,
   // but an explicit stop leaves no assertion behind on a slow teardown.
   keepAwake.set(false)
-  // Best-effort: if factr exited uncleanly, still drop the warmed Ollama
-  // alias so it is not left resident after the desktop closes.
-  void unloadFactrOllamaOnQuit()
   quitFinalization.arm()
 })
-
-async function unloadFactrOllamaOnQuit() {
-  try {
-    const homes = [factrHome(process.env, os.homedir())]
-
-    let model = null
-
-    for (const home of homes) {
-      const warmPath = path.join(String(home), 'factr-ollama-warm.json')
-
-      if (!fileExists(warmPath)) {
-        continue
-      }
-
-      try {
-        model = JSON.parse(fs.readFileSync(warmPath, 'utf8')).model
-      } catch {
-        model = null
-      }
-
-      if (model) {
-        break
-      }
-    }
-
-    if (!model) {
-      return
-    }
-    await fetch('http://127.0.0.1:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, keep_alive: 0 }),
-      signal: AbortSignal.timeout(8_000)
-    }).catch(() => {})
-  } catch {
-    // Quit path must never throw.
-  }
-}
 
 app.on('quit', () => {
   quitFinalization.cancel()

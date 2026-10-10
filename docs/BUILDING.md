@@ -251,7 +251,7 @@ Variables used by the build and the app (all `FACTR_` prefixed unless noted):
 | `FACTR_BACKEND_PYTHON_RUNTIME`, `FACTR_BACKEND_PYTHON_PACKAGES` | `stage-backend-python.mjs` | Use a prepared Python runtime or package directory instead of downloading. |
 | `FACTR_DESKTOP_BACKEND_ROOT` | dev app | Run against a backend checkout. |
 | `FACTR_DESKTOP_USER_DATA_DIR` | desktop | Throwaway user-data and config home (used by `test:desktop:fresh`). |
-| `FACTR_PROVIDER`, `FACTR_MODEL`, `FACTR_OLLAMA_NUM_CTX` | packaged app | Provider, model and Ollama context size passed to the engine. |
+| `FACTR_PROVIDER`, `FACTR_MODEL`, `FACTR_OLLAMA_NUM_CTX` | packaged app | Provider, model and Ollama context size passed to the engine. Provider and model are passed only when set; otherwise the engine uses the saved pick, else the signed-in provider. |
 | `FACTR_UPDATE_WAIT_S`, `FACTR_UPDATE_USERDATA` | `factr-update.sh` | See `docs/RELEASING.md`. |
 | `APPLE_*`, `CSC_*`, `WIN_CSC_*` | signing | Not Factr variables; see Signing. |
 

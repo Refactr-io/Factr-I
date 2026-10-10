@@ -271,12 +271,9 @@ export const engineProviderSlug = (slug: string) => ENGINE_PROVIDER_SLUGS[slug.t
 // After credentials are persisted, ask the backend which provider+models
 // are now authenticated. Pick the first curated model for the matching
 // provider as a sensible default, persist it via /api/model/set, and
-// transition to the model-confirmation step. If anything goes wrong
-// fetching options (no providers returned, network error), the caller
-// falls through to completing onboarding without showing the confirm
-// card — the user gets the undefined-model auto-selection behaviour
-// we had before, which works but is surprising. The confirm step is
-// opportunistic polish, not a hard requirement for onboarding.
+// transition to the model-confirmation step. `null` (no options, or the
+// connected provider is not among them) is an error the caller shows: no
+// other provider is ever saved in its place.
 async function fetchProviderDefaultModel(
   preferredSlugs: string[],
   profile?: string
@@ -297,9 +294,8 @@ async function fetchProviderDefaultModel(
 
   // Try each preferred slug, also under the engine's own slug for it; the pick
   // is saved under the id the user signed in with (the one the runtime knows).
-  // With no match only a provider that has credentials stands in. Never the
-  // first row as such: that is the provider being served, which on a fresh
-  // install is whatever the engine booted on, not what was just connected.
+  // No other provider ever stands in: not the first row (the provider being
+  // served) and not another one that happens to have credentials.
   const slugOf = (p: ModelOptionProvider) => String(p.slug).toLowerCase()
   let matched: ModelOptionProvider | undefined
   let persistSlug = ''
@@ -317,11 +313,6 @@ async function fetchProviderDefaultModel(
 
       break
     }
-  }
-
-  if (!matched) {
-    matched = providers.find((p: ModelOptionProvider) => p.authenticated === true && p.settable !== false)
-    persistSlug = matched ? String(matched.slug) : ''
   }
 
   if (!matched) {
@@ -401,30 +392,39 @@ async function completeWithModelConfirm(
     return
   }
 
-  if (defaults) {
-    // Persist the chosen provider/model before the runtime gate so a stale
-    // config provider (e.g. anthropic from a prior failed setup) cannot make
-    // setup.runtime_check validate the wrong backend after a fresh OAuth login.
-    try {
-      await setMainModelAssignment(
-        {
-          provider: defaults.providerSlug,
-          model: defaults.defaultModel
-        },
-        ctx.profile,
-        // Headless automated flow: nothing is mounted to click a guard
-        // prompt, so fail with the message instead of hanging.
-        { skipConfirmPrompt: true }
-      )
-    } catch (error) {
-      if (generation !== flowGeneration) {
-        return
-      }
+  if (!defaults) {
+    // The provider the user just connected is not in the model list: saving
+    // anything else would put them on a provider they did not choose.
+    onFail(
+      `Factr-I could not find ${providerLabel} in the model list, so it was not set as your model. ` +
+        'Try again, or pick it in Settings > Model.'
+    )
 
-      onFail(errMessage(error, 'Factr-I could not save the selected model.'))
+    return
+  }
 
+  // Persist the chosen provider/model before the runtime gate so a stale
+  // config provider (e.g. anthropic from a prior failed setup) cannot make
+  // setup.runtime_check validate the wrong backend after a fresh OAuth login.
+  try {
+    await setMainModelAssignment(
+      {
+        provider: defaults.providerSlug,
+        model: defaults.defaultModel
+      },
+      ctx.profile,
+      // Headless automated flow: nothing is mounted to click a guard
+      // prompt, so fail with the message instead of hanging.
+      { skipConfirmPrompt: true }
+    )
+  } catch (error) {
+    if (generation !== flowGeneration) {
       return
     }
+
+    onFail(errMessage(error, 'Factr-I could not save the selected model.'))
+
+    return
   }
 
   const runtime = await checkRuntime(ctx, preferredSlugs[0])
@@ -435,15 +435,6 @@ async function completeWithModelConfirm(
 
   if (!runtime.ready && !ignoreRuntimeGate) {
     onFail(runtime.reason)
-
-    return
-  }
-
-  if (!defaults) {
-    // Couldn't get a sensible default — proceed without confirm step.
-    notifyReady(providerLabel)
-    completeDesktopOnboarding()
-    ctx.onCompleted?.()
 
     return
   }
@@ -1021,12 +1012,26 @@ export async function saveOnboardingApiKey(
     // For API-key flows we don't have a definitive provider id (the
     // user picked which API key they're entering, but the corresponding
     // backend slug — e.g. OPENROUTER_API_KEY → "openrouter" — is the
-    // env-key prefix stripped). Pass a couple of likely candidates;
-    // fetchProviderDefaultModel falls back to the first authenticated
-    // provider returned by /api/model/options if none match.
+    // env-key prefix stripped). Pass a couple of likely candidates; with no
+    // match nothing is saved and the user sees why.
     const slugCandidates = [envKey.replace(/_API_KEY$/, '').toLowerCase(), label.toLowerCase()]
+    let failure: null | string = null
     // ignoreRuntimeGate=true: never block onboarding on the runtime check.
-    await completeWithModelConfirm(ctx, label, slugCandidates, () => undefined, true)
+    await completeWithModelConfirm(
+      ctx,
+      label,
+      slugCandidates,
+      reason => {
+        failure = reason?.trim() || `Factr-I could not finish setting up ${label}.`
+      },
+      true
+    )
+
+    if (failure) {
+      notifyError(new Error(failure), `Could not save ${label}`)
+
+      return { ok: false, message: failure }
+    }
 
     return { ok: true }
   } catch (error) {
