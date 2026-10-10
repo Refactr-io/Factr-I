@@ -533,6 +533,11 @@ fn capabilities_request(req: &Request) -> bool {
     if profile_soul || under("/api/audio") {
         return true;
     }
+    // `POST /api/browser/act` is the engine's own `browser` tool: a call only exists because the
+    // model used the browser in a chat the user is running, so the runtime that drives it may start.
+    if req.method == "POST" && path == "/api/browser/act" {
+        return true;
+    }
     if read {
         // `/api/actions/<name>/status` is the progress poll of a user-started action
         // (Settings > Messaging > Restart polls gateway-restart).
@@ -1625,6 +1630,7 @@ mod capabilities_gate_tests {
             ("POST", "/api/audio/tts-lease"),
             ("GET", "/api/profiles/default/soul"),
             ("PUT", "/api/profiles/default/soul"),
+            ("POST", "/api/browser/act"),
         ] {
             assert!(capabilities_request(&req(method, path)), "{method} {path}");
         }
@@ -1651,6 +1657,8 @@ mod capabilities_gate_tests {
             ("GET", "/api/profiles/soul"),
             ("GET", "/api/profiles/a/b/soul"),
             ("POST", "/api/audiox/speak"),
+            ("GET", "/api/browser/act"),
+            ("POST", "/api/browser/actx"),
         ] {
             assert!(!capabilities_request(&req(method, path)), "{method} {path}");
         }
