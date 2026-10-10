@@ -30,6 +30,19 @@ export function encodedRustflags(env, remaps) {
   return [...existing.filter(Boolean), ...remaps].join('\x1f')
 }
 
+/**
+ * CFLAGS for the C dependencies (aws-lc and kin compile their own __FILE__ paths): the same remaps as
+ * `-ffile-prefix-map`. CFLAGS is split on whitespace, so a path with a space is left out.
+ */
+export function cflagsWithPrefixMaps(existing, remaps) {
+  const maps = remaps
+    .map(flag => flag.replace(/^--remap-path-prefix=/, ''))
+    .filter(pair => !/\s/.test(pair))
+    .map(pair => `-ffile-prefix-map=${pair}`)
+
+  return [...(existing || '').split(/\s+/).filter(Boolean), ...maps].join(' ')
+}
+
 function main() {
   const env = { ...process.env }
   const home = os.homedir()
@@ -40,6 +53,7 @@ function main() {
     targetDir: env.CARGO_TARGET_DIR ? path.resolve(env.CARGO_TARGET_DIR) : null
   })
   env.CARGO_ENCODED_RUSTFLAGS = encodedRustflags(env, remaps)
+  env.CFLAGS = cflagsWithPrefixMaps(env.CFLAGS, remaps)
   delete env.RUSTFLAGS
   const args = ['build', '--release', '--manifest-path', path.join(repo, 'engine', 'Cargo.toml'), ...process.argv.slice(2)]
   const run = spawnSync('cargo', args, { stdio: 'inherit', env, shell: false })
