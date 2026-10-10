@@ -128,6 +128,70 @@ function shouldRemoveAppBundle(isPackaged, appPath) {
 }
 
 /**
+ * The packaged app's own interpreter for the uninstaller: the bundled runtime under
+ * `<resourcesPath>/backend-python`, with the bundled backend source and packages on PYTHONPATH.
+ * A packaged install has no `~/.factr/factr-backend/venv`, so this is what it must use.
+ */
+function bundledUninstallPython(resourcesPath, platform) {
+  const p = platform === 'win32' ? path.win32 : path.posix
+  const root = p.join(String(resourcesPath || ''), 'backend-python')
+
+  return {
+    pythonExe: p.join(root, 'runtime', platform === 'win32' ? 'python.exe' : p.join('bin', 'python3.12')),
+    pythonPath: [p.join(root, 'source'), p.join(root, 'packages')].join(platform === 'win32' ? ';' : ':'),
+    cwd: p.join(root, 'source')
+  }
+}
+
+/**
+ * Why the running app bundle cannot be removed, or null when it can. The cleanup script runs after
+ * the app quits, so a failure there cannot be shown in the UI: catch the known cases up front.
+ *   - macOS App Translocation: Gatekeeper runs a quarantined app from a random read-only mount
+ *     (`/private/var/folders/.../AppTranslocation/...`); the real copy's location is unknown.
+ *   - a mounted disk image (`/Volumes/...` on a read-only DMG).
+ *   - a bundle whose parent folder is not writable by this user.
+ * `canWrite(dir)` is injected (fs.accessSync W_OK in main.ts) so this stays pure.
+ */
+function appBundleRemovalBlocker(appPath, platform, canWrite: (dir: string) => boolean) {
+  if (!appPath) {
+    return null
+  }
+
+  const p = platform === 'win32' ? path.win32 : path.posix
+  const where = String(appPath)
+
+  if (platform === 'darwin' && /\/AppTranslocation\//.test(where)) {
+    return {
+      reason: 'translocated',
+      message:
+        'macOS is running Factr-I from a temporary read-only copy (App Translocation), so it cannot remove itself. ' +
+        'Quit Factr-I, move Factr-I.app to the Applications folder, open it from there and uninstall again, ' +
+        'or drag Factr-I.app to the Trash.'
+    }
+  }
+
+  if (platform === 'darwin' && where.startsWith('/Volumes/')) {
+    return {
+      reason: 'disk-image',
+      message:
+        `Factr-I is running from a disk image or external volume (${where}), which it cannot remove. ` +
+        'Quit Factr-I, eject the disk image, and uninstall the copy in your Applications folder instead.'
+    }
+  }
+
+  if (!canWrite(p.dirname(where))) {
+    return {
+      reason: 'not-writable',
+      message:
+        `Factr-I cannot delete ${where}: its folder is not writable by your user. ` +
+        'Remove it yourself (on macOS, drag it to the Trash and enter an administrator password).'
+    }
+  }
+
+  return null
+}
+
+/**
  * Build a POSIX cleanup shell script (macOS / Linux). It:
  *   1. waits (bounded ~30s) for the desktop PID to exit (venv/bundle unlock),
  *   2. runs the Python uninstall module with the mode,
@@ -153,7 +217,9 @@ function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot,
     '    sleep 0.5',
     '  done',
     'fi',
-    `export FACTR_CONFIG_HOME=${q(factrHome)}`
+    `export FACTR_CONFIG_HOME=${q(factrHome)}`,
+    '# Never write bytecode into the (possibly signed) interpreter tree being run.',
+    'export PYTHONDONTWRITEBYTECODE=1'
   ]
 
   if (pythonPath) {
@@ -163,7 +229,20 @@ function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot,
   lines.push(`cd ${q(agentRoot)} 2>/dev/null || true`, `${q(pythonExe)} ${uninstallArgs.map(q).join(' ')} || true`)
 
   if (appPath) {
-    lines.push(`rm -rf ${q(appPath)} || true`)
+    // The app has quit, so a failed removal cannot reach the UI: say so with a system alert
+    // (macOS) or desktop notification (Linux) instead of failing silently.
+    const failed = `Factr-I could not remove ${String(appPath)}. Delete it yourself.`
+    lines.push(
+      `rm -rf ${q(appPath)} 2>/dev/null`,
+      `if [ -e ${q(appPath)} ]; then`,
+      `  echo ${q(failed)} >&2`,
+      '  if command -v osascript >/dev/null 2>&1; then',
+      `    osascript -e 'on run argv' -e 'display alert "Uninstall incomplete" message (item 1 of argv) as warning' -e 'end run' ${q(failed)} >/dev/null 2>&1`,
+      '  elif command -v notify-send >/dev/null 2>&1; then',
+      `    notify-send 'Uninstall incomplete' ${q(failed)} >/dev/null 2>&1`,
+      '  fi',
+      'fi'
+    )
   }
 
   // Self-delete the script.
@@ -210,7 +289,8 @@ function buildWindowsCleanupScript({
     '@echo off',
     'setlocal enableextensions',
     `set "FACTR_CONFIG_HOME=${String(factrHome).replace(/"/g, '')}"`,
-    `set "PID=${pid}"`
+    `set "PID=${pid}"`,
+    'set "PYTHONDONTWRITEBYTECODE=1"'
   ]
 
   if (pythonPath) {
@@ -257,7 +337,9 @@ function buildWindowsCleanupScript({
 }
 
 export {
+  appBundleRemovalBlocker,
   buildPosixCleanupScript,
+  bundledUninstallPython,
   buildWindowsCleanupScript,
   modeRemovesAgent,
   modeRemovesUserData,

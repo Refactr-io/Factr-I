@@ -183,8 +183,10 @@ import {
 } from './desktop-profile'
 import { resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
 import {
+  appBundleRemovalBlocker,
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
+  bundledUninstallPython,
   modeRemovesAgent,
   modeRemovesUserData,
   resolveRemovableAppPath,
@@ -17202,19 +17204,36 @@ async function hasNvidiaGpu(): Promise<boolean> {
 // detect a missing agent (a future "lite client" that ships without the
 // bundled agent), hiding the agent/full options when there's nothing to remove.
 
-function uninstallVenvPython() {
-  return getVenvPython(VENV_ROOT)
+// Packaged builds carry their own interpreter and backend (Resources/backend-python) and have no
+// agent venv; a source install runs the uninstaller from its venv.
+function uninstallRuntime() {
+  if (IS_PACKAGED) {
+    return { ...bundledUninstallPython(process.resourcesPath, process.platform), bundled: true }
+  }
+
+  return { pythonExe: getVenvPython(VENV_ROOT), pythonPath: null, cwd: ACTIVE_FACTR_ROOT, bundled: false }
+}
+
+function canWriteDir(dir) {
+  try {
+    fs.accessSync(dir, fs.constants.W_OK)
+
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function getUninstallSummary() {
-  const py = uninstallVenvPython()
-  const agentRoot = ACTIVE_FACTR_ROOT
+  const runtime = uninstallRuntime()
+  const py = runtime.pythonExe
+  const agentRoot = runtime.cwd
 
   // Fast JS-side fallback used when the agent venv is gone (lite client) or the
   // probe fails — the renderer still needs *something* to render options from.
   const fallback = () => ({
     factr_home: FACTR_CONFIG_HOME,
-    agent_installed: isFactrSourceRoot(agentRoot) && fileExists(py),
+    agent_installed: runtime.bundled ? fileExists(py) : isFactrSourceRoot(agentRoot) && fileExists(py),
     gui_installed: true,
     source_built_artifacts: [],
     packaged_app_paths: [],
@@ -17247,7 +17266,13 @@ async function getUninstallSummary() {
         ['-m', 'factr_backend.main', 'uninstall', '--gui-summary'],
         hiddenWindowsChildOptions({
           cwd: agentRoot,
-          env: { ...process.env, FACTR_CONFIG_HOME, NO_COLOR: '1' },
+          env: {
+            ...process.env,
+            FACTR_CONFIG_HOME,
+            NO_COLOR: '1',
+            PYTHONDONTWRITEBYTECODE: '1',
+            ...(runtime.pythonPath ? { PYTHONPATH: runtime.pythonPath } : {})
+          },
           stdio: ['ignore', 'pipe', 'ignore']
         })
       )
@@ -17268,6 +17293,12 @@ async function getUninstallSummary() {
           // resolved from the running exe (the Python probe only knows the
           // standard locations, not where THIS build actually runs from).
           parsed.running_app_path = resolveRemovableAppPath(process.execPath, process.platform, process.env)
+
+          // The packaged app IS the agent install (bundled runtime + backend), so lite/full apply.
+          if (runtime.bundled) {
+            parsed.agent_installed = true
+          }
+
           done(parsed)
         } catch {
           done(fallback())
@@ -17289,13 +17320,16 @@ async function runDesktopUninstall(mode) {
     return { ok: false, error: 'invalid-mode', message: error.message }
   }
 
-  const venvPy = uninstallVenvPython()
+  const runtime = uninstallRuntime()
+  const venvPy = runtime.pythonExe
 
   if (!fileExists(venvPy)) {
     return {
       ok: false,
       error: 'agent-missing',
-      message: `Can't run the uninstaller: no Factr-I agent venv at ${VENV_ROOT}.`
+      message: runtime.bundled
+        ? `Can't run the uninstaller: the bundled Factr-I runtime is missing (${venvPy}).`
+        : `Can't run the uninstaller: no Factr-I agent venv at ${VENV_ROOT}.`
     }
   }
 
@@ -17308,9 +17342,10 @@ async function runDesktopUninstall(mode) {
   // case), fall back to the venv python — gui-only is unaffected; lite/full may
   // leave venv remnants the user can delete, which we log.
   let py = venvPy
-  let pythonPath = null
+  let pythonPath = runtime.pythonPath
 
-  if (modeRemovesAgent(mode)) {
+  // The bundled interpreter lives in the app bundle, which the script removes only after Python exits.
+  if (!runtime.bundled && modeRemovesAgent(mode)) {
     const sysPy = await findSystemPython()
 
     if (sysPy) {
@@ -17327,6 +17362,13 @@ async function runDesktopUninstall(mode) {
 
   const appPath = resolveRemovableAppPath(process.execPath, process.platform, process.env)
   const removeBundle = shouldRemoveAppBundle(IS_PACKAGED, appPath) ? appPath : null
+  // Refuse up front when the bundle cannot be deleted (translocated, disk image, read-only folder):
+  // the detached script runs after the app quits and could not report the failure here.
+  const blocked = removeBundle ? appBundleRemovalBlocker(removeBundle, process.platform, canWriteDir) : null
+
+  if (blocked) {
+    return { ok: false, error: `bundle-${blocked.reason}`, message: blocked.message }
+  }
 
   // CRITICAL (Windows): tear down every backend the desktop owns and wait for
   // the venv shim to unlock BEFORE the cleanup script runs. lite/full delete
@@ -17344,7 +17386,7 @@ async function runDesktopUninstall(mode) {
     desktopPid: process.pid,
     pythonExe: py,
     pythonPath,
-    agentRoot: ACTIVE_FACTR_ROOT,
+    agentRoot: runtime.cwd,
     uninstallArgs,
     appPath: removeBundle,
     factrHome: FACTR_CONFIG_HOME
