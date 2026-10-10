@@ -60,6 +60,7 @@ import {
   XIcon
 } from '@/lib/icons'
 import { extractPreviewTargets } from '@/lib/preview-targets'
+import { inferErrorSurface, tidyErrorDetails } from '@/lib/provider-error-display'
 import { markAssistantIdSpoken } from '@/lib/spoken-reply'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
@@ -520,14 +521,21 @@ const StreamingMarker: FC = () => {
 // headline falls back to a generic title and the action row still offers
 // Retry / Open logs / Copy error details, so nothing regresses on version skew.
 
-const useErrorSurface = () => useAuiState(s => s.message.metadata?.custom?.errorSurface as ErrorSurface | undefined)
-
 const useErrorText = () =>
   useAuiState(s => {
     const status = s.message.status as { error?: unknown; type?: string } | undefined
 
     return status?.type === 'incomplete' && typeof status.error === 'string' ? status.error : ''
   })
+
+// The gateway's descriptor when it sent one; otherwise the plain reading of the
+// raw text (no provider, 401/404/429/5xx), display only (provider-error-display.ts).
+const useErrorSurface = () => {
+  const sent = useAuiState(s => s.message.metadata?.custom?.errorSurface as ErrorSurface | undefined)
+  const errorText = useErrorText()
+
+  return useMemo(() => sent ?? inferErrorSurface(errorText) ?? undefined, [errorText, sent])
+}
 
 const ErrorCardHeadline: FC = () => {
   const { t } = useI18n()
@@ -542,7 +550,7 @@ const ErrorCardHeadline: FC = () => {
       {errorText && (
         <details className="mt-0.5 min-w-0 text-[0.75rem] opacity-70">
           <summary className="cursor-pointer select-none">{t.assistant.thread.errorDetails}</summary>
-          <div className="wrap-anywhere mt-0.5 whitespace-pre-wrap font-mono">{errorText}</div>
+          <div className="wrap-anywhere mt-0.5 whitespace-pre-wrap font-mono">{tidyErrorDetails(errorText)}</div>
         </details>
       )}
     </>
@@ -873,6 +881,9 @@ const ErrorRecoveryActions: FC = () => {
           <KeyRound className="size-3" />
           {copy.errorSignInAgain(surface.providerLabel || surface.provider)}
         </button>
+      )}
+      {plan.openProviders && inRouter && (
+        <SettingsLinkAction label={copy.errorOpenProviders} to={`${SETTINGS_ROUTE}?tab=providers`} />
       )}
       {plan.updateApiKey && inRouter && (
         <SettingsLinkAction

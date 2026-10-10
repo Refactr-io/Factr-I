@@ -533,6 +533,11 @@ fn capabilities_request(req: &Request) -> bool {
     if profile_soul || under("/api/audio") {
         return true;
     }
+    // `POST /api/browser/act` is the engine's own `browser` tool: a call only exists because the
+    // model used the browser in a chat the user is running, so the runtime that drives it may start.
+    if req.method == "POST" && path == "/api/browser/act" {
+        return true;
+    }
     if read {
         // `/api/actions/<name>/status` is the progress poll of a user-started action
         // (Settings > Messaging > Restart polls gateway-restart).
@@ -1164,7 +1169,16 @@ async fn handle(
         // the same skills dir (the engine passes it FACTR_HOME); the registry
         // here only reads and toggles what is installed.
         ("GET", "/api/skills") => {
-            let registry = factr_base::skill::SkillRegistry::shared_snapshot();
+            let mut registry = factr_base::skill::SkillRegistry::shared_snapshot();
+            // A fresh install's store is empty until Factr's bundled skills are seeded; seed them
+            // now, once, so the list is not blank (only where a Factr backend is configured).
+            if registry.list().is_empty() {
+                if let Some(features) = config.features.as_ref() {
+                    if features.seed_bundled_skills_once().await {
+                        registry = factr_base::skill::SkillRegistry::shared_snapshot();
+                    }
+                }
+            }
             let disabled = factr_base::skill::disabled_skill_names();
             let origin = SkillOrigins::load();
             let skills: Vec<Value> = registry
@@ -1616,6 +1630,7 @@ mod capabilities_gate_tests {
             ("POST", "/api/audio/tts-lease"),
             ("GET", "/api/profiles/default/soul"),
             ("PUT", "/api/profiles/default/soul"),
+            ("POST", "/api/browser/act"),
         ] {
             assert!(capabilities_request(&req(method, path)), "{method} {path}");
         }
@@ -1642,6 +1657,8 @@ mod capabilities_gate_tests {
             ("GET", "/api/profiles/soul"),
             ("GET", "/api/profiles/a/b/soul"),
             ("POST", "/api/audiox/speak"),
+            ("GET", "/api/browser/act"),
+            ("POST", "/api/browser/actx"),
         ] {
             assert!(!capabilities_request(&req(method, path)), "{method} {path}");
         }

@@ -310,6 +310,36 @@ describe('code-keyed error card copy and actions', () => {
     expect(await screen.findByText(en.assistant.thread.errorLayers.generic)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
+
+  const withoutDescriptor = (error: string) =>
+    ({
+      ...failedMessage({}, error),
+      metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: {} }
+    }) as unknown as ThreadMessage
+
+  it('reads "credentials not available" as no provider connected, with the raw text once in Details', async () => {
+    const once = 'Claude credentials not available. Run `factr login claude` first.'
+    render(<Harness assistant={withoutDescriptor(`${once} (retried after reloading auth from disk: ${once})`)} />)
+
+    expect(await screen.findByText(codes.no_provider.title as string)).toBeTruthy()
+    expect(screen.getByText(codes.no_provider.body as string)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.getByText(once)).toBeTruthy()
+    expect(screen.queryByText(/retried after reloading/)).toBeNull()
+  })
+
+  it('reads a raw provider 401 as a rejected key without the local-endpoint hint', async () => {
+    render(
+      <Harness
+        assistant={withoutDescriptor(
+          'OpenAI-compatible chat request failed\n  endpoint: http://127.0.0.1:9/v1/chat/completions\n  status: 401 Unauthorized\n  response: {}\nLocal endpoint hint: make sure the server is running.'
+        )}
+      />
+    )
+
+    expect(await screen.findByText(codes.provider_key_rejected.title as string)).toBeTruthy()
+    expect(screen.queryByText(/Local endpoint hint/)).toBeNull()
+  })
 })
 
 describe('scheduled retry at the usage-limit reset (#98852)', () => {

@@ -101,6 +101,25 @@ pub struct Features {
     engine_env: std::sync::Mutex<Option<(String, String)>>,
     /// Consecutive failed bot-backend starts and when the last one failed (see [`Features::ensure_bots`]).
     bot_failures: std::sync::Mutex<(u32, Option<Instant>)>,
+    /// The one bundled-skills seed attempt of this process (see [`Features::seed_bundled_skills_once`]).
+    skills_seed: tokio::sync::OnceCell<bool>,
+}
+
+/// A one-shot `skills seed` copies ~60 small skill folders; it measured ~0.5 s.
+const SKILLS_SEED_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Whether the one skill store (`$FACTR_HOME/skills`) holds no skill at all.
+fn skill_store_is_empty() -> bool {
+    factr_base::skill::SkillRegistry::load_global().map_or(true, |registry| registry.list().is_empty())
+}
+
+/// `copied` from the last JSON line `skills seed` prints (`{"copied": n, ...}`); 0 when absent.
+fn parse_seed_copied(stdout: &str) -> u64 {
+    stdout
+        .lines()
+        .rev()
+        .find_map(|line| serde_json::from_str::<serde_json::Value>(line.trim()).ok()?["copied"].as_u64())
+        .unwrap_or(0)
 }
 
 /// Wait after `failures` failed bot-backend starts: 1 minute, doubling, capped at 30.
@@ -120,7 +139,65 @@ impl Features {
             cron_changed: Notify::new(),
             engine_env: std::sync::Mutex::new(None),
             bot_failures: std::sync::Mutex::new((0, None)),
+            skills_seed: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// Seed Factr's bundled skills into `$FACTR_HOME/skills` when the store is empty, at most once
+    /// per process: a fresh desktop install otherwise lists no skills until the Python backend
+    /// happens to start for some other feature. Lazy by design: called from the skills list and a
+    /// new desktop chat, never at engine start, and only where a Factr backend is configured (a
+    /// benchmark run has none, so it never gets here). Runs `<backend> skills seed`, a one-shot
+    /// that exits; the long-lived feature backend is not started. Returns whether skills were
+    /// copied; callers re-read the registry then.
+    pub async fn seed_bundled_skills_once(&self) -> bool {
+        *self
+            .skills_seed
+            .get_or_init(|| async {
+                if !skill_store_is_empty() {
+                    return false;
+                }
+                match self.run_skills_seed().await {
+                    Ok(copied) => copied > 0,
+                    Err(err) => {
+                        eprintln!("factr: seeding the bundled skills failed: {err:#}");
+                        false
+                    }
+                }
+            })
+            .await
+    }
+
+    async fn run_skills_seed(&self) -> Result<u64> {
+        let (program, args) = self.command.split_first().context("no Factr backend command configured")?;
+        let mut command = Command::new(program);
+        #[cfg(unix)]
+        command.process_group(0);
+        if let Ok(pythonpath) = std::env::var("FACTR_BACKEND_PYTHONPATH") {
+            command.env("PYTHONPATH", pythonpath);
+        }
+        if let Ok(dir) = factr_base::storage::factr_dir() {
+            command.env("FACTR_HOME", dir);
+        }
+        let child = command
+            .args(args)
+            .args(["skills", "seed"])
+            .env_remove("FACTR_DASHBOARD_SESSION_TOKEN")
+            .env_remove("FACTR_ENGINE_TOKEN")
+            .env("FACTR_DESKTOP", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .with_context(|| format!("starting `{program} skills seed`"))?;
+        let output = tokio::time::timeout(SKILLS_SEED_TIMEOUT, child.wait_with_output())
+            .await
+            .context("`skills seed` did not finish in time")??;
+        if !output.status.success() {
+            bail!("`skills seed` exited with {}", output.status);
+        }
+        Ok(parse_seed_copied(&String::from_utf8_lossy(&output.stdout)))
     }
 
     /// Record the engine's own REST URL and token, passed to the Python
@@ -509,4 +586,48 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+
+    #[test]
+    fn seed_output_reports_the_copied_count() {
+        assert_eq!(parse_seed_copied("noise\n{\"copied\": 58, \"total_bundled\": 58}\n"), 58);
+        assert_eq!(parse_seed_copied("not json"), 0);
+    }
+
+    /// An empty skill store is seeded once through `<backend> skills seed`; a store that already
+    /// has skills is left alone and nothing is spawned.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn bundled_skills_are_seeded_once_into_an_empty_store() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("features-seed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let home = dir.join("engine");
+        std::fs::create_dir_all(&home).unwrap();
+        let previous = std::env::var_os("FACTR_HOME");
+        unsafe { std::env::set_var("FACTR_HOME", &home) };
+        let (calls, script) = (dir.join("calls"), dir.join("fake-factr"));
+        std::fs::write(&script, format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\nmkdir -p \"$FACTR_HOME/skills/demo\"\nprintf -- '---\\nname: demo\\ndescription: d\\n---\\nbody\\n' > \"$FACTR_HOME/skills/demo/SKILL.md\"\necho '{{\"copied\": 1, \"total_bundled\": 1}}'\n",
+            calls.display())).unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let f = Features::new(vec![script.to_string_lossy().into_owned()]);
+        assert!(f.seed_bundled_skills_once().await, "the empty store was seeded");
+        assert!(f.seed_bundled_skills_once().await);
+        assert_eq!(std::fs::read_to_string(&calls).unwrap(), "skills seed\n", "spawned once, as `skills seed`");
+        assert!(!f.is_running().await, "the long-lived feature backend was not started");
+
+        // A second process finds skills on disk: nothing to seed, nothing spawned.
+        let g = Features::new(vec![script.to_string_lossy().into_owned()]);
+        assert!(!g.seed_bundled_skills_once().await);
+        assert_eq!(std::fs::read_to_string(&calls).unwrap().lines().count(), 1);
+
+        match previous {
+            Some(v) => unsafe { std::env::set_var("FACTR_HOME", v) },
+            None => unsafe { std::env::remove_var("FACTR_HOME") },
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

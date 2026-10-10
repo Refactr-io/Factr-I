@@ -3579,6 +3579,8 @@ export interface Translations {
       errorOpenFactrFolder: string
       errorOpenFactrFolderFailed: string
       errorUpdateApiKey: string
+      /** Settings → Providers link when no AI provider is connected yet. */
+      errorOpenProviders: string
       /** One-click recovery for an expired/revoked OAuth grant: re-runs that
        *  provider's sign-in flow (auth layer, authKind 'oauth'). */
       errorSignInAgain: (provider: string) => string

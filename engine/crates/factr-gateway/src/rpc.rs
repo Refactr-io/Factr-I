@@ -1884,6 +1884,14 @@ impl Conn {
             "gateway.capabilities" => Ok(json!({ "per_session_exclusive_submit": false })),
             "client.capabilities" => Ok(json!({ "server_requests": ["approval"] })),
             "session.create" => {
+                // A fresh desktop install has no skills on disk until the bundled ones are seeded:
+                // do it once, in the background, so `skill_manage` and the skill list see them
+                // from the next turn. Without a Factr backend (a benchmark run) this is skipped.
+                if let Some(features) = self.config.features.clone() {
+                    tokio::spawn(async move {
+                        features.seed_bundled_skills_once().await;
+                    });
+                }
                 let profile = crate::profile::current();
                 let cwd = p["cwd"]
                     .as_str()
