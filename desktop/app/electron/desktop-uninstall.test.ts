@@ -16,8 +16,8 @@ import { test } from 'vitest'
 import {
   appBundleRemovalBlocker,
   buildPosixCleanupScript,
-  bundledUninstallPython,
   buildWindowsCleanupScript,
+  bundledUninstallPython,
   modeRemovesAgent,
   modeRemovesUserData,
   resolveRemovableAppPath,
@@ -264,6 +264,7 @@ test('bundledUninstallPython uses the app bundle interpreter with source + packa
 
 test('a packaged uninstall script with spaces in the path stays quoted and turns bytecode off', () => {
   const bundled = bundledUninstallPython('/Applications/My Apps/Factr-I.app/Contents/Resources', 'darwin')
+
   const script = buildPosixCleanupScript({
     desktopPid: 7,
     pythonExe: bundled.pythonExe,
@@ -324,6 +325,7 @@ test('appBundleRemovalBlocker explains translocated, disk-image and read-only bu
   assert.equal(appBundleRemovalBlocker('/Volumes/Install Factr-I/Factr-I.app', 'darwin', writable)?.reason, 'disk-image')
 
   const checked: string[] = []
+
   const readOnly = (dir: string) => {
     checked.push(dir)
 

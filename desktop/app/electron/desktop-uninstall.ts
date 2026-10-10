@@ -339,8 +339,8 @@ function buildWindowsCleanupScript({
 export {
   appBundleRemovalBlocker,
   buildPosixCleanupScript,
-  bundledUninstallPython,
   buildWindowsCleanupScript,
+  bundledUninstallPython,
   modeRemovesAgent,
   modeRemovesUserData,
   resolveRemovableAppPath,
