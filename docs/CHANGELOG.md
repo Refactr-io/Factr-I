@@ -65,8 +65,8 @@ behaviour is unchanged from 0.0.4.
   login after a sign-in; `/api/status` reports `missing_login` on a fresh install. Each profile backend gets its own
   `FACTR_RUNTIME_DIR`, so a second profile no longer fails with "Another factr server process is already running".
 - Skills, browser and errors: a fresh install seeds the bundled skills once (`factr skills seed`) when the skill store
-  is empty and the Python backend is configured, from the skills list and from a new chat, which waits up to 3 s so its
-  first turn sees them; the browser tool's `POST /api/browser/act` may start the feature runtime instead of failing
+  is empty and the Python backend is configured, from the skills list and from a new desktop chat, which waits up to 3 s
+  so its first turn sees them (a headless `POST /api/agent/run` never seeds or waits); the browser tool's `POST /api/browser/act` may start the feature runtime instead of failing
   with 404; provider failures show a plain message (no provider connected, rejected key, missing model, rate limit,
   server error) in the error card and toast, with the raw text as detail.
 - Benchmark isolation: none of the above applies to an explicit `--provider openai --model gpt-6-luna serve` start;
