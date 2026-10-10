@@ -429,6 +429,13 @@ async fn init_provider_for_serve(
     Ok(provider)
 }
 
+/// Whether boot applies config.yaml's custom endpoint (`model.base_url`): only when config.yaml itself
+/// chose the provider (`profile_provider`, which `boot_pick` leaves empty for any start with an
+/// explicit `--model`) and that provider is the generic OpenAI-compatible route (not a named profile).
+pub fn saved_custom_endpoint_applies(profile_provider: Option<&str>, effective: ProviderChoice, named_profile: bool) -> bool {
+    profile_provider.is_some() && matches!(effective, ProviderChoice::OpenaiCompatible) && !named_profile
+}
+
 pub async fn run_gateway(
     provider_choice: &ProviderChoice,
     model: Option<&str>,
@@ -475,6 +482,14 @@ pub async fn run_gateway(
         // Factr owns provider selection; Factr's named profile owns endpoint
         // details and credentials for the selected OpenAI-compatible transport.
         crate::env::set_var("FACTR_NAMED_PROVIDER_PROFILE", provider);
+    }
+    // A saved custom / local endpoint (`model.base_url`, from the desktop's custom-endpoint
+    // onboarding) is the OpenAI-compatible route's base URL. Only when config.yaml chose the
+    // provider: a start with an explicit `--model` (a benchmark) never reads it.
+    if saved_custom_endpoint_applies(profile_provider, effective_provider, std::env::var_os("FACTR_NAMED_PROVIDER_PROFILE").is_some())
+        && let Some(home) = profile_defaults.home.as_deref()
+    {
+        factr_gateway::profile::apply_saved_custom_endpoint(home);
     }
     let effective_model = boot.model;
     let socket =

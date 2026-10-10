@@ -451,6 +451,42 @@ mod tests {
         }
     }
 
+    /// Benchmark isolation: the scored runs start `factr --provider openai --model gpt-6-luna serve
+    /// --host 127.0.0.1 --port 0 --token-stdin`. Whatever config.yaml holds (nothing, a ChatGPT pick, a
+    /// custom endpoint with `base_url`, Hugging Face), that argv runs OpenAI on gpt-6-luna, the saved
+    /// pick never applies, and the saved custom endpoint is never applied at boot.
+    #[test]
+    fn the_benchmark_argv_resolves_the_same_whatever_config_yaml_says() {
+        use factr::factr_runtime::{ProviderChoice, saved_custom_endpoint_applies};
+        use factr_gateway::profile::{ProfileDefaults, boot_pick, parse_config};
+        let argv = ["--provider", "openai", "--model", "gpt-6-luna", "serve", "--host", "127.0.0.1", "--port", "0", "--token-stdin"].map(str::to_string);
+        if std::env::var_os("FACTR_PROVIDER").is_some() || std::env::var_os("FACTR_MODEL").is_some() {
+            return; // a private-deployment environment overrides argv by design
+        }
+        let args = parse_gateway_args(&argv).unwrap();
+        assert_eq!((args.provider, args.model.as_deref(), args.host.as_str(), args.port), (ProviderChoice::Openai, Some("gpt-6-luna"), "127.0.0.1", 0));
+        for raw in [
+            "",
+            "model:\n  provider: openai-codex\n  default: gpt-5.6-luna\n",
+            "model:\n  provider: custom\n  default: stub-model\n  base_url: http://127.0.0.1:9/v1\n",
+            "model:\n  provider: huggingface\n  default: some-org/some-model\n",
+        ] {
+            let (provider, model, _) = parse_config(raw);
+            let profile = ProfileDefaults { provider, model, ..Default::default() };
+            let cli_explicit = !matches!(args.provider, ProviderChoice::Auto);
+            let boot = boot_pick(cli_explicit, args.model.as_deref(), &profile);
+            assert_eq!(boot.profile_provider, None, "{raw}");
+            assert_eq!(boot.model_provider, None, "{raw}");
+            assert_eq!(boot.model, Some("gpt-6-luna"), "{raw}");
+            assert!(!boot.profile_model_applies, "{raw}");
+            assert!(!saved_custom_endpoint_applies(boot.profile_provider, args.provider, false), "{raw}");
+        }
+        // The gate itself: only a provider config.yaml chose, only the generic OpenAI-compatible route.
+        assert!(saved_custom_endpoint_applies(Some("custom"), ProviderChoice::OpenaiCompatible, false));
+        assert!(!saved_custom_endpoint_applies(Some("custom"), ProviderChoice::OpenaiCompatible, true));
+        assert!(!saved_custom_endpoint_applies(Some("openai-codex"), ProviderChoice::Openai, false));
+    }
+
     #[test]
     fn selected_profile_scopes_factr_home_under_profiles() {
         assert_eq!(
