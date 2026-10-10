@@ -49,6 +49,28 @@ behaviour is unchanged from 0.0.4.
 - Desktop app: `auth.adopt_external_logins` defaults to false in the packaged app's bundled defaults, so it no longer
   borrows (and by refreshing, logs out) the Claude Code or Codex CLI login; a `config.yaml` setting still wins, and the
   CLI default is unchanged.
+- Provider startup (desktop): the app passes `--provider` / `--model` to the engine only when `FACTR_PROVIDER` /
+  `FACTR_MODEL` are set; it no longer probes local Ollama and starts the engine on it (which sent a saved ChatGPT pick
+  to Ollama's endpoint), and the quit-time Ollama unload is gone (the engine unloads its own model). Onboarding
+  finishes only with the provider the user connected saved, else it shows an error.
+- Provider startup (engine): a saved `model.provider` or `FACTR_PROVIDER` the engine cannot serve no longer exits
+  `serve`: it is resolved through the login catalog (ids, aliases, display names), else the engine starts with no
+  provider and `setup.status`, `setup.runtime_check` and `/api/status` (`provider_error`) say why; it never serves
+  another provider instead. With nothing configured or signed in, a local Ollama that lists models is the auto
+  chain's last step (honouring `OLLAMA_HOST`); `--provider ollama` without `--model` picks an installed model.
+- Gateway: a forwarded request whose feature runtime cannot start gets a 503 JSON reply with a bounded, redacted
+  stderr tail instead of a closed socket; a saved custom endpoint's `model.base_url` is applied at boot and on new
+  chats when config.yaml chose the provider; a ChatGPT pick with no valid ChatGPT login and an OpenAI API key present
+  is refused with a clear message instead of billing the key; `model.options` and `/api/model/options` re-read the
+  login after a sign-in; `/api/status` reports `missing_login` on a fresh install. Each profile backend gets its own
+  `FACTR_RUNTIME_DIR`, so a second profile no longer fails with "Another factr server process is already running".
+- Skills, browser and errors: a fresh install seeds the bundled skills once (`factr skills seed`) when the skill store
+  is empty and the Python backend is configured, from the skills list and from a new chat, which waits up to 3 s so its
+  first turn sees them; the browser tool's `POST /api/browser/act` may start the feature runtime instead of failing
+  with 404; provider failures show a plain message (no provider connected, rejected key, missing model, rate limit,
+  server error) in the error card and toast, with the raw text as detail.
+- Benchmark isolation: none of the above applies to an explicit `--provider openai --model gpt-6-luna serve` start;
+  in-repo tests pin its provider, model, auth state and status to 0.0.4's across config.yaml and environment variants.
 - The Windows and Linux builds of the app are not signed, and the macOS build is ad-hoc signed only (no Developer ID,
   notarization or Authenticode).
 
