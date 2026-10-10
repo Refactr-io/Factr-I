@@ -376,6 +376,7 @@ import {
   spliceRegistrySessionRows,
   tagRegistrySessionResponse
 } from './profile-session-routing'
+import { DISABLE_PROTOCOL_REGISTRATION_ENV, shouldRegisterProtocolClient } from './protocol-registration'
 import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySettings } from './quick-entry'
 import { createQuitFinalization } from './quit-finalization'
 import { type ActiveWork, mergeActiveWork, normalizeActiveWork, quitPromptFor } from './quit-guard'
@@ -17496,6 +17497,12 @@ ipcMain.handle('factr:deep-link-ready', () => {
 })
 
 function registerDeepLinkProtocol() {
+  if (!shouldRegisterProtocolClient(process.env)) {
+    rememberLog(`[deeplink] ${FACTR_PROTOCOL}:// registration skipped (${DISABLE_PROTOCOL_REGISTRATION_ENV}=1)`)
+
+    return
+  }
+
   try {
     if (process.defaultApp && process.argv.length >= 2) {
       // Dev: register with the electron exec path + entry script so the OS can
