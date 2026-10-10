@@ -1,7 +1,10 @@
 import { atom } from 'nanostores'
 
-import { translateNow } from '@/i18n'
+import { translateNow, TRANSLATIONS } from '@/i18n'
+import { getRuntimeI18nLocale } from '@/i18n/runtime'
+import { errorCardText } from '@/lib/error-surface-copy'
 import { isOutOfSyncRpcParams } from '@/lib/gateway-rpc'
+import { inferErrorSurface } from '@/lib/provider-error-display'
 import { isLocalBackendSlotWaitTimeout, requestPoolLimitsSettings } from '@/store/pool-limits'
 import { requestBackendRestart, requestRoute } from '@/store/recovery-requests'
 
@@ -98,6 +101,7 @@ export function isDiskFullErrorMessage(message: string): boolean {
 const KEYS_ROUTE = (envKey: string) => `/settings?tab=keys&key=${encodeURIComponent(envKey)}`
 const GATEWAY_SETTINGS_ROUTE = '/settings?tab=gateway'
 const MAINTENANCE_ROUTE = '/command-center?section=maintenance'
+const PROVIDERS_ROUTE = '/settings?tab=providers'
 
 /** One-click recoveries reused by several rules. */
 export const RECOVERY_ACTIONS = {
@@ -132,6 +136,21 @@ interface ErrorSummaryRule {
   summarize: (msg: string) => string
   /** Recovery button attached to the toast when this rule matches. */
   action?: (msg: string) => NotificationAction
+}
+
+/** The plain card sentence when an error says no AI provider is connected, or null.
+ *  Display only: the raw engine text stays the toast detail. HTTP-status readings are
+ *  left to turn errors (card and turn toast): any other request can 404 too. */
+function providerErrorSentence(message: string): null | string {
+  const surface = inferErrorSurface(message)
+
+  if (surface?.code !== 'no_provider') {
+    return null
+  }
+
+  const { body, title } = errorCardText(TRANSLATIONS[getRuntimeI18nLocale()].assistant.thread, surface)
+
+  return `${title}. ${body}`
 }
 
 const ERROR_SUMMARIES: ErrorSummaryRule[] = [
@@ -187,6 +206,17 @@ const ERROR_SUMMARIES: ErrorSummaryRule[] = [
     test: msg => isOutOfSyncRpcParams(msg),
     summarize: () => translateNow('notifications.errors.rpcOutOfSync'),
     action: () => RECOVERY_ACTIONS.openUpdates()
+  },
+  {
+    // No AI provider connected ("Claude credentials not available. Run `factr login
+    // claude` first."): lead with the plain sentence; readableError keeps the raw text
+    // as the detail.
+    test: msg => providerErrorSentence(msg) !== null,
+    summarize: msg => providerErrorSentence(msg) ?? msg,
+    action: () => ({
+      label: translateNow('assistant.thread.errorOpenProviders'),
+      onClick: () => requestRoute(PROVIDERS_ROUTE)
+    })
   },
   {
     test: msg => /Restart required:/i.test(msg),

@@ -91,3 +91,24 @@ test('code-skew 503 unwraps to a restart-required summary, not raw IPC JSON', ()
   $notifications.get()[0]?.action?.onClick()
   expect($backendRestartRequest.get()).toBe(before + 1)
 })
+
+test('no provider connected reads as a plain sentence with an Open Providers action, raw text as detail', () => {
+  const raw = 'Claude credentials not available. Run `factr login claude` first.'
+
+  notifyError(new Error(raw), 'Request failed')
+
+  expect(lastMessage()).toBe(
+    `${en.assistant.thread.errorCodes.no_provider.title}. ${en.assistant.thread.errorCodes.no_provider.body}`
+  )
+  expect($notifications.get()[0]?.detail).toBe(raw)
+  const action = $notifications.get()[0]?.action
+  expect(action?.label).toBe(en.assistant.thread.errorOpenProviders)
+  action?.onClick()
+  expect($routeRequest.get()?.path).toBe('/settings?tab=providers')
+})
+
+test('an HTTP 404 outside a provider call is not read as a missing model', () => {
+  notifyError(new Error('HTTP 404: session not found'), 'Request failed')
+
+  expect(lastMessage()).not.toMatch(/model/i)
+})
