@@ -15,6 +15,7 @@ Also home to the one policy switch over *borrowed* CLI logins (Codex CLI's
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -29,20 +30,43 @@ EXTERNAL_LOGINS_NOT_ADOPTED_NOTICE = (
 _notice_logged = False
 
 
+def packaged_adopt_default() -> Optional[bool]:
+    """``auth.adopt_external_logins`` from the desktop bundle's defaults (``FACTR_BACKEND_DEFAULTS``,
+    set only by the packaged desktop app), or None when not packaged / not set. The desktop ships
+    False so the app never logs the user's Claude Code or Codex CLI out; the CLI default stays True."""
+    path = os.environ.get("FACTR_BACKEND_DEFAULTS")
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            auth = json.load(fh).get("auth")
+    except Exception:
+        return None
+    value = auth.get("adopt_external_logins") if isinstance(auth, dict) else None
+    return value if isinstance(value, bool) else None
+
+
 def adopt_external_logins_enabled() -> bool:
-    """``auth.adopt_external_logins`` (default True).
+    """``auth.adopt_external_logins`` (default True; False in the packaged desktop app unless the
+    user's config.yaml sets it).
 
     Codex and Claude OAuth refresh tokens are single-use and rotate, so once Factr borrows a CLI's
     token pair the two programs hold one token family and whichever refreshes first logs the other
     out. When the user opts out, Factr never reads or refreshes those files and says so once per
     process (INFO) the first time it would have."""
     global _notice_logged
+    packaged = packaged_adopt_default()
     try:
-        from factr_backend.config import load_config_readonly
+        from factr_backend.config import load_config_readonly, read_raw_config_readonly
         auth_cfg = (load_config_readonly() or {}).get("auth")
+        raw_auth = (read_raw_config_readonly() or {}).get("auth")
     except Exception:
-        return True
-    enabled = not isinstance(auth_cfg, dict) or bool(auth_cfg.get("adopt_external_logins", True))
+        return True if packaged is None else packaged
+    user_set = isinstance(raw_auth, dict) and "adopt_external_logins" in raw_auth
+    if packaged is not None and not user_set:
+        enabled = packaged
+    else:
+        enabled = not isinstance(auth_cfg, dict) or bool(auth_cfg.get("adopt_external_logins", True))
     if not enabled and not _notice_logged:
         _notice_logged = True
         logger.info(EXTERNAL_LOGINS_NOT_ADOPTED_NOTICE)

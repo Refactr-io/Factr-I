@@ -10,8 +10,9 @@ Factr-I is three parts built separately and shipped as one desktop bundle:
 
 All commands below were read from the scripts and config in this tree
 (`engine/Cargo.toml`, `backend/pyproject.toml`, `desktop/package.json`,
-`desktop/app/package.json` and `desktop/app/scripts/`). The version is `0.0.0`
-in every one of them.
+`desktop/app/package.json` and `desktop/app/scripts/`). The version is
+`0.0.5-dev.1` (`0.0.5.dev1` in `backend/pyproject.toml`, the PEP 440 spelling).
+The packaged macOS app runs on Apple Silicon only; Intel Macs are not supported.
 
 Verification status: this document was written by reading code on macOS. The
 macOS flow is the one that has been exercised; the Windows and Linux flows are
@@ -41,6 +42,10 @@ and have not been run by the author. Where something is a guess it says so.
   helper with the .NET Framework `csc.exe` that ships with Windows, and refuses to
   cross-package for `win32`.
 - Windows x64 is the only Windows target the staging script supports.
+- Long paths: `node_modules` and the staged Python packages exceed the 260-character
+  `MAX_PATH`. Enable long paths (`LongPathsEnabled=1` under
+  `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, and
+  `git config --global core.longpaths true`) or clone to a short path such as `C:\f`.
 
 ### macOS
 
@@ -65,9 +70,13 @@ cargo build --release -p factr-cli
 This produces `engine/target/release/factr` (`factr.exe` on Windows). The
 lockfile `engine/Cargo.lock` is committed; add `--locked` to refuse changes to it.
 
-Release flavour: the desktop script `npm run build:engine` (from `desktop/app`)
-runs the same build with `FACTR_RELEASE_BUILD=1`, which makes the embedded
-version `v0.0.0 (<hash>)` instead of `v0.0.0-dev (<hash>)`.
+Release flavour: the desktop script `npm run build:engine` (from `desktop/app`,
+`scripts/build-engine.mjs`) runs the same build with `FACTR_RELEASE_BUILD=1`,
+which embeds a release version string (`<version> (<hash>)`) instead of the dev
+one, and adds `--remap-path-prefix` for your home directory, `CARGO_HOME`, the
+checkout and `CARGO_TARGET_DIR` (through `CARGO_ENCODED_RUSTFLAGS`, keeping any
+`RUSTFLAGS` you set), so the binary does not embed `/Users/<name>/.cargo/...` or
+build-directory paths. The release workflow uses the same script.
 
 Tests:
 
@@ -79,7 +88,7 @@ cargo test --workspace --locked
 Version: `factr --version` prints `Factr-I <version> (<sha>)` and
 `factr __version` prints JSON `{version, sha, db_schema}`. `version` is the
 `[package].version` of `engine/Cargo.toml` (`CARGO_PKG_VERSION`), currently
-`0.0.0`; the packager records it in the bundle manifest.
+`0.0.5-dev.1`; the packager records it in the bundle manifest.
 
 ## 2. Backend
 
@@ -143,10 +152,25 @@ Windows x64):
    `dependencies` plus the `bundled` extra, see [BUNDLED-EXTRAS.md](BUNDLED-EXTRAS.md);
    an import probe then fails the stage if any bundled package is missing);
 4. extracts the backend source with `git archive HEAD:backend` into
-   `build/backend-python/source`. This is the committed `HEAD` only: commit
-   your backend changes first or they are not staged;
-5. writes `defaults.json`, copies the `uv` binary to `tools/`, and writes
-   `stage.json` (commit sha, dirty flag, Python version).
+   `build/backend-python/source`, without `backend/tests/` (not used at runtime).
+   This is the committed `HEAD` only: commit your backend changes first or they
+   are not staged;
+5. writes `defaults.json` (the backend defaults, except that
+   `auth.adopt_external_logins` is `false` in the desktop app), copies the `uv`
+   binary to `tools/`, and writes `stage.json` (commit sha, dirty flag, Python version);
+6. makes every staged file user-writable (so `xattr -cr` and re-signing work),
+   precompiles `runtime/`, `packages/` and `source/` with
+   `compileall --invalidation-mode unchecked-hash` (a signed bundle in a read-only
+   `/Applications` would otherwise recompile on every start, or write `__pycache__`
+   into its own signature), and writes `build/backend-python.integrity.json`.
+
+The app runs the bundled Python with `PYTHONDONTWRITEBYTECODE=1`.
+`before-pack.mjs` (and `npm run verify:backend-python`) fails when the staged
+tree changed after staging (a newer file, a different file count, or a source
+that lost its pyc); re-run `npm run stage:backend-python` then. After packaging
+on macOS, `npm run verify:app -- release/mac-arm64/Factr-I.app` imports the
+backend with the bundled Python under a temporary `HOME` and then runs
+`codesign --verify --deep --strict` on the app.
 
 The engine is found by `before-pack.mjs` at `engine/target/release/factr` (or
 `factr.exe`) when the target arch equals the host arch, or at
@@ -165,7 +189,7 @@ native deps) is part of each of these.
 | --- | --- |
 | `npm run pack` | Unpacked app only (`electron-builder --dir`): `release/mac-arm64/Factr-I.app` (or `mac/`), `release/win-unpacked/`, `release/linux-unpacked/`. Fast check, no installer. |
 | `npm run dist:mac` | macOS `.dmg` and `.zip` for the host arch. `dist:mac:dmg` and `dist:mac:zip` build one of them. |
-| `npm run dist:win:nsis` | Windows NSIS installer (`Factr-I-<version>-win-x64.exe`). `dist:win` builds every Windows target in the config (`nsis` and `msi`); `dist:win:msi` only the MSI. |
+| `npm run dist:win:nsis` | Windows NSIS installer (`Factr-I-<version>-win-x64.exe`). `dist:win` builds the same (NSIS is the only Windows target; MSI does not accept prerelease versions such as `0.0.5-dev.1`). |
 | `npm run dist:linux` | Linux `AppImage`, `deb` and `rpm`. For the AppImage alone: `npm run build && npm run builder -- --linux AppImage`. |
 
 Artifact names follow `Factr-I-${version}-${os}-${arch}.${ext}` and everything
@@ -177,18 +201,29 @@ scripts.
 
 ### Signing
 
-None is configured. Builds are unsigned and not notarized.
+No Developer ID or Authenticode certificate is configured, and nothing is notarized.
 
-- macOS: `scripts/notarize.mjs` is wired as `afterSign` and skips itself unless
+- macOS: the release workflow ad-hoc signs the app (`-c.mac.identity=-`;
+  `electron/entitlements.mac.plist` carries `disable-library-validation`, which
+  ad-hoc signing with the hardened runtime needs) and checks it with
+  `codesign --verify --deep --strict`. An Apple Silicon app with no signature at
+  all is reported as "damaged". Locally, `npm run dist:mac -- -c.mac.identity=-`
+  does the same; without it electron-builder signs with a keychain identity if it
+  finds one and otherwise leaves the app unsigned.
+  `scripts/notarize.mjs` is wired as `afterSign` and skips itself unless
   `APPLE_NOTARY_PROFILE`, or all of `APPLE_API_KEY`, `APPLE_API_KEY_ID` and
-  `APPLE_API_ISSUER`, are set. Signing itself uses the standard electron-builder
-  variables (`CSC_LINK`, `CSC_KEY_PASSWORD`, or a keychain identity). Set
-  `CSC_IDENTITY_AUTO_DISCOVERY=false` to build unsigned deliberately.
+  `APPLE_API_ISSUER`, are set. Developer ID signing uses the standard
+  electron-builder variables (`CSC_LINK`, `CSC_KEY_PASSWORD`, or a keychain identity).
 - Windows: `win.signAndEditExecutable` is `false`; no certificate is wired.
   electron-builder would read `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD`.
-- An unsigned macOS app is blocked by Gatekeeper on other machines
-  (right-click, Open, or `xattr -dr com.apple.quarantine Factr-I.app`); an
-  unsigned Windows installer shows SmartScreen.
+- A non-notarized macOS app is blocked by Gatekeeper on its first open on other
+  machines. On macOS 15 and later right-click > Open no longer helps: open it once,
+  then System Settings > Privacy & Security > Open Anyway (or
+  `xattr -dr com.apple.quarantine /Applications/Factr-I.app`). An unsigned Windows
+  installer shows SmartScreen.
+- Linux AppImage on Ubuntu 24.04: needs FUSE 2 (`libfuse2t64`) and, because
+  AppArmor restricts the unprivileged user namespaces the Chromium sandbox uses,
+  `--no-sandbox` on the command line.
 
 The application id is `net.refactr.factr`.
 

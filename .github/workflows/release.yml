@@ -1,8 +1,8 @@
 name: release
 
-# Tag vMAJOR.MINOR.PATCH to build unsigned installers and attach them to a GitHub
-# Release. See docs/RELEASING.md. macOS signing/notarization and Windows code
-# signing are NOT configured; builds are unsigned.
+# Tag vMAJOR.MINOR.PATCH to build installers and attach them to a GitHub Release.
+# See docs/RELEASING.md. No Developer ID / Authenticode certificate and no
+# notarization: the macOS app is ad-hoc signed, Windows and Linux are unsigned.
 
 on:
   push:
@@ -45,7 +45,8 @@ jobs:
         include:
           - name: mac-arm64
             os: macos-14
-            dist: npm run dist:mac
+            # Ad-hoc identity: an Apple Silicon app with no signature at all reports as "damaged".
+            dist: npm run dist:mac -- -c.mac.identity=-
           - name: win-x64
             os: windows-latest
             dist: npm run dist:win:nsis
@@ -54,9 +55,14 @@ jobs:
             dist: npm run build && npm run builder -- --linux AppImage
     env:
       FACTR_RELEASE_BUILD: '1'
-      # Builds are unsigned on purpose.
+      # No certificate: never pick up a keychain identity (macOS signs ad-hoc via -c.mac.identity=-).
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
+      # node_modules and the staged Python packages exceed MAX_PATH (260).
+      - name: Long paths (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
@@ -76,11 +82,13 @@ jobs:
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
 
       - name: Engine
-        working-directory: engine
+        working-directory: desktop/app
         shell: bash
+        # scripts/build-engine.mjs: cargo build --release with --remap-path-prefix so the binary
+        # does not embed the runner's home, CARGO_HOME or checkout paths (node builtins only).
         run: |
           export FACTR_BUILD_SEMVER="${GITHUB_REF_NAME#v}"
-          cargo build --release --locked -p factr-cli
+          node scripts/build-engine.mjs --locked -p factr-cli
 
       - name: Install desktop dependencies
         working-directory: desktop
@@ -94,6 +102,16 @@ jobs:
         working-directory: desktop/app
         shell: bash
         run: ${{ matrix.dist }}
+
+      - name: Verify the macOS signature
+        if: runner.os == 'macOS'
+        working-directory: desktop/app
+        shell: bash
+        run: |
+          app=$(ls -d release/mac*/Factr-I.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -E '^(Signature|Identifier|Format)'
+          node scripts/verify-packaged-app.mjs "$app"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -120,5 +138,15 @@ jobs:
           files: artifacts/*
           generate_release_notes: true
           body: |
-            Unsigned builds: macOS Gatekeeper and Windows SmartScreen will warn.
-            Code signing and notarization are not configured yet.
+            No Developer ID or Authenticode certificate and no notarization yet.
+
+            macOS: Apple Silicon (M1 or later) only; Intel Macs are not supported. The app is ad-hoc signed, so the
+            first open is blocked. Move Factr-I.app to Applications, open it once and close the dialog, then open
+            System Settings > Privacy & Security and click Open Anyway (macOS 15 and later: right-click > Open no
+            longer works).
+
+            Windows: x64 only, unsigned; SmartScreen warns (More info > Run anyway).
+
+            Linux: x64 AppImage, unsigned. Run `chmod +x Factr-I-*.AppImage`. On Ubuntu 24.04 install FUSE 2
+            (`sudo apt install libfuse2t64`) and start it with `./Factr-I-*.AppImage --no-sandbox` (AppArmor blocks
+            the Chromium sandbox for AppImages).

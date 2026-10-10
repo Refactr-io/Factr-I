@@ -33,7 +33,7 @@ https://github.com/Refactr-io/Factr-I/releases (the `publish` block of
 
    | Runner | Artifact |
    | --- | --- |
-   | `macos-14` | `Factr-I-X.Y.Z-mac-arm64.dmg` and `.zip` |
+   | `macos-14` | `Factr-I-X.Y.Z-mac-arm64.dmg` and `.zip` (Apple Silicon only; ad-hoc signed and verified with `codesign --verify --deep --strict`) |
    | `windows-latest` | `Factr-I-X.Y.Z-win-x64.exe` (NSIS installer) |
    | `ubuntu-latest` | `Factr-I-X.Y.Z-linux-*.AppImage` |
 
@@ -46,12 +46,17 @@ Local equivalent of one OS leg: see `docs/BUILDING.md` (engine, then
 
 ## Signing and notarization: not configured
 
-The workflow builds unsigned artifacts (`CSC_IDENTITY_AUTO_DISCOVERY=false`).
-Users will see Gatekeeper and SmartScreen warnings. To enable signing later, add
-repository secrets and pass them to the Package step:
+There is no Developer ID or Authenticode certificate. The macOS app is ad-hoc
+signed (`-c.mac.identity=-`, so it is not reported as "damaged" on Apple
+Silicon) but not notarized; the Windows and Linux artifacts are unsigned. Users
+see Gatekeeper on the first open (macOS 15+: System Settings > Privacy &
+Security > Open Anyway; right-click > Open no longer works) and SmartScreen on
+Windows. The release notes repeat these steps and the Linux AppImage notes (FUSE 2,
+`--no-sandbox` on Ubuntu 24.04). To enable signing later, add repository secrets
+and pass them to the Package step:
 
 - macOS signing: `CSC_LINK` (base64 `.p12` Developer ID certificate) and
-  `CSC_KEY_PASSWORD`, and remove `CSC_IDENTITY_AUTO_DISCOVERY=false`.
+  `CSC_KEY_PASSWORD`, and drop `-c.mac.identity=-` from the mac build command.
 - macOS notarization: `APPLE_API_KEY` (the `.p8` contents), `APPLE_API_KEY_ID` and
   `APPLE_API_ISSUER`; `desktop/app/scripts/notarize.mjs` already uses them and
   skips itself when they are absent.
@@ -74,11 +79,14 @@ The desktop app checks GitHub; it never installs anything itself.
   404 (no release yet) means no update. Results are cached for 6 hours (a manual
   check is limited to once per 30 seconds), conditional requests use the ETag,
   and a request times out after 8 seconds. Failures such as a rate limit are
-  reported as a check error, not as an update.
+  reported as a check error, not as an update, and the app does not ask again for
+  15 minutes (30 seconds for a manual check), or longer when GitHub sends
+  `Retry-After` or an exhausted `x-ratelimit-reset`.
 - When a newer release exists the app shows the version and the (truncated)
   release notes. "Apply" only opens the release page
   (`https://github.com/Refactr-io/Factr-I/releases`) in the browser. There is
-  no auto-install, because the builds are unsigned; you install the new
+  no auto-install, because the builds are not signed with a Developer ID or
+  Authenticode certificate; you install the new
   version yourself:
   - macOS: replace `Factr-I.app`. `desktop/app/scripts/factr-update.sh <new Factr-I.app> [installed app]`
     can do the swap: it keeps the old bundle as `Factr-I.app.previous`, launches

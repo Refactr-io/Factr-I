@@ -64,6 +64,7 @@ import { Arch } from 'electron-builder'
 import { removeDirSync, stageNodePty, stageGetWindows } from './stage-native-deps.mjs'
 import { buildHudModifierMonitor } from './build-hud-modifier-monitor.mjs'
 import { writeFactrManifest } from './factr-manifest.mjs'
+import { badSymlinks, integrityPath, verifyIntegrity } from './stage-backend-python.mjs'
 
 export function cleanStaleAppOutDir(appOutDir) {
   if (!appOutDir || typeof appOutDir !== 'string') {
@@ -169,6 +170,15 @@ export default async function beforePack(context) {
         const python = path.join(import.meta.dirname, '..', 'build', 'backend-python', 'runtime', 'python.exe')
         if (!existsSync(python)) throw new Error('Run npm run stage:backend-python before packaging (Windows needs runtime/python.exe)')
       }
+      // The staged Python tree must still be exactly what staging precompiled and snapshotted: a later
+      // import that wrote __pycache__ (or any edit) would ship unsigned-for changes inside the bundle.
+      const pythonStage = path.join(import.meta.dirname, '..', 'build', 'backend-python')
+      if (!existsSync(integrityPath(pythonStage))) throw new Error('Run npm run stage:backend-python before packaging (integrity snapshot missing)')
+      const stageProblems = [
+        ...badSymlinks(pythonStage).map(b => `bad symlink ${b}`),
+        ...verifyIntegrity(pythonStage, JSON.parse(readFileSync(integrityPath(pythonStage), 'utf8')))
+      ]
+      if (stageProblems.length) throw new Error(`staged backend-python changed since staging; re-run npm run stage:backend-python:\n${stageProblems.join('\n')}`)
       const staged = path.join(import.meta.dirname, '..', 'build', 'factr')
       mkdirSync(staged, { recursive: true })
       copyFileSync(binary, path.join(staged, binaryName))

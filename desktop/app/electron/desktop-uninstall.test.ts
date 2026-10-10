@@ -14,8 +14,10 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
+  appBundleRemovalBlocker,
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
+  bundledUninstallPython,
   modeRemovesAgent,
   modeRemovesUserData,
   resolveRemovableAppPath,
@@ -239,4 +241,104 @@ test('buildWindowsCleanupScript omits PYTHONPATH + rmdir when not needed (gui, n
 
   assert.doesNotMatch(script, /rmdir/)
   assert.doesNotMatch(script, /set "PYTHONPATH=/)
+})
+
+// --- packaged-app uninstall ---
+
+test('bundledUninstallPython uses the app bundle interpreter with source + packages on PYTHONPATH', () => {
+  const mac = bundledUninstallPython('/Applications/My Apps/Factr-I.app/Contents/Resources', 'darwin')
+
+  assert.equal(mac.pythonExe, '/Applications/My Apps/Factr-I.app/Contents/Resources/backend-python/runtime/bin/python3.12')
+  assert.equal(
+    mac.pythonPath,
+    '/Applications/My Apps/Factr-I.app/Contents/Resources/backend-python/source:' +
+      '/Applications/My Apps/Factr-I.app/Contents/Resources/backend-python/packages'
+  )
+  assert.equal(mac.cwd, '/Applications/My Apps/Factr-I.app/Contents/Resources/backend-python/source')
+
+  const win = bundledUninstallPython('C:\\Users\\x\\AppData\\Local\\Programs\\Factr-I\\resources', 'win32')
+
+  assert.equal(win.pythonExe, 'C:\\Users\\x\\AppData\\Local\\Programs\\Factr-I\\resources\\backend-python\\runtime\\python.exe')
+  assert.match(win.pythonPath, /backend-python\\source;C:.*backend-python\\packages$/)
+})
+
+test('a packaged uninstall script with spaces in the path stays quoted and turns bytecode off', () => {
+  const bundled = bundledUninstallPython('/Applications/My Apps/Factr-I.app/Contents/Resources', 'darwin')
+
+  const script = buildPosixCleanupScript({
+    desktopPid: 7,
+    pythonExe: bundled.pythonExe,
+    pythonPath: bundled.pythonPath,
+    agentRoot: bundled.cwd,
+    uninstallArgs: ['-m', 'factr_backend.uninstall', '--mode', 'lite'],
+    appPath: '/Applications/My Apps/Factr-I.app',
+    factrHome: '/Users/x/.factr'
+  })
+
+  assert.match(script, /export PYTHONDONTWRITEBYTECODE=1/)
+  assert.match(script, /'\/Applications\/My Apps\/Factr-I\.app\/Contents\/Resources\/backend-python\/runtime\/bin\/python3\.12' '-m'/)
+  assert.match(script, /export PYTHONPATH='\/Applications\/My Apps\/[^']*source:[^']*packages'/)
+  // Python runs before the bundle (and the interpreter inside it) is removed.
+  assert.ok(script.indexOf("'-m' 'factr_backend.uninstall'") < script.indexOf('rm -rf'))
+})
+
+test('a failed bundle removal is reported, not swallowed', () => {
+  const script = buildPosixCleanupScript({
+    desktopPid: 1,
+    pythonExe: '/p/python',
+    pythonPath: null,
+    agentRoot: '/a',
+    uninstallArgs: ['-m', 'factr_backend.uninstall', '--mode', 'gui'],
+    appPath: '/Applications/Factr-I.app',
+    factrHome: '/h'
+  })
+
+  assert.doesNotMatch(script, /rm -rf '\/Applications\/Factr-I\.app' \|\| true/)
+  assert.match(script, /if \[ -e '\/Applications\/Factr-I\.app' \]; then/)
+  assert.match(script, /osascript/)
+  assert.match(script, /notify-send/)
+})
+
+test('the Windows script turns bytecode off too', () => {
+  const script = buildWindowsCleanupScript({
+    desktopPid: 2,
+    pythonExe: 'C:\\p\\python.exe',
+    pythonPath: null,
+    agentRoot: 'C:\\h',
+    uninstallArgs: ['-m', 'factr_backend.uninstall', '--mode', 'gui'],
+    appPath: null,
+    factrHome: 'C:\\h'
+  })
+
+  assert.match(script, /set "PYTHONDONTWRITEBYTECODE=1"/)
+})
+
+test('appBundleRemovalBlocker explains translocated, disk-image and read-only bundles', () => {
+  const writable = () => true
+
+  assert.equal(appBundleRemovalBlocker('/Applications/Factr-I.app', 'darwin', writable), null)
+  assert.equal(appBundleRemovalBlocker(null, 'darwin', writable), null)
+  assert.equal(
+    appBundleRemovalBlocker('/private/var/folders/ab/T/AppTranslocation/1234-ABCD/d/Factr-I.app', 'darwin', writable)?.reason,
+    'translocated'
+  )
+  assert.equal(appBundleRemovalBlocker('/Volumes/Install Factr-I/Factr-I.app', 'darwin', writable)?.reason, 'disk-image')
+
+  const checked: string[] = []
+
+  const readOnly = (dir: string) => {
+    checked.push(dir)
+
+    return false
+  }
+
+  const blocked = appBundleRemovalBlocker('/Applications/Factr-I.app', 'darwin', readOnly)
+
+  assert.equal(blocked?.reason, 'not-writable')
+  assert.deepEqual(checked, ['/Applications'])
+  assert.match(blocked?.message || '', /Trash/)
+  assert.equal(
+    appBundleRemovalBlocker('C:\\Program Files\\Factr-I', 'win32', () => false)?.reason,
+    'not-writable'
+  )
 })
