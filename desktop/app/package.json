@@ -35,7 +35,7 @@
     "pack": "npm run build && npm run builder -- --dir --publish never",
     "dist": "npm run build && npm run builder",
     "dist:mac": "npm run build && npm run builder -- --mac",
-    "build:engine": "cross-env FACTR_RELEASE_BUILD=1 cargo build --release --manifest-path ../../engine/Cargo.toml",
+    "build:engine": "cross-env FACTR_RELEASE_BUILD=1 node scripts/build-engine.mjs",
     "stage:backend-python": "node scripts/stage-backend-python.mjs",
     "verify:backend-python": "node scripts/stage-backend-python.mjs --verify build/backend-python",
     "verify:app": "node scripts/verify-packaged-app.mjs",
