@@ -2144,6 +2144,8 @@ export const zh = defineLocale({
     actualCost: cost => `实际 ${cost}`,
     loadingUsage: '正在加载用量…',
     noUsage: period => `最近 ${period} 天暂无用量。`,
+    runHistory: '运行记录',
+    railTip: '命令中心：会话、用量和运行记录',
     retry: '重试',
     dailyTokens: '每日词元',
     input: '输入',
@@ -2767,7 +2769,8 @@ export const zh = defineLocale({
       capabilities: '技能与工具',
       messaging: '消息平台',
       artifacts: '产物',
-      cron: '定时任务'
+      cron: '定时任务',
+      agents: '运行记录'
     },
     searchAria: '搜索会话',
     searchPlaceholder: '搜索会话…',

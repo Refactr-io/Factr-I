@@ -1816,6 +1816,8 @@ export const ru = defineLocale({
     actualCost: cost => `фактически ${cost}`,
     loadingUsage: 'Загрузка использования...',
     noUsage: period => `Нет использования за последние ${period} ${RU_NOUN(period, 'день', 'дня', 'дней')}.`,
+    runHistory: 'История запусков',
+    railTip: 'Командный центр: сеансы, использование и история запусков',
     retry: 'Повторить',
     dailyTokens: 'Токены за день',
     input: 'вход',
@@ -2401,7 +2403,8 @@ export const ru = defineLocale({
       capabilities: 'Возможности',
       messaging: 'Сообщения',
       artifacts: 'Артефакты',
-      cron: 'Запланированные задачи'
+      cron: 'Запланированные задачи',
+      agents: 'История запусков'
     },
     searchAria: 'Поиск сеансов',
     searchPlaceholder: 'Поиск сеансов…',

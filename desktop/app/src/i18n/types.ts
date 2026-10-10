@@ -1925,6 +1925,8 @@ export interface Translations {
     actualCost: (cost: string) => string
     loadingUsage: string
     noUsage: (period: number) => string
+    runHistory: string
+    railTip: string
     retry: string
     dailyTokens: string
     input: string

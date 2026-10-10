@@ -63,6 +63,7 @@ interface CommandCenterViewProps {
   onDeleteSession: (sessionId: string) => Promise<void>
   // Accepted for call-site parity; navigation lives in the global Cmd+K palette.
   onNavigateRoute?: (path: string) => void
+  onOpenAgents?: () => void
   onOpenSession: (sessionId: string) => void
 }
 
@@ -135,7 +136,13 @@ function EmptyPanel({ action, description, title }: { action?: ReactNode; descri
   )
 }
 
-export function CommandCenterView({ initialSection, onClose, onDeleteSession, onOpenSession }: CommandCenterViewProps) {
+export function CommandCenterView({
+  initialSection,
+  onClose,
+  onDeleteSession,
+  onOpenAgents,
+  onOpenSession
+}: CommandCenterViewProps) {
   const { t } = useI18n()
   const cc = t.commandCenter
   // $sessions ticks on every streaming token (title updates, new sessions),
@@ -360,6 +367,11 @@ export function CommandCenterView({ initialSection, onClose, onDeleteSession, on
                   placeholder={cc.searchPlaceholder}
                   value={query}
                 />
+              )}
+              {section === 'usage' && onOpenAgents && (
+                <Button aria-label={cc.runHistory} onClick={onOpenAgents} size="micro" type="button" variant="ghost">
+                  {cc.runHistory}
+                </Button>
               )}
               {section === 'usage' && (
                 <SegmentedControl

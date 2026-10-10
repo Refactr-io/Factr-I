@@ -2230,6 +2230,8 @@ export const en: Translations = {
     actualCost: cost => `actual ${cost}`,
     loadingUsage: 'Loading usage...',
     noUsage: period => `No usage in the last ${period} days.`,
+    runHistory: 'Run history',
+    railTip: 'Command center: sessions, usage and run history',
     retry: 'Retry',
     dailyTokens: 'Daily tokens',
     input: 'input',
@@ -2863,7 +2865,8 @@ export const en: Translations = {
       capabilities: 'Capabilities',
       messaging: 'Messaging',
       artifacts: 'Artifacts',
-      cron: 'Scheduled jobs'
+      cron: 'Scheduled jobs',
+      agents: 'Run history'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',

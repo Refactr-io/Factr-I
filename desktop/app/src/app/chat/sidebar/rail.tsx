@@ -163,7 +163,7 @@ export function SidebarRail() {
           active={commandCenterOpen}
           label={commandCenterLabel}
           onClick={toggleCommandCenter}
-          tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterLabel} />}
+          tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterOpen ? commandCenterLabel : t.commandCenter.railTip} />}
           tour="rail-command-center"
         >
           <Command className="size-4" />

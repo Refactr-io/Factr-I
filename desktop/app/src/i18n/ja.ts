@@ -1718,6 +1718,8 @@ export const ja = defineLocale({
     actualCost: cost => `実際 ${cost}`,
     loadingUsage: '使用状況を読み込み中...',
     noUsage: period => `過去 ${period} 日間に使用履歴がありません。`,
+    runHistory: '実行履歴',
+    railTip: 'コマンドセンター: セッション、使用量、実行履歴',
     retry: '再試行',
     dailyTokens: '日別トークン',
     input: '入力',
@@ -2220,7 +2222,8 @@ export const ja = defineLocale({
       capabilities: 'スキルとツール',
       messaging: 'メッセージング',
       artifacts: 'アーティファクト',
-      cron: 'スケジュール済みジョブ'
+      cron: 'スケジュール済みジョブ',
+      agents: '実行履歴'
     },
     searchAria: 'セッションを検索',
     searchPlaceholder: 'セッションを検索…',

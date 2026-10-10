@@ -6,6 +6,7 @@ import { useContributions } from '@/contrib/react/use-contributions'
 import { $interfaceMode, shownInMode } from '@/store/interface-mode'
 
 import {
+  AGENTS_ROUTE,
   ARTIFACTS_ROUTE,
   CAPABILITIES_ROUTE,
   CRON_ROUTE,
@@ -55,6 +56,14 @@ export const SIDEBAR_NAV: SidebarNavItem[] = [
     icon: props => <Codicon name="watch" {...props} />,
     route: CRON_ROUTE,
     keybindActionId: 'nav.cron',
+    tier: 'advanced'
+  },
+  {
+    id: 'agents',
+    label: '',
+    icon: props => <Codicon name="history" {...props} />,
+    route: AGENTS_ROUTE,
+    keybindActionId: 'nav.agents',
     tier: 'advanced'
   }
 ]

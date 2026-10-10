@@ -1342,6 +1342,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
             onClose={closeOverlayToPreviousRoute}
             onDeleteSession={removeSession}
             onNavigateRoute={path => navigateToWorkspacePage(navigate, path)}
+            onOpenAgents={openAgents}
             onOpenSession={sessionId => openSession(sessionId, navigate)}
           />
         </Suspense>

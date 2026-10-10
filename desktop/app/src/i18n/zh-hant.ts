@@ -1757,6 +1757,8 @@ export const zhHant = defineLocale({
     actualCost: cost => `實際 ${cost}`,
     loadingUsage: '正在載入使用量…',
     noUsage: period => `最近 ${period} 天暫無使用量。`,
+    runHistory: '執行紀錄',
+    railTip: '命令中心：工作階段、使用量和執行紀錄',
     retry: '重試',
     dailyTokens: '每日詞元',
     input: '輸入',
@@ -2237,7 +2239,8 @@ export const zhHant = defineLocale({
       capabilities: '技能與工具',
       messaging: '訊息平台',
       artifacts: '成品',
-      cron: '排程工作'
+      cron: '排程工作',
+      agents: '執行紀錄'
     },
     searchAria: '搜尋工作階段',
     searchPlaceholder: '搜尋工作階段…',

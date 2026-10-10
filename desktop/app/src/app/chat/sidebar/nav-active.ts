@@ -7,6 +7,7 @@ export function isNavItemActive(item: SidebarNavItem, currentView: string, pathn
     (item.id === 'messaging' && currentView === 'messaging') ||
     (item.id === 'artifacts' && currentView === 'artifacts') ||
     (item.id === 'cron' && currentView === 'cron') ||
+    (item.id === 'agents' && currentView === 'agents') ||
     // Contributed rows light up at their own route.
     (currentView === 'extension' && Boolean(item.route) && pathname === item.route)
   )

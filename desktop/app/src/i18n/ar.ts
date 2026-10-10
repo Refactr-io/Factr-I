@@ -1407,6 +1407,8 @@ export const ar = defineLocale({
     actualCost: cost => `التكلفة الفعلية ${cost}`,
     loadingUsage: 'جار تحميل الاستخدام',
     noUsage: period => `لا يوجد استخدام خلال ${period} يوم`,
+    runHistory: 'سجل التشغيل',
+    railTip: 'مركز الأوامر: الجلسات والاستخدام وسجل التشغيل',
     retry: 'إعادة المحاولة',
     dailyTokens: 'الرموز اليومية',
     input: 'إدخال',
@@ -1909,7 +1911,7 @@ export const ar = defineLocale({
       chat: 'المحادثة',
       settings: 'الإعدادات',
       cron: 'المهام المجدولة',
-      agents: 'الوكلاء'
+      agents: 'سجل التشغيل'
     },
     searchAria: 'البحث في الجلسات',
     searchPlaceholder: 'البحث في الجلسات...',
