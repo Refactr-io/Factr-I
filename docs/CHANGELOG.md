@@ -29,7 +29,28 @@ behaviour is unchanged from 0.0.4.
 - Tests: new gateway tests replay every onboarding flow in chat-only and feature mode; two intermittent test failures
   are fixed (an OpenAI endpoint test that read env vars without the test env lock, and a Radix focus timer that fired
   after jsdom teardown). A real sign-in against a live provider is not covered by tests.
-- The Windows, Linux and macOS builds of the app are not signed (no Developer ID, notarization or Authenticode).
+- Packaging: the bundled Python is precompiled at staging (`compileall`, unchecked-hash pycs) and every spawn of it
+  runs with `PYTHONDONTWRITEBYTECODE=1`, so the app no longer writes ~3,000 `__pycache__` files into its own signed
+  bundle; packaging fails if the staged tree changed after staging, and `npm run verify:app <Factr-I.app>` checks an
+  import smoke plus `codesign --verify --deep --strict`.
+- Uninstall: About > Uninstall works in the packaged app (it runs the bundled interpreter with the bundled backend
+  instead of requiring `~/.factr/factr-backend/venv`), refuses with an explanation when the app runs translocated,
+  from a disk image or from a read-only folder, raises an alert if removing the app fails after quit, and no longer
+  prints `SyntaxWarning: invalid escape sequence '\c'`.
+- Packaging: the staged backend leaves out `backend/tests/` (~50 MB), staged files are made user-writable so
+  `xattr -cr` and re-signing work, and release engine builds pass `--remap-path-prefix` so the binary no longer
+  embeds the builder's home, Cargo and build-directory paths.
+- Docs and release notes: first open on macOS 15+ is System Settings > Privacy & Security > Open Anyway (right-click
+  Open no longer works), macOS builds are Apple Silicon only, the version and signing statements are current, and the
+  Ubuntu 24.04 AppImage needs FUSE 2 and `--no-sandbox`.
+- CI and config: the release macOS app is ad-hoc signed (`identity: -`) and verified, so it is no longer reported as
+  "damaged"; Windows builds NSIS only (MSI rejects prerelease versions) with git long paths on; the update check backs
+  off for 15 minutes after a failure and honours `Retry-After` / `x-ratelimit-reset`.
+- Desktop app: `auth.adopt_external_logins` defaults to false in the packaged app's bundled defaults, so it no longer
+  borrows (and by refreshing, logs out) the Claude Code or Codex CLI login; a `config.yaml` setting still wins, and the
+  CLI default is unchanged.
+- The Windows and Linux builds of the app are not signed, and the macOS build is ad-hoc signed only (no Developer ID,
+  notarization or Authenticode).
 
 ## v0.0.4 (2026-10-10)
 
