@@ -364,6 +364,7 @@ import {
 } from './profile-delete-routing'
 import { migrateActiveProfileIfMissing as migrateActiveProfileIfMissingPure } from './profile-migration'
 import { prepareProfileRenameLifecycle, profileRenameFromRequest } from './profile-rename-routing'
+import { profileBackendRuntimeEnv } from './profile-runtime-dir'
 import {
   buildSidebarSessionSliceParams,
   fetchPrimaryProfileSessions,
@@ -11528,6 +11529,11 @@ async function runPoolBackendStart(
   )
   rememberLog(`Starting Factr-I backend for profile "${profile}" via ${backend.label}`)
 
+  // Its own runtime dir: the engine's daemon lock lives there, so sharing the primary's refused
+  // this backend ("Another factr server process is already running").
+  const profileRuntimeEnv = profileBackendRuntimeEnv(profile)
+  fs.mkdirSync(profileRuntimeEnv.FACTR_RUNTIME_DIR, { recursive: true, mode: 0o700 })
+
   const parentStartMarker = await desktopParentStartMarker()
   const backendNonce = crypto.randomBytes(16).toString('hex')
   const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
@@ -11544,6 +11550,7 @@ async function runPoolBackendStart(
         ...process.env,
         FACTR_CONFIG_HOME,
         ...backend.env,
+        ...profileRuntimeEnv,
         // Pin the gateway's tool/terminal cwd to the same directory we chose for
         // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
         // can still point at the install dir even when spawn cwd is home.

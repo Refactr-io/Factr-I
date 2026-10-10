@@ -440,6 +440,9 @@ pub struct StartupResolution {
     pub profile_model_applies: bool,
     /// config.yaml's provider when the engine cannot serve it: it starts on none rather than another.
     pub unsupported: Option<String>,
+    /// The provider config.yaml chose (`boot_pick` leaves it empty for any start with an explicit
+    /// `--provider`/`--model`): only then does boot apply a saved custom endpoint.
+    pub profile_provider: Option<String>,
 }
 
 /// Boot precedence: an explicit `--provider`/`--model` (or FACTR_*) outranks what config.yaml holds;
@@ -462,6 +465,7 @@ pub fn resolve_startup(
         named_profile: None,
         profile_model_applies: boot.profile_model_applies,
         unsupported: None,
+        profile_provider: boot.profile_provider.map(str::to_owned),
     };
     // A bare `--model` names its own provider: derived from the model id, never from config.yaml.
     if let Some(choice) = boot.model_provider.and_then(|name| ProviderChoice::from_str(name, true).ok()) {
@@ -544,6 +548,13 @@ pub async fn local_ollama_models(base_url: &str) -> Option<Vec<String>> {
     )
 }
 
+/// Whether boot applies config.yaml's custom endpoint (`model.base_url`): only when config.yaml itself
+/// chose the provider (`profile_provider`, which `boot_pick` leaves empty for any start with an
+/// explicit `--model`) and that provider is the generic OpenAI-compatible route (not a named profile).
+pub fn saved_custom_endpoint_applies(profile_provider: Option<&str>, effective: ProviderChoice, named_profile: bool) -> bool {
+    profile_provider.is_some() && matches!(effective, ProviderChoice::OpenaiCompatible) && !named_profile
+}
+
 pub async fn run_gateway(
     provider_choice: &ProviderChoice,
     model: Option<&str>,
@@ -606,6 +617,14 @@ pub async fn run_gateway(
         // Factr owns provider selection; Factr's named profile owns endpoint
         // details and credentials for the selected OpenAI-compatible transport.
         crate::env::set_var("FACTR_NAMED_PROVIDER_PROFILE", provider);
+    }
+    // A saved custom / local endpoint (`model.base_url`, from the desktop's custom-endpoint
+    // onboarding) is the OpenAI-compatible route's base URL. Only when config.yaml chose the
+    // provider: a start with an explicit `--model` (a benchmark) never reads it.
+    if saved_custom_endpoint_applies(resolved.profile_provider.as_deref(), effective_provider, std::env::var_os("FACTR_NAMED_PROVIDER_PROFILE").is_some())
+        && let Some(home) = profile_defaults.home.as_deref()
+    {
+        factr_gateway::profile::apply_saved_custom_endpoint(home);
     }
     let effective_model = effective_model.as_deref();
     let socket =

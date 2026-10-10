@@ -202,6 +202,16 @@ pub(super) fn configured(provider: &str) -> bool {
     }
 }
 
+/// Some provider has a real credential: a login, or a key a keyed endpoint needs. Keyless local
+/// endpoints (`requires_api_key: false`) are not credentials.
+pub(super) fn any_credential() -> bool {
+    let status = AuthStatus::check_fast();
+    offered().iter().any(|d| match d.target {
+        LoginProviderTarget::OpenAiCompatible(p) => load_api_key(p.api_key_env).is_some(),
+        _ => authenticated(*d, &status),
+    })
+}
+
 fn other_configured(provider: &str) -> bool {
     let status = AuthStatus::check_fast();
     let current = resolve_login_provider_loose(provider).map(|d| d.id);

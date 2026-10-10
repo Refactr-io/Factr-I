@@ -422,8 +422,19 @@ async fn proxy_http(
     if std::env::var_os("FACTR_TRACE_FORWARD").is_some() {
         eprintln!("factr: forward HTTP {} {}", req.method, req.path);
     }
-    let port = features.port().await?;
-    let mut upstream = TcpStream::connect(("127.0.0.1", port)).await?;
+    // A runtime that cannot start (or a port that refuses) is answered, never a dropped socket: the
+    // desktop shows `detail` and the runtime's own last stderr lines.
+    let upstream = match features.port().await {
+        Ok(port) => TcpStream::connect(("127.0.0.1", port)).await.map(|s| (port, s)).map_err(anyhow::Error::from),
+        Err(err) => Err(err),
+    };
+    let (port, mut upstream) = match upstream {
+        Ok(ok) => ok,
+        Err(err) => {
+            features.touch(&req.path, "feature-runtime-unavailable");
+            return respond(&mut client, "503 Service Unavailable", &feature_runtime_unavailable(&err)).await;
+        }
+    };
     let query: Vec<&str> = req
         .query
         .as_deref()
@@ -478,6 +489,28 @@ async fn proxy_http(
     }
     features.touch(&req.path, "forwarded-http");
     Ok(())
+}
+
+/// The 503 body for a forwarded request whose feature runtime could not start: what failed, a
+/// machine-readable reason, and the runtime's last stderr lines (at most 20 lines / 2000 chars,
+/// secret-shaped text redacted).
+fn feature_runtime_unavailable(err: &anyhow::Error) -> Value {
+    let full = format!("{err:#}");
+    let mut lines: Vec<&str> = full.lines().skip(1).filter(|l| !l.trim().is_empty()).collect();
+    if lines.len() > 20 {
+        lines.drain(..lines.len() - 20);
+    }
+    let mut tail = factr_base::message::redact_secrets(&lines.join("\n"));
+    if tail.len() > 2000 {
+        let start = (tail.len() - 2000..tail.len()).find(|&i| tail.is_char_boundary(i)).unwrap_or(tail.len());
+        tail = tail[start..].to_string();
+    }
+    let first = factr_base::message::redact_secrets(full.lines().next().unwrap_or_default());
+    json!({
+        "detail": format!("Factr-I's feature runtime is not available, so this request could not be completed: {first}"),
+        "reason": "feature_runtime_unavailable",
+        "stderr_tail": tail,
+    })
 }
 
 /// Whether a proxied request keeps the backend from idle-stopping while it is open. A request holds
@@ -661,6 +694,9 @@ pub fn note_missing_login(provider: &str, reason: &str) {
 pub fn clear_missing_login() {
     *MISSING_LOGIN.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
+
+/// `/api/status` `missing_login` on a fresh install: nothing saved, no credential anywhere.
+pub const NO_PROVIDER_CONNECTED: &str = "no AI provider is connected yet; sign in to a provider or add an API key";
 
 pub fn missing_login() -> Option<String> {
     MISSING_LOGIN.lock().unwrap_or_else(|e| e.into_inner()).clone()
@@ -921,7 +957,7 @@ async fn handle(
                 // Why the last daily database backup failed (null: fine or not yet run).
                 "backup_error": factr_base::migrate::backup_error(),
                 // Why the provider has no login (null: it has one): a runner fails fast on this.
-                "missing_login": missing_login(),
+                "missing_login": missing_login().or_else(|| rpc::no_provider_connected(&config).then(|| NO_PROVIDER_CONNECTED.to_string())),
                 // The configured provider is one the engine cannot serve (null: fine): choose another.
                 "provider_error": profile::provider_setup_error(),
             });
@@ -1014,6 +1050,8 @@ async fn handle(
         // The same payload as the `model.options` RPC; the onboarding and model picker read it over HTTP.
         ("GET", "/api/model/options") => {
             let include_unconfigured = auth::query_param(req.query.as_deref().unwrap_or_default(), "include_unconfigured").is_some_and(|v| v == "1" || v == "true");
+            // A sign-in written since the last read (the onboarding's device-code login) must show here.
+            reload_if_credentials_moved(&config).await;
             respond(&mut stream, "200 OK", &rpc::model_options(&config, Vec::new(), include_unconfigured)).await
         }
         // The saved config: defaults beneath it, the profile's config.yaml on top (what a PUT wrote).
@@ -1483,6 +1521,12 @@ async fn handle(
                 oauth_credentials_moved(&OAUTH_SEEN, home); // first sight: take the baseline
             }
             let proxied = proxy_http(stream, &req, &features, false).await;
+            // A custom / local endpoint saved just now (`model.base_url`) is what the next chat calls.
+            if req.method == "POST" && path == "/api/model/set" && profile::saved_pick_applies(&config)
+                && let Some(home) = factr_base::factr_config::home()
+            {
+                profile::apply_saved_custom_endpoint(&home);
+            }
             let moved = factr_home.is_some_and(|home| oauth_credentials_moved(&OAUTH_SEEN, &home));
             if sets_key || moved {
                 let config = config.clone();
@@ -1574,6 +1618,28 @@ mod model_set_tests {
         assert_eq!(out.header("content-length"), Some("6"));
         assert_eq!(out.header("x-other"), Some("1"));
         assert_eq!(out.body_prefix, b"abcdef");
+    }
+}
+
+#[cfg(test)]
+mod feature_runtime_unavailable_tests {
+    use super::feature_runtime_unavailable;
+
+    #[test]
+    fn the_503_body_is_bounded_and_scrubbed() {
+        let mut text = String::from("the Factr feature backend exited before it was ready:");
+        for i in 0..40 {
+            text.push_str(&format!("\nline {i} {}", "x".repeat(150)));
+        }
+        text.push_str("\nOPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz0123456789\nboom");
+        let body = feature_runtime_unavailable(&anyhow::anyhow!(text));
+        let tail = body["stderr_tail"].as_str().unwrap();
+        assert_eq!(body["reason"], "feature_runtime_unavailable");
+        assert!(body["detail"].as_str().unwrap().contains("exited before it was ready"));
+        assert!(tail.len() <= 2000 && tail.lines().count() <= 20, "{tail}");
+        assert!(tail.ends_with("boom"));
+        assert!(!tail.contains("sk-proj-abcdefghijklmnopqrstuvwxyz"), "{tail}");
+        assert!(!tail.contains("line 0 "));
     }
 }
 
