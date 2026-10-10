@@ -3,7 +3,8 @@
 
 use factr_base::auth::AuthStatus;
 use factr_base::provider_catalog::{
-    LoginProviderDescriptor, LoginProviderTarget, load_api_key, login_providers, resolve_login_provider_loose,
+    LoginProviderDescriptor, LoginProviderTarget, OPENAI_COMPAT_PROFILE, load_api_key, login_providers,
+    openai_compatible_profile_is_configured, resolve_login_provider_loose,
 };
 use serde_json::{Value, json};
 
@@ -71,6 +72,9 @@ fn offered() -> Vec<LoginProviderDescriptor> {
 
 fn authenticated(d: LoginProviderDescriptor, status: &AuthStatus) -> bool {
     match d.target {
+        // The custom endpoint: its saved base URL and key variable (see `profile::apply_saved_custom_endpoint`)
+        // decide, not the catalog defaults: an endpoint on this machine or the local network needs no key.
+        LoginProviderTarget::OpenAiCompatible(p) if p.id == OPENAI_COMPAT_PROFILE.id => openai_compatible_profile_is_configured(p),
         LoginProviderTarget::OpenAiCompatible(p) => {
             !p.requires_api_key || load_api_key(p.api_key_env).is_some()
         }
@@ -220,15 +224,20 @@ fn other_configured(provider: &str) -> bool {
 
 pub(super) fn setup_status(provider: &str) -> Value {
     // The engine started without a provider (the configured one is unsupported): not configured, and why.
+    // `saved_provider`: config.yaml's `model.provider` (null when the user never saved one), so the
+    // desktop can tell "nothing chosen yet" from "your saved provider has no credentials".
+    let saved = crate::profile::saved_provider();
     if let Some(error) = crate::profile::provider_setup_error() {
         return json!({
             "provider_configured": false, "ready": true,
             "other_providers": other_configured(provider), "inference_provider": provider, "error": error,
+            "saved_provider": saved,
         });
     }
     json!({
         "provider_configured": configured(provider), "ready": true,
         "other_providers": other_configured(provider), "inference_provider": provider,
+        "saved_provider": saved,
     })
 }
 
@@ -258,7 +267,12 @@ pub(super) fn runtime_check(provider: &str, model: &str, requested: Option<&str>
     if configured(provider) {
         json!({ "ok": true, "provider": provider, "model": model, "source": "engine" })
     } else {
-        json!({ "ok": false, "provider": provider, "model": model, "source": "engine", "error": format!("No usable credentials found for {provider}.") })
+        let error = if resolve_login_provider_loose(provider).is_some_and(|d| d.id == OPENAI_COMPAT_PROFILE.id) {
+            crate::profile::custom_endpoint_problem()
+        } else {
+            format!("No usable credentials found for {provider}.")
+        };
+        json!({ "ok": false, "provider": provider, "model": model, "source": "engine", "error": error })
     }
 }
 
@@ -592,6 +606,47 @@ mod tests {
             std::fs::write(&env, "ANTHROPIC_API_KEY=test-key\n").unwrap();
             assert!(any_provider_configured());
             std::fs::remove_file(env).unwrap();
+        });
+    }
+
+    #[test]
+    fn a_saved_custom_endpoint_is_ready_by_its_own_url_and_key_and_says_what_is_missing() {
+        isolated(|| {
+            let vars = ["FACTR_OPENAI_COMPAT_API_BASE", "FACTR_OPENAI_COMPAT_API_KEY_NAME", "OPENAI_COMPAT_API_KEY"];
+            let before: Vec<_> = vars.iter().map(|k| (*k, std::env::var_os(k))).collect();
+            for k in vars {
+                factr_base::env::remove_var(k);
+            }
+            let home = std::path::PathBuf::from(std::env::var("FACTR_CONFIG_HOME").unwrap());
+            assert_eq!(setup_status("openai-compatible")["saved_provider"], json!(null), "nothing saved yet");
+            // Nothing saved: the reason says no endpoint, not "credentials".
+            let check = runtime_check("openai-compatible", "m", None);
+            assert_eq!(check["ok"], false);
+            assert!(check["error"].as_str().unwrap().starts_with("No custom endpoint is saved"), "{check}");
+            // The desktop's local-endpoint onboarding (the shape the runtime writes): no key, works.
+            std::fs::write(home.join("config.yaml"), "model:\n  default: local-stub-model\n  provider: custom\n  base_url: http://127.0.0.1:55476/v1\n  api_mode: chat_completions\n").unwrap();
+            crate::profile::apply_saved_custom_endpoint(&home);
+            assert_eq!(setup_status("custom")["provider_configured"], true);
+            assert_eq!(setup_status("custom")["saved_provider"], json!("custom"));
+            assert_eq!(runtime_check("openai-compatible", "local-stub-model", None)["ok"], true);
+            assert_eq!(runtime_check("claude", "m", Some("custom"))["ok"], true, "the onboarding's requested-provider check");
+            // A remote endpoint: no key -> says it needs one; the key in Factr `.env` -> ready.
+            std::fs::write(home.join("config.yaml"), "model:\n  default: m\n  provider: custom\n  base_url: https://llm.example.com/v1\n").unwrap();
+            crate::profile::apply_saved_custom_endpoint(&home);
+            let check = runtime_check("custom", "m", None);
+            assert!(check["error"].as_str().unwrap().contains("https://llm.example.com/v1 needs an API key"), "{check}");
+            std::fs::write(home.join(".env"), "OPENAI_COMPAT_API_KEY=test-key\n").unwrap();
+            assert_eq!(runtime_check("custom", "m", None)["ok"], true);
+            std::fs::remove_file(home.join(".env")).unwrap();
+            // ... or the key the onboarding stored inline in config.yaml.
+            std::fs::write(home.join("config.yaml"), "model:\n  default: m\n  provider: custom\n  base_url: https://llm.example.com/v1\n  api_key: test-inline-key\n").unwrap();
+            crate::profile::apply_saved_custom_endpoint(&home);
+            assert_eq!(runtime_check("custom", "m", None)["ok"], true);
+            std::fs::write(home.join("config.yaml"), "model:\n  provider: openai-codex\n").unwrap();
+            crate::profile::apply_saved_custom_endpoint(&home);
+            for (k, v) in before {
+                match v { Some(v) => factr_base::env::set_var(k, v), None => factr_base::env::remove_var(k) }
+            }
         });
     }
 

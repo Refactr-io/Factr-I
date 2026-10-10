@@ -174,21 +174,95 @@ pub fn saved_custom_base_url(raw: &str) -> Option<String> {
     config["model"]["base_url"].as_str().map(str::trim).filter(|u| !u.is_empty()).map(str::to_owned)
 }
 
+/// Where a saved custom endpoint's key comes from. `key_env` (a variable name) wins when that variable
+/// holds a key; else the key config.yaml stores inline (`model.api_key`, written by the desktop's
+/// custom-endpoint onboarding); else the endpoint's default variable (`OPENAI_COMPAT_API_KEY`, from
+/// Factr `.env` or the environment), which a local endpoint may also leave empty.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CustomEndpointKey {
+    Var(String),
+    Inline(String),
+    Default,
+}
+
+/// The key source for a saved `model` block. `var_has_key` says whether a variable holds a key.
+pub fn custom_endpoint_key(raw: &str, var_has_key: impl Fn(&str) -> bool) -> CustomEndpointKey {
+    let config = serde_yaml::from_str::<Value>(raw).unwrap_or(Value::Null);
+    let text = |key: &str| config["model"][key].as_str().map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
+    let key_env = text("key_env").filter(|k| factr_base::provider_catalog::is_safe_env_key_name(k));
+    // `${VAR}` / `$VAR` in api_key is a pointer, not a key.
+    let inline = text("api_key");
+    let pointer = inline.as_deref().and_then(|v| v.strip_prefix('$')).map(|v| v.trim_start_matches('{').trim_end_matches('}').to_string());
+    match (key_env, pointer, inline) {
+        (Some(var), _, inline) if inline.is_none() || var_has_key(&var) => CustomEndpointKey::Var(var),
+        (_, Some(var), _) if factr_base::provider_catalog::is_safe_env_key_name(&var) => CustomEndpointKey::Var(var),
+        (_, None, Some(key)) => CustomEndpointKey::Inline(key),
+        _ => CustomEndpointKey::Default,
+    }
+}
+
+/// The variable name the engine reads an inline custom-endpoint key under. It is served from memory by
+/// an API-key override resolver, never put in the process environment (tools and children inherit that).
+pub const INLINE_CUSTOM_KEY_VAR: &str = "FACTR_CUSTOM_ENDPOINT_API_KEY";
+
+static INLINE_CUSTOM_KEY: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn set_inline_custom_key(key: Option<String>) {
+    static RESOLVER: std::sync::Once = std::sync::Once::new();
+    RESOLVER.call_once(|| {
+        factr_base::provider_catalog::register_api_key_override_resolver(|name| {
+            (name == INLINE_CUSTOM_KEY_VAR).then(|| INLINE_CUSTOM_KEY.lock().unwrap_or_else(|e| e.into_inner()).clone()).flatten()
+        })
+    });
+    *INLINE_CUSTOM_KEY.lock().unwrap_or_else(|e| e.into_inner()) = key;
+}
+
 /// Point the engine's OpenAI-compatible route at the saved custom endpoint (`FACTR_OPENAI_COMPAT_API_BASE`;
-/// a localhost endpoint then needs no key) and, when config.yaml names one, its key variable
-/// (`model.key_env`, a pointer, never the secret). Returns the base URL applied. Callers only use this
-/// when the saved pick is what runs: at boot when config.yaml chose the provider, and when a pick is
-/// saved in this run. Explicit `--provider` starts never reach it.
+/// an endpoint on this machine or the local network then needs no key) and at its key
+/// ([`custom_endpoint_key`]; the key itself is never logged or put in the environment). Returns the
+/// base URL applied. Callers only use this when the saved pick is what runs: at boot when config.yaml
+/// chose the provider, and when a pick is saved or a chat is created in this run. Explicit `--provider`
+/// starts never reach it.
 pub fn apply_saved_custom_endpoint(home: &std::path::Path) -> Option<String> {
-    let raw = std::fs::read_to_string(home.join("config.yaml")).ok()?;
-    let base = saved_custom_base_url(&raw)?;
+    let raw = std::fs::read_to_string(home.join("config.yaml")).unwrap_or_default();
+    let Some(base) = saved_custom_base_url(&raw) else {
+        // No custom pick any more: an inline key from an earlier one is not kept around.
+        if INLINE_CUSTOM_KEY.lock().unwrap_or_else(|e| e.into_inner()).take().is_some() {
+            factr_base::env::remove_var("FACTR_OPENAI_COMPAT_API_KEY_NAME");
+        }
+        return None;
+    };
     factr_base::env::set_var("FACTR_OPENAI_COMPAT_API_BASE", &base);
-    let config = serde_yaml::from_str::<Value>(&raw).unwrap_or(Value::Null);
-    match config["model"]["key_env"].as_str().map(str::trim).filter(|k| !k.is_empty()) {
-        Some(key_env) => factr_base::env::set_var("FACTR_OPENAI_COMPAT_API_KEY_NAME", key_env),
-        None => factr_base::env::remove_var("FACTR_OPENAI_COMPAT_API_KEY_NAME"),
+    match custom_endpoint_key(&raw, |var| factr_base::provider_catalog::load_api_key(var).is_some()) {
+        CustomEndpointKey::Var(var) => {
+            set_inline_custom_key(None);
+            factr_base::env::set_var("FACTR_OPENAI_COMPAT_API_KEY_NAME", var);
+        }
+        CustomEndpointKey::Inline(key) => {
+            set_inline_custom_key(Some(key));
+            factr_base::env::set_var("FACTR_OPENAI_COMPAT_API_KEY_NAME", INLINE_CUSTOM_KEY_VAR);
+        }
+        CustomEndpointKey::Default => {
+            set_inline_custom_key(None);
+            factr_base::env::remove_var("FACTR_OPENAI_COMPAT_API_KEY_NAME");
+        }
     }
     Some(base)
+}
+
+/// Why the OpenAI-compatible (custom endpoint) route has no usable credentials, in words the user can
+/// act on: no endpoint saved, or a remote endpoint with no key. Never names a key's value.
+pub fn custom_endpoint_problem() -> String {
+    use factr_base::provider_catalog::{OPENAI_COMPAT_PROFILE, resolve_openai_compatible_profile};
+    if std::env::var("FACTR_OPENAI_COMPAT_API_BASE").map_or(true, |b| b.trim().is_empty()) {
+        return "No custom endpoint is saved. Open Settings > Providers > Local / custom endpoint and enter its URL.".into();
+    }
+    let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
+    let var = if resolved.api_key_env == INLINE_CUSTOM_KEY_VAR { "OPENAI_COMPAT_API_KEY".to_string() } else { resolved.api_key_env };
+    format!(
+        "The custom endpoint {} needs an API key and none was found. Add it in Settings > Providers > Local / custom endpoint, or set {var}.",
+        resolved.api_base
+    )
 }
 
 /// How a new chat's model was pinned.
@@ -249,7 +323,7 @@ struct UnsupportedProvider {
 
 static UNSUPPORTED_PROVIDER: std::sync::Mutex<Option<UnsupportedProvider>> = std::sync::Mutex::new(None);
 
-fn saved_provider() -> Option<String> {
+pub(crate) fn saved_provider() -> Option<String> {
     let home = factr_base::factr_config::home()?;
     parse_config(&std::fs::read_to_string(home.join("config.yaml")).ok()?).0
 }
@@ -412,6 +486,63 @@ mod tests {
         assert_eq!(base("model:\n  provider: huggingface\n  base_url: http://h/v1\n"), None);
         assert_eq!(base("model:\n  provider: custom\n  base_url: ''\n"), None);
         assert_eq!(base(""), None);
+    }
+
+    #[test]
+    fn a_custom_endpoint_key_comes_from_key_env_then_the_inline_key_then_the_default_variable() {
+        use super::{CustomEndpointKey as K, custom_endpoint_key as key};
+        let has = |var: &str| var == "SET_VAR";
+        let m = |body: &str| format!("model:\n  provider: custom\n  base_url: http://h/v1\n{body}");
+        assert_eq!(key(&m(""), has), K::Default, "no key at all: the default variable (a local endpoint needs none)");
+        assert_eq!(key(&m("  api_key: sk-inline\n"), has), K::Inline("sk-inline".into()));
+        assert_eq!(key(&m("  api_key: ''\n"), has), K::Default);
+        assert_eq!(key(&m("  key_env: SET_VAR\n  api_key: sk-inline\n"), has), K::Var("SET_VAR".into()), "a key_env holding a key wins");
+        assert_eq!(key(&m("  key_env: EMPTY_VAR\n  api_key: sk-inline\n"), has), K::Inline("sk-inline".into()), "an empty key_env falls back to the inline key");
+        assert_eq!(key(&m("  key_env: EMPTY_VAR\n"), has), K::Var("EMPTY_VAR".into()));
+        assert_eq!(key(&m("  key_env: 'bad name'\n"), has), K::Default, "an unsafe variable name is ignored");
+        assert_eq!(key(&m("  api_key: ${MY_KEY}\n"), has), K::Var("MY_KEY".into()), "a ${{VAR}} api_key is a pointer");
+    }
+
+    #[test]
+    fn a_saved_custom_endpoint_is_applied_with_its_inline_key_served_from_memory_not_the_environment() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let vars = ["FACTR_OPENAI_COMPAT_API_BASE", "FACTR_OPENAI_COMPAT_API_KEY_NAME", "OPENAI_COMPAT_API_KEY", super::INLINE_CUSTOM_KEY_VAR];
+        let before: Vec<_> = vars.iter().map(|k| (*k, std::env::var_os(k))).collect();
+        let dir = std::env::temp_dir().join(format!("custom-endpoint-apply-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let load = factr_base::provider_catalog::load_api_key;
+        let compat = || factr_base::provider_catalog::resolve_openai_compatible_profile(factr_base::provider_catalog::OPENAI_COMPAT_PROFILE);
+        factr_base::env::remove_var("OPENAI_COMPAT_API_KEY");
+        // A remote endpoint with the key config.yaml stores inline.
+        std::fs::write(dir.join("config.yaml"), "model:\n  provider: custom\n  default: m\n  base_url: https://llm.example.com/v1\n  api_key: sk-test-inline-0001\n").unwrap();
+        assert_eq!(super::apply_saved_custom_endpoint(&dir).as_deref(), Some("https://llm.example.com/v1"));
+        let resolved = compat();
+        assert_eq!((resolved.api_base.as_str(), resolved.api_key_env.as_str(), resolved.requires_api_key), ("https://llm.example.com/v1", super::INLINE_CUSTOM_KEY_VAR, true));
+        assert_eq!(load(&resolved.api_key_env).as_deref(), Some("sk-test-inline-0001"));
+        assert!(std::env::var_os(super::INLINE_CUSTOM_KEY_VAR).is_none(), "the key never enters the process environment");
+        assert!(factr_base::provider_catalog::openai_compatible_profile_is_configured(factr_base::provider_catalog::OPENAI_COMPAT_PROFILE));
+        // A local endpoint with no key: configured, no key needed.
+        std::fs::write(dir.join("config.yaml"), "model:\n  provider: custom\n  default: m\n  base_url: http://127.0.0.1:9/v1\n").unwrap();
+        super::apply_saved_custom_endpoint(&dir);
+        let resolved = compat();
+        assert_eq!((resolved.api_key_env.as_str(), resolved.requires_api_key), ("OPENAI_COMPAT_API_KEY", false));
+        assert_eq!(load(super::INLINE_CUSTOM_KEY_VAR), None, "the earlier inline key is dropped");
+        assert!(factr_base::provider_catalog::openai_compatible_profile_is_configured(factr_base::provider_catalog::OPENAI_COMPAT_PROFILE));
+        // A remote endpoint with no key anywhere: not configured, and the reason says so.
+        std::fs::write(dir.join("config.yaml"), "model:\n  provider: custom\n  default: m\n  base_url: https://llm.example.com/v1\n").unwrap();
+        super::apply_saved_custom_endpoint(&dir);
+        assert!(!factr_base::provider_catalog::openai_compatible_profile_is_configured(factr_base::provider_catalog::OPENAI_COMPAT_PROFILE));
+        assert!(super::custom_endpoint_problem().contains("https://llm.example.com/v1 needs an API key"));
+        // Another provider saved: the inline key is not kept.
+        std::fs::write(dir.join("config.yaml"), "model:\n  provider: custom\n  default: m\n  base_url: https://llm.example.com/v1\n  api_key: sk-test-inline-0002\n").unwrap();
+        super::apply_saved_custom_endpoint(&dir);
+        std::fs::write(dir.join("config.yaml"), "model:\n  provider: openai-codex\n  default: gpt-5.5\n").unwrap();
+        assert_eq!(super::apply_saved_custom_endpoint(&dir), None);
+        assert_eq!(load(super::INLINE_CUSTOM_KEY_VAR), None);
+        let _ = std::fs::remove_dir_all(&dir);
+        for (k, v) in before {
+            match v { Some(v) => factr_base::env::set_var(k, v), None => factr_base::env::remove_var(k) }
+        }
     }
 
     #[test]
