@@ -5,6 +5,21 @@
 The 0.0.4 engine plus the sign-in, onboarding and UI work from pull request #2. The engine's labelling and classify
 behaviour is unchanged from 0.0.4.
 
+- Local / custom endpoint: the onboarding's "Local / custom endpoint" (and a hand-written `provider: custom` config with
+  `base_url`) now works. The readiness check judged the route by the catalog defaults and reported "No usable
+  credentials found for openai-compatible." although the probe and chats worked. An endpoint on this machine or the
+  local network (loopback, private ranges, `*.local`) needs no key; a remote one takes its key from `model.key_env`,
+  else `model.api_key` (served from memory, never logged or exported to tools), else `OPENAI_COMPAT_API_KEY` in `.env`.
+  When it is not ready the message says what is missing (no endpoint saved, or the URL needs a key).
+- OpenAI API-key onboarding: saving the model no longer fails with "Could not save OpenAI". An OpenAI pick is saved as
+  `openai-api` when only an API key exists and stays `openai-codex` for a ChatGPT sign-in (even with a key present);
+  it used to be `openai-codex` always, which the runtime refused for a key-only user. A failed save now shows the
+  first line of the server's reason.
+- Desktop: a `FACTR_PROVIDER` the engine's `--provider` flag rejects is no longer passed as a flag (the boot card
+  showed "invalid variant"); the engine reads the variable itself and explains an unsupported value in the app.
+- Desktop: "No usable credentials found for <X>" reads "No AI provider is connected yet ..." when nothing is saved and
+  "Your saved provider <X> has no usable credentials ..." when one is; the raw text stays under Details.
+  `setup.status` reports `saved_provider` for this. Benchmark starts (`--provider openai --model ...`) are unchanged.
 - Desktop: a "Run history" entry in the left rail (advanced mode) and on the Command center Usage tab opens the agent run history page (runs, tokens and cost).
 - Desktop: routine provider transport progress ("opening websocket", retries, HTTPS fallback) now shows as a brief info toast instead of a sticky warning; real failures still warn. Desktop-only; the engine and benchmarked behaviour are unchanged.
 - Sign-in and onboarding: first-run sign-in works for every method in the desktop gateway's chat-only (Python-off)
