@@ -120,6 +120,12 @@ describe('PreviewBrowserBar', () => {
     expect(rendered.getByRole('button', { name: 'Hide preview DevTools' }).getAttribute('aria-pressed')).toBe('true')
   })
 
+  it('carries the class that draws the address field focus ring', () => {
+    const rendered = render(<PreviewBrowserBar {...baseProps} />)
+
+    expect(address(rendered).classList.contains('preview-address-input')).toBe(true)
+  })
+
   it('shows the live url while idle and follows it as the page navigates', () => {
     const rendered = render(<PreviewBrowserBar {...baseProps} />)
 

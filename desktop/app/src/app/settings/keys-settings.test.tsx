@@ -79,9 +79,9 @@ describe('KeysSettings', () => {
 
     await renderKeysSettings('tools')
 
-    expect(screen.getByText('BRAVE SEARCH')).toBeTruthy()
-    expect(screen.getByText('FIRECRAWL')).toBeTruthy()
-    expect(screen.queryByText('GATEWAY PROXY')).toBeNull()
+    expect(screen.getByText('Brave Search')).toBeTruthy()
+    expect(screen.getByText('Firecrawl')).toBeTruthy()
+    expect(screen.queryByText('Gateway Proxy')).toBeNull()
     expect(screen.queryByText('TELEGRAM BOT')).toBeNull()
     expect(screen.queryByRole('combobox')).toBeNull()
   })
@@ -99,10 +99,10 @@ describe('KeysSettings', () => {
 
     await renderKeysSettings('settings')
 
-    expect(screen.getByText('API SERVER')).toBeTruthy()
-    expect(screen.getByText('GATEWAY PROXY')).toBeTruthy()
+    expect(screen.getByText('API Server')).toBeTruthy()
+    expect(screen.getByText('Gateway Proxy')).toBeTruthy()
     expect(screen.queryByText('TELEGRAM BOT')).toBeNull()
-    expect(screen.queryByText('BRAVE SEARCH')).toBeNull()
+    expect(screen.queryByText('Brave Search')).toBeNull()
   })
 
   it('expands and highlights a deep-linked credential card', async () => {
@@ -120,7 +120,7 @@ describe('KeysSettings', () => {
       </MemoryRouter>
     )
 
-    expect(await screen.findByText('BRAVE SEARCH')).toBeTruthy()
+    expect(await screen.findByText('Brave Search')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open key' }))
 
     await waitFor(() => {
@@ -151,7 +151,7 @@ describe('KeysSettings', () => {
         </MemoryRouter>
       )
 
-      expect(await screen.findByText('WIDGET')).toBeTruthy()
+      expect(await screen.findByText('Widget')).toBeTruthy()
       await waitFor(() => expect(getEnvVars).toHaveBeenCalledWith('profile-b'))
 
       // Open the field and type a value without saving it.

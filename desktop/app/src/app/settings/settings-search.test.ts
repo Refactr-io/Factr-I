@@ -80,7 +80,7 @@ describe('settings search index', () => {
     ])
     expect(entries[0]).toMatchObject({
       context: 'Tools',
-      label: 'FUTURE CRAWLER',
+      label: 'Future Crawler',
       target: { key: 'FUTURE_CRAWLER_API_KEY', keysView: 'tools', view: 'keys' }
     })
     expect(filterSettingsSearchEntries(entries, 'structured crawler')).toHaveLength(1)

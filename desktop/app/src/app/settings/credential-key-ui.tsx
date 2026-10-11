@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import type { EnvVarInfo } from '@/types/factr'
 
 import { CONTROL_TEXT } from './constants'
-import { prettyName, withoutKey } from './helpers'
+import { withoutKey } from './helpers'
 import { ListRow } from './primitives'
 import type { EnvRowProps } from './types'
 
@@ -27,12 +27,23 @@ const CRED_BARE = 'border-0! bg-transparent! shadow-none! h-auto! p-0! @2xl:h-8!
 
 export const isKeyVar = (key: string, info: EnvVarInfo) => info.is_password || /(?:_API_KEY|_TOKEN|_KEY)$/.test(key)
 
-export const friendlyFieldLabel = (key: string, info: EnvVarInfo) =>
-  info.description?.trim() ||
-  key
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, c => c.toUpperCase())
+/** FOO_HOME_CHANNEL -> "FOO Home Channel": words of 4+ letters are title-cased, short ones (BRV, FAL, A2A)
+ *  are acronyms and stay upper-case. Mixed-case words are left alone. */
+export function humanizeEnvName(key: string): string {
+  return key
+    .split('_')
+    .filter(Boolean)
+    .map(word => {
+      if (word !== word.toUpperCase() || word.length <= 3) {
+        return word
+      }
+
+      return word.charAt(0) + word.slice(1).toLowerCase()
+    })
+    .join(' ')
+}
+
+export const friendlyFieldLabel = (key: string, info: EnvVarInfo) => info.description?.trim() || humanizeEnvName(key)
 
 export const credentialPlaceholder = (key: string, info: EnvVarInfo, label: string): string =>
   isKeyVar(key, info)
@@ -85,12 +96,27 @@ export function KeyField({
 
   if (info.is_set && !editing) {
     return (
-      <Input
-        className={cn(CREDENTIAL_CONTROL_CLASS, bare && CRED_BARE, 'cursor-pointer text-muted-foreground')}
-        onFocus={startEdit}
-        readOnly
-        value={masked}
-      />
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <Input
+          className={cn(CREDENTIAL_CONTROL_CLASS, bare && CRED_BARE, 'cursor-pointer text-muted-foreground')}
+          onFocus={startEdit}
+          readOnly
+          value={masked}
+        />
+        {/* Always visible once a key is saved: the confirm lives in onClear. */}
+        <Button
+          aria-label={t.settings.credentials.remove}
+          className="text-muted-foreground hover:text-destructive"
+          disabled={busy}
+          onClick={() => void onClear(varKey)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {busy ? <Loader2 className="animate-spin" /> : <Trash2 />}
+          {t.settings.credentials.remove}
+        </Button>
+      </div>
     )
   }
 
@@ -307,7 +333,7 @@ export function ProviderKeyRows({ expanded, group, onExpand, onToggle, rowProps 
 
             {group.advanced.map(([key, info]) => {
               const fieldLabel = isKeyVar(key, info)
-                ? prettyName(key.replace(/(?:_API_KEY|_TOKEN|_KEY)$/i, ''))
+                ? humanizeEnvName(key.replace(/(?:_API_KEY|_TOKEN|_KEY)$/i, ''))
                 : friendlyFieldLabel(key, info)
 
               return (
@@ -337,10 +363,10 @@ export function ProviderKeyRows({ expanded, group, onExpand, onToggle, rowProps 
 
 export function credentialRowLabel(varKey: string, info: EnvVarInfo): string {
   if (isKeyVar(varKey, info)) {
-    return prettyName(varKey.replace(/(?:_API_KEY|_TOKEN|_KEY)$/i, ''))
+    return humanizeEnvName(varKey.replace(/(?:_API_KEY|_TOKEN|_KEY)$/i, ''))
   }
 
-  return prettyName(varKey)
+  return humanizeEnvName(varKey)
 }
 
 interface CredentialKeyCardProps {

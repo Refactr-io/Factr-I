@@ -285,6 +285,7 @@ export interface Translations {
     choose: string
     clear: string
     close: string
+    closeNamed: (name: string) => string
     collapse: string
     confirm: string
     connect: string
@@ -999,6 +1000,7 @@ export interface Translations {
       emptyDesc: string
       failedLoad: string
       autosaveFailed: string
+      contextLengthInvalid: (max: string) => string
       imported: string
       invalidJson: string
       toolsetsWipeConfirm: string
@@ -1309,6 +1311,10 @@ export interface Translations {
       moaSetDefault: string
       moaNewPresetPlaceholder: string
       moaAddPreset: string
+      moaNameLong: (max: number) => string
+      moaNameChars: string
+      moaNameDuplicate: string
+      moaNoCredentials: string
       moaDefault: string
       moaReferenceToggle: (enabled: boolean, index: number) => string
       moaReferenceTitle: (index: number) => string

@@ -6179,6 +6179,26 @@ function sendOpenFolderRequested() {
   webContents.send('factr:open-folder-requested')
 }
 
+// App menu > Settings…: the renderer owns the ⌘, keybind (nav.settings), so the menu item carries no
+// accelerator and just asks the renderer to open the same page.
+function sendOpenSettingsRequested() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  const webContents = mainWindow.webContents
+
+  if (!webContents || webContents.isDestroyed()) {
+    return
+  }
+
+  webContents.send('factr:open-settings-requested')
+
+  if (!mainWindow.isVisible()) {
+    mainWindow.show()
+  }
+}
+
 // Tell the renderer the machine just woke. Sleep silently drops the
 // renderer's WebSocket to the local backend; the renderer reconnects on this
 // signal so the chat composer doesn't stay stuck on "Starting Factr...".
@@ -6385,6 +6405,9 @@ function buildApplicationMenu() {
       submenu: [
         { label: `About ${APP_NAME}`, click: () => showAboutPanelFresh() },
         checkForUpdatesItem,
+        // No accelerator on purpose: ⌘, is the renderer keybind nav.settings; a second registration
+        // would fire twice (same rationale as File > Open Folder…).
+        { label: 'Settings…', click: () => sendOpenSettingsRequested() },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },

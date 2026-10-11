@@ -5,6 +5,17 @@
 The 0.0.4 engine plus the sign-in, onboarding and UI work from pull request #2. The engine's labelling and classify
 behaviour is unchanged from 0.0.4.
 
+- Approval mode label: it no longer flips from Smart to Manual after opening and closing Settings. An empty reply for
+  `approvals.mode` (the key is not in config.yaml) was read as Manual; it now keeps the engine default shown.
+- Settings > Model: the main-model context-window override accepts only whole numbers from 0 to 10,000,000 (0 = detect),
+  shows an inline error otherwise, and an autosave error no longer lingers when you switch Model tabs.
+- Mixture of Agents: preset names are limited to 40 letters, digits, spaces, dots, dashes and underscores, and providers
+  without credentials are disabled in the slot pickers with a hint.
+- Providers and Tools & Keys: a saved API key shows a Remove button (with confirmation) without having to click into
+  the field first. Tools & Keys shows "Home Channel" style names instead of raw upper-case env names.
+- Command Center > System no longer shows "Active sessions undefined" when the status reply omits the count.
+- Esc closes the "Set up provider" overlay; the app menu has Settings…; the browser address field shows a focus ring;
+  each right-pane tab's close button is named "Close <tab title>"; About no longer says "just now" twice.
 - Local / custom endpoint: the onboarding's "Local / custom endpoint" (and a hand-written `provider: custom` config with
   `base_url`) now works. The readiness check judged the route by the catalog defaults and reported "No usable
   credentials found for openai-compatible." although the probe and chats worked. An endpoint on this machine or the

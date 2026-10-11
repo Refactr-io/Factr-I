@@ -135,3 +135,21 @@ describe('PaneTab hover close button', () => {
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
   })
 })
+
+describe('PaneTab close button name', () => {
+  it('names the close button after its tab so each one is unique', () => {
+    render(
+      <>
+        <PaneTab closeLabel="Terminal 1" onClose={() => {}}>
+          <PaneTabLabel>Terminal 1</PaneTabLabel>
+        </PaneTab>
+        <PaneTab closeLabel="Preview" onClose={() => {}}>
+          <PaneTabLabel>Preview</PaneTabLabel>
+        </PaneTab>
+      </>
+    )
+
+    expect(screen.getByRole('button', { hidden: true, name: 'Close Terminal 1' })).toBeTruthy()
+    expect(screen.getByRole('button', { hidden: true, name: 'Close Preview' })).toBeTruthy()
+  })
+})

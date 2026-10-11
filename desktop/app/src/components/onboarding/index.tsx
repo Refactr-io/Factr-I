@@ -189,6 +189,26 @@ function useApiKeyCatalog(): ApiKeyOption[] {
 // → surface-out (520ms, held back by [transition-delay:660ms]). Finalize after.
 const ONBOARDING_EXIT_MS = 1180
 
+/** Esc closes a manually opened provider selector (same as its Close button). A field that already used
+ *  Esc (preventDefault, e.g. cancelling an edit) keeps it. First-run onboarding has no close affordance. */
+export function useEscapeClosesManualOnboarding(manual: boolean) {
+  useEffect(() => {
+    if (!manual) {
+      return
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        closeManualOnboarding()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [manual])
+}
+
 export function DesktopOnboardingOverlay({
   enabled,
   onCompleted,
@@ -203,6 +223,7 @@ export function DesktopOnboardingOverlay({
   const onCompletedRef = useRef(onCompleted)
   onCompletedRef.current = onCompleted
   const targetProfile = onboarding.targetProfile ?? profile
+  useEscapeClosesManualOnboarding(onboarding.manual)
 
   // Async flows retain the initiating route even after the overlay closes.
   const ctx = useMemo<OnboardingContext>(

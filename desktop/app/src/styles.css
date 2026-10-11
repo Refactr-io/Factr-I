@@ -1514,6 +1514,13 @@ code {
   outline: none;
 }
 
+/* The browser address field sits in a dense toolbar where the plain border tint is easy to miss:
+   keep the shared chrome but draw the focused edge as a 1px accent ring. */
+.preview-address-input:focus {
+  border-color: var(--dt-primary);
+  box-shadow: 0 0 0 1px var(--dt-primary);
+}
+
 .desktop-input-chrome[aria-invalid='true'] {
   border-color: var(--dt-destructive);
 }

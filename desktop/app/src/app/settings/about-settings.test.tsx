@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { atom } from 'nanostores'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
@@ -79,4 +79,19 @@ test('offline check shows the unreachable notice', () => {
   expect(screen.queryByText(/ERR_PROXY/)).toBeNull()
   // A failed check is neutral information, not a green "all good" tick.
   expect(screen.getByTestId('about-check-failed-icon')).toBeTruthy()
+})
+
+test('right after Check now the line says just now once, not twice', async () => {
+  const fresh = { supported: true, updateAvailable: false, currentVersion: '0.1.0', fetchedAt: Date.now() }
+  setStatus(fresh)
+  store.checkUpdates.mockResolvedValueOnce(fresh as never)
+  const { container } = render(<AboutSettings />)
+
+  fireEvent.click(screen.getByText(en.settings.about.checkNow))
+  await waitFor(() => expect(store.checkUpdates).toHaveBeenCalled())
+  await Promise.resolve()
+
+  const text = container.textContent ?? ''
+  expect(text).toContain('Last checked just now')
+  expect(text.match(/just now/g)?.length).toBe(1)
 })
