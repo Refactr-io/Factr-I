@@ -4322,6 +4322,7 @@ export const en: Translations = {
         }
       },
       errorDetails: 'Details',
+      stopped: 'Stopped',
       errorGenericProvider: 'The AI service',
       errorToastTitle: "Factr-I couldn't finish the reply",
       errorRetry: 'Retry',

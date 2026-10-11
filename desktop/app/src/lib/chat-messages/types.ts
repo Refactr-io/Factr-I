@@ -34,6 +34,8 @@ export type ChatMessage = {
   completedAt?: number
   pending?: boolean
   error?: string
+  /** The user pressed Stop on this reply: renders a quiet "Stopped" line under the kept partial text. */
+  stopped?: boolean
   /** Structured layer descriptor for a failed turn (parsed error_surface).
    *  Drives the error card's layer label + actions; absent on older
    *  backends, where the card falls back to generic copy. */
