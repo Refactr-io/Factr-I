@@ -7,6 +7,10 @@ use std::sync::mpsc::SyncSender;
 
 pub const FLAG_NO_MODEL_CALL: i64 = 1;
 
+/// Run kinds the gateway opens for background work (`Observer::span`, `Observer::record_aux`), not
+/// for a turn a model answers. They never read as `no_model_call` or as a silent failure.
+pub const BACKGROUND_KINDS: &[&str] = &["memory", "undo", "learning", "other"];
+
 /// How long a run may sit in `status='running'` before it is presumed dead —
 /// observability's `STUCK_TURN_MS` (lib/fleet.ts, lib/alerts.ts). Generous on
 /// purpose: real tool work can legitimately run for minutes.
@@ -274,7 +278,7 @@ pub fn monitors(db: &Connection, since: i64, dropped: u64) -> rusqlite::Result<V
     let (finished, errors, silent, unpriced_turns): (i64, i64, i64, i64) = db.query_row(
         "SELECT COALESCE(SUM(CASE WHEN ended_at_ms IS NOT NULL THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN status IN ('error','failed') THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN (flags & ?2) != 0 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN (flags & ?2) != 0 AND kind NOT IN ('memory','undo','learning','other') THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN unpriced_calls>0 THEN 1 ELSE 0 END), 0)
          FROM fact_turn WHERE started_at_ms>=?1",
         params![since, FLAG_NO_MODEL_CALL],
@@ -563,6 +567,14 @@ pub fn apply_run_end_flags(
     error: &Option<String>,
     model_calls: u64,
 ) -> rusqlite::Result<()> {
+    // Background runs (memory extraction and recall, undo, learning, one-shot helpers) are not
+    // model turns: one that made no model call did its job and is not a silent failure.
+    let kind: Option<String> = tx.query_row("SELECT kind FROM fact_turn WHERE id=?1", [id], |r| r.get(0)).optional()?;
+    if kind.as_deref().is_some_and(|k| BACKGROUND_KINDS.contains(&k)) {
+        let outcome = if error.is_some() || status == "error" || status == "failed" { "failed" } else if status == "interrupted" { "cancelled" } else { "ok" };
+        tx.execute("UPDATE fact_turn SET outcome=?2 WHERE id=?1", params![id, outcome])?;
+        return Ok(());
+    }
     if status == "complete" && error.is_none() && model_calls == 0 {
         tx.execute(
             "UPDATE fact_turn SET flags = flags | ?2 WHERE id=?1",
@@ -928,6 +940,36 @@ mod tests {
         tx.commit().unwrap();
         let flags: i64 = db.query_row("SELECT flags FROM fact_turn WHERE id='x'", [], |r| r.get(0)).unwrap();
         assert_eq!(flags & FLAG_NO_MODEL_CALL, FLAG_NO_MODEL_CALL);
+    }
+
+    /// QA B-5a: a normal chat leaves a `memory.extract` background run with no model call; that is
+    /// not a silent failure. A chat or cron turn that completes without calling the model still is.
+    #[test]
+    fn silent_failures_count_model_turns_only() {
+        let mut db = mem_db();
+        let tx = db.transaction().unwrap();
+        for (id, kind) in [("chat-ok", "invoke_agent"), ("mem", "memory"), ("learn", "learning"), ("undo", "undo"), ("aux", "other"), ("chat-silent", "invoke_agent"), ("cron-silent", "cron")] {
+            tx.execute(
+                "INSERT INTO fact_turn(id,session_id,root_id,kind,model,provider,status,started_at_ms) VALUES(?1,'s',?1,?2,'m','p','running',?3)",
+                params![id, kind, 5_000],
+            )
+            .unwrap();
+            apply_run_end_flags(&tx, id, "complete", &None, if id == "chat-ok" { 2 } else { 0 }).unwrap();
+        }
+        apply_run_end_flags(&tx, "mem", "error", &Some("disk full".into()), 0).unwrap();
+        tx.commit().unwrap();
+        let outcome = |id: &str| db.query_row("SELECT outcome FROM fact_turn WHERE id=?1", [id], |r| r.get::<_, String>(0)).unwrap();
+        assert_eq!(outcome("chat-ok"), "ok");
+        assert_eq!(outcome("learn"), "ok", "a background run is not a no_model_call");
+        assert_eq!(outcome("mem"), "failed", "a background run that errors still fails");
+        assert_eq!(outcome("chat-silent"), "no_model_call");
+        let mon = monitors(&db, 0, 0).unwrap();
+        assert_eq!(mon["silent_failures"], 2, "only the chat and cron turns with no model call: {mon}");
+        // Rows flagged before this rule (an older build flagged memory runs) do not alert either.
+        db.execute("UPDATE fact_turn SET flags=flags|?1 WHERE id='aux'", [FLAG_NO_MODEL_CALL]).unwrap();
+        assert_eq!(monitors(&db, 0, 0).unwrap()["silent_failures"], 2);
+        db.execute("UPDATE fact_turn SET flags=0 WHERE id IN ('chat-silent','cron-silent')", []).unwrap();
+        assert_eq!(monitors(&db, 0, 0).unwrap()["silent_failures"], 0, "normal chats leave nothing firing");
     }
 
     /// The indexes ported from observability's query-indexes.sql / traces.sql are
