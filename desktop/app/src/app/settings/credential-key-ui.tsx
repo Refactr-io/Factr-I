@@ -85,12 +85,27 @@ export function KeyField({
 
   if (info.is_set && !editing) {
     return (
-      <Input
-        className={cn(CREDENTIAL_CONTROL_CLASS, bare && CRED_BARE, 'cursor-pointer text-muted-foreground')}
-        onFocus={startEdit}
-        readOnly
-        value={masked}
-      />
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <Input
+          className={cn(CREDENTIAL_CONTROL_CLASS, bare && CRED_BARE, 'cursor-pointer text-muted-foreground')}
+          onFocus={startEdit}
+          readOnly
+          value={masked}
+        />
+        {/* Always visible once a key is saved: the confirm lives in onClear. */}
+        <Button
+          aria-label={t.settings.credentials.remove}
+          className="text-muted-foreground hover:text-destructive"
+          disabled={busy}
+          onClick={() => void onClear(varKey)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          {busy ? <Loader2 className="animate-spin" /> : <Trash2 />}
+          {t.settings.credentials.remove}
+        </Button>
+      </div>
     )
   }
 
