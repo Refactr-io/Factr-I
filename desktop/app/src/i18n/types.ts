@@ -3184,6 +3184,7 @@ export interface Translations {
       smartDescription: string
       off: string
       offDescription: string
+      workingFolder: (name: string) => string
     }
     statusbar: {
       unknown: string

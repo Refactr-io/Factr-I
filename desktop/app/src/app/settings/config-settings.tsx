@@ -25,6 +25,7 @@ import { $keepAwake, setKeepAwake } from '@/store/keep-awake'
 import { dismissNotification, notify, notifyError } from '@/store/notifications'
 import { normalizeProfileKey } from '@/store/profile'
 import { repoDiscoveryPolicyFromConfig, repoDiscoveryPolicySignature, scanAndRecordRepos } from '@/store/projects'
+import { $currentCwd } from '@/store/session'
 import { $settingsRequestProfile } from '@/store/settings-scope'
 import type { ConfigFieldSchema, FactrConfigRecord } from '@/types/factr'
 
@@ -487,11 +488,16 @@ function ConfigSettingsInner({
                     ? enumOptionsFor(key, getNested(config, key), config, elevenLabsVoiceOptions ?? undefined)
                     : enumOptionsFor(key, getNested(config, key), config)
                 }
+                descriptionExtra={key === 'approvals.mode' ? <WorkingFolderNote /> : undefined}
                 onChange={value => updateConfig(setNested(config, key, value))}
                 optionLabels={key === 'tts.elevenlabs.voice_id' ? elevenLabsVoiceLabels : undefined}
                 schema={field}
                 schemaKey={key}
-                value={getNested(config, key)}
+                value={
+                  key === 'approvals.mode'
+                    ? approvalModeFromConfig(getNested(config, key))
+                    : getNested(config, key)
+                }
               />
             </div>
           ))}
@@ -499,6 +505,19 @@ function ConfigSettingsInner({
       )}
     </>
   )
+}
+
+/** The engine's real mode for a stored value: a stale `smart` (refused by the engine) shows as manual. */
+function approvalModeFromConfig(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase() === 'off' ? 'off' : 'manual'
+}
+
+function WorkingFolderNote() {
+  const { t } = useI18n()
+  const cwd = useStore($currentCwd)
+  const name = cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd
+
+  return cwd ? <span className="mt-1 block">{t.shell.approvalMode.workingFolder(name)}</span> : null
 }
 
 /** Free-form MB cap for Desktop's data-URL attach/preview path (main-process). */

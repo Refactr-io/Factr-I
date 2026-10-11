@@ -226,7 +226,7 @@ export const PROVIDER_GROUPS: ProviderPrefix[] = [
 // backend schema only declares a string type.
 export const ENUM_OPTIONS: Record<string, string[]> = {
   'agent.image_input_mode': ['auto', 'native', 'text'],
-  'approvals.mode': ['manual', 'smart', 'off'],
+  'approvals.mode': ['manual', 'off'],
   'code_execution.mode': ['project', 'strict'],
   'context.engine': ['compressor', 'default', 'custom'],
   // '' = inherit the agent's own effort; the rest is the shared scale.
@@ -609,7 +609,7 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   },
   fileReadMaxChars: 'Maximum characters Factr-I can read from one file request.',
   approvals: {
-    mode: 'How Factr-I handles commands that need explicit approval.',
+    mode: 'How Factr-I handles commands that need explicit approval. Manual asks before risky commands. It also asks before deleting files when the working folder is your home folder or another broad location (Documents, Desktop, a drive root).',
     timeout: 'How long approval prompts wait before timing out.'
   },
   security: {
