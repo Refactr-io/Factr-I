@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useMemo } from 'react'
 
 import type { StatusbarItem } from '@/app/shell/statusbar-controls'
-import { HandPalm, ShieldCheck, ShieldSlash } from '@/components/icons/phosphor'
+import { HandPalm, ShieldSlash } from '@/components/icons/phosphor'
 import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -12,6 +12,7 @@ import {
 import { useI18n } from '@/i18n'
 import {
   $approvalModes,
+  DEFAULT_APPROVAL_MODE,
   type ApprovalMode,
   type ApprovalModeRequester,
   setApprovalModeForProfile,
@@ -22,20 +23,19 @@ export function useApprovalModeStatusbarItem(profile: string, requestGateway: Ap
   const { t } = useI18n()
   const copy = t.shell.approvalMode
   const modes = useStore($approvalModes)
-  const mode = modes[profile.trim() || 'default'] ?? 'smart'
+  const mode = modes[profile.trim() || 'default'] ?? DEFAULT_APPROVAL_MODE
 
   const labels = useMemo<Record<ApprovalMode, string>>(
-    () => ({ manual: copy.manual, smart: copy.smart, off: copy.off }),
-    [copy.manual, copy.off, copy.smart]
+    () => ({ manual: copy.manual, off: copy.off }),
+    [copy.manual, copy.off]
   )
 
   const descriptions = useMemo<Record<ApprovalMode, string>>(
     () => ({
       manual: copy.manualDescription,
-      smart: copy.smartDescription,
       off: copy.offDescription
     }),
-    [copy.manualDescription, copy.offDescription, copy.smartDescription]
+    [copy.manualDescription, copy.offDescription]
   )
 
   useEffect(() => {
@@ -44,14 +44,12 @@ export function useApprovalModeStatusbarItem(profile: string, requestGateway: Ap
 
   return {
     className: mode === 'off' ? 'bg-(--chrome-action-hover) text-foreground' : undefined,
-    // Manual asks (hand), Smart assesses (shield-check), Off runs unguarded (struck shield).
+    // Manual asks (hand), Off runs unguarded (struck shield).
     icon:
       mode === 'off' ? (
         <ShieldSlash className="size-3.5" />
-      ) : mode === 'manual' ? (
-        <HandPalm className="size-3.5 opacity-70" />
       ) : (
-        <ShieldCheck className="size-3.5 opacity-70" />
+        <HandPalm className="size-3.5 opacity-70" />
       ),
     id: 'approval-mode',
     label: labels[mode],
@@ -67,7 +65,7 @@ export function useApprovalModeStatusbarItem(profile: string, requestGateway: Ap
           }}
           value={mode}
         >
-          {(['manual', 'smart', 'off'] as const).map(value => (
+          {(['manual', 'off'] as const).map(value => (
             <DropdownMenuRadioItem className="items-start gap-2" key={value} value={value}>
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-xs text-foreground">{labels[value]}</span>
