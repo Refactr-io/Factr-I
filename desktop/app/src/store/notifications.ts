@@ -199,6 +199,13 @@ const ERROR_SUMMARIES: ErrorSummaryRule[] = [
     action: () => RECOVERY_ACTIONS.openKeys('ELEVENLABS_API_KEY')
   },
   {
+    // No STT provider at all (packaged app ships no local whisper and a ChatGPT sign-in
+    // carries no speech key): say what to add instead of the generic failure.
+    test: msg => /no stt provider available/i.test(msg),
+    summarize: () => translateNow('notifications.errors.sttNoProvider'),
+    action: () => RECOVERY_ACTIONS.openKeys('GROQ_API_KEY')
+  },
+  {
     test: msg => /method not allowed/i.test(msg),
     summarize: () => translateNow('notifications.errors.methodNotAllowed'),
     action: () => RECOVERY_ACTIONS.restartFactr()

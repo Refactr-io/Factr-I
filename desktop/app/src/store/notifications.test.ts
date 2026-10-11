@@ -43,6 +43,20 @@ test('provider invalid_api_key error maps to the OpenAI summary and deep-links t
   expect($routeRequest.get()?.path).toBe('/settings?tab=keys&key=OPENAI_API_KEY')
 })
 
+test('"No STT provider available" toasts plain copy with an Open Keys action for Groq', () => {
+  notifyError(
+    new Error(
+      'No STT provider available. Install faster-whisper for free local transcription, configure FACTR_LOCAL_STT_COMMAND or install a local whisper CLI, set GROQ_API_KEY for free Groq Whisper.'
+    ),
+    'Voice transcription failed'
+  )
+
+  expect(lastMessage()).toMatch(/speech-to-text key/)
+  expect(lastMessage()).not.toMatch(/faster-whisper|FACTR_LOCAL_STT_COMMAND/)
+  $notifications.get()[0]?.action?.onClick()
+  expect($routeRequest.get()?.path).toBe('/settings?tab=keys&key=GROQ_API_KEY')
+})
+
 test('ELEVENLABS_API_KEY not set toasts plain copy with an Open Keys action for that key', () => {
   notifyError(new Error('ELEVENLABS_API_KEY not set'), 'Voice failed')
 

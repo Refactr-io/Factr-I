@@ -203,6 +203,7 @@ export const ru = defineLocale({
     },
     errors: {
       elevenLabsNeedsKey: 'Для STT ElevenLabs нужен ELEVENLABS_API_KEY.',
+      sttNoProvider: 'Для голосового ввода нужен ключ распознавания речи. Добавьте ключ Groq (бесплатно), OpenAI, Mistral, ElevenLabs или xAI в Настройки → Keys.',
       elevenLabsRejectedKey: 'ElevenLabs отклонил API-ключ (401).',
       diskFull: 'Диск заполнен — освободите место и повторите.',
       gatewayAuthFailed: 'Аутентификация шлюза не удалась — проверьте API_SERVER_KEY.',

@@ -169,6 +169,7 @@ export const ar = defineLocale({
     },
     errors: {
       elevenLabsNeedsKey: 'يتطلب ElevenLabs STT المفتاح ELEVENLABS_API_KEY.',
+      sttNoProvider: 'يتطلب الإدخال الصوتي مفتاح تحويل الكلام إلى نص. أضف مفتاح Groq (مجاني) أو OpenAI أو Mistral أو ElevenLabs أو xAI في الإعدادات ← Keys.',
       elevenLabsRejectedKey: 'رفض ElevenLabs مفتاح API (401).',
       diskFull: 'القرص ممتلئ — حرّر مساحة ثم أعد المحاولة.',
       methodNotAllowed: 'رفضت خلفية سطح المكتب هذا الطلب (405 Method Not Allowed). جرب إعادة تشغيل Factr-I Desktop.',

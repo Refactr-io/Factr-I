@@ -408,6 +408,7 @@ export const en: Translations = {
     },
     errors: {
       elevenLabsNeedsKey: 'Voice input needs an ElevenLabs key. Add one in Settings → Keys.',
+      sttNoProvider: 'Voice input needs a speech-to-text key, which a ChatGPT sign-in does not include. Add a free Groq key (or OpenAI, Mistral, ElevenLabs or xAI) in Settings → Keys, then try again.',
       elevenLabsRejectedKey: "ElevenLabs didn't accept your API key. Update it in Settings → Keys, then try again.",
       diskFull: 'Disk full — free some space, then try again.',
       storageFailure: "Factr-I couldn't save to its data folder. Open Maintenance to check and repair it.",

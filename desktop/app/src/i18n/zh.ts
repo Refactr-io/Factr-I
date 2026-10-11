@@ -195,6 +195,7 @@ export const zh = defineLocale({
     },
     errors: {
       elevenLabsNeedsKey: 'ElevenLabs STT 需要 ELEVENLABS_API_KEY。',
+      sttNoProvider: '语音输入需要语音转文字密钥。请在 设置 → Keys 中添加 Groq（免费）、OpenAI、Mistral、ElevenLabs 或 xAI 的密钥。',
       elevenLabsRejectedKey: 'ElevenLabs 拒绝了该 API key (401)。',
       diskFull: '磁盘已满 — 请腾出一些空间后再试。',
       gatewayAuthFailed: '网关认证失败 — 请检查你的 API_SERVER_KEY。',

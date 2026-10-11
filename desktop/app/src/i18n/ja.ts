@@ -185,6 +185,7 @@ export const ja = defineLocale({
     },
     errors: {
       elevenLabsNeedsKey: 'ElevenLabs STT には ELEVENLABS_API_KEY が必要です。',
+      sttNoProvider: '音声入力には音声認識のキーが必要です。設定 → Keys で Groq（無料）、OpenAI、Mistral、ElevenLabs、xAI のいずれかのキーを追加してください。',
       elevenLabsRejectedKey: 'ElevenLabs が API キーを拒否しました (401)。',
       diskFull: 'ディスク容量不足です — 空きを作ってからもう一度お試しください。',
       gatewayAuthFailed: 'ゲートウェイ認証に失敗しました — API_SERVER_KEY を確認してください。',

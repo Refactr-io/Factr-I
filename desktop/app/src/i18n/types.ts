@@ -435,6 +435,7 @@ export interface Translations {
     }
     errors: {
       elevenLabsNeedsKey: string
+      sttNoProvider: string
       elevenLabsRejectedKey: string
       diskFull: string
       storageFailure: string
