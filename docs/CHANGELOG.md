@@ -7,6 +7,10 @@ behaviour is unchanged from 0.0.4.
 
 - Approval mode label: it no longer flips from Smart to Manual after opening and closing Settings. An empty reply for
   `approvals.mode` (the key is not in config.yaml) was read as Manual; it now keeps the engine default shown.
+- Approval mode honesty: the engine refuses `smart` and defaults to `manual`, so the app now defaults to and shows
+  Manual everywhere (new chat, existing chat, after Settings), offers only Manual and Off, and shows a stale `smart`
+  from config as Manual. Settings > Safety explains that Manual also asks before deleting files in a home folder or
+  other broad location, and shows the current working folder.
 - Settings > Model: the main-model context-window override accepts only whole numbers from 0 to 10,000,000 (0 = detect),
   shows an inline error otherwise, and an autosave error no longer lingers when you switch Model tabs.
 - Mixture of Agents: preset names are limited to 40 letters, digits, spaces, dots, dashes and underscores, and providers
