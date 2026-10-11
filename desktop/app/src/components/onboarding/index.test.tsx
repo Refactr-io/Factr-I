@@ -1,11 +1,11 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { $desktopOnboarding, type DesktopOnboardingState, type OnboardingContext } from '@/store/onboarding'
 import { makeOAuthProvider } from '@/test/oauth-provider'
 import type { OAuthProvider } from '@/types/factr'
 
-import { Picker } from '.'
+import { Picker, useEscapeClosesManualOnboarding } from '.'
 
 function setProviders(providers: OAuthProvider[]) {
   $desktopOnboarding.set({
@@ -104,5 +104,26 @@ describe('onboarding Picker', () => {
     render(<Picker ctx={ctx} />)
 
     expect(screen.queryByRole('button', { name: "I'll choose a provider later" })).toBeNull()
+  })
+})
+
+describe('Esc on the provider selector', () => {
+  it('closes a manually opened selector', () => {
+    setProviders([makeOAuthProvider('anthropic', 'Anthropic Claude')])
+    $desktopOnboarding.set({ ...$desktopOnboarding.get(), manual: true })
+    renderHook(() => useEscapeClosesManualOnboarding(true))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect($desktopOnboarding.get().manual).toBe(false)
+  })
+
+  it('leaves first-run onboarding open (no close affordance there)', () => {
+    setProviders([makeOAuthProvider('anthropic', 'Anthropic Claude')])
+    renderHook(() => useEscapeClosesManualOnboarding(false))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect($desktopOnboarding.get().configured).toBe(false)
   })
 })
