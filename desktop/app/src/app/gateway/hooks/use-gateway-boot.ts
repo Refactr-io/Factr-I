@@ -1363,6 +1363,16 @@ export function useGatewayBoot({
       noteInFlightTurnsAtPrimaryDrop(primaryGatewayConnectionId())
       primaryBackendExited = true
 
+      // Main saw the process die, so the turns it was running are lost for
+      // certain: settle them now, while the focused session is still the active
+      // one and the Retry card reaches the view. Waiting for the reconnect
+      // raced the reconnect's own session re-resume, which clears the active
+      // session for a moment: an error landing in that gap never reached the
+      // transcript, and the turn kept spinning with the next message queued
+      // behind it. The reconnect path below stays as the fallback (it finds
+      // nothing left to fail here).
+      failTurnsLostToEngineRestart()
+
       // Post-boot: the shell's restart intent recycles a local service via main
       // (or re-dials a remote one) and does not depend on this hook's
       // reconnect gate, unlike reconnectGateway().

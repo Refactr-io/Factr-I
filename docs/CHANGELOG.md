@@ -5,9 +5,10 @@
 The 0.0.4 engine plus the sign-in, onboarding and UI work from pull request #2. The engine's labelling and classify
 behaviour is unchanged from 0.0.4.
 
-- Engine restart mid-reply: when the engine process dies while a reply streams, the reply no longer spins forever. Once
-  the restarted engine is reached, the turn ends with "The connection to the engine was interrupted. Your message was
-  not completed." and a Retry button, the turn clock stops, and messages queued behind it wait under Resume.
+- Engine restart mid-reply: when the engine process dies while a reply streams, the reply no longer spins forever. As
+  soon as the desktop learns the engine died (or, failing that, once the restarted engine is reached), the turn ends
+  with "The connection to the engine was interrupted. Your message was not completed." and a Retry button, the turn
+  clock stops, and messages queued behind it wait under Resume.
 - Uninstall: the summary, the confirmation and the deletion now use one list of targets: the running app (refused when
   translocated, on a disk image or in a read-only folder), this copy's real app-data folder, and for "everything" the
   config folder it runs with. The confirmation lists every path. Nothing at a standard location is deleted unless it

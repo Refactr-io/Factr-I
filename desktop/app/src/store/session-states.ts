@@ -700,6 +700,7 @@ export function clearAllSessionStates() {
   settledExpiry.clear()
   unconfirmedReconnectSettles.clear()
   turnsInFlightAtPrimaryDrop.clear()
+  turnsFailedAsLost.clear()
   clearAllProviderWaits()
   sessionScopeByRuntimeId.clear()
   sessionOwnerByRuntimeId.clear()
@@ -791,6 +792,10 @@ export function reconcileBusyStatesOnReconnect(scope?: string) {
 // these as failed instead of leaving the reply spinning.
 const turnsInFlightAtPrimaryDrop = new Map<string, { turnStartedAt: number | null }>()
 
+// The turn (by start time) already failed as lost per runtime, so the socket drop and the backend exit
+// that report one engine death in either order never fail the same turn twice.
+const turnsFailedAsLost = new Map<string, number>()
+
 /** Remember every primary-socket turn in flight at a socket drop or a backend
  *  exit. Repeated calls during one outage only add (the first sight wins). */
 export function noteInFlightTurnsAtPrimaryDrop(primaryConnectionId: null | string = null): void {
@@ -800,6 +805,10 @@ export function noteInFlightTurnsAtPrimaryDrop(primaryConnectionId: null | strin
     }
 
     if (turnsInFlightAtPrimaryDrop.has(runtimeId)) {
+      continue
+    }
+
+    if (state.turnStartedAt != null && turnsFailedAsLost.get(runtimeId) === state.turnStartedAt) {
       continue
     }
 
@@ -843,6 +852,10 @@ export function takeTurnsLostToEngineRestart(): string[] {
 
     if (!startedAgain) {
       lost.push(runtimeId)
+
+      if (atDrop.turnStartedAt != null) {
+        turnsFailedAsLost.set(runtimeId, atDrop.turnStartedAt)
+      }
     }
   }
 

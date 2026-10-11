@@ -1976,6 +1976,35 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
       expect($parkedQueueSessions.get()['s-slow']).toBe(true)
     })
 
+    it('a second engine restart still fails the turn after an earlier idle restart (connection-stamped)', async () => {
+      const events: GatewayEvent[] = []
+      render(<Harness handleGatewayEvent={event => events.push(event)} />)
+      await flushAsync()
+      act(() => FakeWebSocket.instances[0].serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid1-1' } }))
+
+      // First kill while idle: backend exit + reconnect to a new process.
+      act(() => {
+        backendExit?.({ code: null, signal: 'SIGKILL' })
+        FakeWebSocket.instances[0].drop()
+      })
+      await flushAsync()
+      await advanceBackoff()
+      act(() => FakeWebSocket.instances.at(-1)?.serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid2-2' } }))
+      await flushAsync()
+
+      seedRunningTurn()
+      act(() => FakeWebSocket.instances.at(-1)?.serverEvent({ type: 'message.delta', session_id: 'rt-slow', payload: { text: 'SLOW-x' } }))
+
+      act(() => {
+        backendExit?.({ code: null, signal: 'SIGKILL' })
+        FakeWebSocket.instances.at(-1)?.drop()
+      })
+      await flushAsync()
+      await advanceBackoff()
+
+      expect(lostTurnEvents(events)).toHaveLength(1)
+    })
+
     it('the same engine after a socket blip keeps the turn: it is still running there', async () => {
       const events: GatewayEvent[] = []
       render(<Harness handleGatewayEvent={event => events.push(event)} />)
