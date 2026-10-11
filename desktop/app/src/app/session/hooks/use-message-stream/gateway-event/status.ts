@@ -287,7 +287,7 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
       // message and there is no separate detail to repeat.
       // No Retry action: assistant-ui's reload is per-thread, and for the
       // codes recovered above a retry would fail identically anyway.
-      notifyTurnError(sessionId, {
+      notifyTurnError(sessionId ?? undefined, {
         detail: card ? tidyErrorDetails(errorMessage) : undefined,
         id: `${ERROR_TOAST_PREFIX}${errorMessage}`,
         kind: 'error',
