@@ -22,6 +22,11 @@ behaviour is unchanged from 0.0.4.
   from the session journal (they could stay "spawned"). Gateway ledger only; agent loop and providers unchanged.
 - Alerts: `silent_failures` no longer fires after normal chats. Background runs (memory extraction, learning, undo)
   are not model turns; a chat or scheduled turn that completes with no model call still alerts.
+- Approvals: with the working folder at home (the desktop default), `/`, `/Users`, `/home`, `~/Documents`,
+  `~/Desktop`, `~/Downloads` or a `/Volumes` root, a plain delete (`rm "$HOME/x"`, `unlink`, `shred`, `> file`) now
+  asks ("delete inside a broad working folder"); it ran without a prompt. An "Always allow" is bound to the folder it
+  was given in (older unbound grants no longer apply in a broad folder). Project folders and `approvals.mode: off`
+  are unchanged. Gateway approvals only; the bash tool, classifier and agent loop are unchanged.
 - `/usage` answers from the run ledger (today's and this session's runs, model calls, tokens, cost or unpriced)
   instead of "not a command this engine serves".
 - Local / custom endpoint: the onboarding's "Local / custom endpoint" (and a hand-written `provider: custom` config with

@@ -71,13 +71,68 @@ fn config_allowlist(home: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn allowlisted(home: &Path, command: &str) -> bool {
+/// How a grant made in a known working folder is written: the command text, then this, then the
+/// folder. Factr's own matcher compares whole entries, so a bound entry never matches there.
+const GRANT_CWD: &str = "  # in ";
+
+/// The allowlist entry an `always` answer writes: bound to the folder it was given in, since the
+/// same relative command deletes different files elsewhere.
+fn grant_entry(command: &str, cwd: Option<&Path>) -> String {
+    match cwd.and_then(resolve_dir) {
+        Some(dir) => format!("{}{GRANT_CWD}{}", command.trim(), dir.display()),
+        None => command.trim().to_string(),
+    }
+}
+
+/// Whether one allowlist entry covers `command` run from `cwd`. A bound entry covers only its own
+/// folder; an unbound one (older grants, hand-written entries) any folder except a broad one.
+fn entry_allows(entry: &str, command: &str, cwd: Option<&Path>) -> bool {
+    let (pattern, place_ok) = match entry.rsplit_once(GRANT_CWD).filter(|(_, d)| Path::new(d).is_absolute()) {
+        Some((pattern, dir)) => (pattern.trim(), cwd.and_then(resolve_dir).is_some_and(|c| c == Path::new(dir))),
+        None => (entry, !cwd.is_some_and(broad_folder)),
+    };
+    place_ok
+        && !pattern.is_empty()
+        && (pattern == command || (!pattern.contains('[') && pattern.contains(['*', '?']) && glob_match(pattern.as_bytes(), command.as_bytes())))
+}
+
+fn allowlisted(home: &Path, command: &str, cwd: Option<&Path>) -> bool {
     let command = command.trim();
-    !command.is_empty()
-        && !has_shell_operator(command)
-        && config_allowlist(home).iter().any(|p| {
-            !p.is_empty() && (p == command || (!p.contains('[') && p.contains(['*', '?']) && glob_match(p.as_bytes(), command.as_bytes())))
-        })
+    !command.is_empty() && !has_shell_operator(command) && config_allowlist(home).iter().any(|p| entry_allows(p, command, cwd))
+}
+
+/// `path` with `..` and symlinks resolved: the deepest existing ancestor canonicalized and the rest
+/// appended. `None` when that cannot be done with certainty (a relative path, a `..` past a missing
+/// directory).
+fn resolve_dir(path: &Path) -> Option<std::path::PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut rest = Vec::new();
+    let mut cur = path.to_path_buf();
+    loop {
+        if let Ok(mut real) = cur.canonicalize() {
+            real.extend(rest.iter().rev());
+            return Some(real);
+        }
+        rest.push(cur.file_name()?.to_owned());
+        cur.pop();
+    }
+}
+
+/// Whether `cwd` is a broad folder rather than a project: `/` or any root, the home folder or one of
+/// its ancestors (`/Users`, `/home`), `~/Documents`, `~/Desktop`, `~/Downloads`, `/Volumes` and a
+/// volume's root. Unresolvable counts as broad. A plain delete "inside the working folder" there is
+/// a delete of the user's own files, so it is asked about.
+pub(crate) fn broad_folder(cwd: &Path) -> bool {
+    let Some(cwd) = resolve_dir(cwd) else { return true };
+    let Some(parent) = cwd.parent() else { return true };
+    let fixed = |p: &str| cwd == Path::new(p) || resolve_dir(Path::new(p)).is_some_and(|r| r == cwd);
+    if ["/Users", "/home", "/Volumes"].into_iter().any(fixed) || parent == Path::new("/Volumes") {
+        return true;
+    }
+    let home = std::env::var_os("HOME").filter(|h| !h.is_empty()).and_then(|h| resolve_dir(Path::new(&h)));
+    home.is_some_and(|home| home.starts_with(&cwd) || ["Documents", "Desktop", "Downloads"].iter().any(|d| cwd == home.join(d)))
 }
 
 /// `text` with `command` added to `command_allowlist` (the format Factr itself writes for an `always`
@@ -125,16 +180,18 @@ fn add_to_allowlist(text: &str, command: &str) -> Result<Option<String>, ()> {
 /// lock on this file (its `_CONFIG_LOCK` is in-process, its writer an atomic rename), so this is
 /// edit, write a temp file, re-read and rename only if the file is still what the edit was made
 /// from, else redo the edit on the new content: a concurrent Python save is merged, not overwritten.
-fn allow_permanently(home: &Path, command: &str) -> bool {
-    allow_permanently_with(home, command, || {})
+fn allow_permanently(home: &Path, command: &str, cwd: Option<&Path>) -> bool {
+    allow_permanently_with(home, command, cwd, || {})
 }
 
 /// `between` runs after the edit is staged and before the re-read (a test seam for the race).
-fn allow_permanently_with(home: &Path, command: &str, mut between: impl FnMut()) -> bool {
+fn allow_permanently_with(home: &Path, command: &str, cwd: Option<&Path>, mut between: impl FnMut()) -> bool {
     let command = command.trim();
     if command.is_empty() || command.contains('\n') || has_shell_operator(command) {
         return false;
     }
+    let entry = grant_entry(command, cwd);
+    let command = entry.as_str();
     let path = home.join("config.yaml");
     let tmp = path.with_extension(format!("yaml.{}.tmp", std::process::id()));
     for _ in 0..5 {
@@ -239,7 +296,8 @@ impl Hub {
             let left = Duration::from_millis((created + ttl_ms - now_ms()).max(0) as u64);
             let (tool, command) = (params["tool_name"].as_str().unwrap_or("bash").to_string(), params["command"].as_str().unwrap_or_default().to_string());
             self.shown.lock().await.insert(request_id.clone(), (session.clone(), params));
-            self.arm(request_id, session, tool, command, left).await;
+            // The folder is not stored with a parked prompt: an `always` after a restart is unbound.
+            self.arm(request_id, session, tool, command, None, left).await;
         }
     }
 
@@ -318,9 +376,10 @@ impl Hub {
         self.headless.lock().await.contains_key(session_id)
     }
 
-    async fn sticky(&self, session_id: &str, command: &str) -> bool {
+    async fn sticky(&self, session_id: &str, command: &str, cwd: Option<&Path>) -> bool {
         let grants = self.sticky_grants.lock().await;
-        grants.contains(&(session_id.to_string(), command.to_string())) || grants.contains(&(String::new(), command.to_string()))
+        grants.contains(&(session_id.to_string(), command.to_string()))
+            || grants.iter().any(|(session, entry)| session.is_empty() && entry_allows(entry, command, cwd))
     }
 
     /// An approval nobody can answer now (a cron / bot turn, or a goal with no desktop): allowed by
@@ -328,9 +387,9 @@ impl Hub {
     /// a normal desktop `approval` prompt so the user can approve it later.
     pub(crate) async fn unattended(self: &Arc<Self>, session_id: &str, tool: &str, command: &str, reason: &str, cwd: Option<&std::path::Path>) -> String {
         let surface = self.headless.lock().await.get(session_id).copied().unwrap_or("goal");
-        let granted = self.once_grants.lock().await.remove(&(session_id.to_string(), command.to_string())) || self.sticky(session_id, command).await;
+        let granted = self.once_grants.lock().await.remove(&(session_id.to_string(), command.to_string())) || self.sticky(session_id, command, cwd).await;
         let home = factr_base::factr_config::home();
-        let allowlisted = home.as_deref().is_some_and(|home| allowlisted(home, command));
+        let allowlisted = home.as_deref().is_some_and(|home| allowlisted(home, command, cwd));
         if granted || allowlisted || home.is_some_and(|home| policy_allows(&home, surface)) {
             self.audit(session_id, tool, command, "once", if granted { "user-later" } else if allowlisted { "allowlist" } else { "policy" });
             return "once".into();
@@ -341,13 +400,13 @@ impl Hub {
             return "once".into();
         }
         self.audit(session_id, tool, command, "deny", "headless-deny");
-        self.park(session_id, tool, command, reason, surface).await;
+        self.park(session_id, tool, command, reason, surface, cwd).await;
         "deny".into()
     }
 
     /// Show a denied unattended command on the desktop; an approval records a late grant and, for a
     /// goal session, resumes it.
-    async fn park(self: &Arc<Self>, session_id: &str, tool: &str, command: &str, reason: &str, surface: &str) {
+    async fn park(self: &Arc<Self>, session_id: &str, tool: &str, command: &str, reason: &str, surface: &str, cwd: Option<&Path>) {
         let request_id = format!("approval-{}", self.next.fetch_add(1, Ordering::Relaxed));
         let params = json!({
             "session_id": session_id,
@@ -387,12 +446,12 @@ impl Hub {
             let _ = store.park_save(&request_id, session_id, &params.to_string(), now_ms());
         }
         let frame = json!({ "jsonrpc": "2.0", "id": request_id, "method": "approval", "params": params }).to_string();
-        self.arm(request_id, session_id.to_string(), tool.to_string(), command.to_string(), PARK_TTL).await;
+        self.arm(request_id, session_id.to_string(), tool.to_string(), command.to_string(), cwd.map(Path::to_path_buf), PARK_TTL).await;
         self.broadcast_text(frame).await;
     }
 
     /// Wait up to `ttl` for the user's answer to a parked prompt, then record the grant.
-    async fn arm(self: &Arc<Self>, request_id: String, session: String, tool: String, command: String, ttl: Duration) {
+    async fn arm(self: &Arc<Self>, request_id: String, session: String, tool: String, command: String, cwd: Option<std::path::PathBuf>, ttl: Duration) {
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(request_id.clone(), (session.clone(), tx));
         let hub = self.clone();
@@ -408,9 +467,9 @@ impl Hub {
                 "session" => drop(hub.sticky_grants.lock().await.insert((session.clone(), command.clone()))),
                 // Permanent grants belong to Factr's config; in memory only if it can't take them.
                 "always" => {
-                    let saved = factr_base::factr_config::home().is_some_and(|home| allow_permanently(&home, &command));
+                    let saved = factr_base::factr_config::home().is_some_and(|home| allow_permanently(&home, &command, cwd.as_deref()));
                     if !saved {
-                        hub.sticky_grants.lock().await.insert((String::new(), command.clone()));
+                        hub.sticky_grants.lock().await.insert((String::new(), grant_entry(&command, cwd.as_deref())));
                     }
                 }
                 _ => return,
@@ -471,7 +530,7 @@ impl Hub {
             self.audit(session_id, tool, command, "once", "yolo");
             return "once".into();
         }
-        if home.as_deref().is_some_and(|home| allowlisted(home, command)) || self.sticky(session_id, command).await {
+        if home.as_deref().is_some_and(|home| allowlisted(home, command, cwd)) || self.sticky(session_id, command, cwd).await {
             self.audit(session_id, tool, command, "always", "allowlist");
             return "always".into();
         }
@@ -523,9 +582,9 @@ impl Hub {
                 self.session_grants.lock().await.insert((session_id.to_string(), category));
             }
             "always" => {
-                let saved = home.as_deref().is_some_and(|home| allow_permanently(home, command));
+                let saved = home.as_deref().is_some_and(|home| allow_permanently(home, command, cwd));
                 if !saved {
-                    self.sticky_grants.lock().await.insert((String::new(), command.to_string()));
+                    self.sticky_grants.lock().await.insert((String::new(), grant_entry(command, cwd)));
                 }
             }
             _ => {}
@@ -661,15 +720,31 @@ pub(crate) mod gate {
     /// gate cannot disagree), with Factr's dangerous-pattern list on top. Safe: allow, unless a
     /// Factr pattern matches, which asks (never downgrades). Low, or a justified Confirm: ask.
     /// Confirm without a justification: reflect-block. Catastrophic: deny.
+    ///
+    /// In a broad working folder (home, `/`, `~/Documents`, ... see [`super::broad_folder`]) "inside
+    /// the working directory" is no confinement: a command the risk classifier flags when judged
+    /// with no working directory (a plain `rm`, `unlink`, a `>` truncation) is asked about too.
     pub(super) fn decide(command: &str, justification: Option<&str>, cwd: Option<PathBuf>) -> Decision {
         use factr_app_core::tool::BashVerdict;
         let ask = |reason: String| Decision::Ask { summary: command.to_string(), reason };
         let factr = crate::dangerous::dangerous_reason(command);
+        let broad = cwd.as_deref().is_some_and(super::broad_folder);
         match factr_app_core::tool::bash_verdict(command, justification, cwd) {
             BashVerdict::Refuse(text) => Decision::Block(text),
-            BashVerdict::Run => factr.map_or(Decision::Allow, |reason| ask(reason.to_string())),
+            BashVerdict::Run => match factr {
+                Some(reason) => ask(reason.to_string()),
+                None if broad && destructive_anywhere(command) => ask(BROAD_FOLDER_DELETE.into()),
+                None => Decision::Allow,
+            },
             BashVerdict::Ask(reason) => ask(factr.map(str::to_string).unwrap_or(reason)),
         }
+    }
+
+    pub(crate) const BROAD_FOLDER_DELETE: &str = "delete inside a broad working folder";
+
+    /// The classifier's view with no working directory, so nothing counts as "inside" it.
+    fn destructive_anywhere(command: &str) -> bool {
+        !factr_command_risk::assess(command, &factr_command_risk::RiskContext::from_env(None)).findings.is_empty()
     }
 
     /// Judge a registry call to `bash`, `repl` or `factr`.
@@ -796,6 +871,167 @@ mod tests {
         for cmd in ["ls", "cat README.md", "git status", "python x.py", "git push origin main", "cargo test", "git branch -d done", "grep -r foo ."] {
             assert_eq!(decide(cmd, None, cwd.clone()), Decision::Allow, "{cmd}");
         }
+    }
+
+    /// `$HOME` as the classifier sees it, unless it sits under a temp dir (the classifier never
+    /// flags temp paths, so the home cases would prove nothing there).
+    fn test_home() -> Option<std::path::PathBuf> {
+        let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+        let temp = ["/tmp", "/private/tmp", "/var/tmp"].iter().any(|t| home.starts_with(t));
+        if temp {
+            eprintln!("skipped: HOME is under a temp dir");
+        }
+        (!temp && home.is_absolute()).then_some(home)
+    }
+
+    #[test]
+    fn deletes_inside_a_broad_working_folder_ask_and_project_folders_are_unchanged() {
+        use super::gate::{BROAD_FOLDER_DELETE, Decision, decide};
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(home) = test_home() else { return };
+        let tmp = std::env::temp_dir().join(format!("approvals-broad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("sub")).unwrap();
+        let tmp = tmp.canonicalize().unwrap();
+        let link = tmp.join("home-link");
+        std::os::unix::fs::symlink(&home, &link).unwrap();
+        let qa = r#"rm "$HOME/qa-approve/a.txt""#;
+        let abs = format!(r#"rm "{}/qa-approve/a.txt""#, home.display());
+        let p = |s: &str| Some(std::path::PathBuf::from(s));
+        let at = |rel: &str| Some(home.join(rel));
+        let broad = |reason: &str| reason == BROAD_FOLDER_DELETE;
+        // (command, cwd, expected): "broad" = asked with the broad-folder reason, "ask" = asked for
+        // any reason (the classifier already asks), "allow", "block".
+        let cases: Vec<(&str, Option<std::path::PathBuf>, &str)> = vec![
+            (qa, Some(home.clone()), "broad"),
+            (&abs, Some(home.clone()), "broad"),
+            ("rm qa-approve/a.txt", Some(home.clone()), "broad"),
+            ("unlink a.txt", Some(home.clone()), "broad"),
+            ("shred a.txt", Some(home.clone()), "broad"),
+            ("truncate -s 0 a.txt", Some(home.clone()), "broad"),
+            ("echo x > notes.txt", Some(home.clone()), "broad"),
+            (qa, p("/Users"), "broad"),
+            ("rm a.txt", p("/home"), "broad"),
+            (qa, p("/"), "broad"),
+            ("rm a.txt", p("/Volumes/X"), "broad"),
+            ("rm a.txt", at("Documents"), "broad"),
+            ("rm a.txt", at("Desktop"), "broad"),
+            ("rm a.txt", at("Downloads"), "broad"),
+            (qa, at("Documents"), "ask"),
+            (qa, at("Desktop"), "ask"),
+            // A symlink to home is home; `..` back up to home (or past a missing dir) is broad.
+            ("rm a.txt", Some(link.clone()), "broad"),
+            (qa, Some(link.clone()), "ask"),
+            (qa, at("proj/.."), "broad"),
+            ("rm a.txt", at("no-such-dir/../.."), "broad"),
+            // Recursive deletes keep asking as before; credentials stay refused.
+            ("rm -rf x", Some(home.clone()), "ask"),
+            ("rm ~/.ssh/id_rsa", Some(home.clone()), "block"),
+            ("rm -rf ~/.ssh", Some(home.clone()), "block"),
+            // Reading and writing a new file in home stay silent.
+            ("ls", Some(home.clone()), "allow"),
+            ("cat notes.txt", Some(home.clone()), "allow"),
+            ("mkdir new-folder", Some(home.clone()), "allow"),
+            // A project folder (in home or not) is unchanged.
+            ("rm a.txt", at("proj"), "allow"),
+            (r#"rm "$HOME/proj/qa-approve/a.txt""#, at("proj"), "allow"),
+            ("rm a.txt", Some(tmp.clone()), "allow"),
+            ("rm a.txt", Some(tmp.join("sub/..")), "allow"),
+            ("rm -rf build", at("proj"), "ask"),
+        ];
+        for (cmd, cwd, want) in cases {
+            let got = decide(cmd, None, cwd.clone());
+            let ok = match (want, &got) {
+                ("broad", Decision::Ask { reason, .. }) => broad(reason),
+                ("ask", Decision::Ask { .. }) => true,
+                ("allow", Decision::Allow) => true,
+                ("block", Decision::Block(_)) => true,
+                _ => false,
+            };
+            assert!(ok, "{cmd} in {cwd:?}: want {want}, got {got:?}");
+        }
+        // No working folder known: unchanged (the classifier alone decides).
+        assert!(!matches!(decide("rm a.txt", None, None), Decision::Ask { ref reason, .. } if broad(reason)));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn broad_folders_are_roots_home_and_its_ancestors_and_the_usual_dumping_grounds() {
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(home) = test_home() else { return };
+        for dir in ["/", "/Users", "/home", "/Volumes", "/Volumes/Backup", "relative/dir"] {
+            assert!(broad_folder(Path::new(dir)), "{dir}");
+        }
+        for dir in [home.clone(), home.join("Documents"), home.join("Desktop"), home.join("Downloads"), home.join("x/..")] {
+            assert!(broad_folder(&dir), "{dir:?}");
+        }
+        for dir in [home.join("proj"), home.join("Documents/proj"), home.join("Desktop/notes/x"), std::env::temp_dir(), "/Volumes/Backup/proj".into()] {
+            assert!(!broad_folder(&dir), "{dir:?}");
+        }
+    }
+
+    #[test]
+    fn an_always_grant_is_bound_to_the_folder_it_was_given_in() {
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(user_home) = test_home() else { return };
+        let cfg = std::env::temp_dir().join(format!("approvals-scope-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cfg);
+        let (a, b) = (cfg.join("proj-a"), cfg.join("proj-b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let (a, b) = (a.canonicalize().unwrap(), b.canonicalize().unwrap());
+        // Granted in project A: covers A only, never B, home, or an unknown folder.
+        assert!(allow_permanently(&cfg, "rm -rf build", Some(&a)));
+        let saved = std::fs::read_to_string(cfg.join("config.yaml")).unwrap();
+        assert!(saved.contains(&format!("rm -rf build  # in {}", a.display())), "{saved}");
+        assert!(allowlisted(&cfg, "rm -rf build", Some(&a)));
+        assert!(allowlisted(&cfg, "rm -rf build", Some(&a.join("."))), "the same folder, spelled differently");
+        assert!(!allowlisted(&cfg, "rm -rf build", Some(&b)));
+        assert!(!allowlisted(&cfg, "rm -rf build", Some(&user_home)));
+        assert!(!allowlisted(&cfg, "rm -rf build", None));
+        // Granted in home: covers home only.
+        assert!(allow_permanently(&cfg, "rm notes.txt", Some(&user_home)));
+        assert!(allowlisted(&cfg, "rm notes.txt", Some(&user_home)) && !allowlisted(&cfg, "rm notes.txt", Some(&a)));
+        // Older (unbound) entries and hand-written globs: any folder but a broad one.
+        std::fs::write(cfg.join("config.yaml"), "command_allowlist:\n- make clean\n- podman *\n").unwrap();
+        for cmd in ["make clean", "podman ps"] {
+            assert!(allowlisted(&cfg, cmd, Some(&a)) && allowlisted(&cfg, cmd, Some(&b)) && allowlisted(&cfg, cmd, None), "{cmd}");
+            assert!(!allowlisted(&cfg, cmd, Some(&user_home)) && !allowlisted(&cfg, cmd, Some(Path::new("/"))), "{cmd}");
+        }
+        // A bound glob.
+        assert!(allow_permanently(&cfg, "npm run *", Some(&a)));
+        assert!(allowlisted(&cfg, "npm run build", Some(&a)) && !allowlisted(&cfg, "npm run build", Some(&b)));
+        // A command that merely ends like a bound entry is not that entry.
+        assert!(!allowlisted(&cfg, &format!("rm -rf build  # in {}", a.display()), Some(&a)));
+        let _ = std::fs::remove_dir_all(&cfg);
+    }
+
+    #[tokio::test]
+    async fn a_delete_in_home_prompts_the_window_with_the_broad_folder_reason() {
+        use factr_base::hooks::ApprovalHook;
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(home) = test_home() else { return };
+        let hub = Arc::new(Hub::default());
+        let (_c, mut rx) = client(&hub, "s").await;
+        let home = home.to_string_lossy().to_string();
+        let input = json!({ "command": r#"rm "$HOME/qa-approve/a.txt""# });
+        let asked = {
+            let (hub, input, home) = (hub.clone(), input.clone(), home.clone());
+            tokio::spawn(async move {
+                let call = factr_base::hooks::ApprovalCall { session_id: "s", working_dir: Some(&home), tool: "bash", input: &input };
+                HubGate(hub).approve(&call).await
+            })
+        };
+        let Message::Text(frame) = rx.recv().await.unwrap() else { panic!() };
+        let frame: Value = serde_json::from_str(&frame).unwrap();
+        assert_eq!(frame["method"], "approval");
+        assert_eq!(frame["params"]["description"], gate::BROAD_FOLDER_DELETE, "{frame}");
+        assert!(hub.answer(frame["id"].as_str().unwrap(), "deny").await);
+        assert!(asked.await.unwrap().is_err(), "declined: not run");
     }
 
     async fn client(hub: &Hub, session: &str) -> (Arc<Client>, mpsc::Receiver<Message>) {
@@ -1011,36 +1247,36 @@ mod tests {
         let home = std::env::temp_dir().join(format!("approvals-allowlist-{}", std::process::id()));
         std::fs::create_dir_all(&home).unwrap();
         let cfg = home.join("config.yaml");
-        assert!(!allowlisted(&home, "make clean"), "no config: not allowed");
+        assert!(!allowlisted(&home, "make clean", None), "no config: not allowed");
         std::fs::write(&cfg, "# mine\napprovals:\n  mode: manual\ncommand_allowlist:\n- recursive delete\n- podman *\n").unwrap();
-        assert!(allowlisted(&home, "podman ps -a"));
-        assert!(!allowlisted(&home, "podman ps; rm -rf x"), "compound commands never match");
-        assert!(!allowlisted(&home, "rm -rf build"), "a pattern key is not command text");
+        assert!(allowlisted(&home, "podman ps -a", None));
+        assert!(!allowlisted(&home, "podman ps; rm -rf x", None), "compound commands never match");
+        assert!(!allowlisted(&home, "rm -rf build", None), "a pattern key is not command text");
         // An always grant lands in the same list, the rest of the file untouched.
-        assert!(allow_permanently(&home, "rm -rf build"));
+        assert!(allow_permanently(&home, "rm -rf build", None));
         let text = std::fs::read_to_string(&cfg).unwrap();
         assert!(text.starts_with("# mine\napprovals:") && text.contains("- podman *\n- \"rm -rf build\"\n"), "{text}");
-        assert!(allowlisted(&home, "rm -rf build") && !allowlisted(&home, "rm -rf dist"));
-        assert!(allow_permanently(&home, "rm -rf build"), "already there");
+        assert!(allowlisted(&home, "rm -rf build", None) && !allowlisted(&home, "rm -rf dist", None));
+        assert!(allow_permanently(&home, "rm -rf build", None), "already there");
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), text);
         // Other shapes: absent key, empty list, refused commands.
         std::fs::write(&cfg, "model: x\ncommand_allowlist: []\n").unwrap();
-        assert!(allow_permanently(&home, "make clean") && allowlisted(&home, "make clean"));
+        assert!(allow_permanently(&home, "make clean", None) && allowlisted(&home, "make clean", None));
         std::fs::write(&cfg, "model: x").unwrap();
-        assert!(allow_permanently(&home, "make clean") && allowlisted(&home, "make clean"));
-        assert!(!allow_permanently(&home, "make a && make b") && !allow_permanently(&home, "a\nb"));
+        assert!(allow_permanently(&home, "make clean", None) && allowlisted(&home, "make clean", None));
+        assert!(!allow_permanently(&home, "make a && make b", None) && !allow_permanently(&home, "a\nb", None));
         std::fs::write(&cfg, "command_allowlist: [a, b]\n").unwrap();
-        assert!(!allow_permanently(&home, "make clean"), "inline lists are left alone");
+        assert!(!allow_permanently(&home, "make clean", None), "inline lists are left alone");
         // A Factr save landing between our read and our rename is merged, not overwritten.
         std::fs::write(&cfg, "model: x\n").unwrap();
         let mut raced = false;
-        assert!(allow_permanently_with(&home, "make all", || {
+        assert!(allow_permanently_with(&home, "make all", None, || {
             if !std::mem::replace(&mut raced, true) {
                 std::fs::write(&cfg, "model: x\nagent:\n  max_turns: 9\n").unwrap();
             }
         }));
         let saved = std::fs::read_to_string(&cfg).unwrap();
-        assert!(saved.contains("max_turns: 9") && allowlisted(&home, "make all"), "{saved}");
+        assert!(saved.contains("max_turns: 9") && allowlisted(&home, "make all", None), "{saved}");
         let _ = std::fs::remove_dir_all(home);
     }
 
@@ -1076,12 +1312,12 @@ mod tests {
         let a = ids.iter().find(|id| hub.shown.try_lock().unwrap()[id.as_str()].1["command"] == "rm -rf a").unwrap().clone();
         assert!(hub.answer(&a, "always").await);
         for _ in 0..100 {
-            if allowlisted(&home, "rm -rf a") {
+            if allowlisted(&home, "rm -rf a", None) {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        assert!(allowlisted(&home, "rm -rf a"));
+        assert!(allowlisted(&home, "rm -rf a", None));
         assert!(hub.sticky_grants.lock().await.is_empty());
         assert_eq!(hub.decide("s1", "bash", "rm -rf a", "r").await, "once", "allowlisted now, in every later engine too");
         // The answered prompt is gone from the store; the other survives another restart.
