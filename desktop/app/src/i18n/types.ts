@@ -999,6 +999,7 @@ export interface Translations {
       emptyDesc: string
       failedLoad: string
       autosaveFailed: string
+      contextLengthInvalid: (max: string) => string
       imported: string
       invalidJson: string
       toolsetsWipeConfirm: string

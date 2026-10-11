@@ -1197,6 +1197,7 @@ export const en: Translations = {
       emptyDesc: 'This section has no adjustable settings.',
       failedLoad: 'Settings failed to load',
       autosaveFailed: 'Autosave failed',
+      contextLengthInvalid: max => `Enter a whole number from 0 to ${max} (0 = detect automatically).`,
       imported: 'Config imported',
       invalidJson: 'Invalid config JSON',
       toolsetsWipeConfirm:

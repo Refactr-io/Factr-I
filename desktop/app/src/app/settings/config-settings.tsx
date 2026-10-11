@@ -22,7 +22,7 @@ import {
 } from '@/store/data-url-read-max'
 import { $disableF12, setDisableF12 } from '@/store/disable-f12'
 import { $keepAwake, setKeepAwake } from '@/store/keep-awake'
-import { notify, notifyError } from '@/store/notifications'
+import { dismissNotification, notify, notifyError } from '@/store/notifications'
 import { normalizeProfileKey } from '@/store/profile'
 import { repoDiscoveryPolicyFromConfig, repoDiscoveryPolicySignature, scanAndRecordRepos } from '@/store/projects'
 import { $settingsRequestProfile } from '@/store/settings-scope'
@@ -50,6 +50,8 @@ import { PoolLimitsSetting } from './pool-limits-setting'
 import { EmptyState, ListRow, SettingsContent, SettingsSkeleton, ToggleRow } from './primitives'
 import { SettingsProfileScope } from './profile-scope'
 import { QuickEntrySettings } from './quick-entry-settings'
+
+const AUTOSAVE_ERROR_ID = 'settings-autosave-failed'
 
 export function ConfigSettings({
   activeSectionId,
@@ -197,6 +199,9 @@ function ConfigSettingsInner({
     // scopeProfile is constant per mount (the inner component is keyed on it).
   }, [scopeProfile])
 
+  // An autosave error belongs to the tab it happened on; do not leave it lingering on the others.
+  useEffect(() => () => dismissNotification(AUTOSAVE_ERROR_ID), [subpage])
+
   // Leaving the section inside the debounce window must not drop the flip: flush the pending save on unmount.
   useEffect(() => () => pendingSaveRef.current?.(), [])
 
@@ -250,7 +255,7 @@ function ConfigSettingsInner({
           }
         } catch (err) {
           if (saveVersionRef.current === v) {
-            notifyError(err, c.autosaveFailed)
+            notifyError(err, c.autosaveFailed, { id: AUTOSAVE_ERROR_ID })
           }
         }
       })

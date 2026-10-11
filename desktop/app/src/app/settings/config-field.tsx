@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -161,19 +161,12 @@ export function ConfigField({
 
   if (schema.type === 'number') {
     return row(
-      <Input
-        className={CONTROL_TEXT}
-        onChange={e => {
-          const raw = e.target.value
-          const n = raw === '' ? 0 : Number(raw)
-
-          if (!Number.isNaN(n)) {
-            onChange(n)
-          }
-        }}
+      <NumberInput
+        errorMessage={bounds => c.contextLengthInvalid(bounds.max.toLocaleString('en-US'))}
+        onChange={onChange}
         placeholder={c.notSet}
-        type="number"
-        value={value === undefined || value === null ? '' : String(value)}
+        schemaKey={schemaKey}
+        value={value}
       />
     )
   }
@@ -234,5 +227,89 @@ export function ConfigField({
       />
     ),
     isLong
+  )
+}
+
+/** Integer bounds for number settings that have a meaningful limit; others stay free-form. */
+export function numberBoundsForKey(schemaKey: string): { max: number; min: number } | null {
+  return schemaKey === 'model_context_length' ? { max: 10_000_000, min: 0 } : null
+}
+
+/** Parse a number field's text. Returns the value to store, or null when it must be rejected. */
+export function parseBoundedInteger(raw: string, bounds: { max: number; min: number }): number | null {
+  const text = raw.trim()
+
+  if (text === '') {
+    return 0
+  }
+
+  if (!/^\d+$/.test(text)) {
+    return null
+  }
+
+  const n = Number(text)
+
+  return n >= bounds.min && n <= bounds.max ? n : null
+}
+
+function NumberInput({
+  errorMessage,
+  onChange,
+  placeholder,
+  schemaKey,
+  value
+}: {
+  errorMessage: (bounds: { max: number; min: number }) => string
+  onChange: (value: unknown) => void
+  placeholder: string
+  schemaKey: string
+  value: unknown
+}) {
+  const bounds = numberBoundsForKey(schemaKey)
+  const [draft, setDraft] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+  const stored = value === undefined || value === null ? '' : String(value)
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Input
+        aria-invalid={error || undefined}
+        className={CONTROL_TEXT}
+        inputMode={bounds ? 'numeric' : undefined}
+        onBlur={() => {
+          setDraft(null)
+          setError(false)
+        }}
+        onChange={e => {
+          const raw = e.target.value
+
+          if (bounds) {
+            const parsed = parseBoundedInteger(raw, bounds)
+            setDraft(raw)
+            setError(parsed === null)
+
+            if (parsed !== null) {
+              onChange(parsed)
+            }
+
+            return
+          }
+
+          const n = raw === '' ? 0 : Number(raw)
+
+          if (!Number.isNaN(n)) {
+            onChange(n)
+          }
+        }}
+        placeholder={placeholder}
+        type={bounds ? 'text' : 'number'}
+        value={draft ?? stored}
+      />
+      {error && bounds ? (
+        <p className="text-xs text-destructive" role="alert">
+          {errorMessage(bounds)}
+        </p>
+      ) : null}
+    </div>
   )
 }
