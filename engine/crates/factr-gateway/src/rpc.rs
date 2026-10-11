@@ -4248,7 +4248,8 @@ mod tests {
         let mut text = String::new();
         for _ in 0..200 {
             text = said(conn.dispatch("command.dispatch", &json!({ "name": "usage", "arg": "", "session_id": "u1" })).await.unwrap());
-            if text.contains("This session: 1 run, 2 model calls") { break; }
+            // Both lines come from separate queries: wait for the whole reply, not just the second line.
+            if text.contains("Today: 1 run, 2 model calls") && text.contains("This session: 1 run, 2 model calls") { break; }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert!(text.contains("Today: 1 run, 2 model calls, 11 in / 7 out tokens, cost unpriced (1 call without a known price)"), "{text}");
