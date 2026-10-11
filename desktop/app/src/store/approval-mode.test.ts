@@ -38,6 +38,23 @@ describe('profile-scoped approval mode cache', () => {
     expect(approvalModeForProfile('default')).toBe('smart')
   })
 
+  it('keeps the picked mode when the write reply carries no value', async () => {
+    for (const reply of [{}, { value: '' }, undefined]) {
+      await setApprovalModeForProfile(
+        vi.fn(async () => reply),
+        'default',
+        'smart'
+      )
+      expect(approvalModeForProfile('default')).toBe('smart')
+    }
+  })
+
+  it('the chip follows the profile config, never a per-session default: a session.info without a mode leaves it alone', () => {
+    reconcileApprovalModeForProfile('default', 'off')
+    reconcileApprovalModeForProfile('default', '')
+    expect(approvalModeForProfile('default')).toBe('off')
+  })
+
   it('keeps profile values isolated', async () => {
     await syncApprovalModeForProfile(
       vi.fn(async () => ({ value: 'manual' })),

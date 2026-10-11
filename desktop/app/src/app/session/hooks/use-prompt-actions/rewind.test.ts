@@ -9,6 +9,7 @@ import {
   applyRewindOptimistic,
   dropLastUserTurns,
   finalizeInterruptedMessages,
+  finalizeStoppedMessages,
   finalizeUserInterruptedMessages,
   planEdit,
   planReload,
@@ -296,6 +297,48 @@ describe('finalizeInterruptedMessages', () => {
     expect(message.parts).toHaveLength(1)
     expect(message.parts[0].completedAt).toBe(11.25)
     expect(message.completedAt).toBe(11.25)
+  })
+})
+
+describe('finalizeStoppedMessages', () => {
+  it('marks the stopped reply and keeps its partial text', () => {
+    const out = finalizeStoppedMessages(
+      [row('u', 'user', 'hi'), row('a', 'assistant', 'partial answ', { pending: true })],
+      'a'
+    )
+
+    expect(out[1]).toMatchObject({ id: 'a', pending: false, stopped: true })
+    expect(out[1].parts).toEqual([textPart('partial answ')])
+  })
+
+  it('keeps an empty pending reply as a carrier for the marker', () => {
+    const out = finalizeStoppedMessages([row('u', 'user', 'hi'), { id: 'a', parts: [], pending: true, role: 'assistant' }], 'a')
+
+    expect(out).toHaveLength(2)
+    expect(out[1]).toMatchObject({ id: 'a', stopped: true })
+  })
+
+  it('adds a marker row when a hung turn never produced a reply row', () => {
+    const out = finalizeStoppedMessages([row('u', 'user', 'hi')], null)
+
+    expect(out).toHaveLength(2)
+    expect(out[1]).toMatchObject({ parts: [], role: 'assistant', stopped: true })
+  })
+
+  it('does not mark a finished reply', () => {
+    const out = finalizeStoppedMessages([row('u', 'user', 'hi'), row('a', 'assistant', 'done')], null)
+
+    expect(out.some(message => message.stopped)).toBe(false)
+  })
+
+  it('steering (mid-turn insert) does not mark a stop', () => {
+    const state: MidTurnState = {
+      interimBoundaryPending: false,
+      messages: [row('u', 'user', 'hi'), row('a', 'assistant', 'partial', { pending: true })],
+      streamId: 'a'
+    }
+
+    expect(appendMidTurnUserMessage(state, row('u2', 'user', 'also')).messages.some(m => m.stopped)).toBe(false)
   })
 })
 

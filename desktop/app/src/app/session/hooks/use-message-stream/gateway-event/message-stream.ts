@@ -12,6 +12,7 @@ import { clearClarifyRequest } from '@/store/clarify'
 import { setSessionCompacting } from '@/store/compaction'
 import { notify } from '@/store/notifications'
 import { flashPetActivity, markPetUnread, setPetActivity } from '@/store/pet'
+import { $gatewaySwapTarget } from '@/store/profile'
 import { clearAllPrompts } from '@/store/prompts'
 import { providerWaitText, setSessionProviderWait } from '@/store/provider-wait'
 import { setCurrentUsage, setTurnStartedAt } from '@/store/session'
@@ -166,6 +167,12 @@ export function handleMessageStreamEvent(ctx: GatewayEventContext): boolean {
   }
 
   if (event.type === 'message.delta') {
+    // First output proves the profile wake is over: retire "Waking up <profile>…" now rather than
+    // when the open-session wake finishes.
+    if ($gatewaySwapTarget.get()) {
+      $gatewaySwapTarget.set(null)
+    }
+
     if (sessionId) {
       appendAssistantDelta(sessionId, coerceGatewayText(payload?.text), occurredAt)
     }

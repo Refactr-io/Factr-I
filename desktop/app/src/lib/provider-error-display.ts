@@ -43,6 +43,15 @@ const STATUS_PATTERNS: readonly RegExp[] = [
 const PROVIDER_CONTEXT_RE =
   /\b(?:provider|model|endpoint|chat request|completions?|anthropic|openai|openrouter|ollama|gemini|rate limit)\b/i
 
+// The engine's 401 text for an API key or login the provider refused ("OpenAI rejected the access token
+// and no refresh token is available; run `factr login` ..."), plus the provider's own wording.
+const KEY_REJECTED_RE =
+  /\b(?:rejected the (?:access )?(?:token|key|credentials?)|no refresh token|incorrect api key|invalid(?:[_ ])api(?:[_ ])key|invalid x-api-key|unauthori[sz]ed)\b/i
+
+// A reply that stopped part-way: a dropped or closed stream, a malformed event, an unknown stop reason.
+const TRUNCATED_RE =
+  /\b(?:truncated|unexpected end(?: of (?:stream|input|file|json))?|stream (?:closed|ended|ended unexpectedly|was closed)|connection closed (?:before|unexpectedly)|malformed(?: (?:sse|stream|event|chunk|json))?|unknown stop[_ ]reason|stop_reason: unknown|ended its turn without any visible output)\b/i
+
 const LOCAL_HOST_RE = /\b(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0)\b|\[::1\]|:11434\b/i
 
 const RETRIED_MARK = ' (retried after reloading auth from disk: '
@@ -84,10 +93,15 @@ export function inferErrorSurface(raw: null | string | undefined): ErrorSurface 
     return { code: 'no_provider', layer: 'auth', retryable: false }
   }
 
-  const status = PROVIDER_CONTEXT_RE.test(text) ? providerErrorStatus(text) : null
+  const providerText = PROVIDER_CONTEXT_RE.test(text)
+  const status = providerText ? providerErrorStatus(text) : null
 
-  if (status === 401) {
+  if (status === 401 || (providerText && KEY_REJECTED_RE.test(text))) {
     return { code: 'provider_key_rejected', layer: 'auth', retryable: false }
+  }
+
+  if (status === null && TRUNCATED_RE.test(text)) {
+    return { code: 'truncated', layer: 'streaming', retryable: true }
   }
 
   if (status === 404) {
@@ -131,7 +145,7 @@ export function tidyErrorDetails(raw: null | string | undefined): string {
     }
   }
 
-  if (providerErrorStatus(text) === 401 || !isLocalEndpointError(text)) {
+  if (providerErrorStatus(text) === 401 || KEY_REJECTED_RE.test(text) || !isLocalEndpointError(text)) {
     text = text
       .replace(ENDPOINT_HINT_LINE_RE, '')
       .replace(/\n{2,}/g, '\n')

@@ -91,7 +91,8 @@ export async function setApprovalModeForProfile(
       value: mode
     })) as { value?: string }
 
-    const authoritative = normalizeApprovalMode(result?.value)
+    // An empty reply is not a report: keep what the user just picked instead of reading it as 'manual'.
+    const authoritative = hasReportedMode(result?.value) ? normalizeApprovalMode(result?.value) : mode
 
     if (revisions.get(key) === revision) {
       confirmedModes.set(key, authoritative)

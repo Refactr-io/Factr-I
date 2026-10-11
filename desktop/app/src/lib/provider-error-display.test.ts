@@ -79,13 +79,40 @@ describe('provider HTTP status', () => {
   })
 
   it('429: rate limited, retrying', () => {
-    expect(title(dump('https://api.example.com/v1', '429 Too Many Requests', ''))).toBe('Rate limited, retrying')
+    expect(title(dump('https://api.example.com/v1', '429 Too Many Requests', ''))).toBe('Rate limited. Try again in a moment.')
   })
 
   it.each(['500 Internal Server Error', '502 Bad Gateway', '503 Service Unavailable'])('%s: a server error', status => {
     const raw = dump('https://api.example.com/v1', status, '')
-    expect(title(raw)).toBe('The provider had a server error')
+    expect(title(raw)).toBe('The provider had a server error.')
     expect(errorRecoveryPlan(inferErrorSurface(raw)).retry).toBe(true)
+  })
+
+  it.each([
+    'OpenAI rejected the access token and no refresh token is available; run `factr login` to re-authenticate: {"error":{}}',
+    'OpenAI request failed: 401 unauthorized',
+    'OpenAI error: Incorrect API key provided: sk-qa***',
+    'Anthropic: invalid api key'
+  ])('reads a rejected key from engine text: %s', raw => {
+    const surface = inferErrorSurface(raw)
+    expect(surface?.code).toBe('provider_key_rejected')
+    const { body, title } = errorCardText(TRANSLATIONS.en.assistant.thread, surface)
+    expect(title).toBe('The provider rejected the key or login')
+    expect(body).toMatch(/Check or replace it in Settings > Providers/)
+    expect(body).not.toMatch(/factr login/)
+    expect(tidyErrorDetails(raw)).toContain(raw.split(':')[0])
+  })
+
+  it.each([
+    'OpenAI stream closed before the response completed',
+    'unexpected end of stream',
+    'malformed SSE event from provider',
+    'The model ended its turn without any visible output (stop_reason: unknown)',
+    'response truncated'
+  ])('reads a cut-off stream: %s', raw => {
+    const surface = inferErrorSurface(raw)
+    expect(surface?.code).toBe('truncated')
+    expect(errorCardText(TRANSLATIONS.en.assistant.thread, surface).body).toBe('The reply was cut off. Retry to continue.')
   })
 
   it('reads other status spellings', () => {

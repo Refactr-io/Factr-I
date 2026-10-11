@@ -185,6 +185,8 @@ const COMPARED_FIELDS = [
   'hidden',
   'branchGroupId',
   'interim',
+  // The "Stopped" marker under a reply the user stopped.
+  'stopped',
   'reactions',
   'timestamp',
   'completedAt',

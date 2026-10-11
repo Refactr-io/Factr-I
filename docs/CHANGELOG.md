@@ -18,6 +18,17 @@ behaviour is unchanged from 0.0.4.
 
 - Approval mode label: it no longer flips from Smart to Manual after opening and closing Settings. An empty reply for
   `approvals.mode` (the key is not in config.yaml) was read as Manual; it now keeps the engine default shown.
+- Chat errors: an API-key 401 from the engine ("rejected the access token and no refresh token is available; run
+  `factr login`...") now reads "The provider rejected the key or login. Check or replace it in Settings > Providers"
+  instead of the generic card; the raw text stays under Details. A cut-off or malformed stream reads "The reply was cut
+  off. Retry to continue." A final rate-limit or server error uses final wording ("Rate limited. Try again in a
+  moment.") instead of "retrying".
+- Chat toasts: error toasts no longer pile up (one per session, at most three), websocket-to-https fallback and
+  cooldown notices are treated as routine progress, and "Waking up <profile>..." clears on the first token or error and
+  no longer stays in the page.
+- Chat: "Always allow" now says it allows this exact command (and shows it); agentgrep and ls cards read "Searched X in
+  folder" / "Listed folder"; stopping a reply leaves a quiet "Stopped" line and keeps the partial text; an empty reply
+  to an approval-mode write no longer flips the chip to Manual.
 - Settings > Model: the main-model context-window override accepts only whole numbers from 0 to 10,000,000 (0 = detect),
   shows an inline error otherwise, and an autosave error no longer lingers when you switch Model tabs.
 - Mixture of Agents: preset names are limited to 40 letters, digits, spaces, dots, dashes and underscores, and providers

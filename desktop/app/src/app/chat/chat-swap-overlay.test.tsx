@@ -3,7 +3,7 @@
 // that GlyphSpinner was rewritten to remove. It now renders GlyphSpinner, so
 // what needs pinning is that no timer comes back, that the label still survives
 // the fade-out, and that the spinner stops animating once the swap is done.
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChatSwapOverlay } from './chat-swap-overlay'
@@ -33,5 +33,18 @@ describe('ChatSwapOverlay', () => {
     expect(screen.getByText(/turqoise/)).toBeTruthy()
     // ...and the spinner stops, the way clearing the interval used to stop it.
     expect(container.querySelector('[data-slot="agent-orb"]')?.getAttribute('data-paused')).toBe('true')
+
+    // After the fade the text is gone from the DOM, not just transparent.
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(screen.queryByText(/Waking up/)).toBeNull()
+    expect(container.textContent).toBe('')
+  })
+
+  it('renders nothing when there is no swap in progress', () => {
+    const { container } = render(<ChatSwapOverlay profile={null} />)
+
+    expect(container.textContent).toBe('')
   })
 })

@@ -3571,6 +3571,8 @@ export interface Translations {
       errorAuthKinds: { api_key: ErrorCardCopy; oauth: Pick<ErrorCardCopy, 'title'> }
       /** Collapsed "Details" line holding the raw provider/gateway text. */
       errorDetails: string
+      /** Quiet marker under a reply the user stopped. */
+      stopped: string
       /** Stands in for the provider name when the descriptor carries none. */
       errorGenericProvider: string
       /** Global toast title for a mid-turn gateway `error` event. */

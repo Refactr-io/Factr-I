@@ -415,6 +415,7 @@ export function finalizeInterruptedMessages(
       message =>
         !(
           (message.pending || message.id === streamId) &&
+          !message.stopped &&
           message.parts.length === 0 &&
           !chatMessageText(message).trim()
         )
@@ -454,6 +455,35 @@ export function finalizeUserInterruptedMessages(
   )
 
   return finalizeInterruptedMessages(marked, streamId, occurredAt)
+}
+
+/**
+ * Stop button finalize: `finalizeUserInterruptedMessages` plus a quiet "Stopped" marker on the
+ * reply that was cut short (partial text kept). A hung turn that never produced a reply row gets an
+ * empty assistant row to carry the marker. Not used by mid-turn steering, which is not a stop.
+ */
+export function finalizeStoppedMessages(
+  messages: ChatMessage[],
+  streamId?: null | string,
+  occurredAt = Date.now() / 1000
+): ChatMessage[] {
+  const live = messages.some(message => message.pending || message.id === streamId)
+
+  const flagged = live
+    ? messages.map(message => (message.pending || message.id === streamId ? { ...message, stopped: true } : message))
+    : messages
+
+  const finalized = finalizeUserInterruptedMessages(flagged, streamId, occurredAt)
+  const last = finalized.at(-1)
+
+  if (last?.role === 'user' && !last.hidden) {
+    return [
+      ...finalized,
+      { id: `stopped-${Math.round(occurredAt * 1000)}`, parts: [], role: 'assistant', stopped: true, timestamp: occurredAt }
+    ]
+  }
+
+  return finalized
 }
 
 /**

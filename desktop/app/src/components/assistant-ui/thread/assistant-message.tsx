@@ -238,6 +238,7 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
   // tool-heavy turn doesn't grow a copy/refresh bar per paragraph (see
   // ChatMessage.interim).
   const isInterim = useAuiState(s => s.message.metadata?.custom?.interim === true)
+  const wasStopped = useAuiState(s => s.message.metadata?.custom?.stopped === true)
 
   // Whole-turn wall-clock seconds (set once at completion — referentially
   // stable across the 30 Hz delta stream, so this adds no per-token renders).
@@ -293,6 +294,11 @@ const AssistantMessageBody: FC<AssistantMessageProps & { collapsedNotice?: null 
             {/* Todos render in the composer status stack now, not inline. */}
             {MESSAGE_PARTS}
             <AssistantStatusSlot />
+            {wasStopped && (
+              <div className="mt-1 text-[0.75rem] text-muted-foreground" data-slot="aui_stopped-marker">
+                {t.assistant.thread.stopped}
+              </div>
+            )}
             <AssistantPreviewEmbeds />
             <MessagePrimitive.Error>
               <ErrorPrimitive.Root

@@ -340,6 +340,31 @@ describe('code-keyed error card copy and actions', () => {
     expect(await screen.findByText(codes.provider_key_rejected.title as string)).toBeTruthy()
     expect(screen.queryByText(/Local endpoint hint/)).toBeNull()
   })
+
+  it('reads the engine API-key 401 text as a rejected key and keeps `factr login` under Details', async () => {
+    const raw =
+      'OpenAI rejected the access token and no refresh token is available; run `factr login` to re-authenticate: {}'
+
+    render(<Harness assistant={withoutDescriptor(raw)} />)
+
+    expect(await screen.findByText(codes.provider_key_rejected.title as string)).toBeTruthy()
+    expect(screen.getByText(/Check or replace it in Settings > Providers/)).toBeTruthy()
+    // The raw text is only inside the collapsed Details block, never the headline body.
+    expect(screen.getByText(raw).closest('details')).not.toBeNull()
+  })
+})
+
+describe('stopped marker', () => {
+  it('shows a quiet Stopped line under a reply the user stopped', async () => {
+    const stopped = {
+      ...assistantMessage(),
+      metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { stopped: true } }
+    } as unknown as ThreadMessage
+
+    render(<Harness assistant={stopped} />)
+
+    expect(await screen.findByText('Stopped')).toBeTruthy()
+  })
 })
 
 describe('scheduled retry at the usage-limit reset (#98852)', () => {

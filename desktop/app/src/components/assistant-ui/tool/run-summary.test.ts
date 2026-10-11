@@ -17,6 +17,19 @@ const running = (tools: ToolCallLike[]) => summarizeToolRun(tools, true)
 // edits and other cards are split out before a run is summarized, so there is
 // no "Edited …" clause to test here — that work shows as its own diff card.
 describe('summarizeToolRun', () => {
+  it('labels agentgrep and ls with the action and the folder, not the folder alone', () => {
+    const dir = '/Users/q/qa dir with spaces'
+
+    expect(settled([tool('agentgrep', { path: dir, query: 'QA-REPLACED' }, { hits: [] })])).toBe(
+      'Searched QA-REPLACED in qa dir with spaces'
+    )
+    expect(settled([tool('ls', { path: `${dir}/` }, { entries: [] })])).toBe('Listed qa dir with spaces')
+    expect(running([tool('ls', { path: dir })])).toBe('Listing qa dir with spaces')
+    expect(settled([tool('ls', { path: dir }, {}), tool('agentgrep', { path: dir, query: 'x' }, {})])).toBe(
+      'Explored 2 files'
+    )
+  })
+
   it('names a lone target and counts the rest', () => {
     expect(settled([searched('toolRuns'), read('a.ts'), read('b.ts'), read('c.ts')])).toBe('Explored 4 files')
   })

@@ -16,7 +16,16 @@ export function ChatSwapOverlay({ profile }: { profile: string | null }) {
   useEffect(() => {
     if (profile) {
       setLabel(profile)
+
+      return
     }
+
+    // Keep the name through the 150ms fade-out, then drop it: faded-out text is still in the
+    // DOM (and read aloud by nothing, but found by every text scan), so "Waking up default…"
+    // would otherwise sit on screen invisibly for the whole session.
+    const timer = window.setTimeout(() => setLabel(null), 250)
+
+    return () => window.clearTimeout(timer)
   }, [profile])
 
   // The first run swaps profiles twice — into the setup profile, then into the
@@ -25,7 +34,7 @@ export function ChatSwapOverlay({ profile }: { profile: string | null }) {
   // as a stall in the one moment that has to feel instant. The flow narrates
   // its own handoff (the handoff card) and the greeting is banked, so there
   // is nothing here to cover.
-  if (onboarding) {
+  if (onboarding || (!profile && !label)) {
     return null
   }
 
