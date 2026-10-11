@@ -483,12 +483,12 @@ function ConfigSettingsInner({
           {visibleFields.map(([key, field]) => (
             <div className="scroll-mt-6" data-settings-slot="" id={`setting-field-${key}`} key={key}>
               <ConfigField
+                descriptionExtra={key === 'approvals.mode' ? <WorkingFolderNote /> : undefined}
                 enumOptions={
                   key === 'tts.elevenlabs.voice_id'
                     ? enumOptionsFor(key, getNested(config, key), config, elevenLabsVoiceOptions ?? undefined)
                     : enumOptionsFor(key, getNested(config, key), config)
                 }
-                descriptionExtra={key === 'approvals.mode' ? <WorkingFolderNote /> : undefined}
                 onChange={value => updateConfig(setNested(config, key, value))}
                 optionLabels={key === 'tts.elevenlabs.voice_id' ? elevenLabsVoiceLabels : undefined}
                 schema={field}

@@ -12,9 +12,9 @@ import {
 import { useI18n } from '@/i18n'
 import {
   $approvalModes,
-  DEFAULT_APPROVAL_MODE,
   type ApprovalMode,
   type ApprovalModeRequester,
+  DEFAULT_APPROVAL_MODE,
   setApprovalModeForProfile,
   syncApprovalModeForProfile
 } from '@/store/approval-mode'

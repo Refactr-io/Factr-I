@@ -43,9 +43,9 @@ describe('profile-scoped approval mode cache', () => {
       await setApprovalModeForProfile(
         vi.fn(async () => reply),
         'default',
-        'smart'
+        'off'
       )
-      expect(approvalModeForProfile('default')).toBe('smart')
+      expect(approvalModeForProfile('default')).toBe('off')
     }
   })
 
