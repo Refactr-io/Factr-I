@@ -344,6 +344,7 @@ describe('code-keyed error card copy and actions', () => {
   it('reads the engine API-key 401 text as a rejected key and keeps `factr login` under Details', async () => {
     const raw =
       'OpenAI rejected the access token and no refresh token is available; run `factr login` to re-authenticate: {}'
+
     render(<Harness assistant={withoutDescriptor(raw)} />)
 
     expect(await screen.findByText(codes.provider_key_rejected.title as string)).toBeTruthy()
@@ -359,6 +360,7 @@ describe('stopped marker', () => {
       ...assistantMessage(),
       metadata: { unstable_state: null, unstable_annotations: [], unstable_data: [], steps: [], custom: { stopped: true } }
     } as unknown as ThreadMessage
+
     render(<Harness assistant={stopped} />)
 
     expect(await screen.findByText('Stopped')).toBeTruthy()
