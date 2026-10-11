@@ -1,7 +1,19 @@
 import { app } from 'electron'
 
+import { isLockedDownBuild, isQaBuild, stripRemoteDebuggingSwitches } from './release-debug-lockdown'
 import { wslgLaunchArgs } from './wslg-launch'
 import { spawnWslgLaunch } from './wslg-launch-process'
+
+// Release build: drop Chromium's remote debugging switches before anything else runs (the DevTools server reads
+// the command line only after this script has run). Runs on every launch, relaunches included, and never exits:
+// a stray flag must not turn into a start failure or a relaunch loop. See release-debug-lockdown.ts.
+if (isLockedDownBuild(app.isPackaged, isQaBuild())) {
+  const removed = stripRemoteDebuggingSwitches(app.commandLine)
+
+  if (removed.length > 0) {
+    console.warn(`[factr] ignored remote debugging switches: ${removed.map(name => `--${name}`).join(' ')}`)
+  }
+}
 
 const args = wslgLaunchArgs(process.argv.slice(1), process.env, process.platform)
 

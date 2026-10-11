@@ -382,6 +382,12 @@ import { createQuickEntryShortcut, quickEntryWindowBounds, sanitizeQuickEntrySet
 import { createQuitFinalization } from './quit-finalization'
 import { type ActiveWork, mergeActiveWork, normalizeActiveWork, quitPromptFor } from './quit-guard'
 import { backendQuitNeedsWait, createQuitTeardownCoordinator } from './quit-teardown'
+import {
+  isLockedDownBuild,
+  isQaBuild,
+  isRemoteDebuggingSwitch,
+  stripRemoteDebuggingSwitches
+} from './release-debug-lockdown'
 import * as remoteLifecycle from './remote-lifecycle'
 import {
   attachPowerResumeRemoteRevalidation,
@@ -871,6 +877,13 @@ const FACTR_CONFIG_HOME = resolveFactrHome()
   }
 
   for (const planned of planLaunchSwitches(readDesktopLaunchConfig(desktopLaunchYaml), process.argv.slice(1))) {
+    // config.yaml `desktop.electron_flags` must not re-open remote debugging that entry.ts closed.
+    if (isLockedDownBuild(app.isPackaged, isQaBuild()) && isRemoteDebuggingSwitch(planned.name)) {
+      console.warn(`[factr] config.yaml: ignored --${planned.name} (not allowed in the release build)`)
+
+      continue
+    }
+
     if (planned.value === undefined) {
       app.commandLine.appendSwitch(planned.name)
     } else {
@@ -17664,6 +17677,11 @@ app.on('open-url', (event, url) => {
   event.preventDefault()
   handleDeepLink(url)
 })
+
+// Last look before `ready`: whatever appended a debugging switch since entry.ts ran, the release build has none.
+if (isLockedDownBuild(app.isPackaged, isQaBuild())) {
+  stripRemoteDebuggingSwitches(app.commandLine)
+}
 
 app.whenReady().then(() => {
   // Warm the login-shell PATH resolution immediately so it usually completes

@@ -20,7 +20,40 @@
  * fails the build: a release must never ship with the fuses silently left on.
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
+
 export const QA_FUSES_ENV = 'FACTR_QA_FUSES'
+
+/** Where the packed app keeps dist/ (asarUnpack: dist/**), per platform. */
+function packedDistDir(context) {
+  const name = context.packager?.appInfo?.productFilename ?? 'Factr-I'
+  const resources =
+    process.platform === 'darwin' ? path.join(context.appOutDir, `${name}.app`, 'Contents', 'Resources') : path.join(context.appOutDir, 'resources')
+
+  return path.join(resources, 'app.asar.unpacked', 'dist')
+}
+
+/**
+ * The bundle's own variant (dist/build-variant.json, written by bundle-electron-main.mjs) must match the variant
+ * the fuses are being set for. The release variant strips Chromium's remote debugging switches and the QA variant
+ * keeps them (electron/release-debug-lockdown.ts), so a stale dist/ from the other kind of build fails the build.
+ */
+export function assertBundleVariant(context, env = process.env) {
+  const file = path.join(packedDistDir(context), 'build-variant.json')
+  let qa
+  try {
+    qa = JSON.parse(fs.readFileSync(file, 'utf8')).qa
+  } catch (error) {
+    throw new Error(`after-pack: cannot read the bundle variant at ${file}: ${error.message}`)
+  }
+  const wantQa = env[QA_FUSES_ENV] === '1'
+  if (qa !== wantQa) {
+    throw new Error(
+      `after-pack: the bundle is the ${qa ? 'QA' : 'release'} variant but this build is ${wantQa ? 'QA' : 'release'} (${QA_FUSES_ENV}=${env[QA_FUSES_ENV] ?? ''}); rebuild dist/ with the same environment`
+    )
+  }
+}
 
 /** The fuse options (electron-builder `electronFuses` shape) for this build. */
 export function fuseOptionsFor(env, platform = process.platform, arch = process.arch) {
@@ -36,6 +69,7 @@ export function fuseOptionsFor(env, platform = process.platform, arch = process.
 }
 
 export default async function afterPack(context) {
+  assertBundleVariant(context)
   const options = fuseOptionsFor(process.env)
   const variant = options.runAsNode ? 'QA (fuses on)' : 'release (fuses off)'
   console.log(

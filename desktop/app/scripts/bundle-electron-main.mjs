@@ -13,7 +13,7 @@
 import { build } from 'esbuild'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { buildCommandScreenshotMonitor } from './build-command-screenshot-monitor.mjs'
 import { buildHudModifierMonitor } from './build-hud-modifier-monitor.mjs'
 
@@ -35,9 +35,16 @@ const external = ['electron', 'node-pty', 'get-windows', 'fs']
 // behaves like a packaged build. Dev bundles (`--dev`) leave the env alone
 // so FACTR_DESKTOP_DEV_SERVER / source-tree resolution keep working.
 const isDev = process.argv.includes('--dev')
+// FACTR_QA_BUILD bakes the QA variant (the same FACTR_QA_FUSES=1 that keeps the fuses on) into the bundle so the
+// release build can strip Chromium's remote debugging switches (electron/release-debug-lockdown.ts). It is a
+// bundle-time constant on purpose: a runtime environment variable could not be trusted to keep it off.
+const qaBuildFlag = process.env.FACTR_QA_FUSES === '1' ? '1' : '0'
 const define = isDev
   ? {}
-  : { 'process.env.FACTR_DESKTOP_IS_PACKAGED': JSON.stringify(true) }
+  : {
+      'process.env.FACTR_DESKTOP_IS_PACKAGED': JSON.stringify(true),
+      'process.env.FACTR_QA_BUILD': JSON.stringify(qaBuildFlag)
+    }
 
 // Bundle main.ts → dist/electron-main.mjs
 await build({
@@ -55,6 +62,12 @@ await build({
   logLevel: 'info',
 })
 console.log(`bundled ${mainOut}${isDev ? ' (dev)' : ''}`)
+
+// The variant this bundle was built as, for scripts/after-pack.mjs to check against the fuses it flips (a stale QA
+// dist/ must never be packaged as a release, or the reverse). Release bundles only.
+if (!isDev) {
+  writeFileSync(resolve(distDir, 'build-variant.json'), JSON.stringify({ qa: qaBuildFlag === '1' }) + '\n')
+}
 
 // Bundle preload.ts → dist/electron-preload.js
 await build({
