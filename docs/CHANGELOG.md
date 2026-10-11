@@ -9,30 +9,34 @@ behaviour is unchanged from 0.0.4.
   soon as the desktop learns the engine died (or, failing that, once the restarted engine is reached), the turn ends
   with "The connection to the engine was interrupted. Your message was not completed." and a Retry button, the turn
   clock stops, and messages queued behind it wait under Resume.
-- Uninstall: the summary, the confirmation and the deletion now use one list of targets: the running app (refused when
-  translocated, on a disk image or in a read-only folder), this copy's real app-data folder, and for "everything" the
-  config folder it runs with. The confirmation lists every path. Nothing at a standard location is deleted unless it
-  is the running copy, and no target may be a link, a relative path, or a system or home folder.
+- Uninstall: About > Uninstall works in the packaged app (it runs the bundled interpreter with the bundled backend
+  instead of requiring `~/.factr/factr-backend/venv`) and no longer prints `SyntaxWarning: invalid escape sequence
+  '\c'`. The summary, the confirmation and the deletion use one list of targets: the running app (refused, with an
+  explanation, when translocated, on a disk image or in a read-only folder), this copy's real app-data folder, and for
+  "everything" the config folder it runs with. The confirmation lists every path. Nothing at a standard location is
+  deleted unless it is the running copy, and no target may be a link, a relative path, or a system or home folder. An
+  alert is raised if removing the app fails after quit.
 - A config.yaml that cannot be read is no longer ignored silently: onboarding names the file and the line, and offers
   Open the folder and Back up and start fresh (a copy is saved as `config.yaml.corrupt-<time>` before anything changes).
 - The start screen behind a failed start shows the plain cause; the raw error text is only under Details.
-- Approval mode label: it no longer flips from Smart to Manual after opening and closing Settings. An empty reply for
-  `approvals.mode` (the key is not in config.yaml) was read as Manual; it now keeps the engine default shown.
+- Approval mode: the engine refuses `smart` and defaults to `manual`, so the app defaults to and shows Manual
+  everywhere (new chat, existing chat, after Settings), offers only Manual and Off, and never shows Smart (a stale
+  `smart` in config reads as Manual). Opening and closing Settings no longer flips the label from Smart to Manual: an
+  empty reply for `approvals.mode` (the key is not in config.yaml) was read as Manual, and an empty reply to an
+  approval-mode write no longer flips the chip either. Settings > Safety explains that Manual also asks before
+  deleting files in a home folder or other broad location, and shows the current working folder.
 - Chat errors: an API-key 401 from the engine ("rejected the access token and no refresh token is available; run
   `factr login`...") now reads "The provider rejected the key or login. Check or replace it in Settings > Providers"
-  instead of the generic card; the raw text stays under Details. A cut-off or malformed stream reads "The reply was cut
-  off. Retry to continue." A final rate-limit or server error uses final wording ("Rate limited. Try again in a
-  moment.") instead of "retrying".
-- Chat toasts: error toasts no longer pile up (one per session, at most three), websocket-to-https fallback and
-  cooldown notices are treated as routine progress, and "Waking up <profile>..." clears on the first token or error and
-  no longer stays in the page.
-- Chat: "Always allow" now says it allows this exact command (and shows it); agentgrep and ls cards read "Searched X in
-  folder" / "Listed folder"; stopping a reply leaves a quiet "Stopped" line and keeps the partial text; an empty reply
-  to an approval-mode write no longer flips the chip to Manual.
-- Approval mode honesty: the engine refuses `smart` and defaults to `manual`, so the app now defaults to and shows
-  Manual everywhere (new chat, existing chat, after Settings), offers only Manual and Off, and shows a stale `smart`
-  from config as Manual. Settings > Safety explains that Manual also asks before deleting files in a home folder or
-  other broad location, and shows the current working folder.
+  instead of the generic card; the raw text stays under Details. A cut-off or malformed stream reads "The reply was
+  cut off. Retry to continue." A final rate-limit or server error uses final wording ("Rate limited. Try again in a
+  moment.") instead of "retrying". Provider failures read as a plain message in the error card and toast (no provider
+  connected, rejected key, missing model, rate limit, server error), with the raw text as detail.
+- Chat toasts: error toasts no longer pile up (one per session, at most three), routine provider transport progress
+  ("opening websocket", retries, HTTPS fallback, cooldown notices) shows as a brief info toast instead of a sticky
+  warning (real failures still warn), and "Waking up <profile>..." clears on the first token or error and no longer
+  stays in the page.
+- Chat: "Always allow" now says it allows this exact command (and shows it); agentgrep and ls cards read "Searched X
+  in folder" / "Listed folder"; stopping a reply leaves a quiet "Stopped" line and keeps the partial text.
 - Settings > Model: the main-model context-window override accepts only whole numbers from 0 to 10,000,000 (0 = detect),
   shows an inline error otherwise, and an autosave error no longer lingers when you switch Model tabs.
 - Mixture of Agents: preset names are limited to 40 letters, digits, spaces, dots, dashes and underscores, and providers
@@ -65,13 +69,15 @@ behaviour is unchanged from 0.0.4.
   `openai-api` when only an API key exists and stays `openai-codex` for a ChatGPT sign-in (even with a key present);
   it used to be `openai-codex` always, which the runtime refused for a key-only user. A failed save now shows the
   first line of the server's reason.
-- Desktop: a `FACTR_PROVIDER` the engine's `--provider` flag rejects is no longer passed as a flag (the boot card
-  showed "invalid variant"); the engine reads the variable itself and explains an unsupported value in the app.
 - Desktop: "No usable credentials found for <X>" reads "No AI provider is connected yet ..." when nothing is saved and
   "Your saved provider <X> has no usable credentials ..." when one is; the raw text stays under Details.
   `setup.status` reports `saved_provider` for this. Benchmark starts (`--provider openai --model ...`) are unchanged.
+- Desktop: when a provider is saved but the engine cannot start with it, the card and toast no longer say "No AI
+  provider is connected yet". A saved model the provider rejects ("Unsupported OpenAI model ...") reads "The provider
+  does not have this model", and "credentials not available" with a provider saved reads "Your saved provider could
+  not be used" (Open Providers and model-picker buttons); "No AI provider is connected yet" stays for a first run with
+  nothing saved. Display only; the raw text stays under Details.
 - Desktop: a "Run history" entry in the left rail (advanced mode) and on the Command center Usage tab opens the agent run history page (runs, tokens and cost).
-- Desktop: routine provider transport progress ("opening websocket", retries, HTTPS fallback) now shows as a brief info toast instead of a sticky warning; real failures still warn. Desktop-only; the engine and benchmarked behaviour are unchanged.
 - Sign-in and onboarding: first-run sign-in works for every method in the desktop gateway's chat-only (Python-off)
   mode. User-initiated writes (model and API-key saves, endpoint validation, the recommended-default read after
   sign-in, voice, profile soul) start the Python runtime on demand instead of returning 404 `feature_not_requested`;
@@ -87,6 +93,12 @@ behaviour is unchanged from 0.0.4.
   under `openai-codex`.
 - Packaging: `stage:backend-python` copies symlinks verbatim and fails the build if a bundled symlink is absolute or
   escapes the staged tree (the macOS app used to carry absolute links into the build folder and failed code signing).
+  The bundled Python is precompiled at staging (`compileall`, unchecked-hash pycs) and every spawn of it runs with
+  `PYTHONDONTWRITEBYTECODE=1`, so the app no longer writes ~3,000 `__pycache__` files into its own signed bundle;
+  packaging fails if the staged tree changed after staging, and `npm run verify:app <Factr-I.app>` checks an import
+  smoke plus `codesign --verify --deep --strict`. The staged backend leaves out `backend/tests/` (~50 MB), staged
+  files are made user-writable so `xattr -cr` and re-signing work, and release engine builds pass
+  `--remap-path-prefix` so the binary no longer embeds the builder's home, Cargo and build-directory paths.
 - UI: the right sidebar opens on a Browser whose blank page lists Files, Terminal and Changes, each as a closeable tab
   in one tab strip; the sidebar toggle keeps the user's hidden-tab choice, and folding a side by dragging updates its
   toggle. Dragging a sidebar too narrow folds it without collapsing the other. The empty chat shows one short greeting
@@ -96,17 +108,6 @@ behaviour is unchanged from 0.0.4.
 - Tests: new gateway tests replay every onboarding flow in chat-only and feature mode; two intermittent test failures
   are fixed (an OpenAI endpoint test that read env vars without the test env lock, and a Radix focus timer that fired
   after jsdom teardown). A real sign-in against a live provider is not covered by tests.
-- Packaging: the bundled Python is precompiled at staging (`compileall`, unchecked-hash pycs) and every spawn of it
-  runs with `PYTHONDONTWRITEBYTECODE=1`, so the app no longer writes ~3,000 `__pycache__` files into its own signed
-  bundle; packaging fails if the staged tree changed after staging, and `npm run verify:app <Factr-I.app>` checks an
-  import smoke plus `codesign --verify --deep --strict`.
-- Uninstall: About > Uninstall works in the packaged app (it runs the bundled interpreter with the bundled backend
-  instead of requiring `~/.factr/factr-backend/venv`), refuses with an explanation when the app runs translocated,
-  from a disk image or from a read-only folder, raises an alert if removing the app fails after quit, and no longer
-  prints `SyntaxWarning: invalid escape sequence '\c'`.
-- Packaging: the staged backend leaves out `backend/tests/` (~50 MB), staged files are made user-writable so
-  `xattr -cr` and re-signing work, and release engine builds pass `--remap-path-prefix` so the binary no longer
-  embeds the builder's home, Cargo and build-directory paths.
 - Docs and release notes: first open on macOS 15+ is System Settings > Privacy & Security > Open Anyway (right-click
   Open no longer works), macOS builds are Apple Silicon only, the version and signing statements are current, and the
   Ubuntu 24.04 AppImage needs FUSE 2 and `--no-sandbox`.
@@ -117,9 +118,11 @@ behaviour is unchanged from 0.0.4.
   borrows (and by refreshing, logs out) the Claude Code or Codex CLI login; a `config.yaml` setting still wins, and the
   CLI default is unchanged.
 - Provider startup (desktop): the app passes `--provider` / `--model` to the engine only when `FACTR_PROVIDER` /
-  `FACTR_MODEL` are set; it no longer probes local Ollama and starts the engine on it (which sent a saved ChatGPT pick
-  to Ollama's endpoint), and the quit-time Ollama unload is gone (the engine unloads its own model). Onboarding
-  finishes only with the provider the user connected saved, else it shows an error.
+  `FACTR_MODEL` are set, and never a `FACTR_PROVIDER` the engine's `--provider` flag rejects (the boot card showed
+  "invalid variant"; the engine reads the variable itself and explains an unsupported value in the app). It no longer
+  probes local Ollama and starts the engine on it (which sent a saved ChatGPT pick to Ollama's endpoint), and the
+  quit-time Ollama unload is gone (the engine unloads its own model). Onboarding finishes only with the provider the
+  user connected saved, else it shows an error.
 - Provider startup (engine): a saved `model.provider` or `FACTR_PROVIDER` the engine cannot serve no longer exits
   `serve`: it is resolved through the login catalog (ids, aliases, display names), else the engine starts with no
   provider and `setup.status`, `setup.runtime_check` and `/api/status` (`provider_error`) say why; it never serves
@@ -131,11 +134,21 @@ behaviour is unchanged from 0.0.4.
   is refused with a clear message instead of billing the key; `model.options` and `/api/model/options` re-read the
   login after a sign-in; `/api/status` reports `missing_login` on a fresh install. Each profile backend gets its own
   `FACTR_RUNTIME_DIR`, so a second profile no longer fails with "Another factr server process is already running".
-- Skills, browser and errors: a fresh install seeds the bundled skills once (`factr skills seed`) when the skill store
-  is empty and the Python backend is configured, from the skills list and from a new desktop chat, which waits up to 3 s
-  so its first turn sees them (a headless `POST /api/agent/run` never seeds or waits); the browser tool's `POST /api/browser/act` may start the feature runtime instead of failing
-  with 404; provider failures show a plain message (no provider connected, rejected key, missing model, rate limit,
-  server error) in the error card and toast, with the raw text as detail.
+- Skills and browser: a fresh install seeds the bundled skills once (`factr skills seed`) when the skill store is
+  empty and the Python backend is configured, from the skills list and from a new desktop chat, which waits up to 3 s
+  so its first turn sees them (a headless `POST /api/agent/run` never seeds or waits); the browser tool's `POST
+  /api/browser/act` may start the feature runtime instead of failing with 404.
+- Release hardening: the release app removes Chromium's `--remote-debugging-port`, `--remote-debugging-pipe` and
+  related switches at startup (also when `desktop.electron_flags` in config.yaml asks for them), so launching the app
+  with them no longer opens a DevTools port; the fuses did not cover them. A QA build (`FACTR_QA_FUSES=1`) keeps them.
+  The variant is baked into the bundle at build time and the packaging step fails if the bundle and the fuses
+  disagree.
+- Custom endpoint key: saving a keyed custom endpoint from the app (onboarding and the model picker) now writes the key
+  to `.env` (same variable the `factr model` setup uses, `FACTR_CUSTOM_<HOST>_<PORT>_API_KEY`) and config.yaml holds
+  only a `${VAR}` pointer (`model.api_key`, and `key_env` on the `custom_providers` row) instead of the key itself. If
+  `.env` cannot take the value, the key stays inline as before; existing configs with an inline key keep working
+  unchanged and are not migrated. The engine already reads the pointer form; its behaviour is unchanged. `.env` is
+  still a plain 0600 file, so this separates the secret from config.yaml but does not encrypt it.
 - Benchmark isolation: none of the above applies to an explicit `--provider openai --model gpt-6-luna serve` start;
   in-repo tests pin its provider, model, auth state and status to 0.0.4's across config.yaml and environment variants.
 - The Windows and Linux builds of the app are not signed, and the macOS build is ad-hoc signed only (no Developer ID,
