@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.6 (unreleased)
+
+- Projects: a project you create in the sidebar (New project, then add a folder) now appears under Projects, with or
+  without chats in it. The engine gateway built the sidebar tree from chats alone and answered `projects.list` with an
+  empty list, so a project that was saved to `projects.db` was never shown. It now reads your projects from
+  `projects.db` (read-only), lists each one with its folders, and files chats under the project whose folder (or repo)
+  holds the chat's working folder, deepest folder first. Projects you already created show up with no migration.
+
 ## v0.0.5 (2026-10-11)
 
 Sign-in, onboarding, provider and credential handling, approvals, observability and desktop UI fixes on top of 0.0.4.
