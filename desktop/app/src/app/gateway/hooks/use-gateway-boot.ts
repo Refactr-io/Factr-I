@@ -47,6 +47,7 @@ import {
   isActivePrimary,
   liveSecondaryConnectionIds,
   parkSecondariesForRetiredBackend,
+  primaryGatewayConnectionId,
   pruneSecondaryGateways,
   reconnectSecondaryGateways,
   reportPrimaryGatewayState,
@@ -1091,7 +1092,7 @@ export function useGatewayBoot({
         openedAt = null
 
         if (bootCompleted && !$gatewaySwitching.get()) {
-          noteInFlightTurnsAtPrimaryDrop()
+          noteInFlightTurnsAtPrimaryDrop(primaryGatewayConnectionId())
           // The socket dropped after a healthy boot (typically sleep/wake). Try
           // to bring it back instead of leaving the composer stuck disabled.
           scheduleReconnect()
@@ -1359,7 +1360,7 @@ export function useGatewayBoot({
 
       // Every turn the dead process was running is lost; the reconnect to its
       // replacement settles them (failTurnsLostToEngineRestart).
-      noteInFlightTurnsAtPrimaryDrop()
+      noteInFlightTurnsAtPrimaryDrop(primaryGatewayConnectionId())
       primaryBackendExited = true
 
       // Post-boot: the shell's restart intent recycles a local service via main

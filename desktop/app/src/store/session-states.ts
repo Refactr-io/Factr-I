@@ -793,15 +793,26 @@ const turnsInFlightAtPrimaryDrop = new Map<string, { turnStartedAt: number | nul
 
 /** Remember every primary-socket turn in flight at a socket drop or a backend
  *  exit. Repeated calls during one outage only add (the first sight wins). */
-export function noteInFlightTurnsAtPrimaryDrop(): void {
+export function noteInFlightTurnsAtPrimaryDrop(primaryConnectionId: null | string = null): void {
   for (const [runtimeId, state] of Object.entries($sessionStates.get())) {
     if (!state || (!state.busy && !state.awaitingResponse && !state.turnLive)) {
       continue
     }
 
-    // Registry-scoped sessions belong to another socket's backend.
-    if (sessionScopeByRuntimeId.get(runtimeId) !== undefined || turnsInFlightAtPrimaryDrop.has(runtimeId)) {
+    if (turnsInFlightAtPrimaryDrop.has(runtimeId)) {
       continue
+    }
+
+    // Registry-scoped sessions belong to another socket's backend. The primary
+    // socket stamps its own events with the primary connection id ('local' for
+    // the bundled engine), so a scope from THAT connection is still primary.
+    if (sessionScopeByRuntimeId.get(runtimeId) !== undefined) {
+      const owner = sessionOwnerByRuntimeId.get(runtimeId)
+      const ownerConnectionId = typeof owner === 'object' && owner ? owner.connectionId : null
+
+      if (!primaryConnectionId || ownerConnectionId !== primaryConnectionId) {
+        continue
+      }
     }
 
     turnsInFlightAtPrimaryDrop.set(runtimeId, { turnStartedAt: state.turnStartedAt ?? null })

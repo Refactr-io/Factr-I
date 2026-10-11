@@ -551,6 +551,12 @@ export function activeGatewayConnectionId(): null | string {
   return g.secondaries.get(g.activeKey)?.connectionId ?? null
 }
 
+/** The connection id the primary socket stamps on its own events (see
+ *  activeGatewayConnectionId), whichever route is active right now. */
+export function primaryGatewayConnectionId(): null | string {
+  return g.primaryConnectionId ?? (g.config?.activeConnectionId?.()?.trim() || null)
+}
+
 /**
  * Registry connections currently served by a live (open-socket) secondary.
  * Used by the reconnect path when the restarted primary's own registry

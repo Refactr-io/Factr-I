@@ -1954,6 +1954,28 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
       expect($parkedQueueSessions.get()['s-slow']).toBe(true)
     })
 
+    // The real app stamps every primary event with the primary connection id
+    // ('local' for the bundled engine), so the turn's runtime carries a
+    // recorded scope. It is still the primary's turn and must still fail.
+    it('a turn whose events came over the primary socket (connection-stamped) still fails', async () => {
+      const events: GatewayEvent[] = []
+      render(<Harness handleGatewayEvent={event => events.push(event)} />)
+      await flushAsync()
+      act(() => FakeWebSocket.instances[0].serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid1-1' } }))
+      seedRunningTurn()
+      act(() => FakeWebSocket.instances[0].serverEvent({ type: 'message.delta', session_id: 'rt-slow', payload: { text: 'SLOW-x' } }))
+
+      act(() => {
+        backendExit?.({ code: null, signal: 'SIGKILL' })
+        FakeWebSocket.instances[0].drop()
+      })
+      await flushAsync()
+      await advanceBackoff()
+
+      expect(lostTurnEvents(events)).toHaveLength(1)
+      expect($parkedQueueSessions.get()['s-slow']).toBe(true)
+    })
+
     it('the same engine after a socket blip keeps the turn: it is still running there', async () => {
       const events: GatewayEvent[] = []
       render(<Harness handleGatewayEvent={event => events.push(event)} />)
