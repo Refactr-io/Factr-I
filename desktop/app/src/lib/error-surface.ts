@@ -50,6 +50,9 @@ export const ERROR_CODE_KEYS = [
   'loop_error',
   'SESSION_NOT_OWNED',
   'disk_full',
+  // Stamped by the desktop itself: the engine process restarted mid-reply, so
+  // the turn is gone and nothing will finish it (use-gateway-boot.ts).
+  'engine_restarted',
   // Read by the desktop from raw engine error text when no descriptor came with it
   // (lib/provider-error-display.ts): display-only, the engine never sends these.
   'no_provider',

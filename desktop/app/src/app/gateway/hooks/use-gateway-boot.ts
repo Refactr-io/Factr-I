@@ -30,6 +30,7 @@ import {
   resumeDesktopBootForRetry,
   setDesktopBootStep
 } from '@/store/boot'
+import { parkQueuedPrompts } from '@/store/composer-queue'
 import { resetBackgroundPollingGuard } from '@/store/composer-status'
 import {
   $gateway,
@@ -63,7 +64,7 @@ import {
   registerGatewaySwitchLifecycle
 } from '@/store/gateway-switch'
 import { watchLocalRuntimeJobs } from '@/store/local-runtime-jobs'
-import { notify, notifyError, RECOVERY_ACTIONS } from '@/store/notifications'
+import { dismissNotification, notify, notifyError, RECOVERY_ACTIONS } from '@/store/notifications'
 import { loadPoolLimits } from '@/store/pool-limits'
 import {
   $activeGatewayProfile,
@@ -81,6 +82,7 @@ import {
   $sessions,
   ensureDefaultWorkspaceCwd,
   forgetSessionOwnerHintsForConnection,
+  resolveComposerSessionKey,
   setConnection,
   setCurrentBranch,
   setCurrentCwd,
@@ -90,15 +92,19 @@ import { stampSecondaryProfileOwner } from '@/store/session-event-provenance'
 import {
   $attentionSessionIds,
   $sessionOwnerHoldRevision,
+  $sessionStates,
   $sessionTiles,
   $workingSessionIds,
   foregroundSessionScopes,
+  forgetInFlightTurnsAtPrimaryDrop,
   forgetProfileOnlyRuntimeOwners,
   liveSessionScopes,
+  noteInFlightTurnsAtPrimaryDrop,
   openTileGatewayScopes,
   reconcileBusyStatesOnReconnect,
   recordSessionEventScope,
-  resetTileRuntimeBindings
+  resetTileRuntimeBindings,
+  takeTurnsLostToEngineRestart
 } from '@/store/session-states'
 import { warnIfTerminalBackendUnavailable } from '@/store/terminal-backend-warning'
 import { isPeerInstanceWindow, windowProfileOverride } from '@/store/windows'
@@ -298,6 +304,54 @@ export function useGatewayBoot({
     let reauthNotified = false
     // After boot, a primary auth failure must not cover a healthy secondary.
     let primaryReauthError: string | null = null
+    // Engine-restart detection for turns in flight at a drop (D-1). The
+    // gateway names its process in `gateway.ready` (replay_epoch); a new
+    // epoch, or main reporting the window backend exited, means the old
+    // process and every turn it was running are gone.
+    let primaryReplayEpoch: string | null = null
+    let primaryBackendExited = false
+    let backendExitToastId: string | null = null
+
+    // Fail each lost turn through the ordinary `error` event path, so the
+    // partial reply is sealed with a readable card + Retry and busy, the turn
+    // clock and any open prompts clear together. Queued follow-ups are parked
+    // (Resume sends them) so they cannot jump ahead of the Retry.
+    const failTurnsLostToEngineRestart = () => {
+      const states = $sessionStates.get()
+
+      for (const runtimeId of takeTurnsLostToEngineRestart()) {
+        const stored = states[runtimeId]?.storedSessionId ?? null
+        const queueKey = resolveComposerSessionKey(stored, $sessions.get()) || stored
+
+        parkQueuedPrompts(queueKey)
+        parkQueuedPrompts(runtimeId)
+        callbacksRef.current.handleGatewayEvent({
+          type: 'error',
+          session_id: runtimeId,
+          payload: {
+            message: 'The Factr-I engine restarted while this reply was running, so the reply was lost.',
+            error_surface: { layer: 'gateway', code: 'engine_restarted', retryable: true }
+          }
+        } as GatewayEvent)
+      }
+    }
+
+    const noteEngineReady = (epoch: unknown) => {
+      if (typeof epoch !== 'string' || !epoch) {
+        return
+      }
+
+      const restarted = primaryBackendExited || (primaryReplayEpoch !== null && primaryReplayEpoch !== epoch)
+
+      primaryReplayEpoch = epoch
+      primaryBackendExited = false
+
+      if (restarted) {
+        failTurnsLostToEngineRestart()
+      } else {
+        forgetInFlightTurnsAtPrimaryDrop()
+      }
+    }
 
     const syncPrimaryReauthError = () => {
       if (!bootCompleted || !primaryReauthError) {
@@ -470,6 +524,21 @@ export function useGatewayBoot({
         // post-reconnect event.
         // A manual retry may finish after the user has moved to another route.
         if (!manual || (isActivePrimary() && gatewayActivationEpoch() === manual.activationEpoch)) {
+          // Main told us the window backend died: the turns it was running are
+          // lost even if `gateway.ready` (the epoch check) has not landed yet.
+          // Settle them BEFORE the blind busy downgrade below, or a queued
+          // follow-up would auto-send ahead of the failed turn's Retry.
+          if (primaryBackendExited) {
+            primaryBackendExited = false
+            failTurnsLostToEngineRestart()
+          }
+
+          if (backendExitToastId) {
+            // The supervisor already brought the background service back.
+            dismissNotification(backendExitToastId)
+            backendExitToastId = null
+          }
+
           reconcileBusyStatesOnReconnect()
           await callbacksRef.current.refreshFactrConfig().catch(() => undefined)
           await callbacksRef.current.refreshSessions().catch(() => undefined)
@@ -1022,6 +1091,7 @@ export function useGatewayBoot({
         openedAt = null
 
         if (bootCompleted && !$gatewaySwitching.get()) {
+          noteInFlightTurnsAtPrimaryDrop()
           // The socket dropped after a healthy boot (typically sleep/wake). Try
           // to bring it back instead of leaving the composer stuck disabled.
           scheduleReconnect()
@@ -1036,6 +1106,14 @@ export function useGatewayBoot({
     const sourceProfileNow = () => normalizeProfileKey($activeGatewayProfile.get())
 
     const offEvent = gateway.onEvent(event => {
+      if (event.type === 'gateway.ready' && bootCompleted && !$gatewaySwitching.get()) {
+        noteEngineReady((event.payload as { replay_epoch?: unknown } | undefined)?.replay_epoch)
+      } else if (event.type === 'gateway.ready') {
+        const epoch = (event.payload as { replay_epoch?: unknown } | undefined)?.replay_epoch
+
+        primaryReplayEpoch = typeof epoch === 'string' && epoch ? epoch : primaryReplayEpoch
+      }
+
       const connectionId = activeGatewayConnectionId()
       const sourceProfile = sourceProfileNow()
 
@@ -1279,10 +1357,15 @@ export function useGatewayBoot({
         return
       }
 
+      // Every turn the dead process was running is lost; the reconnect to its
+      // replacement settles them (failTurnsLostToEngineRestart).
+      noteInFlightTurnsAtPrimaryDrop()
+      primaryBackendExited = true
+
       // Post-boot: the shell's restart intent recycles a local service via main
       // (or re-dials a remote one) and does not depend on this hook's
       // reconnect gate, unlike reconnectGateway().
-      notify({
+      backendExitToastId = notify({
         kind: 'error',
         title: translateNow('boot.errors.backendStopped'),
         message: translateNow('boot.errors.backgroundExited'),

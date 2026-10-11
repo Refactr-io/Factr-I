@@ -4310,6 +4310,10 @@ export const en: Translations = {
         disk_full: {
           title: 'Disk full',
           body: 'Your disk is full, so Factr-I could not save this conversation. Free some space, then retry.'
+        },
+        engine_restarted: {
+          title: 'The connection to the engine was interrupted',
+          body: 'Your message was not completed. Retry to send it again.'
         }
       },
       errorAuthKinds: {

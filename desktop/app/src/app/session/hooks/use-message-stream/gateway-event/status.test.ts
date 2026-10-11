@@ -17,9 +17,9 @@ const OWNED_REFUSAL =
   'Session 20260909_095312_6b93f5 already has a live owner (tui, pid 32977, lease age 22m). ' +
   'Attach through a compatible owner, or close the session in its owning surface before resuming here.'
 
-function errorContext(message: string) {
+function errorContext(message: string, extra: Record<string, unknown> = {}) {
   const failAssistantMessage = vi.fn()
-  const payload = { message } as GatewayEventContext['payload']
+  const payload = { message, ...extra } as GatewayEventContext['payload']
 
   const ctx: GatewayEventContext = {
     deps: {
@@ -49,6 +49,28 @@ afterEach(() => {
 })
 
 describe('gateway `error` event → error card + toast', () => {
+  it('honours a descriptor on the event: the engine-restart card keeps Retry', () => {
+    const detail = 'The Factr-I engine restarted while this reply was running, so the reply was lost.'
+
+    const { ctx, failAssistantMessage } = errorContext(detail, {
+      error_surface: { code: 'engine_restarted', layer: 'gateway', retryable: true }
+    })
+
+    expect(handleStatusEvent(ctx)).toBe(true)
+    expect(failAssistantMessage).toHaveBeenCalledWith(
+      'sess-1',
+      detail,
+      1_700_000_100,
+      expect.objectContaining({ code: 'engine_restarted', retryable: true })
+    )
+
+    const toast = $notifications.get()[0]
+
+    expect(toast.message).toMatch(/connection to the engine was interrupted/i)
+    expect(toast.message).toMatch(/not completed/i)
+    expect(toast.detail).toBe(detail)
+  })
+
   it('stamps SESSION_NOT_OWNED on a live-owner refusal so the card drops Retry', () => {
     const { ctx, failAssistantMessage } = errorContext(OWNED_REFUSAL)
 

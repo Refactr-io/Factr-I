@@ -3,7 +3,7 @@ import { translateNow, TRANSLATIONS } from '@/i18n'
 import { getRuntimeI18nLocale } from '@/i18n/runtime'
 import { textPart } from '@/lib/chat-messages'
 import { coerceGatewayText } from '@/lib/chat-runtime'
-import type { ErrorSurface } from '@/lib/error-surface'
+import { type ErrorSurface, parseErrorSurface } from '@/lib/error-surface'
 import { errorCardText } from '@/lib/error-surface-copy'
 import { inferErrorSurface, isRawProviderDump, tidyErrorDetails } from '@/lib/provider-error-display'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
@@ -196,11 +196,15 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
     // A raw provider/engine error (no provider connected, HTTP 401/404/429/5xx) is
     // read the same way the inline card reads it, so the toast leads with the plain
     // sentence and keeps the raw text as its detail (display only).
-    const surface: ErrorSurface | null = isSessionNotOwnedError(new Error(errorMessage))
-      ? { code: 'SESSION_NOT_OWNED', layer: 'gateway', retryable: false }
-      : isDiskFullErrorMessage(errorMessage)
-        ? { code: 'disk_full', layer: 'disk', retryable: false }
-        : inferErrorSurface(errorMessage)
+    // A descriptor on the event wins (the desktop stamps one on the turn it
+    // fails after an engine restart, use-gateway-boot.ts).
+    const surface: ErrorSurface | null =
+      parseErrorSurface(payload?.error_surface) ??
+      (isSessionNotOwnedError(new Error(errorMessage))
+        ? { code: 'SESSION_NOT_OWNED', layer: 'gateway', retryable: false }
+        : isDiskFullErrorMessage(errorMessage)
+          ? { code: 'disk_full', layer: 'disk', retryable: false }
+          : inferErrorSurface(errorMessage))
 
     // When a code was recovered, the glossed card sentence explains it better
     // than the raw refusal. When none was, the server's own text IS the plain

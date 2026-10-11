@@ -17,12 +17,15 @@ import {
   $stalledSessionIds,
   $workingSessionIds,
   clearAllSessionStates,
+  forgetInFlightTurnsAtPrimaryDrop,
+  noteInFlightTurnsAtPrimaryDrop,
   publishSessionState,
   reconcileBusyStatesOnReconnect,
   recordSessionEventScope,
   SESSION_WATCHDOG_TIMEOUT_MS,
   type SessionTileDelegate,
-  setSessionTileDelegate
+  setSessionTileDelegate,
+  takeTurnsLostToEngineRestart
 } from './session-states'
 
 function state(over: Partial<ClientSessionState> = {}): ClientSessionState {
@@ -238,5 +241,65 @@ describe('reconcileBusyStatesOnReconnect', () => {
 
     expect($workingSessionIds.get()).not.toContain('sA')
     expect($unreadFinishedSessionIds.get()).toEqual(['sA'])
+  })
+})
+
+// D-1: a turn in flight when the engine process dies is lost for good. The
+// reconnect path needs the set of turns that were running at the drop, even
+// after the blind busy downgrade above has already cleared their flags.
+describe('turns lost to an engine restart', () => {
+  beforeEach(() => {
+    clearAllSessionStates()
+    setSessionTileDelegate(noDelegate)
+  })
+
+  afterEach(() => {
+    clearAllSessionStates()
+  })
+
+  it('hands back the primary turn that was running at the drop, once', () => {
+    publishSessionState('rt1', state({ busy: true, storedSessionId: 's1', turnStartedAt: 100 }))
+    publishSessionState('rtIdle', state({ storedSessionId: 's2' }))
+
+    noteInFlightTurnsAtPrimaryDrop()
+    // The reconnect's blind downgrade runs before the restart is known.
+    reconcileBusyStatesOnReconnect()
+
+    expect(takeTurnsLostToEngineRestart()).toEqual(['rt1'])
+    expect(takeTurnsLostToEngineRestart()).toEqual([])
+  })
+
+  it('counts a submitted turn still waiting for its first token', () => {
+    publishSessionState('rt1', state({ awaitingResponse: true, storedSessionId: 's1' }))
+
+    noteInFlightTurnsAtPrimaryDrop()
+
+    expect(takeTurnsLostToEngineRestart()).toEqual(['rt1'])
+  })
+
+  it('a reconnect to the same engine forgets them: the turn is still alive there', () => {
+    publishSessionState('rt1', state({ busy: true, storedSessionId: 's1' }))
+
+    noteInFlightTurnsAtPrimaryDrop()
+    forgetInFlightTurnsAtPrimaryDrop()
+
+    expect(takeTurnsLostToEngineRestart()).toEqual([])
+  })
+
+  it('skips a runtime that started a new turn after the drop', () => {
+    publishSessionState('rt1', state({ busy: true, storedSessionId: 's1', turnStartedAt: 100 }))
+    noteInFlightTurnsAtPrimaryDrop()
+    publishSessionState('rt1', { ...$sessionStates.get().rt1, turnStartedAt: 200 })
+
+    expect(takeTurnsLostToEngineRestart()).toEqual([])
+  })
+
+  it("leaves a registry-scoped session alone: another socket's backend owns it", () => {
+    publishSessionState('rtA', state({ busy: true, storedSessionId: 'sA' }))
+    recordSessionEventScope({ connectionId: 'connA', profile: 'default', session_id: 'rtA' })
+
+    noteInFlightTurnsAtPrimaryDrop()
+
+    expect(takeTurnsLostToEngineRestart()).toEqual([])
   })
 })

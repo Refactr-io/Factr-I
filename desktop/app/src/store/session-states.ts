@@ -699,6 +699,7 @@ export function clearAllSessionStates() {
   sessionWatchdogTimers.clear()
   settledExpiry.clear()
   unconfirmedReconnectSettles.clear()
+  turnsInFlightAtPrimaryDrop.clear()
   clearAllProviderWaits()
   sessionScopeByRuntimeId.clear()
   sessionOwnerByRuntimeId.clear()
@@ -781,6 +782,62 @@ export function reconcileBusyStatesOnReconnect(scope?: string) {
     setBusy(false)
     setAwaitingResponse(false)
   }
+}
+
+// Turns the PRIMARY socket had in flight when it dropped (D-1). A dropped
+// socket alone proves nothing: the same engine keeps the turn and a reconnect
+// takes it over. A restarted engine (new process) has lost the turn for good,
+// and nothing will ever send its terminal event, so the reconnect path settles
+// these as failed instead of leaving the reply spinning.
+const turnsInFlightAtPrimaryDrop = new Map<string, { turnStartedAt: number | null }>()
+
+/** Remember every primary-socket turn in flight at a socket drop or a backend
+ *  exit. Repeated calls during one outage only add (the first sight wins). */
+export function noteInFlightTurnsAtPrimaryDrop(): void {
+  for (const [runtimeId, state] of Object.entries($sessionStates.get())) {
+    if (!state || (!state.busy && !state.awaitingResponse && !state.turnLive)) {
+      continue
+    }
+
+    // Registry-scoped sessions belong to another socket's backend.
+    if (sessionScopeByRuntimeId.get(runtimeId) !== undefined || turnsInFlightAtPrimaryDrop.has(runtimeId)) {
+      continue
+    }
+
+    turnsInFlightAtPrimaryDrop.set(runtimeId, { turnStartedAt: state.turnStartedAt ?? null })
+  }
+}
+
+/** The reconnect reached the same engine: its turns are still alive. */
+export function forgetInFlightTurnsAtPrimaryDrop(): void {
+  turnsInFlightAtPrimaryDrop.clear()
+}
+
+/** The reconnect reached a NEW engine process: hand back the runtimes whose
+ *  turn died with the old one, and forget them. A runtime that has started a
+ *  different turn since the drop is skipped: that turn is not the lost one. */
+export function takeTurnsLostToEngineRestart(): string[] {
+  const states = $sessionStates.get()
+  const lost: string[] = []
+
+  for (const [runtimeId, atDrop] of turnsInFlightAtPrimaryDrop) {
+    const now = states[runtimeId]
+
+    if (!now) {
+      continue
+    }
+
+    const startedAgain =
+      now.turnStartedAt != null && atDrop.turnStartedAt != null && now.turnStartedAt !== atDrop.turnStartedAt
+
+    if (!startedAgain) {
+      lost.push(runtimeId)
+    }
+  }
+
+  turnsInFlightAtPrimaryDrop.clear()
+
+  return lost
 }
 
 // Derived per-session status sets — pure projections of `$sessionStates` (which
