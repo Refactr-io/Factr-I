@@ -1310,6 +1310,10 @@ export interface Translations {
       moaSetDefault: string
       moaNewPresetPlaceholder: string
       moaAddPreset: string
+      moaNameLong: (max: number) => string
+      moaNameChars: string
+      moaNameDuplicate: string
+      moaNoCredentials: string
       moaDefault: string
       moaReferenceToggle: (enabled: boolean, index: number) => string
       moaReferenceTitle: (index: number) => string

@@ -47,6 +47,7 @@ import { PanelEmpty } from '../overlays/panel'
 
 import { CONTROL_TEXT } from './constants'
 import { getNested, setNested } from './helpers'
+import { MOA_PRESET_NAME_MAX, moaPresetNameProblem, moaProviderLacksCredentials } from './moa-validation'
 import { ListRow, Pill, SectionHeading } from './primitives'
 import { useDeepLinkHighlight } from './use-deep-link-highlight'
 
@@ -388,6 +389,17 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
   // MoA reference/aggregator slots must never be the moa virtual provider —
   // that would create a recursive MoA tree (the backend rejects it on save).
   // Hide it from the slot selectors so it isn't offered as a dead choice.
+  const moaNameProblem = moa ? moaPresetNameProblem(newMoaPresetName, moa.presets) : null
+
+  const moaNameHint =
+    newMoaPresetName.trim() && moaNameProblem === 'long'
+      ? m.moaNameLong(MOA_PRESET_NAME_MAX)
+      : moaNameProblem === 'chars'
+        ? m.moaNameChars
+        : moaNameProblem === 'duplicate'
+          ? m.moaNameDuplicate
+          : ''
+
   const moaSlotProviderOptions = providerOptions.filter(provider => (provider.slug || '').toLowerCase() !== 'moa')
 
   const selectedProviderRow = useMemo(
@@ -1273,12 +1285,14 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
             </Button>
             <Input
               className={cn('w-40', CONTROL_TEXT)}
+              aria-invalid={moaNameHint ? true : undefined}
+              maxLength={MOA_PRESET_NAME_MAX + 10}
               onChange={event => setNewMoaPresetName(event.target.value)}
               placeholder={m.moaNewPresetPlaceholder}
               value={newMoaPresetName}
             />
             <Button
-              disabled={!newMoaPresetName.trim() || !!moa.presets[newMoaPresetName.trim()] || applying}
+              disabled={moaNameProblem !== null || applying}
               onClick={() => {
                 const name = newMoaPresetName.trim()
 
@@ -1300,6 +1314,11 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
               {m.moaAddPreset}
             </Button>
           </div>
+          {moaNameHint ? (
+            <div className="mb-2 text-xs text-destructive" role="alert">
+              {moaNameHint}
+            </div>
+          ) : null}
           <div className="mb-2 text-xs text-muted-foreground">
             {m.moaDefault} <span className="font-mono">{moa.default_preset}</span>
           </div>
@@ -1345,8 +1364,9 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
                           const provider = moaSlotProviderOptions.find(p => (p.slug || 'none') === slug)
 
                           return (
-                            <SelectItem key={slug} value={slug}>
+                            <SelectItem disabled={moaProviderLacksCredentials(provider) && slug !== slot.provider} key={slug} value={slug}>
                               {provider?.name || slug}
+                              {moaProviderLacksCredentials(provider) ? ` (${m.moaNoCredentials})` : ''}
                             </SelectItem>
                           )
                         })}
@@ -1440,8 +1460,9 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
                         const provider = moaSlotProviderOptions.find(p => (p.slug || 'none') === slug)
 
                         return (
-                          <SelectItem key={slug} value={slug}>
+                          <SelectItem disabled={moaProviderLacksCredentials(provider) && slug !== currentMoaPreset.aggregator.provider} key={slug} value={slug}>
                             {provider?.name || slug}
+                            {moaProviderLacksCredentials(provider) ? ` (${m.moaNoCredentials})` : ''}
                           </SelectItem>
                         )
                       })}
