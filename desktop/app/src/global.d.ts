@@ -663,6 +663,19 @@ export interface DesktopUninstallSummary {
   platform: string
   running_app_path?: null | string
   probe?: string
+  /** Per mode: exactly what the confirmation lists and the run may delete (desktop-uninstall.ts). */
+  plans?: Partial<Record<DesktopUninstallMode, DesktopUninstallPlan>>
+}
+
+export interface DesktopUninstallTarget {
+  kind: 'agent' | 'app' | 'artifact' | 'config' | 'userdata'
+  path: string
+}
+
+export interface DesktopUninstallPlan {
+  targets: DesktopUninstallTarget[]
+  refused: (DesktopUninstallTarget & { message: string; reason: string })[]
+  appBlocked: { message: string; reason: string } | null
 }
 
 export interface DesktopUninstallResult {
