@@ -39,6 +39,8 @@ const CATEGORY_COPY: Record<RunCategory, { noun: [string, string]; past: string;
 }
 
 const EXPLORE_TOOLS = new Set([
+  'agentgrep',
+  'ls',
   'list_files',
   'read_file',
   'search_files',
@@ -98,6 +100,31 @@ function toolTarget(tool: ToolCallLike): string {
   return path ? fileEditBasename(path) : firstStringField(args, ['query', 'url'])
 }
 
+/** agentgrep / ls name their folder in `path`; the card says what was done to it, not just the
+ *  folder ("Used qa dir with spaces"). Null for every other tool. */
+function folderToolLabel(tool: ToolCallLike, live: boolean): null | string {
+  if (tool.toolName !== 'agentgrep' && tool.toolName !== 'ls') {
+    return null
+  }
+
+  const args = parseMaybeObject(tool.args)
+  const path = firstStringField(args, ['path', 'dir', 'directory'])
+  const folder = path ? fileEditBasename(path.replace(/\/+$/, '')) : ''
+
+  if (tool.toolName === 'ls') {
+    return `${live ? 'Listing' : 'Listed'} ${folder || 'folder'}`
+  }
+
+  const pattern = firstStringField(args, ['query', 'pattern', 'regex'])
+  const verb = live ? 'Searching' : 'Searched'
+
+  if (pattern && folder) {
+    return `${verb} ${pattern} in ${folder}`
+  }
+
+  return `${verb} ${pattern || folder || 'files'}`
+}
+
 /**
  * One clause per category. A category holding a single thing says what it was
  * ("Edited wiring.tsx"); anything else counts ("explored 3 files"). A settled
@@ -107,6 +134,12 @@ function toolTarget(tool: ToolCallLike): string {
 function clause(category: RunCategory, tools: ToolCallLike[], live: boolean): string {
   const copy = CATEGORY_COPY[category]
   const verb = live ? copy.present : copy.past
+  const folderLabel = tools.length === 1 ? folderToolLabel(tools[0], live) : null
+
+  if (folderLabel) {
+    return folderLabel
+  }
+
   const target = tools.length === 1 ? toolTarget(tools[0]) : ''
 
   if (target && (live || category !== 'run')) {
