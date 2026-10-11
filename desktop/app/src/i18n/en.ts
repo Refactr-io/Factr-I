@@ -3639,6 +3639,9 @@ export const en: Translations = {
   onboarding: {
     headerTitle: "Let's get you setup with Factr-I Agent",
     headerDesc: 'Connect a model provider to start chatting. Most options take one click.',
+    configOpenFolder: 'Open the folder',
+    configBackUpAndReset: 'Back up and start fresh',
+    configBackedUp: backupPath => `Saved a copy as ${backupPath}. Set up a provider to start fresh.`,
     preparingInstall: 'Factr-I is finishing install. This usually takes under a minute on first run.',
     starting: 'Starting Factr-I…',
     lookingUpProviders: 'Looking up providers...',

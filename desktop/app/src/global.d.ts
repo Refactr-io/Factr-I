@@ -423,6 +423,10 @@ declare global {
       gitRoot?: (path: string) => Promise<string | null>
       // Reveal a path in the OS file manager (Finder / Explorer).
       revealPath?: (path: string) => Promise<boolean>
+      /** Copy an unreadable config.yaml to config.yaml.corrupt-<time>, then remove it (never overwrite). */
+      backupCorruptConfig?: (
+        configPath: string
+      ) => Promise<{ backupPath: string; ok: true } | { message: string; ok: false }>
       // Open a DIRECTORY (created if missing) in the OS file manager.
       openDir?: (path: string) => Promise<{ ok: boolean; error?: string }>
       // Local Desktop runtime-plugin root (<FACTR_CONFIG_HOME>/desktop-plugins),

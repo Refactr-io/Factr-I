@@ -101,6 +101,7 @@ import { detectBundleSwap } from './bundle-swap'
 import { registerChatOnboardingWindow } from './chat-onboarding-window'
 import { installCommandScreenshot } from './command-screenshot'
 import { writeComposerPaste } from './composer-paste'
+import { backupCorruptConfig } from './config-backup'
 import { applyConnectionChange, teardownSshState } from './connection-apply'
 import {
   connectionInstallIds,
@@ -17476,6 +17477,21 @@ async function runDesktopUninstall(mode) {
 
   return { ok: true, mode, willRemoveAppBundle: Boolean(removeBundle), scriptPath }
 }
+
+// "Back up and start fresh" for a config.yaml the engine reports as unreadable:
+// copy it aside, then remove it, never overwrite it. Only a config.yaml under
+// this desktop's config home is accepted.
+ipcMain.handle('factr:config:backup-corrupt', async (_event, configPath) => {
+  const result = backupCorruptConfig(String(configPath || ''), { configRoot: FACTR_CONFIG_HOME })
+
+  rememberLog(
+    'backupPath' in result
+      ? `[config] backed up an unreadable config to ${result.backupPath}`
+      : `[config] backup refused: ${result.message}`
+  )
+
+  return result
+})
 
 ipcMain.handle('factr:uninstall:summary', async () => getUninstallSummary())
 ipcMain.handle('factr:uninstall:run', async (_event, payload) => {
