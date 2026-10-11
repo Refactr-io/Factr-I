@@ -13,14 +13,44 @@ import { reconcileSessionCompacting, setSessionCompacting } from '@/store/compac
 import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { applyGoalPayload } from '@/store/goals'
 import { dispatchNativeNotification } from '@/store/native-notifications'
-import { isDiskFullErrorMessage, notify, notifyError } from '@/store/notifications'
+import { $notifications, dismissNotification, isDiskFullErrorMessage, notify, notifyError } from '@/store/notifications'
 import { requestDesktopOnboarding } from '@/store/onboarding'
+import { $gatewaySwapTarget } from '@/store/profile'
 import { flashPetActivity, setPetActivity } from '@/store/pet'
 import { clearAllPrompts } from '@/store/prompts'
 import { setTurnStartedAt } from '@/store/session'
 import { clearActiveSessionTodos } from '@/store/todos'
 
 import type { GatewayEventContext } from './types'
+
+// Turn-error toasts are sticky, so without a rule every failed turn stacks another one. Each
+// session keeps ONE: a newer error from the same session replaces its previous toast (the inline
+// card still keeps every error), the same error across sessions collapses on its id, and at most
+// MAX_ERROR_TOASTS stay up at once, oldest first out. Distinct sessions and distinct errors stay visible.
+const MAX_ERROR_TOASTS = 3
+const ERROR_TOAST_PREFIX = 'gateway-error:'
+const lastErrorToastBySession = new Map<string, string>()
+
+function notifyTurnError(sessionId: string | undefined, input: Parameters<typeof notify>[0]): void {
+  const previous = sessionId ? lastErrorToastBySession.get(sessionId) : undefined
+
+  if (previous && previous !== input.id) {
+    dismissNotification(previous)
+  }
+
+  notify(input)
+
+  if (sessionId && input.id) {
+    lastErrorToastBySession.set(sessionId, input.id)
+  }
+
+  const live = $notifications.get().filter(item => item.id.startsWith(ERROR_TOAST_PREFIX))
+
+  // $notifications is newest-first.
+  for (const stale of live.slice(MAX_ERROR_TOASTS)) {
+    dismissNotification(stale.id)
+  }
+}
 
 /** status.update / review.summary / notification.show / notification.clear /
  *  error — the status-and-notice tail of the dispatcher. */
@@ -215,6 +245,11 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
     const card = surface || rawDump ? errorCardText(thread, surface) : null
     const toastMessage = card ? `${card.title}. ${card.body}` : errorMessage
 
+    // An error is also the first thing back from a wake that went nowhere: drop "Waking up…".
+    if ($gatewaySwapTarget.get()) {
+      $gatewaySwapTarget.set(null)
+    }
+
     // A turn that errors out has also ended — drop any open blocking prompt
     // for this session so an approval/sudo/secret overlay can't linger past
     // the failed turn (same intent as the message.complete clear).
@@ -252,9 +287,9 @@ export function handleStatusEvent(ctx: GatewayEventContext): boolean {
       // message and there is no separate detail to repeat.
       // No Retry action: assistant-ui's reload is per-thread, and for the
       // codes recovered above a retry would fail identically anyway.
-      notify({
+      notifyTurnError(sessionId, {
         detail: card ? tidyErrorDetails(errorMessage) : undefined,
-        id: `gateway-error:${errorMessage}`,
+        id: `${ERROR_TOAST_PREFIX}${errorMessage}`,
         kind: 'error',
         message: toastMessage,
         title: translateNow('assistant.thread.errorToastTitle')

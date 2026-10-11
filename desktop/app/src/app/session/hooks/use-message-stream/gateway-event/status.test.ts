@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $notifications } from '@/store/notifications'
+import { $gatewaySwapTarget } from '@/store/profile'
 
 import { handleStatusEvent } from './status'
 import type { GatewayEventContext } from './types'
@@ -126,5 +127,43 @@ describe('gateway `error` event → error card + toast', () => {
     const toast = $notifications.get()[0]
     expect(toast.message).not.toMatch(/<html|teapot/)
     expect(toast.detail).toContain('<html>')
+  })
+})
+
+describe('turn error toasts do not pile up', () => {
+  const fire = (message: string, session: string) => {
+    const { ctx } = errorContext(message)
+    ctx.sessionId = session
+    ctx.event = { ...ctx.event, session_id: session } as GatewayEventContext['event']
+    handleStatusEvent(ctx)
+  }
+
+  const errorToasts = () => $notifications.get().filter(item => item.kind === 'error')
+
+  it('a newer error from the same session replaces its previous toast', () => {
+    for (let turn = 1; turn <= 6; turn += 1) {
+      fire(`provider blew up on turn ${turn}`, 'sess-1')
+    }
+
+    expect(errorToasts()).toHaveLength(1)
+    expect(errorToasts()[0].detail ?? errorToasts()[0].message).toContain('turn 6')
+  })
+
+  it('keeps distinct sessions visible but caps the stack', () => {
+    fire('first failure', 'sess-a')
+    fire('second failure', 'sess-b')
+    expect(errorToasts()).toHaveLength(2)
+
+    fire('third failure', 'sess-c')
+    fire('fourth failure', 'sess-d')
+    fire('fifth failure', 'sess-e')
+    expect(errorToasts()).toHaveLength(3)
+    expect(errorToasts().map(item => item.message).join(' ')).toContain('fifth failure')
+  })
+
+  it('clears the Waking-up overlay target when an error arrives', () => {
+    $gatewaySwapTarget.set('default')
+    fire('boom', 'sess-1')
+    expect($gatewaySwapTarget.get()).toBeNull()
   })
 })
