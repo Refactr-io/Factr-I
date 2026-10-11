@@ -2,6 +2,13 @@
 
 ## v0.0.7 (2026-10-11)
 
+- Bots: bot-to-bot messages (the `message_agent` tool, @mentions and relay between connected Desktops) work in the installed
+  app again. In 0.0.6 the delivery command did not exist in the installed app and the engine's Bot Chats had no messaging
+  tool. Each bot now gets the tool through its own config (`mcp_servers.factr_teammates`); the default profile and every
+  default chat are unchanged. Delivery runs through the bundled Python backend, which is the seam for moving bots to Rust
+  later. Verified end to end with a stub model (bot A messages bot B and the reply returns). A check with a real signed-in
+  model account was not done for this release.
+- Bots: a plain message when a bot has no AI provider, and the Bots list reads the profile folders from disk at startup.
 - Fixed in 0.0.7: in 0.0.6, giving the app a place to install packages for voice dictation also let the backend download
   cloud provider SDKs (AWS, Google) in the background when you connected a provider. Only voice transcription may install
   packages at runtime now; everything else fails fast as before. If you used 0.0.6, the extra packages sit in
@@ -30,6 +37,9 @@
 - Bots: a bot with no AI provider now says "No AI provider is connected yet. Open Settings > Providers to choose one." in
   group activity rows and plugin error toasts, instead of the engine's "Claude credentials not available. Run `factr login
   claude` first." The raw text stays as the toast detail.
+
+Known limits in 0.0.7: after an engine request that keeps failing with 429 or 5xx the retry feedback is thin and the final
+title is generic (engine behaviour, unchanged). Bot Desktop (a live screen per bot) runs on Linux gateway hosts only.
 
 ## v0.0.6 (2026-10-11)
 
