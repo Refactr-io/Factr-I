@@ -343,6 +343,12 @@ def _unsupported_feature_reason(feature: str) -> Optional[str]:
     if sys.platform == "win32" and feature == "platform.matrix":
         return ("unsupported on Windows: Matrix E2EE depends on python-olm, which has no Windows wheel and "
                 "requires make + libolm to build from sdist. Run Factr under WSL to use Matrix on Windows.")
+    # The desktop app gives lazy installs a durable target only for the features it names here
+    # (voice transcription). Other features are probed passively (provider discovery) and must keep
+    # failing fast instead of downloading packages in the background. Prefix "unsupported " is required.
+    only = os.environ.get("FACTR_LAZY_INSTALL_ONLY", "").strip()
+    if only and not any(feature == f or feature.startswith(f + ".") for f in (x.strip() for x in only.split(",")) if f):
+        return f"unsupported in the desktop app: {feature!r} is not installed at runtime here"
     return None
 
 

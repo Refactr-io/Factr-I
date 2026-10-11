@@ -4351,6 +4351,8 @@ async function resolveFactrBackend(backendArgs) {
         // environment found". An explicit setting wins.
         FACTR_LAZY_INSTALL_TARGET:
           process.env.FACTR_LAZY_INSTALL_TARGET || path.join(FACTR_CONFIG_HOME, 'lazy-packages'),
+        // Only voice transcription installs packages at runtime; provider discovery must not download SDKs.
+        FACTR_LAZY_INSTALL_ONLY: process.env.FACTR_LAZY_INSTALL_ONLY || 'stt.faster_whisper',
         // Tool schemas alone exceed Ollama's default 4k window; engine warms to this.
         FACTR_OLLAMA_NUM_CTX: process.env.FACTR_OLLAMA_NUM_CTX || '32768'
       },

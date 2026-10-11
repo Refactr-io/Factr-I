@@ -2,6 +2,11 @@
 
 ## v0.0.7 (2026-10-11)
 
+- Fixed in 0.0.7: in 0.0.6, giving the app a place to install packages for voice dictation also let the backend download
+  cloud provider SDKs (AWS, Google) in the background when you connected a provider. Only voice transcription may install
+  packages at runtime now; everything else fails fast as before. If you used 0.0.6, the extra packages sit in
+  `~/.factr/lazy-packages` and are safe to delete.
+- The Bots list reads the profile folders on disk at startup, so a new bot shows right away.
 - Bots: delivering a message to another bot (message_agent, @mentions, relay) in the installed app. Delivery ran
   `factr -p <bot> chat ...`, but the installed app has no `factr` command that can run `chat` (the bundled `factr` is the
   engine, which refuses it and reads `-p` as `--provider`), so every delivery failed. A packaged backend now runs the
