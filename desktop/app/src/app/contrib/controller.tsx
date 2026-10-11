@@ -69,10 +69,10 @@ import { $interfaceMode, $showsAdvancedChrome, modeLayout, setModeContext, toggl
 import {
   $fileBrowserOpen,
   $sidebarOpen,
+  applyRightSidebarFirstRunDefault,
   FILE_BROWSER_DEFAULT_WIDTH,
   FILE_BROWSER_MAX_WIDTH,
   FILE_BROWSER_MIN_WIDTH,
-  applyRightSidebarFirstRunDefault,
   fileBrowserSide,
   setFileBrowserOpen,
   setSidebarOpen,
