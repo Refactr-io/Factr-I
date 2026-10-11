@@ -492,6 +492,12 @@ contextBridge.exposeInMainWorld('factrDesktop', {
 
     return () => ipcRenderer.removeListener('factr:open-folder-requested', listener)
   },
+  onOpenSettingsRequested: callback => {
+    const listener = () => callback()
+    ipcRenderer.on('factr:open-settings-requested', listener)
+
+    return () => ipcRenderer.removeListener('factr:open-settings-requested', listener)
+  },
   onOpenUpdatesRequested: callback => {
     const listener = () => callback()
     ipcRenderer.on('factr:open-updates', listener)

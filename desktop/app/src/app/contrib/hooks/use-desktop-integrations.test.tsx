@@ -145,6 +145,25 @@ describe('useDesktopIntegrations', () => {
     )
   }
 
+  describe('app menu Settings…', () => {
+    it('navigates to the settings route when the main process asks', () => {
+      let fire: (() => void) | undefined
+
+      ;(desktopWindow.factrDesktop as unknown as Record<string, unknown>).onOpenSettingsRequested = vi.fn(
+        (callback: () => void) => {
+          fire = callback
+
+          return () => undefined
+        }
+      )
+
+      render()
+      fire?.()
+
+      expect(navigate).toHaveBeenCalledWith('/settings')
+    })
+  })
+
   describe('profile-ready gate', () => {
     it('does NOT restore before profileReady is true', () => {
       // Set remembered state, but profileReady=false.

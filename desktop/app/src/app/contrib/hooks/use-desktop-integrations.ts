@@ -37,7 +37,7 @@ import { isBrowserWindow, isHudWindow, isSecondaryWindow } from '@/store/windows
 import type { SessionInfo } from '@/types/factr'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
-import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, sessionRoute } from '../../routes'
+import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, SETTINGS_ROUTE, sessionRoute } from '../../routes'
 
 type RememberedSession = Pick<SessionInfo, '_lineage_root_id' | 'id' | 'profile'>
 
@@ -420,6 +420,13 @@ export function useDesktopIntegrations({
 
     return () => unsubscribe?.()
   }, [])
+
+  // App menu > Settings… — same destination as the ⌘, keybind (nav.settings).
+  useEffect(() => {
+    const unsubscribe = window.factrDesktop?.onOpenSettingsRequested?.(() => navigate(SETTINGS_ROUTE))
+
+    return () => unsubscribe?.()
+  }, [navigate])
 
   // Another window mutated the shared session list -> re-pull the sidebar.
   useEffect(() => {
