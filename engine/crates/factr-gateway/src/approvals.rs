@@ -80,6 +80,40 @@ fn allowlisted(home: &Path, command: &str) -> bool {
         })
 }
 
+/// `path` with `..` and symlinks resolved: the deepest existing ancestor canonicalized and the rest
+/// appended. `None` when that cannot be done with certainty (a relative path, a `..` past a missing
+/// directory).
+fn resolve_dir(path: &Path) -> Option<std::path::PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut rest = Vec::new();
+    let mut cur = path.to_path_buf();
+    loop {
+        if let Ok(mut real) = cur.canonicalize() {
+            real.extend(rest.iter().rev());
+            return Some(real);
+        }
+        rest.push(cur.file_name()?.to_owned());
+        cur.pop();
+    }
+}
+
+/// Whether `cwd` is a broad folder rather than a project: `/` or any root, the home folder or one of
+/// its ancestors (`/Users`, `/home`), `~/Documents`, `~/Desktop`, `~/Downloads`, `/Volumes` and a
+/// volume's root. Unresolvable counts as broad. A plain delete "inside the working folder" there is
+/// a delete of the user's own files, so it is asked about.
+pub(crate) fn broad_folder(cwd: &Path) -> bool {
+    let Some(cwd) = resolve_dir(cwd) else { return true };
+    let Some(parent) = cwd.parent() else { return true };
+    let fixed = |p: &str| cwd == Path::new(p) || resolve_dir(Path::new(p)).is_some_and(|r| r == cwd);
+    if ["/Users", "/home", "/Volumes"].into_iter().any(fixed) || parent == Path::new("/Volumes") {
+        return true;
+    }
+    let home = std::env::var_os("HOME").filter(|h| !h.is_empty()).and_then(|h| resolve_dir(Path::new(&h)));
+    home.is_some_and(|home| home.starts_with(&cwd) || ["Documents", "Desktop", "Downloads"].iter().any(|d| cwd == home.join(d)))
+}
+
 /// `text` with `command` added to `command_allowlist` (the format Factr itself writes for an `always`
 /// answer: a block list of command text). A plain text edit so the rest of the file is untouched.
 /// `Ok(None)`: already there. `Err`: a shape it does not recognise, left alone.
@@ -661,15 +695,31 @@ pub(crate) mod gate {
     /// gate cannot disagree), with Factr's dangerous-pattern list on top. Safe: allow, unless a
     /// Factr pattern matches, which asks (never downgrades). Low, or a justified Confirm: ask.
     /// Confirm without a justification: reflect-block. Catastrophic: deny.
+    ///
+    /// In a broad working folder (home, `/`, `~/Documents`, ... see [`super::broad_folder`]) "inside
+    /// the working directory" is no confinement: a command the risk classifier flags when judged
+    /// with no working directory (a plain `rm`, `unlink`, a `>` truncation) is asked about too.
     pub(super) fn decide(command: &str, justification: Option<&str>, cwd: Option<PathBuf>) -> Decision {
         use factr_app_core::tool::BashVerdict;
         let ask = |reason: String| Decision::Ask { summary: command.to_string(), reason };
         let factr = crate::dangerous::dangerous_reason(command);
+        let broad = cwd.as_deref().is_some_and(super::broad_folder);
         match factr_app_core::tool::bash_verdict(command, justification, cwd) {
             BashVerdict::Refuse(text) => Decision::Block(text),
-            BashVerdict::Run => factr.map_or(Decision::Allow, |reason| ask(reason.to_string())),
+            BashVerdict::Run => match factr {
+                Some(reason) => ask(reason.to_string()),
+                None if broad && destructive_anywhere(command) => ask(BROAD_FOLDER_DELETE.into()),
+                None => Decision::Allow,
+            },
             BashVerdict::Ask(reason) => ask(factr.map(str::to_string).unwrap_or(reason)),
         }
+    }
+
+    pub(crate) const BROAD_FOLDER_DELETE: &str = "delete inside a broad working folder";
+
+    /// The classifier's view with no working directory, so nothing counts as "inside" it.
+    fn destructive_anywhere(command: &str) -> bool {
+        !factr_command_risk::assess(command, &factr_command_risk::RiskContext::from_env(None)).findings.is_empty()
     }
 
     /// Judge a registry call to `bash`, `repl` or `factr`.
@@ -796,6 +846,124 @@ mod tests {
         for cmd in ["ls", "cat README.md", "git status", "python x.py", "git push origin main", "cargo test", "git branch -d done", "grep -r foo ."] {
             assert_eq!(decide(cmd, None, cwd.clone()), Decision::Allow, "{cmd}");
         }
+    }
+
+    /// `$HOME` as the classifier sees it, unless it sits under a temp dir (the classifier never
+    /// flags temp paths, so the home cases would prove nothing there).
+    fn test_home() -> Option<std::path::PathBuf> {
+        let home = std::path::PathBuf::from(std::env::var_os("HOME")?);
+        let temp = ["/tmp", "/private/tmp", "/var/tmp"].iter().any(|t| home.starts_with(t));
+        if temp {
+            eprintln!("skipped: HOME is under a temp dir");
+        }
+        (!temp && home.is_absolute()).then_some(home)
+    }
+
+    #[test]
+    fn deletes_inside_a_broad_working_folder_ask_and_project_folders_are_unchanged() {
+        use super::gate::{BROAD_FOLDER_DELETE, Decision, decide};
+        let Some(home) = test_home() else { return };
+        let tmp = std::env::temp_dir().join(format!("approvals-broad-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("sub")).unwrap();
+        let tmp = tmp.canonicalize().unwrap();
+        let link = tmp.join("home-link");
+        std::os::unix::fs::symlink(&home, &link).unwrap();
+        let qa = r#"rm "$HOME/qa-approve/a.txt""#;
+        let abs = format!(r#"rm "{}/qa-approve/a.txt""#, home.display());
+        let p = |s: &str| Some(std::path::PathBuf::from(s));
+        let at = |rel: &str| Some(home.join(rel));
+        let broad = |reason: &str| reason == BROAD_FOLDER_DELETE;
+        // (command, cwd, expected): "broad" = asked with the broad-folder reason, "ask" = asked for
+        // any reason (the classifier already asks), "allow", "block".
+        let cases: Vec<(&str, Option<std::path::PathBuf>, &str)> = vec![
+            (qa, Some(home.clone()), "broad"),
+            (&abs, Some(home.clone()), "broad"),
+            ("rm qa-approve/a.txt", Some(home.clone()), "broad"),
+            ("unlink a.txt", Some(home.clone()), "broad"),
+            ("shred a.txt", Some(home.clone()), "broad"),
+            ("truncate -s 0 a.txt", Some(home.clone()), "broad"),
+            ("echo x > notes.txt", Some(home.clone()), "broad"),
+            (qa, p("/Users"), "broad"),
+            ("rm a.txt", p("/home"), "broad"),
+            (qa, p("/"), "broad"),
+            ("rm a.txt", p("/Volumes/X"), "broad"),
+            ("rm a.txt", at("Documents"), "broad"),
+            ("rm a.txt", at("Desktop"), "broad"),
+            ("rm a.txt", at("Downloads"), "broad"),
+            (qa, at("Documents"), "ask"),
+            (qa, at("Desktop"), "ask"),
+            // A symlink to home is home; `..` back up to home (or past a missing dir) is broad.
+            ("rm a.txt", Some(link.clone()), "broad"),
+            (qa, Some(link.clone()), "ask"),
+            (qa, at("proj/.."), "broad"),
+            ("rm a.txt", at("no-such-dir/../.."), "broad"),
+            // Recursive deletes keep asking as before; credentials stay refused.
+            ("rm -rf x", Some(home.clone()), "ask"),
+            ("rm ~/.ssh/id_rsa", Some(home.clone()), "block"),
+            ("rm -rf ~/.ssh", Some(home.clone()), "block"),
+            // Reading and writing a new file in home stay silent.
+            ("ls", Some(home.clone()), "allow"),
+            ("cat notes.txt", Some(home.clone()), "allow"),
+            ("mkdir new-folder", Some(home.clone()), "allow"),
+            // A project folder (in home or not) is unchanged.
+            ("rm a.txt", at("proj"), "allow"),
+            (r#"rm "$HOME/proj/qa-approve/a.txt""#, at("proj"), "allow"),
+            ("rm a.txt", Some(tmp.clone()), "allow"),
+            ("rm a.txt", Some(tmp.join("sub/..")), "allow"),
+            ("rm -rf build", at("proj"), "ask"),
+        ];
+        for (cmd, cwd, want) in cases {
+            let got = decide(cmd, None, cwd.clone());
+            let ok = match (want, &got) {
+                ("broad", Decision::Ask { reason, .. }) => broad(reason),
+                ("ask", Decision::Ask { .. }) => true,
+                ("allow", Decision::Allow) => true,
+                ("block", Decision::Block(_)) => true,
+                _ => false,
+            };
+            assert!(ok, "{cmd} in {cwd:?}: want {want}, got {got:?}");
+        }
+        // No working folder known: unchanged (the classifier alone decides).
+        assert!(!matches!(decide("rm a.txt", None, None), Decision::Ask { ref reason, .. } if broad(reason)));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn broad_folders_are_roots_home_and_its_ancestors_and_the_usual_dumping_grounds() {
+        let Some(home) = test_home() else { return };
+        for dir in ["/", "/Users", "/home", "/Volumes", "/Volumes/Backup", "relative/dir"] {
+            assert!(broad_folder(Path::new(dir)), "{dir}");
+        }
+        for dir in [home.clone(), home.join("Documents"), home.join("Desktop"), home.join("Downloads"), home.join("x/..")] {
+            assert!(broad_folder(&dir), "{dir:?}");
+        }
+        for dir in [home.join("proj"), home.join("Documents/proj"), home.join("Desktop/notes/x"), std::env::temp_dir(), "/Volumes/Backup/proj".into()] {
+            assert!(!broad_folder(&dir), "{dir:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_delete_in_home_prompts_the_window_with_the_broad_folder_reason() {
+        use factr_base::hooks::ApprovalHook;
+        let Some(home) = test_home() else { return };
+        let hub = Arc::new(Hub::default());
+        let (_c, mut rx) = client(&hub, "s").await;
+        let home = home.to_string_lossy().to_string();
+        let input = json!({ "command": r#"rm "$HOME/qa-approve/a.txt""# });
+        let asked = {
+            let (hub, input, home) = (hub.clone(), input.clone(), home.clone());
+            tokio::spawn(async move {
+                let call = factr_base::hooks::ApprovalCall { session_id: "s", working_dir: Some(&home), tool: "bash", input: &input };
+                HubGate(hub).approve(&call).await
+            })
+        };
+        let Message::Text(frame) = rx.recv().await.unwrap() else { panic!() };
+        let frame: Value = serde_json::from_str(&frame).unwrap();
+        assert_eq!(frame["method"], "approval");
+        assert_eq!(frame["params"]["description"], gate::BROAD_FOLDER_DELETE, "{frame}");
+        assert!(hub.answer(frame["id"].as_str().unwrap(), "deny").await);
+        assert!(asked.await.unwrap().is_err(), "declined: not run");
     }
 
     async fn client(hub: &Hub, session: &str) -> (Arc<Client>, mpsc::Receiver<Message>) {
