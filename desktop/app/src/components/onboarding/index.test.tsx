@@ -113,7 +113,7 @@ describe('Esc on the provider selector', () => {
     $desktopOnboarding.set({ ...$desktopOnboarding.get(), manual: true })
     renderHook(() => useEscapeClosesManualOnboarding(true))
 
-    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.keyDown(window.document, { key: 'Escape' })
 
     expect($desktopOnboarding.get().manual).toBe(false)
   })
@@ -122,7 +122,7 @@ describe('Esc on the provider selector', () => {
     setProviders([makeOAuthProvider('anthropic', 'Anthropic Claude')])
     renderHook(() => useEscapeClosesManualOnboarding(false))
 
-    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.keyDown(window.document, { key: 'Escape' })
 
     expect($desktopOnboarding.get().configured).toBe(false)
   })

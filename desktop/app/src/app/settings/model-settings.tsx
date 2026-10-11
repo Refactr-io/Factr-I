@@ -1284,8 +1284,8 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
               {t.common.delete}
             </Button>
             <Input
-              className={cn('w-40', CONTROL_TEXT)}
               aria-invalid={moaNameHint ? true : undefined}
+              className={cn('w-40', CONTROL_TEXT)}
               maxLength={MOA_PRESET_NAME_MAX + 10}
               onChange={event => setNewMoaPresetName(event.target.value)}
               placeholder={m.moaNewPresetPlaceholder}

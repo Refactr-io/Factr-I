@@ -37,7 +37,7 @@ import { isBrowserWindow, isHudWindow, isSecondaryWindow } from '@/store/windows
 import type { SessionInfo } from '@/types/factr'
 
 import { requestComposerFocus, requestComposerInsert } from '../../chat/composer/focus'
-import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, SETTINGS_ROUTE, sessionRoute } from '../../routes'
+import { appViewForPath, isOverlayView, NEW_CHAT_ROUTE, routeSessionId, sessionRoute, SETTINGS_ROUTE } from '../../routes'
 
 type RememberedSession = Pick<SessionInfo, '_lineage_root_id' | 'id' | 'profile'>
 
