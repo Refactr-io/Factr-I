@@ -4257,7 +4257,11 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn slash_popup_is_served_natively_and_dispatch_follows_the_table() {
+        // Other tests point FACTR_CONFIG_HOME at their own dir for a moment, under this lock; a /focus
+        // write and its read-back must not straddle that (config.yaml is found through the variable).
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let conn = test_conn("slash-popup");
         let cat = conn.dispatch("commands.catalog", &json!({})).await.unwrap();
         let keys: Vec<&str> = cat["pairs"].as_array().unwrap().iter().map(|p| p[0].as_str().unwrap()).collect();
