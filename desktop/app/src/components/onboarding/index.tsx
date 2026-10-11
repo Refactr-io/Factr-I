@@ -2,6 +2,7 @@ import type { ModelOptionProvider } from '@factr/shared'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { classifyLocalBootFailure } from '@/components/boot-failure-cause'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Input } from '@/components/ui/input'
@@ -436,7 +437,7 @@ export function DesktopOnboardingOverlay({
 // The launch reason is a prompt ("why am I seeing this"), not an error. Only
 // rendered for meaningful caller-supplied reasons (defaults are filtered out
 // upstream), so it never shows the generic "no provider configured" noise.
-function ReasonNotice({
+export function ReasonNotice({
   configError,
   ctx,
   detail,
@@ -506,6 +507,25 @@ function ReasonNotice({
   )
 }
 
+// A plain sentence for a failed start; the raw engine/IPC text only under Details (QA D-7).
+export function BootErrorNotice({ error }: { error: string }) {
+  const { t } = useI18n()
+  const cause = classifyLocalBootFailure(error)
+  const headline = cause ? t.boot.causes[cause] : t.boot.failure.title
+
+  return (
+    <div className="text-xs text-destructive">
+      <p>{headline}</p>
+      {error.trim() ? (
+        <details className="mt-1 text-muted-foreground">
+          <summary className="cursor-pointer select-none">{t.notifications.details}</summary>
+          <p className="mt-1 break-words font-mono">{error}</p>
+        </details>
+      ) : null}
+    </div>
+  )
+}
+
 function Preparing({ boot }: { boot: DesktopBootState }) {
   const { t } = useI18n()
   const progress = Math.max(2, Math.min(100, Math.round(boot.progress)))
@@ -524,10 +544,11 @@ function Preparing({ boot }: { boot: DesktopBootState }) {
         value={progress / 100}
       />
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="truncate">{boot.message}</span>
+        {/* On failure boot.message is "Desktop boot failed: <raw>": the plain headline below replaces it. */}
+        <span className="truncate">{hasError ? '' : boot.message}</span>
         <span>{progress}%</span>
       </div>
-      {hasError ? <p className="text-xs text-destructive">{boot.error}</p> : null}
+      {hasError ? <BootErrorNotice error={boot.error ?? ''} /> : null}
     </div>
   )
 }
