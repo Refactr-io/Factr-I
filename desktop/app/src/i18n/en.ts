@@ -4194,7 +4194,7 @@ export const en: Translations = {
         },
         provider_key_rejected: {
           title: 'The provider rejected the key or login',
-          body: 'Check the key or sign in again in Settings > Providers, then send your message again.'
+          body: 'The provider rejected the key. Check or replace it in Settings > Providers, then send your message again.'
         },
         provider_model_missing: {
           title: 'The provider does not have this model',
@@ -4205,11 +4205,11 @@ export const en: Translations = {
           body: 'Check that the model is installed on your local server (for Ollama: ollama pull <model>), or choose another model.'
         },
         provider_rate_limited: {
-          title: 'Rate limited, retrying',
-          body: provider => `${provider} is limiting requests. Factr-I retries on its own; wait a moment.`
+          title: 'Rate limited. Try again in a moment.',
+          body: provider => `${provider} is limiting requests. Wait a moment, then send your message again.`
         },
         provider_server_error: {
-          title: 'The provider had a server error',
+          title: 'The provider had a server error.',
           body: provider => `${provider} returned a server error. Retry in a moment or switch provider.`
         },
         auth: {
@@ -4288,8 +4288,8 @@ export const en: Translations = {
             `${provider} did not accept how this request was built. Switch provider or send diagnostics so we can look into it.`
         },
         truncated: {
-          title: 'The reply was cut short',
-          body: 'The model stopped before finishing. Retry to get a complete reply.'
+          title: 'The reply was cut off',
+          body: 'The reply was cut off. Retry to continue.'
         },
         invalid_response: {
           title: 'The AI service sent an unreadable reply',
@@ -4383,10 +4383,10 @@ export const en: Translations = {
       alwaysAllowMenu: 'Always allow…',
       jumpToApproval: 'Approval needed',
       reject: 'Reject',
-      alwaysTitle: 'Always allow this command?',
-      alwaysDescription: pattern =>
-        `This adds the “${pattern}” pattern to your permanent allowlist (~/.factr/config.yaml). Factr-I won’t ask again for commands like this — in this session or any future one.`,
-      alwaysAllow: 'Always allow'
+      alwaysTitle: 'Always allow this exact command?',
+      alwaysDescription: () =>
+        'This adds exactly this command, shown below, to your permanent allowlist (~/.factr/config.yaml). Factr-I won’t ask again for this same command, in this session or any future one. Other commands still ask.',
+      alwaysAllow: 'Always allow this exact command'
     },
     clarify: {
       notReady: 'Clarify request is not ready yet',
