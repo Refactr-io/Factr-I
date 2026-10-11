@@ -700,7 +700,7 @@ export interface SessionResumeResult {
 }
 
 export interface SessionRuntimeInfo {
-  approval_mode?: 'manual' | 'off' | 'smart'
+  approval_mode?: 'manual' | 'off'
   branch?: string
   config_warning?: string
   credential_warning?: string

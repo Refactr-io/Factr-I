@@ -15,7 +15,6 @@ behaviour is unchanged from 0.0.4.
 - A config.yaml that cannot be read is no longer ignored silently: onboarding names the file and the line, and offers
   Open the folder and Back up and start fresh (a copy is saved as `config.yaml.corrupt-<time>` before anything changes).
 - The start screen behind a failed start shows the plain cause; the raw error text is only under Details.
-
 - Approval mode label: it no longer flips from Smart to Manual after opening and closing Settings. An empty reply for
   `approvals.mode` (the key is not in config.yaml) was read as Manual; it now keeps the engine default shown.
 - Chat errors: an API-key 401 from the engine ("rejected the access token and no refresh token is available; run
@@ -29,6 +28,10 @@ behaviour is unchanged from 0.0.4.
 - Chat: "Always allow" now says it allows this exact command (and shows it); agentgrep and ls cards read "Searched X in
   folder" / "Listed folder"; stopping a reply leaves a quiet "Stopped" line and keeps the partial text; an empty reply
   to an approval-mode write no longer flips the chip to Manual.
+- Approval mode honesty: the engine refuses `smart` and defaults to `manual`, so the app now defaults to and shows
+  Manual everywhere (new chat, existing chat, after Settings), offers only Manual and Off, and shows a stale `smart`
+  from config as Manual. Settings > Safety explains that Manual also asks before deleting files in a home folder or
+  other broad location, and shows the current working folder.
 - Settings > Model: the main-model context-window override accepts only whole numbers from 0 to 10,000,000 (0 = detect),
   shows an inline error otherwise, and an autosave error no longer lingers when you switch Model tabs.
 - Mixture of Agents: preset names are limited to 40 letters, digits, spaces, dots, dashes and underscores, and providers

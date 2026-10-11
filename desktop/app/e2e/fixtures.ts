@@ -183,7 +183,7 @@ export function writeMockProviderConfig(
 
   // The scripted turns run REAL terminal commands, and anything the guard
   // classifies as dangerous (e.g. the sidebar sentinel-wait loop) parks the
-  // turn behind a Run/Reject approval card. The default 'smart' mode then
+  // turn behind a Run/Reject approval card. An approval mode other than off then
   // fires an aux LLM approval call at the SAME mock provider — consuming a
   // scripted-turn index and never resolving — so the turn stalls until the
   // spec times out (the CI failure mode for the sidebar-dot family). No e2e

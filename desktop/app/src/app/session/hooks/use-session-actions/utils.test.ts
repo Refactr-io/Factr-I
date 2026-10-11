@@ -64,10 +64,10 @@ describe('applyRuntimeInfo approval mode', () => {
   })
 
   it('reconciles session.info against the gateway profile', () => {
-    applyRuntimeInfo({ approval_mode: 'smart', desktop_contract: 3 })
+    applyRuntimeInfo({ approval_mode: 'off', desktop_contract: 3 })
 
-    expect(approvalModeForProfile('work')).toBe('smart')
-    expect(approvalModeForProfile('default')).toBe('smart')
+    expect(approvalModeForProfile('work')).toBe('off')
+    expect(approvalModeForProfile('default')).toBe('manual')
   })
 })
 

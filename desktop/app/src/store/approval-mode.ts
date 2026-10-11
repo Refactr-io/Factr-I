@@ -1,9 +1,11 @@
 import { atom } from 'nanostores'
 
-export type ApprovalMode = 'manual' | 'off' | 'smart'
+/** Modes the engine accepts (factr-gateway rpc/settings.rs rejects `smart`; its default is `manual`). */
+export type ApprovalMode = 'manual' | 'off'
+export const DEFAULT_APPROVAL_MODE: ApprovalMode = 'manual'
 export type ApprovalModeRequester = (method: string, params?: Record<string, unknown>) => Promise<unknown>
 
-const APPROVAL_MODES = new Set<ApprovalMode>(['manual', 'smart', 'off'])
+const APPROVAL_MODES = new Set<ApprovalMode>(['manual', 'off'])
 const revisions = new Map<string, number>()
 const confirmedModes = new Map<string, ApprovalMode>()
 
@@ -25,18 +27,18 @@ function normalizeApprovalMode(value: unknown): ApprovalMode {
     .trim()
     .toLowerCase() as ApprovalMode
 
-  return APPROVAL_MODES.has(normalized) ? normalized : 'manual'
+  // A stale `smart` in config.yaml is not honoured by the engine: it behaves as manual.
+  return APPROVAL_MODES.has(normalized) ? normalized : DEFAULT_APPROVAL_MODE
 }
 
 /** True when the backend actually reported a mode. An unset key (not written to config.yaml yet)
- *  comes back empty; that must not be read as 'manual', it means "engine default" which the UI
- *  already shows. */
+ *  comes back empty and means "engine default", which is manual: keep what is shown. */
 function hasReportedMode(value: unknown): boolean {
   return typeof value === 'string' && value.trim() !== ''
 }
 
 export function approvalModeForProfile(profile: string): ApprovalMode {
-  return $approvalModes.get()[profileKey(profile)] ?? 'smart'
+  return $approvalModes.get()[profileKey(profile)] ?? DEFAULT_APPROVAL_MODE
 }
 
 function cacheApprovalMode(profile: string, mode: ApprovalMode): void {
@@ -102,7 +104,7 @@ export async function setApprovalModeForProfile(
     return authoritative
   } catch (error) {
     if (revisions.get(key) === revision) {
-      cacheApprovalMode(key, confirmedModes.get(key) ?? 'smart')
+      cacheApprovalMode(key, confirmedModes.get(key) ?? DEFAULT_APPROVAL_MODE)
     }
 
     throw error

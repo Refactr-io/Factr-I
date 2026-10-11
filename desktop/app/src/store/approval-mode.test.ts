@@ -13,8 +13,8 @@ import {
 describe('profile-scoped approval mode cache', () => {
   beforeEach(() => $approvalModes.set({}))
 
-  it('labels an unread profile Smart by default and adopts backend truth', async () => {
-    expect(approvalModeForProfile('default')).toBe('smart')
+  it('defaults an unread profile to Manual (the engine default) and adopts backend truth', async () => {
+    expect(approvalModeForProfile('default')).toBe('manual')
 
     const request = vi.fn(async () => ({ value: 'manual' }))
     await syncApprovalModeForProfile(request, 'default')
@@ -24,18 +24,18 @@ describe('profile-scoped approval mode cache', () => {
   })
 
   it('does not flip to Manual when the backend reports no value (unset key, empty reply)', async () => {
-    reconcileApprovalModeForProfile('default', 'smart')
+    reconcileApprovalModeForProfile('default', 'off')
 
     for (const reply of [{}, { value: '' }, { value: null }, undefined]) {
       await syncApprovalModeForProfile(
         vi.fn(async () => reply),
         'default'
       )
-      expect(approvalModeForProfile('default')).toBe('smart')
+      expect(approvalModeForProfile('default')).toBe('off')
     }
 
     reconcileApprovalModeForProfile('default', undefined)
-    expect(approvalModeForProfile('default')).toBe('smart')
+    expect(approvalModeForProfile('default')).toBe('off')
   })
 
   it('keeps the picked mode when the write reply carries no value', async () => {
@@ -67,7 +67,7 @@ describe('profile-scoped approval mode cache', () => {
 
     expect(approvalModeForProfile('work')).toBe('manual')
     expect(approvalModeForProfile('personal')).toBe('off')
-    expect(approvalModeForProfile('default')).toBe('smart')
+    expect(approvalModeForProfile('default')).toBe('manual')
   })
 
   it('rolls consecutive failed writes back to the last authoritative value', async () => {
@@ -93,7 +93,7 @@ describe('profile-scoped approval mode cache', () => {
 
     second.reject(new Error('current failure'))
     await expect(currentWrite).rejects.toThrow('current failure')
-    expect(approvalModeForProfile('default')).toBe('smart')
+    expect(approvalModeForProfile('default')).toBe('manual')
   })
 
   it('lets a backend event supersede an optimistic write and its later failure', async () => {
@@ -106,11 +106,11 @@ describe('profile-scoped approval mode cache', () => {
     )
 
     reconcileApprovalModeForProfile('work', 'smart')
-    expect(approvalModeForProfile('work')).toBe('smart')
+    expect(approvalModeForProfile('work')).toBe('manual')
 
     write.reject(new Error('late failure'))
     await expect(pending).rejects.toThrow('late failure')
-    expect(approvalModeForProfile('work')).toBe('smart')
+    expect(approvalModeForProfile('work')).toBe('manual')
   })
 
   it('ignores a stale initial read after a newer write succeeds', async () => {
@@ -127,5 +127,16 @@ describe('profile-scoped approval mode cache', () => {
     await staleRead
 
     expect(approvalModeForProfile('default')).toBe('off')
+  })
+
+  it('never surfaces smart: a stale smart value is the real engine mode, manual', async () => {
+    reconcileApprovalModeForProfile('default', 'smart')
+    expect(approvalModeForProfile('default')).toBe('manual')
+
+    await syncApprovalModeForProfile(
+      vi.fn(async () => ({ value: 'smart' })),
+      'work'
+    )
+    expect(approvalModeForProfile('work')).toBe('manual')
   })
 })
