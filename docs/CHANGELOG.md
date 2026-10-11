@@ -8,6 +8,15 @@
   bundled Python (`<python> -m factr_backend.main -p <bot> chat ...`); the per-bot turn lock and the live-owner lookup
   recognise that command too. Source and venv installs keep `factr`. The single place that picks the command is
   `bot_cli_prefix` in `backend/tools/bot_relay.py`.
+- Bots: a bot can now message another bot from a normal (engine-run) chat. The engine has no `message_agent` tool, so every
+  Bot Mode bot profile gets a small stdio MCP server in its own `config.yaml` (`mcp_servers.factr_teammates`, tool
+  `mcp__factr_teammates__message_agent`). It delivers the message, waits for the teammate's reply and returns it as the
+  tool result. The default profile's config is never written, so default chats, their tool list and request bodies are
+  unchanged, and the engine itself is unchanged. Python side only: the bot Python loop skips this entry because it has
+  its own `message_agent`. The entry is added when a bot is created or configured and refreshed by the roster poll; bots
+  made before 0.0.7 get it the first time the Python backend runs.
+  Port seam for a Rust bot runtime: replace `deliver` in `backend/tools/message_agent_mcp.py` (transport) and
+  `bot_cli_prefix` (how a teammate's turn is run); the tool surface and config entry stay as they are.
 
 ## v0.0.6 (2026-10-11)
 
