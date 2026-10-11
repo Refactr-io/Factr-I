@@ -6,6 +6,10 @@
 //! (The end-to-end comparison against main's binary, sandboxed, is in the PR notes.)
 //!
 //! Also: a fresh install (nothing saved, no credential anywhere) reports `missing_login`.
+//!
+//! And the approval gate: the scored runs set `approvals.mode: off` and work in a per-task folder.
+//! Nothing there may prompt or be refused, including a delete in a broad folder such as home
+//! (asked about in manual mode since 0.0.5).
 
 #![cfg(unix)]
 
@@ -58,10 +62,13 @@ async fn serve(config: Config) -> (u16, tokio::task::JoinHandle<()>) {
     (port, task)
 }
 
+/// Both tests set FACTR_HOME / FACTR_CONFIG_HOME; they take turns.
+static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn fresh_home(root: &Path, name: &str) -> PathBuf {
     let home = root.join(name);
     std::fs::create_dir_all(&home).unwrap();
-    // SAFETY: this binary has one test, so nothing else reads the environment concurrently.
+    // SAFETY: every test here holds ENV, so nothing else reads the environment concurrently.
     unsafe {
         std::env::set_var("FACTR_HOME", &home);
         std::env::set_var("FACTR_CONFIG_HOME", &home);
@@ -72,6 +79,7 @@ fn fresh_home(root: &Path, name: &str) -> PathBuf {
 
 #[tokio::test]
 async fn the_benchmark_start_resolves_as_on_main_whatever_config_yaml_says() {
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
     let root = std::env::temp_dir().join(format!("factr-bench-iso-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     // SAFETY: as above. The scrubbed benchmark environment has no API key.
@@ -142,5 +150,46 @@ async fn the_benchmark_start_resolves_as_on_main_whatever_config_yaml_says() {
     task.abort();
     assert!(unsupported["provider_error"].as_str().is_some_and(|m| m.contains("bogus-provider")), "{unsupported}");
 
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn approvals_mode_off_never_prompts_in_a_per_task_folder_or_in_home() {
+    use factr_base::hooks::{ApprovalCall, ApprovalHook};
+    use factr_gateway::approvals::{Client, Hub, HubGate};
+    use std::collections::HashSet;
+    use std::sync::Arc;
+    let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let root = std::env::temp_dir().join(format!("factr-bench-approvals-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let task = root.join("task-0001");
+    std::fs::create_dir_all(&task).unwrap();
+    let task = task.canonicalize().unwrap().to_string_lossy().to_string();
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+
+    for mode in ["off", "\"off\""] {
+        let cfg = fresh_home(&root, "cfg");
+        std::fs::write(cfg.join("config.yaml"), format!("approvals:\n  mode: {mode}\n")).unwrap();
+        let hub = Arc::new(Hub::default());
+        // A window is open on the session: a prompt, if any were sent, would reach it.
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        hub.add(Arc::new(Client { id: hub.next_client_id(), to_ws: tx, sessions: tokio::sync::Mutex::new(HashSet::from(["task".to_string()])) }))
+            .await;
+        let gate = HubGate(hub.clone());
+        for (cwd, command) in [
+            (task.as_str(), "rm a.txt"),
+            (task.as_str(), "rm -rf build"),
+            (task.as_str(), "git push --force origin main"),
+            (task.as_str(), "echo x > out.txt"),
+            (home.as_str(), "rm \"$HOME/qa-approve/a.txt\""),
+            (home.as_str(), "rm a.txt"),
+            ("/", "rm a.txt"),
+        ] {
+            let input = serde_json::json!({ "command": command });
+            let call = ApprovalCall { session_id: "task", working_dir: Some(cwd), tool: "bash", input: &input };
+            assert!(gate.approve(&call).await.is_ok(), "mode {mode}: `{command}` in {cwd} must run");
+            assert!(rx.try_recv().is_err(), "mode {mode}: `{command}` in {cwd} sent an approval frame");
+        }
+    }
     let _ = std::fs::remove_dir_all(&root);
 }
