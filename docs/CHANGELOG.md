@@ -17,6 +17,14 @@
   made before 0.0.7 get it the first time the Python backend runs.
   Port seam for a Rust bot runtime: replace `deliver` in `backend/tools/message_agent_mcp.py` (transport) and
   `bot_cli_prefix` (how a teammate's turn is run); the tool surface and config entry stay as they are.
+- Bots: a newly created bot now shows in the Bots roster right away. Creating a bot makes it the active profile, and the
+  roster asked that bot's own engine for `profiles.list`; an engine whose Python half is not running answers with only the
+  default profile, so the new row stayed missing until something woke it (minutes, or never in a short session). On the
+  local connection the roster now asks the root profile's backend, and falls back to the active gateway if that fails.
+  Desktop only: the engine and its default-profile request bodies are unchanged.
+- Bots: a bot with no AI provider now says "No AI provider is connected yet. Open Settings > Providers to choose one." in
+  group activity rows and plugin error toasts, instead of the engine's "Claude credentials not available. Run `factr login
+  claude` first." The raw text stays as the toast detail.
 
 ## v0.0.6 (2026-10-11)
 
