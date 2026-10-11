@@ -327,7 +327,7 @@ export function LocalModelsSettings() {
       <SettingsContent>
         <div className="flex min-h-[60dvh] items-center justify-center">
           <div className="w-full max-w-md text-center">
-            <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/10">
+            <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/10">
               {qJob ? (
                 <Loader2 className="size-7 animate-spin text-primary" />
               ) : (
@@ -343,16 +343,16 @@ export function LocalModelsSettings() {
               <>
                 <p className="mt-2 min-h-10 text-[0.8125rem] leading-5 text-muted-foreground">{liveDetail}</p>
 
-                <div className="mt-5">
+                <div className="mt-4">
                   <ProgressBar percent={qJob.percent} />
                 </div>
 
                 {/* Stage rail: engine -> model -> finish. */}
-                <div className="mt-5 flex items-center justify-center gap-5">
+                <div className="mt-4 flex items-center justify-center gap-4">
                   {stages.map((label, i) => (
                     <span
                       className={cn(
-                        'inline-flex items-center gap-1.5 text-[0.75rem]',
+                        'inline-flex items-center gap-2 text-[0.75rem]',
                         i < stageIndex && 'text-(--ui-text-tertiary)',
                         i === stageIndex && 'font-medium text-foreground',
                         i > stageIndex && 'text-(--ui-text-tertiary) opacity-60'
@@ -406,7 +406,7 @@ export function LocalModelsSettings() {
 
   return (
     <SettingsContent>
-      <ActiveProfileNote className="mb-5" />
+      <ActiveProfileNote className="mb-4" />
       {/* ── Runtime ── */}
       <SettingsSection
         aside={
@@ -522,20 +522,20 @@ export function LocalModelsSettings() {
       {/* ── This machine ── */}
       <SettingsSection icon={Monitor} title={copy.hardwareTitle}>
         {hardware ? (
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 py-1 text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-1 text-[length:var(--conversation-caption-font-size)] text-muted-foreground">
             {hardware.gpu_name && (
-              <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-2">
                 <Zap className="size-3.5" />
                 {hardware.gpu_name}
               </span>
             )}
 
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-2">
               <Cpu className="size-3.5" />
               {copy.vram(gbLabel(hardware.vram_total_bytes))}
             </span>
 
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-2">
               <Package className="size-3.5" />
               {copy.ram(gbLabel(hardware.ram_total_bytes))}
             </span>
@@ -681,7 +681,7 @@ export function LocalModelsSettings() {
                   <>
                     {model.description}
 
-                    <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="mt-2 flex flex-wrap items-center gap-2">
                       {/* Memory: the traffic light. Green = runs fully on
                           the GPU; amber = spills to system RAM (works,
                           slower); red = doesn't fit this machine at all.
@@ -1006,7 +1006,7 @@ function BrowseSection({ onChanged }: { onChanged: () => void }) {
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
-            className="w-full rounded-md border border-(--ui-border) bg-transparent py-1.5 pl-8 pr-3 text-[0.8125rem] outline-none placeholder:text-muted-foreground focus:border-primary"
+            className="w-full rounded-md border border-(--ui-border) bg-transparent py-2 pl-8 pr-3 text-[0.8125rem] outline-none placeholder:text-muted-foreground focus:border-primary"
             onChange={e => setQuery(e.target.value)}
             placeholder={copy.browsePlaceholder}
             value={query}
@@ -1043,7 +1043,7 @@ function BrowseSection({ onChanged }: { onChanged: () => void }) {
               />
 
               {openRepo === hit.repo && (
-                <div className="ml-4 grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-1.5 border-l border-(--ui-border) py-1 pl-3">
+                <div className="ml-4 grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2 border-l border-(--ui-border) py-1 pl-3">
                   {listing && (
                     <p className="col-span-full flex items-center gap-2 py-1 text-[0.75rem] text-muted-foreground">
                       <Loader2 className="size-3 animate-spin" />
@@ -1061,7 +1061,7 @@ function BrowseSection({ onChanged }: { onChanged: () => void }) {
                     return (
                       <div
                         className={cn(
-                          'flex flex-col gap-1 rounded-md border border-(--ui-border) px-2.5 py-1.5',
+                          'flex flex-col gap-1 rounded-md border border-(--ui-border) px-3 py-2',
                           group.fit === 'too-big' && 'opacity-45'
                         )}
                         key={group.label}

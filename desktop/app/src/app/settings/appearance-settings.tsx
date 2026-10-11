@@ -503,7 +503,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
               }
               below={
                 glassMode ? (
-                  <div className="mt-3 flex flex-col gap-2.5" data-translucency-peek-scope="">
+                  <div className="mt-3 flex flex-col gap-3" data-translucency-peek-scope="">
                     <GlassRow label={a.translucencyTintTitle}>
                       <TranslucencySlider
                         label={a.translucencyTintTitle}
@@ -657,7 +657,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
           {show('general') && (
             <ListRow
               action={
-                <div className="flex flex-col items-end gap-1.5">
+                <div className="flex flex-col items-end gap-2">
                   <Switch
                     aria-label={a.tipsTitle}
                     checked={tipsEnabled}
@@ -777,7 +777,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
           {show('chat-display') && (
             <ListRow
               action={
-                <div className="flex flex-col items-end gap-1.5">
+                <div className="flex flex-col items-end gap-2">
                   <SegmentedControl
                     onChange={id => {
                       triggerHaptic('selection')

@@ -391,7 +391,7 @@ export function PluginInstallModal() {
               )}
             </div>
 
-            <div className="space-y-3 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-2.5">
+            <div className="space-y-3 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-3">
               <div className="space-y-2 text-[length:var(--conversation-caption-font-size)]">
                 <div className="font-medium text-foreground">
                   {request.catalogName ? m.reviewedHeading : m.securityHeading}
@@ -413,7 +413,7 @@ export function PluginInstallModal() {
                   )}
                   <div>
                     <div className="mb-1 text-(--ui-text-tertiary)">{m.gitCloneLabel}</div>
-                    <div className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) px-2.5 py-1.5 font-mono break-all text-foreground">
+                    <div className="rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-primary) px-3 py-2 font-mono break-all text-foreground">
                       {sourceLinks.gitUrl}
                     </div>
                   </div>

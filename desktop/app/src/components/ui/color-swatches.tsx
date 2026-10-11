@@ -21,7 +21,7 @@ export function ColorSwatches({
 }: ColorSwatchesProps) {
   return (
     <div>
-      <div className="grid grid-cols-6 gap-1.5">
+      <div className="grid grid-cols-6 gap-2">
         {swatches.map(swatch => (
           <button
             aria-label={swatchLabel?.(swatch) ?? swatch}
@@ -38,7 +38,7 @@ export function ColorSwatches({
         ))}
       </div>
       <button
-        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md py-1 text-xs text-(--ui-text-tertiary) transition hover:bg-(--ui-control-hover-background) hover:text-foreground"
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-md py-1 text-xs text-(--ui-text-tertiary) transition hover:bg-(--ui-control-hover-background) hover:text-foreground"
         onClick={() => onChange(null)}
         type="button"
       >

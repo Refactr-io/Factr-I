@@ -52,7 +52,7 @@ export function OverlaySplitLayout({ children, className }: OverlaySplitLayoutPr
         // Narrow: one column, and pin rows to [nav-bar auto | main 1fr] — without
         // an explicit template the grid's default align-content:stretch splits the
         // height evenly across the two rows, shoving the content to mid-screen.
-        'grid h-full min-h-0 flex-1 grid-cols-[13rem_minmax(0,1fr)] overflow-hidden bg-transparent max-[47.5rem]:grid-cols-1 max-[47.5rem]:grid-rows-[auto_minmax(0,1fr)]',
+        'grid h-full min-h-0 flex-1 grid-cols-[14rem_minmax(0,1fr)] overflow-hidden bg-transparent max-[47.5rem]:grid-cols-1 max-[47.5rem]:grid-rows-[auto_minmax(0,1fr)]',
         className
       )}
     >
@@ -69,7 +69,7 @@ export function OverlaySidebar({ children, className }: OverlaySidebarProps) {
         // they ride up via the shorter shared OVERLAY_TOP_CLEARANCE (same line
         // as a Panel header) instead of main's taller X-clearance. The bg still
         // fills from the card's top edge, so there's no gap above the sidebar.
-        'flex min-h-0 flex-col gap-0.5 overflow-y-auto bg-(--ui-bg-editor) px-2.5 pb-3',
+        'flex min-h-0 flex-col gap-0.5 overflow-y-auto bg-(--ui-bg-editor) px-3 pb-3',
         OVERLAY_TOP_CLEARANCE,
         className
       )}
@@ -118,7 +118,7 @@ export const OverlayNavItem = memo(function OverlayNavItem({
     <button
       aria-current={current ? 'page' : undefined}
       className={cn(
-        'flex h-8 w-full items-center justify-start gap-2 rounded-lg border px-2.5 text-left text-[length:var(--conversation-text-font-size)] font-normal transition-colors',
+        'flex h-8 w-full items-center justify-start gap-2 rounded-lg border px-3 text-left text-[length:var(--conversation-text-font-size)] font-normal transition-colors',
         nested
           ? active
             ? 'border-transparent bg-(--chrome-action-hover) font-medium text-foreground'
@@ -270,7 +270,7 @@ export function OverlayNav({
               </div>
               {hasChildren && (
                 <div
-                  className={cn('ml-3.5 flex flex-col gap-0.5 pl-1.5', !expanded && 'hidden')}
+                  className={cn('ml-4 flex flex-col gap-0.5 pl-2', !expanded && 'hidden')}
                   hidden={!expanded}
                   id={childrenId}
                 >

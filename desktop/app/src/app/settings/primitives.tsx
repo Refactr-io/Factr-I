@@ -20,7 +20,7 @@ export const SettingsBreadcrumbContext = createContext(false)
 export function SettingsContent({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
   return (
     <section className="min-h-0 overflow-hidden">
-      <div className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-5 pb-6' : cn('pb-20', PAGE_INSET_X))}>
+      <div className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-4 pb-6' : cn('pb-20', PAGE_INSET_X))}>
         {/* A readable column, as in System Settings: labels and their controls
             stay within a glance of each other instead of spanning the pane. */}
         {bare ? children : <div className="settings-column mx-auto w-full max-w-[46rem] pt-4">{children}</div>}
@@ -177,7 +177,7 @@ export function ListRow({
     <div className={cn('@container', className)} data-settings-row="" data-tour={dataTour} id={id}>
       <div
         className={cn(
-          'grid min-h-[3.25rem] gap-3 px-4 py-3.5',
+          'grid min-h-[3.25rem] gap-3 px-4 py-4',
           inline && 'grid-cols-[minmax(0,1fr)_auto] items-center gap-6',
           !wide && !inline && '@2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:items-center'
         )}
@@ -245,7 +245,7 @@ export function ToggleRow({
 // its shape (like ModelSettings) instead of collapsing to a centered spinner.
 export function SectionHeadingSkeleton() {
   return (
-    <div className="mb-2.5 flex items-center gap-2 pt-2">
+    <div className="mb-3 flex items-center gap-2 pt-2">
       <Skeleton className="size-4" />
       <Skeleton className="h-4 w-36 max-w-full" />
     </div>
@@ -261,7 +261,7 @@ export function ListRowSkeleton({ wide = false }: { wide?: boolean }) {
           !wide && '@2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:items-center'
         )}
       >
-        <div className="min-w-0 space-y-1.5">
+        <div className="min-w-0 space-y-2">
           <Skeleton className="h-3.5 w-40 max-w-full" />
           <Skeleton className="h-3 w-64 max-w-full" />
         </div>

@@ -22,7 +22,7 @@ export function Field({
   optionalLabel?: string
 }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-2">
       <label
         className="flex items-baseline gap-2 text-xs font-medium text-foreground"
         htmlFor={htmlFor}

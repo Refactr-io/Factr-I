@@ -75,7 +75,7 @@ export function ModelSettingsSkeleton({ subpage }: Pick<ModelSettingsProps, 'sub
 
       {(subpage === undefined || subpage === 'auxiliary' || subpage === 'moa') && (
         <section>
-          <div className="mb-2.5 flex items-center gap-2 pt-2">
+          <div className="mb-3 flex items-center gap-2 pt-2">
             <Skeleton className="size-4" />
             <Skeleton className="h-4 w-36" />
           </div>
@@ -85,7 +85,7 @@ export function ModelSettingsSkeleton({ subpage }: Pick<ModelSettingsProps, 'sub
                 className="grid gap-3 py-3 @2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:items-center"
                 key={row}
               >
-                <div className="min-w-0 space-y-1.5">
+                <div className="min-w-0 space-y-2">
                   <Skeleton className="h-3.5 w-32" />
                   <Skeleton className="h-3 w-52 max-w-full" />
                 </div>
@@ -1053,7 +1053,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
 
       {showAuxiliary && (
         <section>
-          <div className={cn('mb-2.5 flex items-center', subpage === undefined ? 'justify-between' : 'justify-end')}>
+          <div className={cn('mb-3 flex items-center', subpage === undefined ? 'justify-between' : 'justify-end')}>
             {subpage === undefined && <SectionHeading icon={Cpu} title={m.auxiliaryTitle} />}
             <Button
               disabled={!mainModel || applying}
@@ -1066,7 +1066,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
           </div>
           <p className="mb-2 text-xs text-muted-foreground">{m.auxiliaryDesc}</p>
           {(switchStaleAux.length === 0 || !showMain) && persistentStaleAux.length > 0 && (
-            <div className="mb-2.5">
+            <div className="mb-3">
               <StaleAuxWarning
                 applying={applying}
                 onReset={() => void resetAuxiliaryModels()}
@@ -1087,7 +1087,7 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
                   <ListRow
                     action={
                       !isEditing && (
-                        <div className="flex shrink-0 items-center gap-1.5">
+                        <div className="flex shrink-0 items-center gap-2">
                           <Button
                             disabled={!mainModel || applying}
                             onClick={() => void setAuxiliaryToMain(meta.key)}

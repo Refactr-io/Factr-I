@@ -25,7 +25,7 @@ import type { ChatBarState } from './types'
 // control in the row that can give width back continuously, so it absorbs the
 // squeeze between collapse stages instead of pushing Send past the edge.
 const PILL = cn(
-  'h-(--composer-control-size) min-w-0 max-w-40 shrink gap-1 rounded-md px-1.5 text-xs font-normal',
+  'h-(--composer-control-size) min-w-0 max-w-40 shrink gap-1 rounded-md px-2 text-xs font-normal',
   'text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-foreground'
 )
 

@@ -157,9 +157,9 @@ function ShortcutSettings({ includeScreenshot }: { includeScreenshot: boolean })
       </div>
 
       {isSearching ? (
-        <div className="px-2 py-1.5">
+        <div className="px-2 py-2">
           {filteredActions?.length === 0 && filteredReadonly?.length === 0 ? (
-            <p className="px-2.5 py-4 text-center text-[0.8125rem] text-muted-foreground">—</p>
+            <p className="px-3 py-4 text-center text-[0.8125rem] text-muted-foreground">—</p>
           ) : (
             <>
               {filteredActions?.map(action => (
@@ -172,7 +172,7 @@ function ShortcutSettings({ includeScreenshot }: { includeScreenshot: boolean })
           )}
         </div>
       ) : (
-        <div className="px-2 py-1.5">
+        <div className="px-2 py-2">
           {KEYBIND_CATEGORIES.map(category => {
             const actions = actionList.filter(
               action => action.category === category && action.id !== KEYBIND_PANEL_ACTION
@@ -207,7 +207,7 @@ function ShortcutSettings({ includeScreenshot }: { includeScreenshot: boolean })
 function CategoryHeader({ label, onToggle, open }: { label: string; onToggle: () => void; open: boolean }) {
   return (
     <button
-      className="group/kbd-cat flex w-fit min-w-0 items-center gap-1 px-2.5 pb-1 pt-3 text-left leading-none"
+      className="group/kbd-cat flex w-fit min-w-0 items-center gap-1 px-3 pb-1 pt-3 text-left leading-none"
       onClick={onToggle}
       type="button"
     >
@@ -242,7 +242,7 @@ function KeybindRow({ action }: { action: KeybindActionMeta }) {
     .find(Boolean)
 
   return (
-    <div className="group flex items-center gap-2.5 rounded-lg px-2.5 py-1 transition-colors hover:bg-(--chrome-action-hover)">
+    <div className="group flex items-center gap-3 rounded-lg px-3 py-1 transition-colors hover:bg-(--chrome-action-hover)">
       <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-foreground/90">{label}</span>
 
       {conflict && (
@@ -297,7 +297,7 @@ function ReadonlyRow({ shortcut }: { shortcut: KeybindReadonly }) {
   const label = k.actions[shortcut.id] ?? shortcut.id
 
   return (
-    <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-1">
+    <div className="flex items-center gap-3 rounded-lg px-3 py-1">
       <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-foreground/75">{label}</span>
       <div className="flex shrink-0 items-center gap-1">
         {shortcut.keys.map(key => (

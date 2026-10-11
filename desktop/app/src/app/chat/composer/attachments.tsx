@@ -23,7 +23,7 @@ export function AttachmentList({
   onRemove?: (id: string) => void
 }) {
   return (
-    <div className="flex max-w-full flex-wrap gap-1.5 px-1 pt-1" data-slot="composer-attachments">
+    <div className="flex max-w-full flex-wrap gap-2 px-1 pt-1" data-slot="composer-attachments">
       {attachments.filter(Boolean).map(attachment => (
         <AttachmentPill
           attachment={attachment}
@@ -147,7 +147,7 @@ function AttachmentPill({ attachment, onRemove }: { attachment: ComposerAttachme
             aria-busy={isUploading || undefined}
             aria-label={canPreview ? c.previewLabel(attachment.label) : attachment.label}
             className={cn(
-              'flex max-w-56 items-center gap-2 rounded-2xl border bg-background/50 px-2 py-1.5 text-left transition-colors disabled:cursor-default',
+              'flex max-w-56 items-center gap-2 rounded-2xl border bg-background/50 px-2 py-2 text-left transition-colors disabled:cursor-default',
               hasUploadError
                 ? 'border-destructive/45 hover:border-destructive/60'
                 : 'border-border/60 hover:border-primary/35 hover:bg-accent/45'

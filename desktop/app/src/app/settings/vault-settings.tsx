@@ -393,7 +393,7 @@ export function VaultSettings({ subpage }: VaultSettingsProps = {}) {
         <>
           <SectionHeading
             aside={
-              <Button className="gap-1.5" onClick={() => openAdd()} size="sm" type="button" variant="outline">
+              <Button className="gap-2" onClick={() => openAdd()} size="sm" type="button" variant="outline">
                 <Plus className="size-3.5" />
                 {v.add}
               </Button>
@@ -476,7 +476,7 @@ export function VaultSettings({ subpage }: VaultSettingsProps = {}) {
                   {source.enabled &&
                     (source.unlocked ? (
                       <Button
-                        className="gap-1.5"
+                        className="gap-2"
                         disabled={lockSource.isPending}
                         onClick={() => lockSource.mutate(source.name)}
                         size="sm"
@@ -488,7 +488,7 @@ export function VaultSettings({ subpage }: VaultSettingsProps = {}) {
                       </Button>
                     ) : (
                       <Button
-                        className="gap-1.5"
+                        className="gap-2"
                         onClick={() => setUnlockTarget(source)}
                         size="sm"
                         type="button"

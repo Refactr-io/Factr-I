@@ -170,7 +170,7 @@ function OAuthPicker({
   const showOthers = !collapsible || showAll
 
   return (
-    <section className="mb-5 grid gap-2">
+    <section className="mb-4 grid gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
         <SettingsCategoryHeading icon={KeyRound} title={p.connectAccount} />
         <Button
@@ -258,7 +258,7 @@ function ConnectedProviderRow({
 
   return (
     <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md transition-colors hover:bg-(--ui-control-hover-background)">
-      <RowButton className="min-w-0 px-3 py-2.5 text-left" onClick={() => onSelect(provider)}>
+      <RowButton className="min-w-0 px-3 py-3 text-left" onClick={() => onSelect(provider)}>
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-[length:var(--conversation-text-font-size)] font-semibold">{title}</span>
           <span className="inline-flex shrink-0 items-center gap-1 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
@@ -331,7 +331,7 @@ function LocalEndpointRow({ onOpen }: { onOpen: (reason: null | string) => void 
 
   return (
     <RowButton
-      className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-(--ui-control-hover-background)"
+      className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-3 py-3 text-left transition-colors hover:bg-(--ui-control-hover-background)"
       onClick={() => onOpen(null)}
     >
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -481,7 +481,7 @@ export function ProvidersSettings({
 
     return (
       <SettingsContent>
-        <SettingsProfileScope className="mb-5" />
+        <SettingsProfileScope className="mb-4" />
         <LocalEndpointRow onOpen={reason => startManualLocalEndpoint(reason, scopeProfile)} />
         {keyGroups.length > 0 ? (
           <div className="grid gap-3">
@@ -531,7 +531,7 @@ export function ProvidersSettings({
 
   return (
     <SettingsContent>
-      <SettingsProfileScope className="mb-5" />
+      <SettingsProfileScope className="mb-4" />
       <OAuthPicker
         disconnecting={disconnecting}
         onDisconnect={provider => void handleDisconnect(provider)}

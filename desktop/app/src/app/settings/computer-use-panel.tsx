@@ -35,7 +35,7 @@ function GrantIcon({ granted }: { granted: boolean | null }) {
 
 function PermissionRow({ granted, label, hint }: { granted: boolean | null; label: string; hint: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background/55 p-2.5">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background/55 p-3">
       <div className="min-w-0">
         <span className="text-sm font-medium">{label}</span>
         <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">{hint}</p>
@@ -201,7 +201,7 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
           />
         </>
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background/55 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background/55 p-3">
           <span className="text-sm font-medium">{t.settings.computerUse.driverHealth}</span>
           <Pill tone={tone(status.ready)}>
             <GrantIcon granted={status.ready} />
@@ -225,7 +225,7 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
       )}
 
       {status.ready ? (
-        <div className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
           <Check className="size-3.5" />
           Computer Use is ready. Ask the agent to capture an app and click around.
         </div>

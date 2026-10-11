@@ -110,7 +110,7 @@ function ModeCard({
       onClick={onSelect}
       type="button"
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         <Icon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 text-[length:var(--conversation-text-font-size)] font-medium">{title}</span>
         {hint ? (
@@ -125,7 +125,7 @@ function ModeCard({
         ) : null}
         {active ? <Check className="ml-auto size-3.5 shrink-0 text-primary" /> : null}
       </div>
-      <p className="mt-1.5 flex-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+      <p className="mt-2 flex-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
         {description}
       </p>
     </button>
@@ -828,7 +828,7 @@ function GatewayConnectionSettings({ embedded, standalone }: { embedded: boolean
   return (
     <SettingsContent bare={embedded}>
       {embedded || standalone ? null : (
-        <div className="mb-5">
+        <div className="mb-4">
           <div className="flex items-center gap-2 text-[length:var(--conversation-text-font-size)] font-medium">
             <Globe className="size-4 text-muted-foreground" />
             {g.title}
@@ -841,7 +841,7 @@ function GatewayConnectionSettings({ embedded, standalone }: { embedded: boolean
       )}
 
       {state.envOverride ? (
-        <div className="mb-5 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-[length:var(--conversation-caption-font-size)] text-destructive">
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-[length:var(--conversation-caption-font-size)] text-destructive">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <div>
             <div className="font-medium">{g.envOverrideTitle}</div>
@@ -850,7 +850,7 @@ function GatewayConnectionSettings({ embedded, standalone }: { embedded: boolean
         </div>
       ) : null}
 
-      <div className="mb-5 grid gap-2">
+      <div className="mb-4 grid gap-2">
         <div className="text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary)">
           {g.modeTitle}
         </div>
@@ -892,7 +892,7 @@ function GatewayConnectionSettings({ embedded, standalone }: { embedded: boolean
           every remote failure here, so "Use local gateway" became the only way
           back in (#114856). The URL input and Save/Test stay env-gated above. */}
       {state.mode === 'remote' ? (
-        <div className="mt-5 grid gap-1">
+        <div className="mt-4 grid gap-1">
           <ListRow
             action={
               <Input
@@ -984,7 +984,7 @@ function GatewayConnectionSettings({ embedded, standalone }: { embedded: boolean
               {/* The saved token is on disk in plain text (no OS keyring). Same
                   banner idiom as envOverride so it reads as a real warning. */}
               {state.remoteTokenPlainText ? (
-                <div className="mt-2 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-[length:var(--conversation-caption-font-size)] text-destructive">
+                <div className="mt-2 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-[length:var(--conversation-caption-font-size)] text-destructive">
                   <AlertCircle className="mt-0.5 size-4 shrink-0" />
                   <div>
                     <div className="font-medium">{g.plainTextStoredTitle}</div>
@@ -998,7 +998,7 @@ function GatewayConnectionSettings({ embedded, standalone }: { embedded: boolean
       ) : null}
 
       {state.mode === 'ssh' && !state.envOverride ? (
-        <div className="mt-5 grid gap-1">
+        <div className="mt-4 grid gap-1">
           {sshHostSuggestions.length > 0 && !sshCustomHost ? (
             <ListRow
               action={

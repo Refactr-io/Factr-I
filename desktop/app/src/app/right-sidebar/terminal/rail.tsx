@@ -83,7 +83,7 @@ export function TerminalRail() {
         </li>
       </ul>
 
-      <div className="flex shrink-0 flex-col items-center pb-1.5">
+      <div className="flex shrink-0 flex-col items-center pb-2">
         <Tip label={t.rightSidebar.terminalHide} placement="right-rail">
           <button
             aria-label={t.rightSidebar.terminalHide}

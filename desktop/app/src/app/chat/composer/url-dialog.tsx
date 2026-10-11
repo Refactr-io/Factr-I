@@ -37,7 +37,7 @@ export function UrlDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent bodyClassName="gap-5" className="max-w-md">
+      <DialogContent bodyClassName="gap-4" className="max-w-md">
         <DialogHeader>
           <DialogTitle icon={Globe}>{c.attachUrlTitle}</DialogTitle>
           <DialogDescription>{c.attachUrlDesc}</DialogDescription>
@@ -49,7 +49,7 @@ export function UrlDialog({
             onSubmit()
           }}
         >
-          <div className="grid gap-1.5">
+          <div className="grid gap-2">
             <Input
               autoComplete="off"
               autoCorrect="off"

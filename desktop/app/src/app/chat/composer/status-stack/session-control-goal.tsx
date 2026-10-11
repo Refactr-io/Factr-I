@@ -358,7 +358,7 @@ export const SessionControlGoalSection = memo(function SessionControlGoalSection
                 )}
 
                 {/* Criteria subsection */}
-                <div className="mt-1.5 border-t border-(--ui-stroke-tertiary)/40 pt-1.5">
+                <div className="mt-2 border-t border-(--ui-stroke-tertiary)/40 pt-2">
                   <StatusRow
                     className="text-[0.6875rem] font-medium text-muted-foreground/90"
                     leading={
@@ -597,7 +597,7 @@ export const SessionControlGoalSection = memo(function SessionControlGoalSection
                 <div className="font-semibold text-muted-foreground/90 uppercase tracking-wider text-[0.6875rem]">
                   {ctrl.qualityGatesTitle}
                 </div>
-                <div className="mt-1 space-y-1.5">
+                <div className="mt-1 space-y-2">
                   {goal.gates.map((gate, i) => (
                     <div
                       className="rounded border border-(--ui-stroke-tertiary)/60 bg-(--ui-control-active-background)/20 p-2"

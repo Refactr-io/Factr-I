@@ -1326,7 +1326,7 @@ export function ChatBar({
           {/* Aligned to the composer SURFACE, which sits inside the composer's
               5px transparent grab margin — so both strips carry the same inset
               and share one left edge with it. */}
-          <div className={cn(composerFloatingStrip, 'px-[5px] pb-1.5 empty:hidden')}>
+          <div className={cn(composerFloatingStrip, 'px-2 pb-2 empty:hidden')}>
             <ActionBadges sessionId={statusSessionId} />
             <SuggestionPills sessionId={statusSessionId} />
             <OnboardingSkip />
@@ -1572,7 +1572,7 @@ export function ChatBar({
             // call mic and the status ring on the right. See [data-composer-row]
             // in styles.css for how the status surface's groups join this row.
             <div
-              className={cn(composerFloatingStrip, 'flex items-center gap-(--composer-control-gap) px-[5px] pt-1.5')}
+              className={cn(composerFloatingStrip, 'flex items-center gap-(--composer-control-gap) px-2 pt-2')}
               data-composer-row=""
             >
               <div className="order-1 flex items-center gap-(--composer-control-gap)">
@@ -1589,7 +1589,7 @@ export function ChatBar({
               </div>
             </div>
           ) : (
-            <div className={cn(composerFloatingStrip, 'px-[5px] pt-1.5 empty:hidden')}>
+            <div className={cn(composerFloatingStrip, 'px-2 pt-2 empty:hidden')}>
               <ContribSlot area={COMPOSER_AREAS.underside} />
             </div>
           )}

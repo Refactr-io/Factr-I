@@ -459,7 +459,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
 
   const searchField = (
     <button
-      className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg border border-transparent bg-(--ui-bg-tertiary) pl-2.5 pr-1.5 text-left text-(--ui-text-secondary) transition-colors hover:text-foreground"
+      className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg border border-transparent bg-(--ui-bg-tertiary) pl-3 pr-2 text-left text-(--ui-text-secondary) transition-colors hover:text-foreground"
       onClick={() => {
         triggerHaptic('open')
         openCommandPalettePage('settings')

@@ -260,7 +260,7 @@ function VirtualizedReviewList({
 }
 
 // Depth-0 rows align their icon to the panel header's dither glyph: the tree
-// body has px-1 (4px) and the header glyph sits at px-2.5 (10px) + the label's
+// body has px-1 (4px) and the header glyph sits at px-3 (10px) + the label's
 // pl-2 (8px) = 18px, so the base inset is 18 − 4 = 14px.
 const ROW_BASE_INSET = 14
 
@@ -290,7 +290,7 @@ function ReviewDirRow({
   return (
     <>
       <div
-        className="group/review-row row-hover flex h-6 select-none items-center gap-1.5 rounded-md pr-1.5 text-xs text-(--ui-text-secondary) hover:text-foreground"
+        className="group/review-row row-hover flex h-6 select-none items-center gap-2 rounded-md pr-2 text-xs text-(--ui-text-secondary) hover:text-foreground"
         onClick={toggle}
         style={rowStyle(depth)}
       >
@@ -389,7 +389,7 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
       <div
         aria-selected={selected}
         className={cn(
-          'group/review-row row-hover flex h-6 select-none items-center gap-1.5 rounded-md pr-1.5 text-xs text-(--ui-text-secondary) hover:text-foreground',
+          'group/review-row row-hover flex h-6 select-none items-center gap-2 rounded-md pr-2 text-xs text-(--ui-text-secondary) hover:text-foreground',
           selected && 'bg-(--ui-row-active-background) text-foreground'
         )}
         draggable
@@ -409,7 +409,7 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
         <Codicon className={cn('shrink-0', glyph.tone)} name={glyph.icon} size="0.8rem" />
         {/* Dir collapses first (huge shrink); the name only ellipsizes once the
             dir is gone — either way neither runs into the diff count. */}
-        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
           <span className="min-w-0 shrink truncate" title={node.name}>
             {node.name}
           </span>

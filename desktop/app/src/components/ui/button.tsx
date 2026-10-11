@@ -10,7 +10,7 @@ const TEXT_ACTION_ICON = '[&_.codicon]:no-underline [&_svg]:no-underline'
 
 // Filled controls use the shared 6px radius; boxless text actions stay square.
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md text-xs leading-4 font-medium whitespace-nowrap shadow-none transition-all duration-100 outline-none focus-visible:border-ring focus-visible:ring-[0.1875rem] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-default disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md text-xs leading-4 font-medium whitespace-nowrap shadow-none transition-all duration-100 outline-none focus-visible:border-ring focus-visible:ring-[0.1875rem] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-default disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
   {
     variants: {
       variant: {
@@ -39,10 +39,10 @@ const buttonVariants = cva(
         textStrong: `rounded-none font-semibold text-muted-foreground underline underline-offset-4 hover:text-foreground ${TEXT_ACTION_ICON}`
       },
       size: {
-        default: 'px-3 py-1.5 has-[>svg]:px-2.5',
-        xs: "gap-1 px-2 py-0.5 text-[0.6875rem] leading-4 has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: 'px-2.5 py-1 has-[>svg]:px-2',
-        lg: 'px-5 py-2 text-sm leading-5 has-[>svg]:px-4',
+        default: 'px-3 py-2 has-[>svg]:px-3',
+        xs: "gap-1 px-2 py-0.5 text-[0.6875rem] leading-4 has-[>svg]:px-2 [&_svg:not([class*='size-'])]:size-3",
+        sm: 'px-3 py-1 has-[>svg]:px-2',
+        lg: 'px-4 py-2 text-sm leading-5 has-[>svg]:px-4',
         // Flush inline text action — no box padding/height. Pair with text/link
         // variants when the button must sit inline in a heading or sentence
         // (replaces ad-hoc `h-auto px-0 py-0` overrides).

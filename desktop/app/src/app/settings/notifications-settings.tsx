@@ -100,7 +100,7 @@ export function NotificationsSettings({ subpage }: NotificationsSettingsProps = 
               </Select>
 
               <Button
-                className="gap-1.5"
+                className="gap-2"
                 onClick={() => {
                   previewCompletionSound()
                   triggerHaptic('crisp')

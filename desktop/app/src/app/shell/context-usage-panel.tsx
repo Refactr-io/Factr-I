@@ -54,7 +54,7 @@ export function ContextUsagePanel({ breakdown, loading, usage }: ContextUsagePan
 
       <ContextUsageBar categories={categories} segmentTotal={segmentTotal} />
 
-      <ul className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-2">
         {categories.map(category => (
           <li className="flex items-center justify-between gap-2" key={category.id}>
             <span className="flex min-w-0 items-center gap-2">

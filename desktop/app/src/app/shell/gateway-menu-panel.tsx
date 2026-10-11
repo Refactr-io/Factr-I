@@ -161,11 +161,11 @@ export function GatewayMenuPanel({
     <div className="text-sm">
       <div className="flex items-center justify-between gap-3 px-3 py-2">
         <div className="flex min-w-0 flex-col gap-1 text-[0.6875rem] leading-none">
-          <span className="flex items-center gap-1.5 font-medium">
+          <span className="flex items-center gap-2 font-medium">
             <StatusDot tone={gatewayOpen ? 'good' : gatewayConnecting ? 'warn' : 'bad'} />
             {connectionLabel}
           </span>
-          <span className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="flex items-center gap-2 text-muted-foreground">
             <StatusDot tone={inferenceReady ? 'good' : gatewayOpen ? 'warn' : 'bad'} />
             {inferenceLabel}
           </span>
@@ -233,7 +233,7 @@ export function GatewayMenuPanel({
               {copy.viewAllLogs}
             </Button>
           </div>
-          <LogView className="mt-1.5 max-h-40 border-0 px-0" ref={logScrollRef}>
+          <LogView className="mt-2 max-h-40 border-0 px-0" ref={logScrollRef}>
             {recentLogs.map(trimLogLine).join('\n')}
           </LogView>
         </Section>
@@ -242,11 +242,11 @@ export function GatewayMenuPanel({
       {platforms.length > 0 && (
         <Section>
           <SectionLabel>{copy.messagingPlatforms}</SectionLabel>
-          <ul className="mt-1.5 space-y-1">
+          <ul className="mt-2 space-y-1">
             {platforms.map(([name, platform]) => (
               <li className="flex items-center justify-between gap-2 text-xs" key={name}>
                 <span className="truncate capitalize">{name}</span>
-                <span className="flex items-center gap-1.5 text-[0.625rem] text-muted-foreground">
+                <span className="flex items-center gap-2 text-[0.625rem] text-muted-foreground">
                   <StatusDot tone={PLATFORM_TONE[platform.state] || 'muted'} />
                   {prettyState(platform.state)}
                 </span>

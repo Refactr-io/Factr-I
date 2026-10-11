@@ -206,7 +206,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
         <StatusRow
           // The base "where am I working" strip is part of the composer surface
           // itself, so it inherits the composer's width and clipped top radius.
-          className="coding-status-bar min-h-7 rounded-t-[inherit] rounded-b-none border-b border-(--ui-stroke-tertiary) px-3.5 py-1.5 hover:bg-transparent"
+          className="coding-status-bar min-h-7 rounded-t-[inherit] rounded-b-none border-b border-(--ui-stroke-tertiary) px-4 py-2 hover:bg-transparent"
           // Static branch glyph — never the loading spinner. This row only renders
           // once `status` exists, so a spinner here only ever fired on *refreshes*
           // of an already-loaded repo (window focus, turn settle), reading as an
@@ -294,7 +294,7 @@ export const CodingStatusRow = memo(function CodingStatusRow({
           {(status.ahead > 0 || status.behind > 0 || hasLineDelta || untrackedOnly) && (
             <button className="contents" onClick={onOpen} type="button">
               {(status.ahead > 0 || status.behind > 0) && (
-                <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[0.6875rem] leading-4 text-muted-foreground/90 tabular-nums">
+                <span className="ml-auto flex shrink-0 items-center gap-2 text-[0.6875rem] leading-4 text-muted-foreground/90 tabular-nums">
                   {status.ahead > 0 && (
                     <span className="flex items-center gap-0.5" title={s.ahead(status.ahead)}>
                       <span aria-hidden>↑</span>

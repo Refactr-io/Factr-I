@@ -83,7 +83,7 @@ export function KeysSettings({ view }: KeysSettingsProps) {
 
   return (
     <SettingsContent>
-      <SettingsProfileScope className="mb-5" />
+      <SettingsProfileScope className="mb-4" />
       {entries.length > 0 ? (
         <div className="grid gap-2">
           {entries.map(([key, info]) => {

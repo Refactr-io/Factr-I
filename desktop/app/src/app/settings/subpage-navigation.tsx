@@ -11,7 +11,7 @@ export function SettingsSubpageHeader({ group, child }: { group: OverlayNavGroup
   const current = child ?? pages[0]
 
   return (
-    <header className={cn('mb-5 shrink-0', PAGE_INSET_X)}>
+    <header className={cn('mb-4 shrink-0', PAGE_INSET_X)}>
       <div className="mx-auto w-full max-w-[46rem]">
         <h1 className="text-xl font-semibold leading-7 tracking-[-0.01em] text-foreground">{group.label}</h1>
         {pages.length > 1 && (

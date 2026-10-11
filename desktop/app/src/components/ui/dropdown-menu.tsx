@@ -10,8 +10,8 @@ import { cn } from '@/lib/utils'
 // full-width, square, and compact so the highlight spans the whole surface.
 // Reuse these instead of re-deriving per menu so every searchable/compact menu
 // reads identically.
-export const dropdownMenuRow = 'gap-2 rounded-none px-2.5 py-1 text-xs'
-export const dropdownMenuSectionLabel = 'px-2.5 pt-1 pb-0.5 text-[0.625rem] font-medium uppercase tracking-wide'
+export const dropdownMenuRow = 'gap-2 rounded-none px-3 py-1 text-xs'
+export const dropdownMenuSectionLabel = 'px-3 pt-1 pb-0.5 text-[0.625rem] font-medium uppercase tracking-wide'
 
 // Keys that must reach Radix's menu handler (navigation/close). Everything else
 // is a filter keystroke and is stopped so the menu's typeahead doesn't hijack it.
@@ -44,7 +44,7 @@ function DropdownMenuSearch({
   onValueChange?: (value: string) => void
 }) {
   return (
-    <div className="px-2.5 py-1.5" data-slot="dropdown-menu-search">
+    <div className="px-3 py-2" data-slot="dropdown-menu-search">
       <input
         autoFocus
         className={cn(

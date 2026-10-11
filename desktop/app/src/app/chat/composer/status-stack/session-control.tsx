@@ -56,10 +56,10 @@ export const SessionControlSections = memo(function SessionControlSections({
     <>
       {displayError && (
         <div
-          className="flex items-center justify-between gap-2 border-b border-destructive/20 bg-destructive/10 px-3 py-1.5 text-xs text-destructive"
+          className="flex items-center justify-between gap-2 border-b border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive"
           role="alert"
         >
-          <div className="flex items-center gap-1.5 truncate">
+          <div className="flex items-center gap-2 truncate">
             <Codicon className="shrink-0" name="error" size="0.85rem" />
             <span className="truncate">{displayError}</span>
           </div>

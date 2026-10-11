@@ -77,7 +77,7 @@ export function ReviewShipBar() {
   }
 
   return (
-    <div className="flex shrink-0 flex-col gap-1.5 p-2" data-suppress-pane-reveal-side="">
+    <div className="flex shrink-0 flex-col gap-2 p-2" data-suppress-pane-reveal-side="">
       {/* Auto-growing message field (CSS field-sizing); generate/stop action
           fills the right edge on one row, then sticks to the top as it grows. */}
       <div className="relative">

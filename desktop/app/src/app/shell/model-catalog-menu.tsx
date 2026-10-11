@@ -563,7 +563,7 @@ export function ModelCatalogMenu({
                           </span>
                           {loadProgress ? (
                             <span
-                              className="ml-auto flex shrink-0 items-center gap-1.5"
+                              className="ml-auto flex shrink-0 items-center gap-2"
                               title={copyPicker.loadingIntoMemory}
                             >
                               <span className="h-1 w-14 overflow-hidden rounded-sm bg-(--ui-bg-tertiary)">
@@ -702,7 +702,7 @@ function DownloadingModelRow({ jobId, target }: { jobId: string; target: string 
       textValue=""
     >
       <span className="min-w-0 flex-1 truncate">{target}</span>
-      <span className="ml-auto flex shrink-0 items-center gap-1.5" title={copy.downloading}>
+      <span className="ml-auto flex shrink-0 items-center gap-2" title={copy.downloading}>
         <span className="h-1 w-14 overflow-hidden rounded-sm bg-(--ui-bg-tertiary)">
           <span
             className="block h-full rounded-sm bg-primary transition-[width] duration-500"

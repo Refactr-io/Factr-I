@@ -161,7 +161,7 @@ function ArchivedSessionsSettings({ includeDefaultDirectory }: { includeDefaultD
               <div className="scroll-mt-6" data-settings-slot="" id={`archived-session-${session.id}`} key={session.id}>
                 <ListRow
                   action={
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <Button
                         disabled={busy}
                         onClick={() => void unarchive(session)}

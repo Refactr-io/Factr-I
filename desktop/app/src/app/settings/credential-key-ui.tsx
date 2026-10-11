@@ -20,10 +20,10 @@ export const CREDENTIAL_CONTROL_CLASS = cn('h-8', CONTROL_TEXT)
 
 // Resting credential field: chrome stripped so it reads as plain subtext.
 // Stacked (<@2xl) it collapses to zero box (flush under its label); at @2xl it
-// keeps the full control metrics (h-8 + px-2.5/py-1.5) so it centres on the
+// keeps the full control metrics (h-8 + px-3/py-2) so it centres on the
 // label and nothing shifts when focus/expand adds the border. `!` beats the
 // unlayered chrome CSS and the shared control sizing.
-const CRED_BARE = 'border-0! bg-transparent! shadow-none! h-auto! p-0! @2xl:h-8! @2xl:px-2.5! @2xl:py-1.5!'
+const CRED_BARE = 'border-0! bg-transparent! shadow-none! h-auto! p-0! @2xl:h-8! @2xl:px-3! @2xl:py-2!'
 
 export const isKeyVar = (key: string, info: EnvVarInfo) => info.is_password || /(?:_API_KEY|_TOKEN|_KEY)$/.test(key)
 
@@ -211,7 +211,7 @@ export function CredentialKeyCard({
       {/* One CSS grid: 1 col stacked, 2 cols at @2xl. p-3 card padding = gap-3
           row/col gaps, everything top-left aligned (items-start), no indents.
           The label row is h-8 to line up with the input row beside it. */}
-      <div className="grid grid-cols-1 items-start gap-x-3 gap-y-1.5 @2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:gap-y-3">
+      <div className="grid grid-cols-1 items-start gap-x-3 gap-y-2 @2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:gap-y-3">
         <CardHeader expandable={expandable} expanded={expanded} onToggle={onToggle}>
           <span
             className={cn('size-2 shrink-0 rounded-full', info.is_set ? 'bg-primary' : 'bg-(--ui-stroke-secondary)')}
@@ -280,7 +280,7 @@ export function ProviderKeyRows({ expanded, group, onExpand, onToggle, rowProps 
     >
       {/* Same grid as CredentialKeyCard: 1 col stacked, 2 cols at @2xl, p-3 =
           gap-3, items-start, label row h-8 to line up with the input row. */}
-      <div className="grid grid-cols-1 items-start gap-x-3 gap-y-1.5 @2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:gap-y-3">
+      <div className="grid grid-cols-1 items-start gap-x-3 gap-y-2 @2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:gap-y-3">
         <CardHeader expandable={expandable} expanded={expanded} onToggle={onToggle}>
           <span
             className={cn(

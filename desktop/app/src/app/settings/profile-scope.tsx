@@ -75,7 +75,7 @@ export function SettingsProfileScope({ className }: { className?: string }) {
       <div className="text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary)">
         {scope.appliesTo}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {profiles.map(profile => (
           <ScopeChip
             active={normalizeProfileKey(profile.name) === selected}

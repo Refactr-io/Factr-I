@@ -171,7 +171,7 @@ function DialogContent({
               className={cn(
                 // Overlap by one corner radius so the white bottom lobes read clearly
                 // over the tint instead of meeting it on a straight seam.
-                'relative z-0 -mt-[var(--radius-xl)] overflow-hidden rounded-b-xl px-4 pb-2.5 pt-[calc(var(--radius-xl)+0.625rem)] text-center text-[length:var(--conversation-tool-font-size)] leading-relaxed shadow-[inset_0_7px_7px_-4px_rgb(0_0_0/0.28)]',
+                'relative z-0 -mt-[var(--radius-xl)] overflow-hidden rounded-b-xl px-4 pb-3 pt-[calc(var(--radius-xl)+0.625rem)] text-center text-[length:var(--conversation-tool-font-size)] leading-relaxed shadow-[inset_0_7px_7px_-4px_rgb(0_0_0/0.28)]',
                 DIALOG_BANNER_TONES[bannerTone]
               )}
               data-slot="dialog-banner"

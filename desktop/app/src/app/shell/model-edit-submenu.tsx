@@ -148,7 +148,7 @@ export function ModelOptionsContent({
   const fastOn = fastControl.kind === 'none' ? false : fastControl.on
 
   return !hasFast && !reasoning ? (
-    <div className="px-2.5 py-3 text-xs text-(--ui-text-tertiary)">{copy.noOptions}</div>
+    <div className="px-3 py-3 text-xs text-(--ui-text-tertiary)">{copy.noOptions}</div>
   ) : (
     // One panel, one inset: every row starts on the same 14px edge and the
     // sections are grouped by space, not rules.

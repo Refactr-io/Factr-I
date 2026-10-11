@@ -128,7 +128,7 @@ export function TerminalBackendPanel({ onConfiguredChange }: TerminalBackendPane
   }
 
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-2">
       <div className="flex items-baseline justify-between gap-2 px-0.5">
         <span className="text-[0.75rem] font-medium">{copy.sectionTitle}</span>
         <Button disabled={loading} onClick={() => void refresh()} size="sm" variant="text">
@@ -140,7 +140,7 @@ export function TerminalBackendPanel({ onConfiguredChange }: TerminalBackendPane
           <button
             aria-pressed={backend.active}
             className={cn(
-              'grid gap-0.5 rounded-lg border px-2.5 py-2 text-left transition',
+              'grid gap-0.5 rounded-lg border px-3 py-2 text-left transition',
               backend.active
                 ? 'border-(--ui-stroke-secondary) bg-(--ui-bg-tertiary)'
                 : 'border-transparent bg-background/55 hover:bg-accent/40'

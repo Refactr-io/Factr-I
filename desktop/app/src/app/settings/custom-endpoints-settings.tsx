@@ -331,7 +331,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
   if (loading) {
     return (
       <SettingsContent>
-        <SettingsProfileScope className="mb-5" />
+        <SettingsProfileScope className="mb-4" />
         <SettingsSkeleton sections={[{ heading: true, rows: 3 }]} />
       </SettingsContent>
     )
@@ -342,7 +342,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
 
   return (
     <SettingsContent>
-      <SettingsProfileScope className="mb-5" />
+      <SettingsProfileScope className="mb-4" />
       <div className="space-y-6">
         <section>
           <SectionHeading icon={Globe} meta={`${endpoints.length}`} page title={t.settings.customEndpoints.title} />
@@ -415,7 +415,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
           <SectionHeading icon={Plus} title={form.id ? ce.editTitle : ce.addTitle} />
           <div className="grid gap-3 rounded-md border border-border/50 p-3">
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1.5 text-xs text-muted-foreground">
+              <label className="grid gap-2 text-xs text-muted-foreground">
                 {ce.fields.name}
                 <Input
                   onChange={event => setForm(current => ({ ...current, name: event.target.value }))}
@@ -423,7 +423,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
                   value={form.name}
                 />
               </label>
-              <label className="grid gap-1.5 text-xs text-muted-foreground">
+              <label className="grid gap-2 text-xs text-muted-foreground">
                 {ce.fields.providerId}
                 <Input
                   onChange={event => setForm(current => ({ ...current, id: event.target.value }))}
@@ -432,7 +432,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
                 />
               </label>
             </div>
-            <label className="grid gap-1.5 text-xs text-muted-foreground">
+            <label className="grid gap-2 text-xs text-muted-foreground">
               {ce.fields.endpointUrl}
               <Input
                 onChange={event => setForm(current => ({ ...current, baseUrl: event.target.value }))}
@@ -440,8 +440,8 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
                 value={form.baseUrl}
               />
             </label>
-            <fieldset className="grid min-w-0 gap-1.5 text-xs text-muted-foreground">
-              <legend className="mb-1.5">{ce.apiMode}</legend>
+            <fieldset className="grid min-w-0 gap-2 text-xs text-muted-foreground">
+              <legend className="mb-2">{ce.apiMode}</legend>
               <SegmentedControl
                 className="w-full max-w-full"
                 onChange={apiMode => setForm(current => ({ ...current, apiMode }))}
@@ -450,7 +450,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
               />
             </fieldset>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-              <label className="grid gap-1.5 text-xs text-muted-foreground">
+              <label className="grid gap-2 text-xs text-muted-foreground">
                 {ce.fields.defaultModel}
                 <Input
                   list="custom-endpoint-models"
@@ -464,7 +464,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
                   ))}
                 </datalist>
               </label>
-              <label className="grid gap-1.5 text-xs text-muted-foreground">
+              <label className="grid gap-2 text-xs text-muted-foreground">
                 {ce.fields.context}
                 <Input
                   inputMode="numeric"
@@ -474,7 +474,7 @@ export function CustomEndpointsSettings({ onConfigSaved, onMainModelChanged }: C
                 />
               </label>
             </div>
-            <label className="grid gap-1.5 text-xs text-muted-foreground">
+            <label className="grid gap-2 text-xs text-muted-foreground">
               {ce.fields.apiKey}
               <Input
                 onChange={event => setForm(current => ({ ...current, apiKey: event.target.value }))}

@@ -45,8 +45,8 @@ const MARKS = {
 
 export function ConnectorCard({ children, title }: { children: ReactNode; title: string }) {
   return (
-    <div className={cn(SHELL_CLASS, 'my-1.5 grid gap-0.5')} data-slot="connector-card">
-      <p className="pb-1.5 font-medium leading-(--conversation-line-height)">{title}</p>
+    <div className={cn(SHELL_CLASS, 'my-2 grid gap-0.5')} data-slot="connector-card">
+      <p className="pb-2 font-medium leading-(--conversation-line-height)">{title}</p>
       {children}
     </div>
   )
@@ -60,7 +60,7 @@ export function ConnectorRow({ action, connector, cue, mark, markLabel }: Connec
 
   return (
     <div className="grid gap-1" data-connector-row={connector.name} data-slot="connector-row" tabIndex={-1}>
-      <div className="flex h-8 items-center gap-2.5">
+      <div className="flex h-8 items-center gap-3">
         <span aria-live="polite" className="grid size-4 shrink-0 place-items-center" role="status">
           <Icon aria-hidden className={cn('size-3.5', className)} />
           <span className="sr-only">{announcement}</span>

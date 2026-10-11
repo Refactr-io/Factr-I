@@ -49,7 +49,7 @@ export function Panel({
       closeLabel={closeLabel}
       // Header title rides up next to the floating close button — see
       // OVERLAY_TOP_CLEARANCE, the shared clearance every overlay column uses.
-      contentClassName={cn('flex h-full min-h-0 flex-col px-4 pb-4 sm:px-5', OVERLAY_TOP_CLEARANCE, contentClassName)}
+      contentClassName={cn('flex h-full min-h-0 flex-col px-4 pb-4 sm:px-4', OVERLAY_TOP_CLEARANCE, contentClassName)}
       onClose={onClose}
       rootClassName={cn('flex h-full w-full flex-col', className)}
     >
@@ -76,7 +76,7 @@ export function PanelHeader({ actions, subtitle, title }: PanelHeaderProps) {
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         {subtitle ? <p className="truncate text-xs text-muted-foreground/90">{subtitle}</p> : null}
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </header>
   )
 }
@@ -88,7 +88,7 @@ export function PanelBody({ children, className }: { children: ReactNode; classN
         // Side-by-side master/detail on a wide card; once it narrows (same
         // threshold the other overlays collapse at) stack the list above the
         // detail so the detail keeps full width instead of being squished.
-        'flex min-h-0 flex-1 flex-col gap-4 overflow-hidden min-[47.5rem]:flex-row min-[47.5rem]:gap-5',
+        'flex min-h-0 flex-1 flex-col gap-4 overflow-hidden min-[47.5rem]:flex-row min-[47.5rem]:gap-4',
         className
       )}
     >
@@ -342,7 +342,7 @@ export function PanelBlock({ children, className }: { children: ReactNode; class
   return (
     <pre
       className={cn(
-        'max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-foreground/5 p-2.5 text-[0.6875rem] leading-relaxed text-foreground/80',
+        'max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-foreground/5 p-3 text-[0.6875rem] leading-relaxed text-foreground/80',
         className
       )}
     >
@@ -364,7 +364,7 @@ export function PanelPill({ children, tone = 'muted' }: { children: ReactNode; t
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-sm px-1.5 py-0.5 text-[0.625rem] font-medium capitalize',
+        'inline-flex items-center rounded-sm px-2 py-0.5 text-[0.625rem] font-medium capitalize',
         PILL_TONE[tone]
       )}
     >
@@ -417,7 +417,7 @@ export function PanelAction({
   return (
     <Button
       className={cn(
-        'gap-1.5',
+        'gap-2',
         !primary && 'text-muted-foreground hover:bg-(--ui-row-hover-background) hover:text-foreground'
       )}
       disabled={disabled}

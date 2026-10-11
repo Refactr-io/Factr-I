@@ -33,7 +33,7 @@ const RUBBER = 0.25
 const FLICK_PX_PER_MS = 0.5
 const THUMB_RADIUS_PX = 4
 
-const slotClass = 'flex items-center justify-center gap-1 px-2.5 py-0.5 text-[0.6875rem] font-medium'
+const slotClass = 'flex items-center justify-center gap-1 px-3 py-0.5 text-[0.6875rem] font-medium'
 
 /**
  * Grouped one-row toggle used for small mutually-exclusive choices

@@ -188,7 +188,7 @@ function EnvVarField({ envVar, isSet, onSaved, onCleared, profile }: EnvVarField
 
   return (
     <EnvVarContextMenu {...actionProps}>
-      <div className="grid gap-2 rounded-lg bg-background/55 p-2.5">
+      <div className="grid gap-2 rounded-lg bg-background/55 p-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -210,7 +210,7 @@ function EnvVarField({ envVar, isSet, onSaved, onCleared, profile }: EnvVarField
         </div>
 
         {isSet && revealed !== null && (
-          <div className="rounded-md bg-background px-2.5 py-1.5 font-mono text-xs text-foreground">
+          <div className="rounded-md bg-background px-3 py-2 font-mono text-xs text-foreground">
             {revealed || '---'}
           </div>
         )}
@@ -353,7 +353,7 @@ function PostSetupRunner({ toolset, postSetupKey, installed = false, onComplete,
   }, [toolset, postSetupKey, onComplete, copy, profile])
 
   return (
-    <div className="grid gap-2 rounded-lg bg-background/55 p-2.5">
+    <div className="grid gap-2 rounded-lg bg-background/55 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[0.75rem] text-muted-foreground">
@@ -381,7 +381,7 @@ function PostSetupRunner({ toolset, postSetupKey, installed = false, onComplete,
 
       {status && (status.lines.length > 0 || status.running) && (
         <pre
-          className="max-h-48 overflow-y-auto rounded-md bg-background px-2.5 py-1.5 font-mono text-[0.6875rem] leading-relaxed text-muted-foreground whitespace-pre-wrap"
+          className="max-h-48 overflow-y-auto rounded-md bg-background px-3 py-2 font-mono text-[0.6875rem] leading-relaxed text-muted-foreground whitespace-pre-wrap"
           data-selectable-text="true"
         >
           {status.lines.length > 0 ? status.lines.join('\n') : copy.postSetupStarting}
@@ -471,7 +471,7 @@ function ModelCatalogPicker({ toolset, providerName, isActiveBackend, profile }:
   const selected = catalog.current ?? catalog.default
 
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-2">
       <div className="flex items-baseline justify-between gap-2 px-0.5">
         <span className="text-[0.75rem] font-medium">{copy.modelSectionTitle}</span>
         <span className="text-[0.6875rem] text-muted-foreground">{copy.modelCount(catalog.models.length)}</span>
@@ -486,7 +486,7 @@ function ModelCatalogPicker({ toolset, providerName, isActiveBackend, profile }:
             <button
               aria-pressed={isSelected}
               className={cn(
-                'grid gap-0.5 rounded-lg border px-2.5 py-2 text-left transition',
+                'grid gap-0.5 rounded-lg border px-3 py-2 text-left transition',
                 isSelected
                   ? 'border-(--ui-stroke-secondary) bg-(--ui-bg-tertiary)'
                   : 'border-transparent bg-background/55 hover:bg-accent/40',
@@ -702,7 +702,7 @@ export function ToolsetConfigPanel({ toolset, onConfiguredChange, profile }: Too
             <button
               aria-expanded={isExpanded}
               className={cn(
-                'flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-accent/50',
+                'flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition hover:bg-accent/50',
                 isExpanded && 'bg-accent/40'
               )}
               onClick={() => {
@@ -763,7 +763,7 @@ export function ToolsetConfigPanel({ toolset, onConfiguredChange, profile }: Too
                   // web.extract_backend without touching the shared
                   // web.backend key. Hidden for capabilities the backend
                   // can't serve (e.g. ddgs is search-only).
-                  <div className="flex flex-wrap items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     {webCaps.includes('search') && (
                       <Button
                         disabled={selecting !== null || isSearchBackend}

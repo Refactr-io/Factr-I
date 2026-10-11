@@ -18,7 +18,7 @@ import { isMaxEffort } from '../../shell/effort-slider'
 import type { ChatBarState } from './types'
 
 const PILL = cn(
-  'h-(--composer-control-size) shrink-0 gap-1 rounded-md px-1.5 text-xs font-normal',
+  'h-(--composer-control-size) shrink-0 gap-1 rounded-md px-2 text-xs font-normal',
   'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
 )
 

@@ -64,7 +64,7 @@ function kbdShapeClass(label: string, size: 'sm' | 'md' | null | undefined): str
     return compact ? 'size-[1.125rem] px-0' : 'h-[1.125rem] min-w-[1.125rem] px-1'
   }
 
-  return compact ? 'size-[1.375rem] px-0' : 'h-[1.375rem] min-w-[1.375rem] px-1.5'
+  return compact ? 'size-[1.375rem] px-0' : 'h-[1.375rem] min-w-[1.375rem] px-2'
 }
 
 interface KbdProps extends React.ComponentProps<'kbd'>, VariantProps<typeof kbdVariants> {}

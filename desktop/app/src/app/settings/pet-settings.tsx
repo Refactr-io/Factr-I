@@ -132,7 +132,7 @@ export function PetSettings() {
           below={
             <>
               <input
-                className="mt-3 w-full rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-1.5 text-[length:var(--conversation-caption-font-size)] outline-none placeholder:text-(--ui-text-tertiary) focus:border-(--ui-stroke-secondary)"
+                className="mt-3 w-full rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) px-3 py-2 text-[length:var(--conversation-caption-font-size)] outline-none placeholder:text-(--ui-text-tertiary) focus:border-(--ui-stroke-secondary)"
                 onChange={event => setQuery(event.target.value)}
                 placeholder={copy.searchPlaceholder}
                 spellCheck={false}
@@ -146,9 +146,9 @@ export function PetSettings() {
                   // "unreachable" copy before the gallery has even arrived.
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     {Array.from({ length: 6 }, (_, i) => (
-                      <div className="flex items-center gap-2.5 px-2.5 py-2" key={i}>
+                      <div className="flex items-center gap-3 px-3 py-2" key={i}>
                         <Skeleton className="size-10 shrink-0 rounded-md" />
-                        <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="min-w-0 flex-1 space-y-2">
                           <Skeleton className="h-3.5 w-24 max-w-full" />
                           <Skeleton className="h-3 w-16 max-w-full" />
                         </div>
@@ -173,7 +173,7 @@ export function PetSettings() {
                         <div className="group relative" key={pet.slug}>
                           <button
                             className={cn(
-                              'flex w-full items-center gap-2.5 px-2.5 py-2 text-left disabled:opacity-50',
+                              'flex w-full items-center gap-3 px-3 py-2 text-left disabled:opacity-50',
                               selectableCardClass({ active: isActive, prominent: pet.installed })
                             )}
                             disabled={isBusy}
@@ -187,12 +187,12 @@ export function PetSettings() {
                               url={pet.spritesheetUrl}
                             />
                             <span className="min-w-0 flex-1">
-                              <span className="flex items-center gap-1.5">
+                              <span className="flex items-center gap-2">
                                 <span className="truncate text-[length:var(--conversation-text-font-size)] font-medium">
                                   {pet.displayName}
                                 </span>
                                 {pet.generated && (
-                                  <span className="shrink-0 rounded-sm bg-primary/15 px-1.5 py-px text-[0.625rem] font-medium text-primary">
+                                  <span className="shrink-0 rounded-sm bg-primary/15 px-2 py-px text-[0.625rem] font-medium text-primary">
                                     {copy.generatedTag}
                                   </span>
                                 )}

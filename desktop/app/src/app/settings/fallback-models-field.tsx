@@ -114,7 +114,7 @@ export function FallbackModelsField({
     commit(rows.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)))
 
   return (
-    <div className="grid w-full gap-1.5">
+    <div className="grid w-full gap-2">
       {rows.length === 0 && <p className="text-xs text-muted-foreground">{m.fallbackEmpty}</p>}
       {rows.map((entry, index) => {
         const providerRow = providers.find(provider => provider.slug === entry.provider)
