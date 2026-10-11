@@ -10,6 +10,9 @@
 - Projects: the sidebar lists only the projects you created. A git repo or a chat folder that is not one of your projects is
   no longer shown as a project (this also applies to the engine's `projects.tree`); its chats stay in Home.
 - The right sidebar is closed the first time the app opens. If you have already opened or closed it, Factr-I keeps your choice.
+- Spacing: paddings and gaps now follow a 4px scale (8/12/16) across the composer, Settings, shared controls, right sidebar and overlays; the Settings nav is 14rem wide.
+- Icons: all line icons use one lighter 1.5 stroke weight with round caps.
+- CI: the gateway slash popup test now takes the shared environment lock (a test-only race).
 
 ## v0.0.5 (2026-10-11)
 
