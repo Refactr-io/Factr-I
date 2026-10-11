@@ -4346,6 +4346,11 @@ async function resolveFactrBackend(backendArgs) {
         FACTR_BACKEND_TOOLS_DIR: path.join(pythonRoot, 'tools'),
         // The bundle is signed and precompiled at build time: never write __pycache__ into it.
         PYTHONDONTWRITEBYTECODE: '1',
+        // The bundled runtime is not a virtualenv, so a lazy install (voice transcription's faster-whisper)
+        // needs a durable target in the user's data folder; without one `uv pip` fails with "No virtual
+        // environment found". An explicit setting wins.
+        FACTR_LAZY_INSTALL_TARGET:
+          process.env.FACTR_LAZY_INSTALL_TARGET || path.join(FACTR_CONFIG_HOME, 'lazy-packages'),
         // Tool schemas alone exceed Ollama's default 4k window; engine warms to this.
         FACTR_OLLAMA_NUM_CTX: process.env.FACTR_OLLAMA_NUM_CTX || '32768'
       },

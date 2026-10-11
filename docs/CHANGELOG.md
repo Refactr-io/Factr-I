@@ -1,7 +1,13 @@
 # Changelog
 
-## v0.0.6 (unreleased)
+## v0.0.6 (2026-10-11)
 
+- Voice transcription: dictation now works in the installed app. The first time you use it, Factr-I downloads the local
+  speech engine (faster-whisper, about 200 MB) into your data folder (`lazy-packages`), not into the signed app. The
+  install used to fail with "No virtual environment found" because the bundled runtime is not a virtualenv and the
+  desktop gave the installer no target folder. The optional microphone-capture package (`sounddevice`) is no longer part
+  of that install, since transcribing a recording does not need it. If no speech engine or provider key is available, the
+  error now says what to do instead of a generic failure.
 - Projects: a project you create in the sidebar (New project, then add a folder) now appears under Projects, with or
   without chats in it. The engine gateway built the sidebar tree from chats alone and answered `projects.list` with an
   empty list, so a project that was saved to `projects.db` was never shown. It now reads your projects from
