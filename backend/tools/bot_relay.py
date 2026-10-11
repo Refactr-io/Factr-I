@@ -84,6 +84,7 @@ _HANDLE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 # One turn in a profile's canonical Bot Chat: ``factr -p <profile> *BOT_CHAT_TURN_ARGS``.
 # ``-c "Bot Chat"`` must match ``bot_mode_probe.BOT_CHAT_TITLE``.
+BOT_CLI_MODULE = "factr_backend.main"
 BOT_CHAT_TURN_ARGS = ("chat", "--in", "~", "-c", "Bot Chat", "--create-if-missing", "-Q")
 
 # Set by a dispatcher on the ONE policy-gated re-run of a failed delivery turn (``tools.bot_mode_dm``,
@@ -513,9 +514,41 @@ def _factr_backend() -> str:
     return str(sibling) if sibling.is_file() else shutil.which("factr") or "factr"
 
 
+def bot_cli_prefix() -> list[str]:
+    """argv prefix that runs the Python Factr CLI for a Bot Chat turn (the seam a Rust port replaces).
+
+    The packaged desktop app ships no ``factr`` script that can run ``chat``: ``resources/factr/factr``
+    is the Rust engine, which refuses it. Desktop gives its Python runtime ``FACTR_BACKEND_PYTHON``, so a
+    packaged backend runs ``<python> -m factr_backend.main``; every other install keeps ``factr``. The
+    packaged check wins over ``shutil.which`` because a user-installed engine on PATH would be found
+    first and refuse the turn.
+    """
+    if os.environ.get("FACTR_BACKEND_PYTHON"):
+        return [sys.executable or os.environ["FACTR_BACKEND_PYTHON"], "-m", BOT_CLI_MODULE]
+    return [_factr_backend()]
+
+
+def bot_cli_profile(argv: "list[str]") -> "str | None":
+    """The profile of a delivery argv built by :func:`bot_cli_prefix` (``<cli...> -p <profile> ...``), else None.
+
+    The CLI element is matched by basename (argv[0] may be an absolute venv path, and carries .exe on
+    Windows; both separators are split so the shape holds whatever platform built the argv, #93590), or
+    as the packaged ``<python> -m factr_backend.main`` form."""
+    argv = list(argv or [])
+    cli = (argv[0] if argv else "").rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+    start = 1
+    if cli not in ("factr", "factr.exe"):
+        if argv[1:3] != ["-m", BOT_CLI_MODULE]:
+            return None
+        start = 3
+    if len(argv) < start + 2 or argv[start] != "-p":
+        return None
+    return argv[start + 1]
+
+
 def local_delivery_command(profile: str, query_file: str) -> list[str]:
     """argv that delivers a DM into ``profile``'s Bot Chat on THIS gateway."""
-    return [_factr_backend(), "-p", profile, *BOT_CHAT_TURN_ARGS, "--query-file", query_file]
+    return [*bot_cli_prefix(), "-p", profile, *BOT_CHAT_TURN_ARGS, "--query-file", query_file]
 
 
 class DeliveryAuthor:

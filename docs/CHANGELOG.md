@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.7 (unreleased)
+
+- Bots: delivering a message to another bot (message_agent, @mentions, relay) in the installed app. Delivery ran
+  `factr -p <bot> chat ...`, but the installed app has no `factr` command that can run `chat` (the bundled `factr` is the
+  engine, which refuses it and reads `-p` as `--provider`), so every delivery failed. A packaged backend now runs the
+  bundled Python (`<python> -m factr_backend.main -p <bot> chat ...`); the per-bot turn lock and the live-owner lookup
+  recognise that command too. Source and venv installs keep `factr`. The single place that picks the command is
+  `bot_cli_prefix` in `backend/tools/bot_relay.py`.
+
 ## v0.0.6 (2026-10-11)
 
 - Voice transcription: dictation now works in the installed app. The first time you use it, Factr-I downloads the local

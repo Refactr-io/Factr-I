@@ -204,7 +204,7 @@ def message_agent_tool(target: str = "", message: str = "", task_id: Optional[st
             BOT_CHAT_TITLE, _display_name, _handle, _factr_root, _peers, _profile_name as _self_profile_name,
             _roster, is_bot_mode_managed,
         )
-        from tools.bot_relay import BOT_CHAT_TURN_ARGS, _factr_backend
+        from tools.bot_relay import BOT_CHAT_TURN_ARGS, bot_cli_prefix
 
         if _session_title(agent) != BOT_CHAT_TITLE:
             return _err("message_agent is only available in a Bot Mode 'Bot Chat' session. "
@@ -258,7 +258,7 @@ def message_agent_tool(target: str = "", message: str = "", task_id: Optional[st
         # under the wrong interpreter (#108628). _factr_backend pins the entrypoint beside
         # this interpreter; _delivery_lock/_local_delivery_home match argv[0] by basename,
         # so the absolute path stays compatible.
-        return _start_delivery([_factr_backend(), "-p", _self_profile_name(root), "peer", "dm", dm_target], content,
+        return _start_delivery([*bot_cli_prefix(), "-p", _self_profile_name(root), "peer", "dm", dm_target], content,
                                f"@{peer_profile or peer_name} on peer '{peer_name}'", stdin_file=True,
                                author=peer_author, **delivery)
 
@@ -279,7 +279,7 @@ def message_agent_tool(target: str = "", message: str = "", task_id: Optional[st
         return _roster_err(f"No teammate named '{raw_target}' on this install, on a connected "
                            "machine, or on a registered peer. Pick a name from the roster "
                            "(roles are listed in your system prompt).")
-    return _start_delivery([_factr_backend(), "-p", resolved, *BOT_CHAT_TURN_ARGS], content, f"@{_handle(resolved)}",
+    return _start_delivery([*bot_cli_prefix(), "-p", resolved, *BOT_CHAT_TURN_ARGS], content, f"@{_handle(resolved)}",
                            stdin_file=False, profile_home=roster_homes[resolved], author=author, **delivery)
 
 
@@ -396,16 +396,14 @@ def _delivery_lock(argv: list[str], *, stdin_file: bool):
 
     See #93091.
     """
-    # Match the CLI element by basename: argv[0] may be an absolute venv path
-    # (service contexts lack PATH) and carries .exe on Windows; split on both separators.
-    # Split on both separators so the shape matches regardless of which platform built the argv. See #93590.
-    cli = (argv[0] if argv else "").rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
-    if stdin_file or len(argv) < 3 or cli not in ("factr", "factr.exe") or argv[1] != "-p":
+    from tools.bot_relay import acquire_turn_lock, bot_cli_profile
+
+    profile = None if stdin_file else bot_cli_profile(argv)
+    if profile is None:
         return contextlib.nullcontext()
     from tools.bot_mode_probe import _factr_root
-    from tools.bot_relay import acquire_turn_lock
 
-    return acquire_turn_lock(_factr_root(Path(_default_home())), argv[2])
+    return acquire_turn_lock(_factr_root(Path(_default_home())), profile)
 
 
 def _run_local_turn(argv: list[str], dm_file: str, *, env: Optional[dict[str, str]] = None) -> int:
@@ -523,12 +521,14 @@ def _wait_live_dm(home: str, delivery_id: str, *, dm_file: "str | os.PathLike | 
 
 
 def _local_delivery_home(argv: list[str]) -> Path | None:
-    cli = (argv[0] if argv else "").rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
-    if len(argv) < 3 or cli not in ("factr", "factr.exe") or argv[1] != "-p":
+    from tools.bot_relay import bot_cli_profile
+
+    profile = bot_cli_profile(argv)
+    if profile is None:
         return None
     from tools.bot_mode_probe import _factr_root, _roster
 
-    return dict(_roster(_factr_root(Path(_default_home())))).get(argv[2])
+    return dict(_roster(_factr_root(Path(_default_home())))).get(profile)
 
 
 def _run_delivery(argv: list[str], dm_file: str, *, stdin_file: bool,
