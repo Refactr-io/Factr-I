@@ -399,6 +399,55 @@ pub fn boot_pick<'a>(cli_explicit: bool, cli_model: Option<&'a str>, profile: &'
     }
 }
 
+/// config.yaml exists with content that does not parse as a YAML mapping. Every reader then falls back
+/// to defaults (and every writer refuses to save over it), so the desktop must name the file instead of
+/// offering a setup that hides it. Carries the parser's location and reason only, never the file's text:
+/// config.yaml can hold API keys.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConfigProblem {
+    pub path: PathBuf,
+    pub line: Option<usize>,
+    pub detail: String,
+}
+
+impl ConfigProblem {
+    pub fn message(&self) -> String {
+        let at = self.line.map(|line| format!(" (line {line})")).unwrap_or_default();
+        format!(
+            "{} could not be read{at}, so Factr-I is ignoring it: {}. Fix the file, or back it up and start fresh.",
+            self.path.display(),
+            self.detail
+        )
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({ "path": self.path.display().to_string(), "line": self.line, "message": self.message() })
+    }
+}
+
+/// The problem with `<home>/config.yaml`, or `None` when it is missing, blank, comment-only or a mapping.
+pub fn config_problem_in(home: &std::path::Path) -> Option<ConfigProblem> {
+    let path = home.join("config.yaml");
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => return Some(ConfigProblem { path, line: None, detail: format!("it cannot be opened ({})", e.kind()) }),
+    };
+    if raw.trim().is_empty() {
+        return None;
+    }
+    match serde_yaml::from_str::<Value>(&raw) {
+        Ok(value) if value.is_mapping() || value.is_null() => None,
+        Ok(_) => Some(ConfigProblem { path, line: None, detail: "it is not a list of `key: value` settings".into() }),
+        Err(e) => Some(ConfigProblem { path, line: e.location().map(|at| at.line()), detail: e.to_string() }),
+    }
+}
+
+/// [`config_problem_in`] for the profile's home.
+pub fn config_problem() -> Option<ConfigProblem> {
+    config_problem_in(&factr_base::factr_config::home()?)
+}
+
 pub fn parse_config(raw: &str) -> (Option<String>, Option<String>, Option<String>) {
     let config = serde_yaml::from_str::<Value>(raw).unwrap_or(Value::Null);
     let model = &config["model"];
@@ -464,6 +513,39 @@ pub fn mcp_servers_body(raw: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::{effective_default, mcp_servers_body, parse_config, persona, persona_for, DEFAULT_PERSONA};
+
+    #[test]
+    fn a_corrupt_config_is_named_with_its_line_and_never_its_text() {
+        use super::config_problem_in;
+        let dir = std::env::temp_dir().join(format!("factr-config-problem-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _cleanup = Cleanup(dir.clone());
+        assert_eq!(config_problem_in(&dir), None, "no file: nothing to report");
+        let file = dir.join("config.yaml");
+        for fine in ["", "  \n", "# only a comment\n", "model:\n  provider: custom\n"] {
+            std::fs::write(&file, fine).unwrap();
+            assert_eq!(config_problem_in(&dir), None, "{fine:?} is readable");
+        }
+        // The QA lane D file: a broken flow sequence, plus a secret that must never be echoed.
+        std::fs::write(&file, "model:\n  provider: custom\n  api_key: sk-secret-123\n  default: [stub-model\n  base_url: : :\n\t- not: yaml: at all\n").unwrap();
+        let problem = config_problem_in(&dir).expect("a corrupt file is reported");
+        assert_eq!(problem.path, file);
+        assert!(problem.line.is_some_and(|line| line >= 4), "{problem:?}");
+        let message = problem.message();
+        assert!(message.contains(&file.display().to_string()) && message.contains("line "), "{message}");
+        assert!(!message.contains("sk-secret-123") && !message.contains("stub-model"), "{message}");
+        assert_eq!(problem.to_json()["path"], file.display().to_string());
+        std::fs::write(&file, "- just\n- a list\n").unwrap();
+        assert_eq!(config_problem_in(&dir).map(|p| p.line), Some(None), "a non-mapping is reported too");
+    }
+
+    struct Cleanup(std::path::PathBuf);
+
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn the_chatgpt_guard_fires_only_for_a_chatgpt_pick_with_no_valid_login_and_a_key() {
