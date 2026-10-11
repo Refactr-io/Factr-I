@@ -1445,9 +1445,25 @@ fn refresh_children(
         let Ok(bytes) = std::fs::read(home.join("sessions").join(format!("{session}.json"))) else {
             continue;
         };
-        let Ok(saved) = serde_json::from_slice::<Value>(&bytes) else {
+        let Ok(mut saved) = serde_json::from_slice::<Value>(&bytes) else {
             continue;
         };
+        // The snapshot holds the transcript as of its last checkpoint; every message since is an
+        // `append_messages` line of `<session>.journal.jsonl` (factr-base session persistence).
+        // A child that finished after its first checkpoint is only finished in the journal.
+        if let Ok(journal) = std::fs::read_to_string(home.join("sessions").join(format!("{session}.journal.jsonl"))) {
+            if saved["messages"].is_null() {
+                saved["messages"] = json!([]);
+            }
+            for entry in journal.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()) {
+                if let Some(parent) = entry["meta"].get("parent_id").filter(|p| p.is_string()) {
+                    saved["parent_id"] = parent.clone();
+                }
+                if let (Some(appended), Some(messages)) = (entry["append_messages"].as_array(), saved["messages"].as_array_mut()) {
+                    messages.extend(appended.iter().cloned());
+                }
+            }
+        }
         if saved["parent_id"].as_str() != Some(parent_session.as_str()) {
             continue;
         }
@@ -1486,7 +1502,9 @@ fn refresh_children(
                 output += o;
                 read += r;
                 write += w;
-                let cost = cost_usd(provider, model, i, o, r, w);
+                // All zero: the provider reported no usage for this call (a tool-call reply from
+                // a server that sends usage only on the final chunk). Unknown, not free.
+                let cost = if i + o + r + w == 0 { None } else { cost_usd(provider, model, i, o, r, w) };
                 if cost.is_none() { unpriced_calls += 1; }
                 total_cost = total_cost.and_then(|sum| cost.map(|price| sum + price));
                 calls.push((
@@ -2104,12 +2122,20 @@ mod tests {
         assert_eq!(observer.detail(&root).unwrap()["content"]["output"], "done");
         std::fs::create_dir_all(dir.join("sessions")).unwrap();
         let at = chrono::Utc::now().to_rfc3339();
+        // The snapshot was checkpointed after the prompt; the tool call, its result and the reply
+        // are journal appends (the first call's provider reported no usage).
         std::fs::write(dir.join("sessions/child-session.json"), json!({
             "parent_id":"parent","provider_key":"ollama","model":"local","messages":[
-                {"role":"user","timestamp":at,"content":[{"type":"text","text":"Reply READY"}]},
-                {"role":"assistant","timestamp":at,"token_usage":{"input_tokens":9,"output_tokens":2},"content":[{"type":"text","text":"READY"}]}
+                {"role":"user","timestamp":at,"content":[{"type":"text","text":"Reply READY"}]}
             ]
         }).to_string()).unwrap();
+        let journal = [
+            json!({"meta":{"parent_id":"parent"}}),
+            json!({"append_messages":[{"role":"assistant","timestamp":at,"token_usage":{"input_tokens":0,"output_tokens":0},"content":[{"type":"tool_use","id":"t1","name":"read_file","input":{}}]}]}),
+            json!({"append_messages":[{"role":"user","timestamp":at,"content":[{"type":"tool_result","tool_use_id":"t1","content":"x"}]}]}),
+            json!({"append_messages":[{"role":"assistant","timestamp":at,"token_usage":{"input_tokens":9,"output_tokens":2},"content":[{"type":"text","text":"READY"}]}]}),
+        ].map(|line| line.to_string()).join("\n");
+        std::fs::write(dir.join("sessions/child-session.journal.jsonl"), journal).unwrap();
         for _ in 0..200 {
             if observer.list(10, None, None, None, None, None).unwrap()["runs"]
                 .as_array()
@@ -2130,6 +2156,9 @@ mod tests {
             .unwrap();
         assert_eq!(child["status"], "complete");
         assert_eq!(child["input_tokens"], 9);
+        assert_eq!(child["step_count"], 2, "both model calls, the unreported one included: {child}");
+        assert_eq!(child["tools_called"], 1);
+        assert_eq!(child["priced"], false);
         assert!(child["cost_usd"].is_null());
         drop(observer);
         std::fs::remove_dir_all(dir).unwrap();
