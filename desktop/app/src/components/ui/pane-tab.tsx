@@ -48,6 +48,8 @@ const TAB_SELECTED =
 
 interface PaneTabProps extends React.ComponentProps<'div'> {
   active?: boolean
+  /** Tab title for the close button's accessible name ("Close <title>"), so each ✕ is unique. */
+  closeLabel?: string
   dirty?: boolean
   /** Close verb. Horizontal tabs reveal a hover ✕ over the label's masked
    *  right edge; middle-click and ⌘-click always work,
@@ -75,6 +77,7 @@ interface PaneTabProps extends React.ComponentProps<'div'> {
 export const PaneTab = React.forwardRef<HTMLDivElement, PaneTabProps>(function PaneTab(
   {
     active = false,
+    closeLabel,
     dirty = false,
     onClose,
     onMouseDown,
@@ -170,7 +173,7 @@ export const PaneTab = React.forwardRef<HTMLDivElement, PaneTabProps>(function P
         // Geometry stays fixed; the same fade works on solid and glass surfaces.
         <span className="pointer-events-none absolute inset-y-0 right-0 flex items-stretch opacity-0 transition-opacity group-hover/tab:pointer-events-auto group-hover/tab:opacity-100">
           <button
-            aria-label={translateNow('common.close')}
+            aria-label={closeLabel ? translateNow('common.closeNamed', closeLabel) : translateNow('common.close')}
             className="grid w-(--pane-tab-close-width) cursor-pointer place-items-center bg-transparent text-(--ui-text-tertiary) outline-none hover:text-foreground"
             onClick={event => {
               event.preventDefault()

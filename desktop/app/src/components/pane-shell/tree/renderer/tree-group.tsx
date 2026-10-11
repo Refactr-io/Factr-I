@@ -646,6 +646,7 @@ export function TreeGroup({
                     <PaneTab
                       active={isActive}
                       aria-selected={isActive}
+                      closeLabel={typeof title === 'string' ? title : undefined}
                       data-tree-tab={paneId}
                       key={paneId}
                       onClose={closeable ? () => closeTab(paneId) : undefined}

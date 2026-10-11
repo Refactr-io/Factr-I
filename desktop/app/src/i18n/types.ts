@@ -285,6 +285,7 @@ export interface Translations {
     choose: string
     clear: string
     close: string
+    closeNamed: (name: string) => string
     collapse: string
     confirm: string
     connect: string

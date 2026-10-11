@@ -250,6 +250,7 @@ export const en: Translations = {
     choose: 'Choose',
     clear: 'Clear',
     close: 'Close',
+    closeNamed: name => `Close ${name}`,
     collapse: 'Collapse',
     confirm: 'Confirm',
     connect: 'Connect',
