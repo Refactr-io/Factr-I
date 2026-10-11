@@ -644,6 +644,42 @@ interface UnionRoster {
   sources?: GatewaySource[]
 }
 
+/** The local root profile as a route descriptor, for roster reads. */
+const ROOT_PROFILE_ROUTE = Object.freeze({
+  connectionId: 'local',
+  mode: 'local' as const,
+  profile: 'default',
+  targetProfile: 'default'
+})
+
+/** `profiles.list` for the roster. While a bot's own profile is the active one,
+ *  the active gateway is that bot's backend, and a backend whose Python half is
+ *  not running answers this probe with only its own default row. A bot created
+ *  a moment ago therefore never showed up (the new bot became active, its
+ *  backend answered with the stub, and the real list only came back minutes
+ *  later when something woke its Python). The root profile's backend owns the
+ *  whole roster and is the one that just ran `profiles.create`, so on the local
+ *  connection a non-default active profile asks it instead. Any failure there
+ *  falls back to the active gateway, which is what every other case uses. */
+async function requestRosterList(
+  activeBot: { name: string },
+  activeConnectionId: null | string | undefined
+): Promise<RosterSnapshot> {
+  if (activeBot.name !== 'default' && String(activeConnectionId || '').trim() === 'local') {
+    try {
+      return await requestForBot<RosterSnapshot>(
+        { name: 'default', route: ROOT_PROFILE_ROUTE, sourceScoped: true },
+        'profiles.list',
+        {}
+      )
+    } catch {
+      /* root backend unreachable: the active gateway still answers for itself */
+    }
+  }
+
+  return requestForBot<RosterSnapshot>(activeBot, 'profiles.list', {})
+}
+
 /** One roster snapshot for `activeConnectionId` — the pane's query and the
  *  composer's cold-cache warm-up (`warmRoster`) share it, so both see the same
  *  cross-connection rows. */
@@ -679,7 +715,7 @@ async function fetchRosterSnapshot(activeConnectionId: null | string | undefined
     name: String(host.state.profile?.get?.() || 'default').trim() || 'default'
   }
 
-  const local = await requestForBot<RosterSnapshot>(activeBot, 'profiles.list', {})
+  const local = await requestRosterList(activeBot, activeConnectionId)
   // Newer backends inject the teammate-messaging protocol into every
   // session's system prompt (agent.bot_mode_protocol) — SOUL.md must not
   // carry a second copy. Older gateways lack the flag: keep appending.
