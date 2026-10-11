@@ -1196,6 +1196,44 @@ impl Observer {
         }))
     }
 
+    /// The `/usage` reply: today's and (with a session) this session's runs, model calls, tokens
+    /// and cost from the run ledger, the same rows Command center > Usage sums.
+    pub fn usage_summary(&self, session: Option<&str>) -> rusqlite::Result<String> {
+        use chrono::TimeZone;
+        let db = self.read_db.lock().unwrap_or_else(|e| e.into_inner());
+        let midnight = chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).expect("midnight");
+        let today = chrono::Local.from_local_datetime(&midnight).earliest().map_or_else(now, |at| at.timestamp_millis());
+        let line = |label: &str, filter: &str, bind: &dyn rusqlite::ToSql| -> rusqlite::Result<String> {
+            let (runs, input, output, cache, unpriced, cost, calls): (i64, i64, i64, i64, i64, Option<f64>, i64) = db.query_row(
+                &format!("SELECT COUNT(CASE WHEN r.parent_id IS NULL AND r.kind NOT IN ('memory','undo','learning','other') THEN 1 END),
+                        COALESCE(SUM(r.input_tokens),0), COALESCE(SUM(r.output_tokens),0), COALESCE(SUM(r.cache_read_tokens),0),
+                        COALESCE(SUM(r.unpriced_calls),0), SUM(r.cost_usd),
+                        COALESCE(SUM((SELECT COUNT(*) FROM spans s WHERE s.run_id=r.id AND s.model IS NOT NULL)),0)
+                 FROM fact_turn r WHERE {filter}"),
+                [bind],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+            )?;
+            let cost = match (unpriced, cost) {
+                (0, Some(usd)) => format!("${usd:.4}"),
+                (0, None) => "$0".into(),
+                (n, _) => format!("unpriced ({n} call{} without a known price)", if n == 1 { "" } else { "s" }),
+            };
+            let cache = if cache > 0 { format!(", {cache} cache read") } else { String::new() };
+            Ok(format!(
+                "{label}: {runs} run{}, {calls} model call{}, {input} in / {output} out tokens{cache}, cost {cost}",
+                if runs == 1 { "" } else { "s" },
+                if calls == 1 { "" } else { "s" },
+            ))
+        };
+        let mut out = vec![line("Today", "r.started_at_ms>=?1", &today)?];
+        if let Some(session) = session.filter(|s| !s.is_empty()) {
+            // Subagents run in their own sessions under this session's turns.
+            out.push(line("This session", "r.session_id=?1 OR r.root_id IN (SELECT id FROM fact_turn WHERE session_id=?1)", &session)?);
+        }
+        out.push("Details: Command center > Usage, and Activity > History > Runs.".into());
+        Ok(out.join("\n"))
+    }
+
     /// Factr's `insights.get`: sessions and messages over the last `days`.
     /// A top-level run is one user turn and its reply, i.e. two messages.
     pub fn insights(&self, days: u64) -> rusqlite::Result<Value> {

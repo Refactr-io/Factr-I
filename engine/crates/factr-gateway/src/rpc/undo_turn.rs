@@ -313,6 +313,13 @@ impl Conn {
         if name == "focus" {
             return say(&self.focus_command(arg));
         }
+        // From the run ledger; needs no session (it adds this session's line when there is one).
+        if name == "usage" {
+            if arg.trim().eq_ignore_ascii_case("reset") {
+                return say("/usage reset is not available: this engine has no banked limit resets to redeem.");
+            }
+            return say(&self.observer.usage_summary(session_id).unwrap_or_else(|e| format!("/usage: {e}")));
+        }
         let Some(id) = session_id.filter(|s| !s.is_empty()) else { return say(&format!("/{name} needs an open session.")) };
         match name {
             "retry" => self.rewind_command(name, arg, session_id).await,

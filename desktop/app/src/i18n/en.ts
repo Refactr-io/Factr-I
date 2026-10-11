@@ -3173,7 +3173,7 @@ export const en: Translations = {
       '/blueprint': 'Set up an automation from a blueprint template',
       '/browser': 'Manage browser CDP connection [connect|disconnect|status] (local gateway only)',
       '/palette': 'Open the fuzzy command palette (also Ctrl+P)',
-      '/usage': 'Show token usage and rate limits; `reset` redeems a banked Codex limit reset',
+      '/usage': 'Show token usage and cost for today and this session',
       '/platform': 'Pause, resume, or list a failing gateway platform',
       '/version': 'Show Factr-I Agent version',
       '/debug': 'Upload debug report (system info + logs) and get shareable links',

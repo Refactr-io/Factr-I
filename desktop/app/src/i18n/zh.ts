@@ -3065,7 +3065,7 @@ export const zh = defineLocale({
       '/blueprint': '使用 blueprint 模板设置自动化',
       '/browser': '管理浏览器 CDP 连接 [connect|disconnect|status]（仅限本地 gateway）',
       '/palette': '打开模糊搜索命令面板（也可使用 Ctrl+P）',
-      '/usage': '显示 Token 用量与速率限制；`reset` 可兑换保留的 Codex 限额重置',
+      '/usage': '显示今天和本会话的 Token 用量与费用',
       '/platform': '暂停、恢复或列出故障的网关平台',
       '/version': '显示 Factr-I Agent 版本',
       '/debug': '上传调试报告（系统信息与日志），并获取可分享链接',

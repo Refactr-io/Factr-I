@@ -93,6 +93,7 @@ pub(crate) const COMMANDS: &[Cmd] = &[
     cmd("focus", &[], "Toggle focus view: show only your prompt and the final response", "[on|off|status]", Engine, "Configuration").subs(&["on", "off", "status"]),
     cmd("skin", &[], "Switch between white and black appearance", "[name]", Desktop, "Configuration"),
     cmd("help", &["commands"], "Show available commands", "", Desktop, "Info"),
+    cmd("usage", &[], "Show token usage and cost: today and this session", "", Engine, "Info"),
     cmd("journey", &["learning", "memory-graph"], "Open the memory graph: skills and memories over time", "", Desktop, "Tools & Skills").engine_only(),
     // Desktop actions backed by the Factr Python backend
     cmd("handoff", &[], "Hand off this session to a messaging platform", "<platform>", Desktop, "Session").python(),
