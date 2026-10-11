@@ -16,6 +16,14 @@ behaviour is unchanged from 0.0.4.
 - Command Center > System no longer shows "Active sessions undefined" when the status reply omits the count.
 - Esc closes the "Set up provider" overlay; the app menu has Settings…; the browser address field shows a focus ring;
   each right-pane tab's close button is named "Close <tab title>"; About no longer says "just now" twice.
+- Run history and Usage: a tool turn counts every model request. A server that reports usage only on the final
+  chunk left the tool-call request uncounted ("Model calls 1"); it is now a model call with unknown usage, so the
+  run reads 2 calls and unpriced instead of looking cheaper. Usage API calls sum the same rows. Subagent rows close
+  from the session journal (they could stay "spawned"). Gateway ledger only; agent loop and providers unchanged.
+- Alerts: `silent_failures` no longer fires after normal chats. Background runs (memory extraction, learning, undo)
+  are not model turns; a chat or scheduled turn that completes with no model call still alerts.
+- `/usage` answers from the run ledger (today's and this session's runs, model calls, tokens, cost or unpriced)
+  instead of "not a command this engine serves".
 - Local / custom endpoint: the onboarding's "Local / custom endpoint" (and a hand-written `provider: custom` config with
   `base_url`) now works. The readiness check judged the route by the catalog defaults and reported "No usable
   credentials found for openai-compatible." although the probe and chats worked. An endpoint on this machine or the

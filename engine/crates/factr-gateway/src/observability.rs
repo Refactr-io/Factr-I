@@ -265,9 +265,20 @@ struct Active {
     tools: HashMap<String, (String, bool)>,
     tool_errors: HashMap<String, String>,
     chat_started: Option<i64>,
+    /// The open model request has streamed a reply (text, reasoning or a tool call). A request
+    /// that replied but reported no `token_usage` is still a model call: the next
+    /// `sending request` phase closes it with unknown usage. A request that never replied (a
+    /// failed attempt the runtime retries) is not counted twice.
+    call_replied: bool,
     model_calls: u64,
     run_kind: &'static str,
     ttft_sent: bool,
+}
+
+impl Active {
+    fn call_kind(&self) -> &'static str {
+        if self.run_kind == "cron" { "cron" } else if self.model_calls == 0 { "chat" } else { "tool_followup" }
+    }
 }
 
 /// The live observer's queue depth, for the shutdown flush (most recently opened observer).
@@ -486,6 +497,8 @@ impl Observer {
             active.status = None;
             active.error = None;
             active.model_calls = 0;
+            active.chat_started = None;
+            active.call_replied = false;
             active.ttft_sent = false;
             active.run_kind = kind;
             "running"
@@ -711,7 +724,7 @@ impl Observer {
                         run: run.clone(),
                         span: format!("{run}:chat:{}", active.next),
                         root: active.root.clone().unwrap_or_else(|| run.clone()),
-                        kind: if active.run_kind == "cron" { "cron" } else if active.model_calls == 0 { "chat" } else { "tool_followup" },
+                        kind: active.call_kind(),
                         model: active.model.clone(),
                         provider: active.provider.clone(),
                         session: session.into(),
@@ -757,6 +770,7 @@ impl Observer {
                 active.tools.clear();
                 active.tool_errors.clear();
                 active.chat_started = None;
+                active.call_replied = false;
                 active.model_calls = 0;
                 active.ttft_sent = false;
             }
@@ -908,8 +922,9 @@ impl Observer {
                     cache_read,
                     cache_write,
                 );
-                let kind = if active.run_kind == "cron" { "cron" } else if active.model_calls == 0 { "chat" } else { "tool_followup" };
+                let kind = active.call_kind();
                 active.model_calls += 1;
+                active.call_replied = false;
                 self.send(
                     Op::Usage {
                         run,
@@ -934,8 +949,42 @@ impl Observer {
                 );
             }
             "connection_phase" => {
-                if active.run.is_some() && active.chat_started.is_none() {
+                let Some(run) = active.run.clone() else { return };
+                // A new request while the previous one replied without reporting usage (an
+                // OpenAI-compatible server that sends `usage` only on the final chunk of a tool
+                // turn): that reply was a model call too. Count it, with unknown usage.
+                if frame["phase"] == "sending request" && std::mem::take(&mut active.call_replied) {
+                    if let Some(started) = active.chat_started.take() {
+                        active.next += 1;
+                        self.send(Op::Usage {
+                            span: format!("{run}:chat:{}", active.next),
+                            root: active.root.clone().unwrap_or_else(|| run.clone()),
+                            run,
+                            kind: active.call_kind(),
+                            model: active.model.clone(),
+                            provider: active.provider.clone(),
+                            session: session.into(),
+                            input: 0,
+                            output: 0,
+                            cache_read: 0,
+                            cache_write: 0,
+                            cost: None,
+                            usage_known: false,
+                            effort: active.effort.clone(),
+                            error: None,
+                            started,
+                            ended: now(),
+                        }, false);
+                        active.model_calls += 1;
+                    }
+                }
+                if active.chat_started.is_none() {
                     active.chat_started = Some(now());
+                }
+            }
+            "text_delta" | "text_replace" | "reasoning_delta" | "tool_call" | "tool_start" | "tool_input_delta" => {
+                if active.chat_started.is_some() {
+                    active.call_replied = true;
                 }
             }
             "turn_stopped" => {
@@ -1145,6 +1194,44 @@ impl Observer {
                 "total_cache_read": sum("cache_read_tokens"), "total_reasoning": 0, "total_api_calls": sum("api_calls"),
                 "total_estimated_cost": cost, "total_actual_cost": cost, "unpriced_calls": unpriced},
         }))
+    }
+
+    /// The `/usage` reply: today's and (with a session) this session's runs, model calls, tokens
+    /// and cost from the run ledger, the same rows Command center > Usage sums.
+    pub fn usage_summary(&self, session: Option<&str>) -> rusqlite::Result<String> {
+        use chrono::TimeZone;
+        let db = self.read_db.lock().unwrap_or_else(|e| e.into_inner());
+        let midnight = chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).expect("midnight");
+        let today = chrono::Local.from_local_datetime(&midnight).earliest().map_or_else(now, |at| at.timestamp_millis());
+        let line = |label: &str, filter: &str, bind: &dyn rusqlite::ToSql| -> rusqlite::Result<String> {
+            let (runs, input, output, cache, unpriced, cost, calls): (i64, i64, i64, i64, i64, Option<f64>, i64) = db.query_row(
+                &format!("SELECT COUNT(CASE WHEN r.parent_id IS NULL AND r.kind NOT IN ('memory','undo','learning','other') THEN 1 END),
+                        COALESCE(SUM(r.input_tokens),0), COALESCE(SUM(r.output_tokens),0), COALESCE(SUM(r.cache_read_tokens),0),
+                        COALESCE(SUM(r.unpriced_calls),0), SUM(r.cost_usd),
+                        COALESCE(SUM((SELECT COUNT(*) FROM spans s WHERE s.run_id=r.id AND s.model IS NOT NULL)),0)
+                 FROM fact_turn r WHERE {filter}"),
+                [bind],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+            )?;
+            let cost = match (unpriced, cost) {
+                (0, Some(usd)) => format!("${usd:.4}"),
+                (0, None) => "$0".into(),
+                (n, _) => format!("unpriced ({n} call{} without a known price)", if n == 1 { "" } else { "s" }),
+            };
+            let cache = if cache > 0 { format!(", {cache} cache read") } else { String::new() };
+            Ok(format!(
+                "{label}: {runs} run{}, {calls} model call{}, {input} in / {output} out tokens{cache}, cost {cost}",
+                if runs == 1 { "" } else { "s" },
+                if calls == 1 { "" } else { "s" },
+            ))
+        };
+        let mut out = vec![line("Today", "r.started_at_ms>=?1", &today)?];
+        if let Some(session) = session.filter(|s| !s.is_empty()) {
+            // Subagents run in their own sessions under this session's turns.
+            out.push(line("This session", "r.session_id=?1 OR r.root_id IN (SELECT id FROM fact_turn WHERE session_id=?1)", &session)?);
+        }
+        out.push("Details: Command center > Usage, and Activity > History > Runs.".into());
+        Ok(out.join("\n"))
     }
 
     /// Factr's `insights.get`: sessions and messages over the last `days`.
@@ -1396,9 +1483,25 @@ fn refresh_children(
         let Ok(bytes) = std::fs::read(home.join("sessions").join(format!("{session}.json"))) else {
             continue;
         };
-        let Ok(saved) = serde_json::from_slice::<Value>(&bytes) else {
+        let Ok(mut saved) = serde_json::from_slice::<Value>(&bytes) else {
             continue;
         };
+        // The snapshot holds the transcript as of its last checkpoint; every message since is an
+        // `append_messages` line of `<session>.journal.jsonl` (factr-base session persistence).
+        // A child that finished after its first checkpoint is only finished in the journal.
+        if let Ok(journal) = std::fs::read_to_string(home.join("sessions").join(format!("{session}.journal.jsonl"))) {
+            if saved["messages"].is_null() {
+                saved["messages"] = json!([]);
+            }
+            for entry in journal.lines().filter_map(|line| serde_json::from_str::<Value>(line).ok()) {
+                if let Some(parent) = entry["meta"].get("parent_id").filter(|p| p.is_string()) {
+                    saved["parent_id"] = parent.clone();
+                }
+                if let (Some(appended), Some(messages)) = (entry["append_messages"].as_array(), saved["messages"].as_array_mut()) {
+                    messages.extend(appended.iter().cloned());
+                }
+            }
+        }
         if saved["parent_id"].as_str() != Some(parent_session.as_str()) {
             continue;
         }
@@ -1437,7 +1540,9 @@ fn refresh_children(
                 output += o;
                 read += r;
                 write += w;
-                let cost = cost_usd(provider, model, i, o, r, w);
+                // All zero: the provider reported no usage for this call (a tool-call reply from
+                // a server that sends usage only on the final chunk). Unknown, not free.
+                let cost = if i + o + r + w == 0 { None } else { cost_usd(provider, model, i, o, r, w) };
                 if cost.is_none() { unpriced_calls += 1; }
                 total_cost = total_cost.and_then(|sum| cost.map(|price| sum + price));
                 calls.push((
@@ -2055,12 +2160,20 @@ mod tests {
         assert_eq!(observer.detail(&root).unwrap()["content"]["output"], "done");
         std::fs::create_dir_all(dir.join("sessions")).unwrap();
         let at = chrono::Utc::now().to_rfc3339();
+        // The snapshot was checkpointed after the prompt; the tool call, its result and the reply
+        // are journal appends (the first call's provider reported no usage).
         std::fs::write(dir.join("sessions/child-session.json"), json!({
             "parent_id":"parent","provider_key":"ollama","model":"local","messages":[
-                {"role":"user","timestamp":at,"content":[{"type":"text","text":"Reply READY"}]},
-                {"role":"assistant","timestamp":at,"token_usage":{"input_tokens":9,"output_tokens":2},"content":[{"type":"text","text":"READY"}]}
+                {"role":"user","timestamp":at,"content":[{"type":"text","text":"Reply READY"}]}
             ]
         }).to_string()).unwrap();
+        let journal = [
+            json!({"meta":{"parent_id":"parent"}}),
+            json!({"append_messages":[{"role":"assistant","timestamp":at,"token_usage":{"input_tokens":0,"output_tokens":0},"content":[{"type":"tool_use","id":"t1","name":"read_file","input":{}}]}]}),
+            json!({"append_messages":[{"role":"user","timestamp":at,"content":[{"type":"tool_result","tool_use_id":"t1","content":"x"}]}]}),
+            json!({"append_messages":[{"role":"assistant","timestamp":at,"token_usage":{"input_tokens":9,"output_tokens":2},"content":[{"type":"text","text":"READY"}]}]}),
+        ].map(|line| line.to_string()).join("\n");
+        std::fs::write(dir.join("sessions/child-session.journal.jsonl"), journal).unwrap();
         for _ in 0..200 {
             if observer.list(10, None, None, None, None, None).unwrap()["runs"]
                 .as_array()
@@ -2081,6 +2194,9 @@ mod tests {
             .unwrap();
         assert_eq!(child["status"], "complete");
         assert_eq!(child["input_tokens"], 9);
+        assert_eq!(child["step_count"], 2, "both model calls, the unreported one included: {child}");
+        assert_eq!(child["tools_called"], 1);
+        assert_eq!(child["priced"], false);
         assert!(child["cost_usd"].is_null());
         drop(observer);
         std::fs::remove_dir_all(dir).unwrap();
@@ -2124,6 +2240,63 @@ mod tests {
             [&interrupted], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).unwrap();
         assert_eq!((calls, unpriced, cost), (1, 1, None));
+    }
+
+    /// QA B-2: a tool turn is two model requests. Each is a model call whether or not the provider
+    /// reported usage for it; a failed attempt the runtime retries is not a second call.
+    #[test]
+    fn every_model_request_of_a_tool_turn_is_one_model_call() {
+        let mut db = Connection::open_in_memory().unwrap();
+        schema::open(&mut db).unwrap();
+        setup(&mut db).unwrap();
+        let (tx, rx) = mpsc::sync_channel(QUEUE);
+        let observer = Observer {
+            read_db: Mutex::new(Connection::open_in_memory().unwrap()),
+            tx,
+            pending: Arc::new(AtomicUsize::new(0)),
+            dropped: Arc::new(AtomicU64::new(0)),
+            capture_content: false,
+            home: std::env::temp_dir(),
+            sessions: Mutex::new(HashMap::new()),
+            replay: Mutex::new(ReplayState::default()),
+            replay_epoch: "test".into(),
+        };
+        let h = |ev: Value| observer.harness_event(&ev);
+        let phase = |p: &str| json!({"ev":"connection_phase","session_id":"s","phase":p});
+        let tool_turn = |usage_on_tool_call: bool| {
+            let run = observer.start_turn("s", "read note.txt", "invoke_agent", None);
+            h(phase("sending request"));
+            h(phase("waiting for response"));
+            h(json!({"ev":"tool_start","session_id":"s","call_id":"c1","name":"read_file"}));
+            observer.event("s", "tool.start", &json!({"tool_id":"c1","name":"read_file"}));
+            h(json!({"ev":"tool_exec","session_id":"s","call_id":"c1","name":"read_file"}));
+            if usage_on_tool_call {
+                h(json!({"ev":"token_usage","session_id":"s","input":11,"output":7}));
+            }
+            observer.event("s", "tool.complete", &json!({"tool_id":"c1","result_text":"NOTE"}));
+            // A first attempt that fails before replying, then the retry that answers.
+            h(phase("sending request"));
+            h(phase("sending request"));
+            h(phase("waiting for response"));
+            h(json!({"ev":"text_delta","session_id":"s","text":"TOOL-DONE"}));
+            h(json!({"ev":"token_usage","session_id":"s","input":11,"output":7}));
+            observer.event("s", "message.complete", &json!({"status":"complete","text":"TOOL-DONE"}));
+            run
+        };
+        h(json!({"ev":"model_info","session_id":"s","provider":"openai","model":"gpt-5.4"}));
+        let unreported = tool_turn(false);
+        let reported = tool_turn(true);
+        let ops: Vec<Op> = rx.try_iter().collect();
+        let calls = |want: &str| ops.iter().filter_map(|op| match op { Op::Usage { run, usage_known, kind, error, .. } if run == want => Some((*kind, *usage_known, error.is_some())), _ => None }).collect::<Vec<_>>();
+        assert_eq!(calls(&unreported), [("chat", false, false), ("tool_followup", true, false)]);
+        assert_eq!(calls(&reported), [("chat", true, false), ("tool_followup", true, false)]);
+        write_batch(&mut db, ops).unwrap();
+        let row = |id: &str| detail_from_db(&db, id).unwrap()["run"].clone();
+        let (a, b) = (row(&unreported), row(&reported));
+        assert_eq!((a["step_count"].as_i64(), a["tools_called"].as_i64(), a["input_tokens"].as_i64(), a["output_tokens"].as_i64(), a["outcome"].as_str()), (Some(2), Some(1), Some(11), Some(7), Some("ok")), "{a}");
+        assert_eq!(a["priced"], false, "a call with unknown usage leaves the run unpriced, never cheaper: {a}");
+        assert_eq!((b["step_count"].as_i64(), b["tools_called"].as_i64(), b["input_tokens"].as_i64(), b["output_tokens"].as_i64()), (Some(2), Some(1), Some(22), Some(14)), "{b}");
+        assert_eq!(b["priced"], true, "{b}");
     }
 
     #[test]

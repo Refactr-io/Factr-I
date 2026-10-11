@@ -4226,6 +4226,34 @@ mod tests {
         conn.dispatch("slash.exec", &run("/goal clear")).await.unwrap();
     }
 
+    /// QA B-5b: `/usage` is listed, so it is answered: a short summary from the run ledger.
+    #[tokio::test]
+    async fn usage_command_answers_from_the_run_ledger() {
+        let conn = test_conn("slash-usage");
+        let cat = conn.dispatch("commands.catalog", &json!({})).await.unwrap();
+        assert!(cat["pairs"].as_array().unwrap().iter().any(|p| p[0] == "/usage"), "{cat}");
+        let said = |v: Value| v["output"].as_str().unwrap().to_string();
+        let empty = said(conn.dispatch("slash.exec", &json!({ "command": "/usage", "session_id": "" })).await.unwrap());
+        assert!(empty.starts_with("Today: 0 runs, 0 model calls, 0 in / 0 out tokens") && !empty.contains("This session"), "{empty}");
+        assert!(empty.contains("Command center > Usage"), "{empty}");
+        conn.observer.harness_event(&json!({"ev":"model_info","session_id":"u1","provider":"openai","model":"gpt-5.4"}));
+        conn.observer.start_turn("u1", "hi", "invoke_agent", None);
+        conn.observer.harness_event(&json!({"ev":"connection_phase","session_id":"u1","phase":"sending request"}));
+        conn.observer.harness_event(&json!({"ev":"tool_start","session_id":"u1","call_id":"c","name":"read_file"}));
+        conn.observer.harness_event(&json!({"ev":"connection_phase","session_id":"u1","phase":"sending request"}));
+        conn.observer.harness_event(&json!({"ev":"token_usage","session_id":"u1","input":11,"output":7}));
+        conn.observer.event("u1", "message.complete", &json!({"status":"complete","text":"ok"}));
+        let mut text = String::new();
+        for _ in 0..200 {
+            text = said(conn.dispatch("command.dispatch", &json!({ "name": "usage", "arg": "", "session_id": "u1" })).await.unwrap());
+            if text.contains("This session: 1 run, 2 model calls") { break; }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(text.contains("Today: 1 run, 2 model calls, 11 in / 7 out tokens, cost unpriced (1 call without a known price)"), "{text}");
+        assert!(text.contains("This session: 1 run, 2 model calls, 11 in / 7 out tokens"), "{text}");
+        assert!(said(conn.dispatch("slash.exec", &json!({ "command": "/usage reset", "session_id": "u1" })).await.unwrap()).contains("not available"));
+    }
+
     #[tokio::test]
     async fn slash_popup_is_served_natively_and_dispatch_follows_the_table() {
         let conn = test_conn("slash-popup");

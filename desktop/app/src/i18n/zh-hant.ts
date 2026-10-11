@@ -2513,7 +2513,7 @@ export const zhHant = defineLocale({
       '/blueprint': '使用 blueprint 範本設定自動化',
       '/browser': '管理瀏覽器 CDP 連線 [connect|disconnect|status]（僅限本機 gateway）',
       '/palette': '開啟模糊搜尋指令面板（也可使用 Ctrl+P）',
-      '/usage': '顯示 Token 用量與速率限制；`reset` 可兌換保留的 Codex 限額重設',
+      '/usage': '顯示今天與此工作階段的 Token 用量與費用',
       '/platform': '暫停、恢復或列出故障的閘道平台',
       '/version': '顯示 Factr-I Agent 版本',
       '/debug': '上傳偵錯報告（系統資訊與記錄），並取得可分享連結',
