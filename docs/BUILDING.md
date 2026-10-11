@@ -11,7 +11,7 @@ Factr-I is three parts built separately and shipped as one desktop bundle:
 All commands below were read from the scripts and config in this tree
 (`engine/Cargo.toml`, `backend/pyproject.toml`, `desktop/package.json`,
 `desktop/app/package.json` and `desktop/app/scripts/`). The version is
-`0.0.5-dev.1` (`0.0.5.dev1` in `backend/pyproject.toml`, the PEP 440 spelling).
+`0.0.5` (the same string in `backend/pyproject.toml`).
 The packaged macOS app runs on Apple Silicon only; Intel Macs are not supported.
 
 Verification status: this document was written by reading code on macOS. The
@@ -88,7 +88,7 @@ cargo test --workspace --locked
 Version: `factr --version` prints `Factr-I <version> (<sha>)` and
 `factr __version` prints JSON `{version, sha, db_schema}`. `version` is the
 `[package].version` of `engine/Cargo.toml` (`CARGO_PKG_VERSION`), currently
-`0.0.5-dev.1`; the packager records it in the bundle manifest.
+`0.0.5`; the packager records it in the bundle manifest.
 
 ## 2. Backend
 
@@ -189,7 +189,7 @@ native deps) is part of each of these.
 | --- | --- |
 | `npm run pack` | Unpacked app only (`electron-builder --dir`): `release/mac-arm64/Factr-I.app` (or `mac/`), `release/win-unpacked/`, `release/linux-unpacked/`. Fast check, no installer. |
 | `npm run dist:mac` | macOS `.dmg` and `.zip` for the host arch. `dist:mac:dmg` and `dist:mac:zip` build one of them. |
-| `npm run dist:win:nsis` | Windows NSIS installer (`Factr-I-<version>-win-x64.exe`). `dist:win` builds the same (NSIS is the only Windows target; MSI does not accept prerelease versions such as `0.0.5-dev.1`). |
+| `npm run dist:win:nsis` | Windows NSIS installer (`Factr-I-<version>-win-x64.exe`). `dist:win` builds the same (NSIS is the only Windows target; MSI does not accept prerelease versions such as `0.1.0-dev.1`). |
 | `npm run dist:linux` | Linux `AppImage`, `deb` and `rpm`. For the AppImage alone: `npm run build && npm run builder -- --linux AppImage`. |
 
 Artifact names follow `Factr-I-${version}-${os}-${arch}.${ext}` and everything

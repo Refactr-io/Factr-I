@@ -1,9 +1,10 @@
 # Changelog
 
-## v0.0.5-dev.1 (unreleased; the release will be v0.0.5)
+## v0.0.5 (2026-10-11)
 
-The 0.0.4 engine plus the sign-in, onboarding and UI work from pull request #2. The engine's labelling and classify
-behaviour is unchanged from 0.0.4.
+Sign-in, onboarding, provider and credential handling, approvals, observability and desktop UI fixes on top of 0.0.4.
+The engine's labelling and classify behaviour is unchanged from 0.0.4; the engine changes are the gateway, start-up,
+provider-resolution and config items listed below.
 
 - Engine restart mid-reply: when the engine process dies while a reply streams, the reply no longer spins forever. As
   soon as the desktop learns the engine died (or, failing that, once the restarted engine is reached), the turn ends
