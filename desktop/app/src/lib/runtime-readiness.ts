@@ -1,6 +1,15 @@
 import { noUsableCredentialsMessage } from './provider-error-display'
 
+/** config.yaml exists but cannot be parsed: the engine ignores it (newer engines only). The message
+ *  names the file and the parser's line; it never carries the file's text. */
+export interface ConfigErrorSnapshot {
+  path: string
+  line?: null | number
+  message: string
+}
+
 export interface SetupStatusSnapshot {
+  config_error?: ConfigErrorSnapshot
   provider_configured?: boolean
   /** Additive launch-profile fields (newer backends only; absent on older
    *  ones). Carried for consumers that read the record — readiness itself
@@ -19,6 +28,7 @@ export interface SetupStatusSnapshot {
 }
 
 export interface RuntimeCheckSnapshot {
+  config_error?: ConfigErrorSnapshot
   error?: string
   model?: string
   ok?: boolean
@@ -40,6 +50,8 @@ export interface RuntimeReadinessOptions {
 
 export interface RuntimeReadinessResult {
   checksDisagree: boolean
+  /** The engine is ignoring an unreadable config.yaml: the setup UI must name it, not ask for keys. */
+  configError?: ConfigErrorSnapshot
   /** Passed through from `setup.runtime_check`: the model the route resolved
    *  to. Undefined when the check did not answer. */
   model?: string
@@ -114,6 +126,12 @@ export function interpretRuntimeReadiness(
   options: RuntimeReadinessOptions = {}
 ): RuntimeReadinessResult {
   const result = interpretRawRuntimeReadiness(signals, options)
+  const configError = signals.runtime?.config_error ?? signals.setup?.config_error
+
+  if (!result.ready && configError?.path && configError.message) {
+    return { ...result, configError, reason: configError.message, reasonDetail: undefined }
+  }
+
   const plain = result.reason ? noUsableCredentialsMessage(result.reason, signals.setup?.saved_provider) : null
 
   return plain ? { ...result, reason: plain, reasonDetail: result.reason ?? undefined } : result

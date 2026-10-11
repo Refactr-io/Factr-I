@@ -227,6 +227,14 @@ pub(super) fn setup_status(provider: &str) -> Value {
     // `saved_provider`: config.yaml's `model.provider` (null when the user never saved one), so the
     // desktop can tell "nothing chosen yet" from "your saved provider has no credentials".
     let saved = crate::profile::saved_provider();
+    // An unreadable config.yaml outranks everything: what it says (provider, keys) is being ignored.
+    if let Some(problem) = crate::profile::config_problem() {
+        return json!({
+            "provider_configured": false, "ready": true,
+            "other_providers": other_configured(provider), "inference_provider": provider,
+            "error": problem.message(), "config_error": problem.to_json(), "saved_provider": saved,
+        });
+    }
     if let Some(error) = crate::profile::provider_setup_error() {
         return json!({
             "provider_configured": false, "ready": true,
@@ -253,6 +261,14 @@ pub fn any_provider_configured() -> bool {
 
 /// `requested`: an explicit provider to check strictly, else the served one.
 pub(super) fn runtime_check(provider: &str, model: &str, requested: Option<&str>) -> Value {
+    if requested.is_none()
+        && let Some(problem) = crate::profile::config_problem()
+    {
+        return json!({
+            "ok": false, "provider": provider, "model": model, "source": "engine", "reason": "config_unreadable",
+            "error": problem.message(), "config_error": problem.to_json(),
+        });
+    }
     if requested.is_none()
         && let Some(error) = crate::profile::provider_setup_error()
     {
@@ -593,6 +609,31 @@ mod tests {
             crate::profile::note_unsupported_provider("bogus", true);
             assert!(setup_status("bogus")["error"].as_str().unwrap().contains("FACTR_PROVIDER"));
             crate::profile::clear_unsupported_provider();
+        });
+    }
+
+    #[test]
+    fn an_unreadable_config_is_named_instead_of_asking_for_credentials() {
+        isolated(|| {
+            let home = std::path::Path::new(&std::env::var("FACTR_CONFIG_HOME").unwrap()).to_path_buf();
+            let broken = "model:\n  provider: custom\n  api_key: sk-fake-123\n  default: [stub-model\n  base_url: : :\n";
+            std::fs::write(home.join("config.yaml"), broken).unwrap();
+            let check = runtime_check("openrouter", "m", None);
+            assert_eq!((check["ok"].clone(), check["reason"].as_str()), (json!(false), Some("config_unreadable")));
+            let error = check["error"].as_str().unwrap();
+            assert!(error.contains("config.yaml") && error.contains("line "), "{error}");
+            assert!(!error.contains("No usable credentials") && !error.contains("sk-fake-123"), "{error}");
+            assert_eq!(check["config_error"]["path"], home.join("config.yaml").display().to_string());
+            assert!(check["config_error"]["line"].as_u64().is_some());
+            let status = setup_status("openrouter");
+            assert_eq!(status["provider_configured"], false);
+            assert_eq!(status["config_error"], check["config_error"]);
+            // Checking a provider the user is choosing still works, and the file is never touched.
+            assert_ne!(runtime_check("openrouter", "m", Some("openai"))["reason"], "config_unreadable");
+            assert_eq!(std::fs::read_to_string(home.join("config.yaml")).unwrap(), broken);
+            // Once the file reads again, the ordinary checks are back.
+            std::fs::write(home.join("config.yaml"), "model:\n  provider: openrouter\n").unwrap();
+            assert!(setup_status("openrouter").get("config_error").is_none());
         });
     }
 

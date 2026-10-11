@@ -3,6 +3,27 @@ import { describe, expect, it } from 'vitest'
 import { fetchRuntimeReadinessSignals, interpretRuntimeReadiness, runtimeReadinessDisplay } from './runtime-readiness'
 
 describe('interpretRuntimeReadiness', () => {
+  // D-3: a corrupt config.yaml must be named, not hidden behind "No usable credentials".
+  it('names an unreadable config.yaml instead of asking for credentials', () => {
+    const configError = {
+      line: 4,
+      message: '/x/.factr/config.yaml could not be read (line 4), so Factr-I is ignoring it: did not find expected node.',
+      path: '/x/.factr/config.yaml'
+    }
+
+    const result = interpretRuntimeReadiness({
+      setup: { config_error: configError, provider_configured: false, saved_provider: null },
+      setupError: null,
+      runtime: { config_error: configError, error: configError.message, ok: false, provider: 'openrouter' },
+      runtimeError: null
+    })
+
+    expect(result.ready).toBe(false)
+    expect(result.configError).toEqual(configError)
+    expect(result.reason).toBe(configError.message)
+    expect(result.reason).not.toMatch(/credentials/i)
+  })
+
   it('prefers runtime_check when both signals exist', () => {
     const result = interpretRuntimeReadiness({
       setup: { provider_configured: false },

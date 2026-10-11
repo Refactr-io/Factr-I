@@ -1,9 +1,11 @@
+import type { GatewayEvent } from '@factr/shared'
 import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopConnectionsRegistry } from '@/global'
 import { createClientSessionState } from '@/lib/chat-runtime'
 import { $desktopBoot } from '@/store/boot'
+import { $parkedQueueSessions, $queuedPromptsBySession, enqueueQueuedPrompt } from '@/store/composer-queue'
 import {
   $connectionsRegistry,
   _resetConnectionsForTests,
@@ -144,6 +146,11 @@ class FakeWebSocket {
     this.emit('close', {})
   }
 
+  // A server-pushed event frame (gateway.ready, stream events).
+  serverEvent(params: Record<string, unknown>) {
+    this.emit('message', { data: JSON.stringify({ jsonrpc: '2.0', method: 'event', params }) })
+  }
+
   // Force-drop an open socket, as a sleeping laptop / restarted remote would.
   drop() {
     this.readyState = FakeWebSocket.CLOSED
@@ -267,16 +274,18 @@ function fakeDesktop() {
 
 function Harness({
   beforeConnectionSwitch = () => undefined,
+  handleGatewayEvent = () => undefined,
   refreshFactrConfig = async () => undefined,
   refreshSessions
 }: {
   beforeConnectionSwitch?: () => void
+  handleGatewayEvent?: (event: GatewayEvent) => void
   refreshFactrConfig?: (force?: boolean, shouldPublish?: () => boolean) => Promise<void>
   refreshSessions?: (shouldPublish?: () => boolean) => Promise<void>
 } = {}) {
   useGatewayBoot({
     beforeConnectionSwitch,
-    handleGatewayEvent: () => undefined,
+    handleGatewayEvent,
     handleServerRequest: () => false,
     onConnectionReady: () => undefined,
     onGatewayReady: () => undefined,
@@ -1870,6 +1879,96 @@ describe('useGatewayBoot remote reconnect loop (real hook, fake socket)', () => 
     expect($gatewayState.get()).toBe('open')
     expect($busy.get()).toBe(false)
     expect($awaitingResponse.get()).toBe(false)
+  })
+
+  // D-1: the engine is killed mid-reply and the supervisor respawns it. The
+  // new process has no memory of the turn, so nothing would ever finish it.
+  describe('a turn in flight when the engine restarts', () => {
+    const lostTurnEvents = (events: GatewayEvent[]) =>
+      events.filter(event => event.type === 'error' && event.session_id === 'rt-slow')
+
+    const seedRunningTurn = () => {
+      publishSessionState('rt-slow', {
+        ...createClientSessionState('s-slow'),
+        busy: true,
+        sawAssistantPayload: true,
+        streamId: 'assistant-stream-1',
+        turnLive: true,
+        turnStartedAt: 1_000
+      })
+      enqueueQueuedPrompt('s-slow', { attachments: [], text: 'next message' })
+    }
+
+    afterEach(() => {
+      clearAllSessionStates()
+      $queuedPromptsBySession.set({})
+      $parkedQueueSessions.set({})
+    })
+
+    it('main reports the backend exit: the turn fails with a Retry card and the queue waits', async () => {
+      const events: GatewayEvent[] = []
+      render(<Harness handleGatewayEvent={event => events.push(event)} />)
+      await flushAsync()
+      act(() => FakeWebSocket.instances[0].serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid1-1' } }))
+      seedRunningTurn()
+
+      act(() => {
+        backendExit?.({ code: null, signal: 'SIGKILL' })
+        FakeWebSocket.instances[0].drop()
+      })
+      await flushAsync()
+      await advanceBackoff()
+
+      expect($gatewayState.get()).toBe('open')
+      const failed = lostTurnEvents(events)
+      expect(failed).toHaveLength(1)
+      expect(failed[0].payload).toMatchObject({
+        error_surface: { code: 'engine_restarted', layer: 'gateway', retryable: true }
+      })
+      // Parked, not dropped: Resume sends it, and it cannot jump the Retry.
+      expect($parkedQueueSessions.get()['s-slow']).toBe(true)
+      expect($queuedPromptsBySession.get()['s-slow']).toHaveLength(1)
+      // The "stopped in the background" toast goes once the service is back.
+      expect($notifications.get().some(entry => entry.kind === 'error' && entry.action)).toBe(false)
+
+      // The new engine's gateway.ready must not fail it a second time.
+      act(() => FakeWebSocket.instances.at(-1)?.serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid2-2' } }))
+      expect(lostTurnEvents(events)).toHaveLength(1)
+    })
+
+    it('a new engine epoch on reconnect fails the turn even without a backend-exit signal', async () => {
+      const events: GatewayEvent[] = []
+      render(<Harness handleGatewayEvent={event => events.push(event)} />)
+      await flushAsync()
+      act(() => FakeWebSocket.instances[0].serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid1-1' } }))
+      seedRunningTurn()
+
+      act(() => FakeWebSocket.instances[0].drop())
+      await flushAsync()
+      await advanceBackoff()
+      expect(lostTurnEvents(events)).toHaveLength(0)
+
+      act(() => FakeWebSocket.instances.at(-1)?.serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid2-2' } }))
+
+      expect(lostTurnEvents(events)).toHaveLength(1)
+      expect($parkedQueueSessions.get()['s-slow']).toBe(true)
+    })
+
+    it('the same engine after a socket blip keeps the turn: it is still running there', async () => {
+      const events: GatewayEvent[] = []
+      render(<Harness handleGatewayEvent={event => events.push(event)} />)
+      await flushAsync()
+      act(() => FakeWebSocket.instances[0].serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid1-1' } }))
+      seedRunningTurn()
+
+      act(() => FakeWebSocket.instances[0].drop())
+      await flushAsync()
+      await advanceBackoff()
+      act(() => FakeWebSocket.instances.at(-1)?.serverEvent({ type: 'gateway.ready', payload: { replay_epoch: 'pid1-1' } }))
+
+      expect(lostTurnEvents(events)).toHaveLength(0)
+      expect($parkedQueueSessions.get()['s-slow']).toBeUndefined()
+    })
   })
 
   it('manual reconnect replaces an open primary without closing background profiles', async () => {

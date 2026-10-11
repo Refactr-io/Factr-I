@@ -191,6 +191,222 @@ function appBundleRemovalBlocker(appPath, platform, canWrite: (dir: string) => b
   return null
 }
 
+type UninstallTargetKind = 'agent' | 'app' | 'artifact' | 'config' | 'userdata'
+
+interface UninstallTarget {
+  kind: UninstallTargetKind
+  path: string
+}
+
+interface UninstallRefusal extends UninstallTarget {
+  reason: 'contains-kept-data' | 'not-absolute' | 'protected' | 'symlink'
+  message: string
+}
+
+interface UninstallPlan {
+  mode: string
+  /** Exactly what the confirmation lists and the cleanup may delete: nothing else. */
+  targets: UninstallTarget[]
+  /** Targets this mode would have removed but must not (shown, and the run refuses). */
+  refused: UninstallRefusal[]
+  /** Why the running app bundle cannot remove itself (translocated, disk image, read-only). */
+  appBlocked: { reason: string; message: string } | null
+}
+
+interface UninstallPlanInput {
+  mode: string
+  platform: string
+  execPath: string
+  env?: Record<string, string | undefined>
+  isPackaged: boolean
+  /** app.getPath('userData') of THIS running copy (FACTR_DESKTOP_USER_DATA_DIR already applied). */
+  userDataDir: string
+  /** The FACTR_CONFIG_HOME this copy actually runs with. */
+  configHome: string
+  homeDir: string
+  /** A source checkout's agent root that lite/full remove; null for a packaged app (its agent is in the bundle). */
+  agentRoot?: null | string
+  /** Built GUI artifacts the Python probe found (source installs only). */
+  sourceBuiltArtifacts?: string[]
+  canWrite: (dir: string) => boolean
+  isSymlink: (target: string) => boolean
+  /** Fully resolved path (symlinks followed), or the input when it does not exist. */
+  realpath?: (target: string) => string
+}
+
+/** Folders no uninstall may delete, nor any folder that contains one of them. */
+function protectedPaths(platform: string, homeDir: string, env: Record<string, string | undefined>): string[] {
+  const p = platform === 'win32' ? path.win32 : path.posix
+  const home = homeDir ? p.resolve(homeDir) : ''
+  const underHome = (...parts: string[]) => (home ? [p.join(home, ...parts)] : [])
+
+  if (platform === 'win32') {
+    const drive = home ? p.parse(home).root : 'C:\\'
+
+    return [
+      drive,
+      p.join(drive, 'Users'),
+      p.join(drive, 'Windows'),
+      p.join(drive, 'Program Files'),
+      p.join(drive, 'Program Files (x86)'),
+      ...(home ? [home] : []),
+      ...underHome('AppData'),
+      ...underHome('AppData', 'Roaming'),
+      ...underHome('AppData', 'Local'),
+      ...underHome('AppData', 'Local', 'Programs'),
+      ...underHome('Documents'),
+      ...underHome('Desktop'),
+      ...[env.APPDATA, env.LOCALAPPDATA, env.ProgramFiles].filter((v): v is string => Boolean(v))
+    ]
+  }
+
+  return [
+    '/',
+    '/Applications',
+    '/Users',
+    '/System',
+    '/Library',
+    '/Volumes',
+    '/home',
+    '/usr',
+    '/bin',
+    '/etc',
+    '/opt',
+    '/private',
+    '/tmp',
+    '/var',
+    ...(home ? [home] : []),
+    ...underHome('Applications'),
+    ...underHome('Library'),
+    ...underHome('Library', 'Application Support'),
+    ...underHome('Documents'),
+    ...underHome('Desktop'),
+    ...underHome('.config'),
+    ...underHome('.local'),
+    ...underHome('.local', 'share')
+  ]
+}
+
+/** True when `parent` is `child` or one of its ancestors. */
+function isSameOrAncestor(parent: string, child: string, platform: string): boolean {
+  const p = platform === 'win32' ? path.win32 : path.posix
+  const norm = (value: string) => (platform === 'win32' ? p.resolve(value).toLowerCase() : p.resolve(value))
+  const a = norm(parent)
+  const b = norm(child)
+
+  if (a === b) {
+    return true
+  }
+
+  const rel = p.relative(a, b)
+
+  return Boolean(rel) && !rel.startsWith('..') && !p.isAbsolute(rel)
+}
+
+/** Why `target` must not be deleted, or null when it is safe to remove. */
+function unsafeRemovalReason(
+  target: string,
+  input: Pick<UninstallPlanInput, 'env' | 'homeDir' | 'isSymlink' | 'platform' | 'realpath'>
+): Pick<UninstallRefusal, 'message' | 'reason'> | null {
+  const p = input.platform === 'win32' ? path.win32 : path.posix
+
+  if (!target || !p.isAbsolute(target)) {
+    return { reason: 'not-absolute', message: `Refusing to delete "${target}": it is not an absolute path.` }
+  }
+
+  if (input.isSymlink(target)) {
+    return {
+      reason: 'symlink',
+      message: `Refusing to delete ${target}: it is a link to somewhere else. Remove it yourself if you mean to.`
+    }
+  }
+
+  const real = input.realpath ? input.realpath(target) : target
+  const guarded = protectedPaths(input.platform, input.homeDir, input.env ?? {})
+
+  for (const candidate of new Set([p.resolve(target), real])) {
+    if (guarded.some(dir => isSameOrAncestor(candidate, dir, input.platform))) {
+      return {
+        reason: 'protected',
+        message: `Refusing to delete ${target}: it is (or contains) a system or home folder.`
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * The ONE place that decides what an uninstall mode deletes, for the summary the
+ * confirmation renders AND for the run, so the two can never disagree:
+ *   - the running app bundle (from process.execPath; packaged builds only; a
+ *     translocated / disk-image / read-only copy is reported in `appBlocked`),
+ *   - this copy's real Electron userData folder (never a default location),
+ *   - gui/lite: built GUI artifacts of a source install; lite/full: a source
+ *     checkout's agent root; full: the config home this copy runs with.
+ * Each target is vetted: an absolute, non-symlink path that is not (and does
+ * not contain) a system or home folder. gui/lite promise to keep the config
+ * home, so a userData folder that contains it is refused, not deleted.
+ */
+function resolveUninstallPlan(input: UninstallPlanInput): UninstallPlan {
+  const { mode, platform } = input
+  const candidates: UninstallTarget[] = []
+  let appBlocked: UninstallPlan['appBlocked'] = null
+
+  const appPath = resolveRemovableAppPath(input.execPath, platform, input.env ?? {})
+
+  if (shouldRemoveAppBundle(input.isPackaged, appPath)) {
+    appBlocked = appBundleRemovalBlocker(appPath, platform, input.canWrite)
+    candidates.push({ kind: 'app', path: String(appPath) })
+  }
+
+  for (const artifact of input.sourceBuiltArtifacts ?? []) {
+    candidates.push({ kind: 'artifact', path: artifact })
+  }
+
+  if (modeRemovesAgent(mode) && input.agentRoot) {
+    candidates.push({ kind: 'agent', path: input.agentRoot })
+  }
+
+  if (input.userDataDir) {
+    candidates.push({ kind: 'userdata', path: input.userDataDir })
+  }
+
+  if (modeRemovesUserData(mode) && input.configHome) {
+    candidates.push({ kind: 'config', path: input.configHome })
+  }
+
+  const targets: UninstallTarget[] = []
+  const refused: UninstallRefusal[] = []
+
+  for (const target of candidates) {
+    const unsafe = unsafeRemovalReason(target.path, input)
+
+    if (unsafe) {
+      refused.push({ ...target, ...unsafe })
+
+      continue
+    }
+
+    // gui/lite keep config, chats and secrets: never delete a folder holding them.
+    if (!modeRemovesUserData(mode) && input.configHome && isSameOrAncestor(target.path, input.configHome, platform)) {
+      refused.push({
+        ...target,
+        reason: 'contains-kept-data',
+        message: `Refusing to delete ${target.path}: it holds your Factr-I config and chats (${input.configHome}), which this option keeps.`
+      })
+
+      continue
+    }
+
+    if (!targets.some(existing => isSameOrAncestor(existing.path, target.path, platform))) {
+      targets.push(target)
+    }
+  }
+
+  return { mode, targets, refused, appBlocked }
+}
+
 /**
  * Build a POSIX cleanup shell script (macOS / Linux). It:
  *   1. waits (bounded ~30s) for the desktop PID to exit (venv/bundle unlock),
@@ -202,7 +418,34 @@ function appBundleRemovalBlocker(appPath, platform, canWrite: (dir: string) => b
  * resolves from the agent source. `q()` single-quote-escapes for the shell
  * (closes-escapes-reopens any embedded apostrophe), defending against spaces.
  */
-function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot, uninstallArgs, appPath, factrHome }) {
+/**
+ * The plan's targets for the Python uninstaller, as one env value with no quotes or
+ * shell metacharacters (base64 JSON) so it survives both the POSIX and the cmd.exe
+ * script. factr_backend.gui_uninstall deletes only these paths when it is set.
+ */
+function encodeUninstallTargets(targets: UninstallTarget[] | null | undefined): string {
+  return Buffer.from(JSON.stringify({ targets: targets ?? [] }), 'utf8').toString('base64')
+}
+
+function buildPosixCleanupScript({
+  desktopPid,
+  pythonExe,
+  pythonPath,
+  agentRoot,
+  uninstallArgs,
+  appPath,
+  factrHome,
+  targets = null
+}: {
+  desktopPid: number
+  pythonExe: string
+  pythonPath: null | string
+  agentRoot: string
+  uninstallArgs: string[]
+  appPath: null | string
+  factrHome: string
+  targets?: null | UninstallTarget[]
+}) {
   const q = s => `'${String(s).replace(/'/g, `'\\''`)}'`
 
   const lines = [
@@ -221,6 +464,13 @@ function buildPosixCleanupScript({ desktopPid, pythonExe, pythonPath, agentRoot,
     '# Never write bytecode into the (possibly signed) interpreter tree being run.',
     'export PYTHONDONTWRITEBYTECODE=1'
   ]
+
+  if (targets) {
+    lines.push(
+      '# Delete only what the confirmation listed (factr_backend.gui_uninstall).',
+      `export FACTR_UNINSTALL_TARGETS_B64=${q(encodeUninstallTargets(targets))}`
+    )
+  }
 
   if (pythonPath) {
     lines.push(`export PYTHONPATH=${q(pythonPath)}\${PYTHONPATH:+:$PYTHONPATH}`)
@@ -277,7 +527,17 @@ function buildWindowsCleanupScript({
   agentRoot,
   uninstallArgs,
   appPath,
-  factrHome
+  factrHome,
+  targets = null
+}: {
+  desktopPid: number
+  pythonExe: string
+  pythonPath: null | string
+  agentRoot: string
+  uninstallArgs: string[]
+  appPath: null | string
+  factrHome: string
+  targets?: null | UninstallTarget[]
 }) {
   const pid = Number(desktopPid) || 0
   // cmd.exe has no string escaping inside quotes; strip embedded quotes (paths
@@ -295,6 +555,10 @@ function buildWindowsCleanupScript({
 
   if (pythonPath) {
     lines.push(`set "PYTHONPATH=${String(pythonPath).replace(/"/g, '')};%PYTHONPATH%"`)
+  }
+
+  if (targets) {
+    lines.push(`set "FACTR_UNINSTALL_TARGETS_B64=${encodeUninstallTargets(targets)}"`)
   }
 
   lines.push(
@@ -336,14 +600,18 @@ function buildWindowsCleanupScript({
   return lines.join('\r\n')
 }
 
+export type { UninstallPlan, UninstallPlanInput, UninstallRefusal, UninstallTarget, UninstallTargetKind }
+
 export {
   appBundleRemovalBlocker,
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
   bundledUninstallPython,
+  encodeUninstallTargets,
   modeRemovesAgent,
   modeRemovesUserData,
   resolveRemovableAppPath,
+  resolveUninstallPlan,
   shouldRemoveAppBundle,
   UNINSTALL_MODES,
   uninstallArgsForMode

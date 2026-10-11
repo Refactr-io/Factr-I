@@ -3044,6 +3044,10 @@ export interface Translations {
   onboarding: {
     headerTitle: string
     headerDesc: string
+    /** Unreadable config.yaml actions (the notice names the file and line). */
+    configOpenFolder: string
+    configBackUpAndReset: string
+    configBackedUp: (backupPath: string) => string
     preparingInstall: string
     starting: string
     lookingUpProviders: string

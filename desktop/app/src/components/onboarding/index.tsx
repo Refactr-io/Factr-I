@@ -2,6 +2,7 @@ import type { ModelOptionProvider } from '@factr/shared'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { classifyLocalBootFailure } from '@/components/boot-failure-cause'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { Input } from '@/components/ui/input'
@@ -11,6 +12,7 @@ import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronLeft, KeyRound, Loader2 } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
+import type { ConfigErrorSnapshot } from '@/lib/runtime-readiness'
 import { cn } from '@/lib/utils'
 import { $desktopBoot, type DesktopBootState } from '@/store/boot'
 import { $introReveal, shouldPlayFirstRunIntro } from '@/store/intro-reveal'
@@ -409,7 +411,14 @@ export function DesktopOnboardingOverlay({
           </Button>
         ) : null}
         <div className="grid gap-3 p-5">
-          {reason ? <ReasonNotice detail={onboarding.reasonDetail} reason={reason} /> : null}
+          {reason ? (
+            <ReasonNotice
+              configError={onboarding.configError ?? null}
+              ctx={ctx}
+              detail={onboarding.reasonDetail}
+              reason={reason}
+            />
+          ) : null}
           {ready ? (
             showPicker ? (
               <Picker ctx={ctx} />
@@ -428,16 +437,89 @@ export function DesktopOnboardingOverlay({
 // The launch reason is a prompt ("why am I seeing this"), not an error. Only
 // rendered for meaningful caller-supplied reasons (defaults are filtered out
 // upstream), so it never shows the generic "no provider configured" noise.
-function ReasonNotice({ detail, reason }: { detail?: null | string; reason: string }) {
+export function ReasonNotice({
+  configError,
+  ctx,
+  detail,
+  reason
+}: {
+  configError: ConfigErrorSnapshot | null
+  ctx: OnboardingContext
+  detail?: null | string
+  reason: string
+}) {
   const { t } = useI18n()
+  const [backup, setBackup] = useState<{ busy: boolean; error?: string; savedAs?: string }>({ busy: false })
+  const desktop = window.factrDesktop
+
+  // The engine ignores an unreadable config.yaml: name it and offer the two safe ways out. Nothing here
+  // writes over the file; "start fresh" copies it aside first (electron/config-backup.ts).
+  const backUpAndReset = async () => {
+    if (!configError || !desktop?.backupCorruptConfig) {
+      return
+    }
+
+    setBackup({ busy: true })
+
+    try {
+      const result = await desktop.backupCorruptConfig(configError.path)
+
+      if (!result.ok) {
+        setBackup({ busy: false, error: result.message })
+
+        return
+      }
+
+      setBackup({ busy: false, savedAs: result.backupPath })
+      await refreshOnboarding(ctx)
+    } catch (error) {
+      setBackup({ busy: false, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
 
   return (
     <div className="rounded-2xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-tertiary)/40 px-4 py-3 text-sm text-muted-foreground">
       {reason}
+      {configError && !backup.savedAs ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {desktop?.revealPath ? (
+            <Button onClick={() => void desktop.revealPath?.(configError.path)} size="sm" variant="text">
+              {t.onboarding.configOpenFolder}
+            </Button>
+          ) : null}
+          {desktop?.backupCorruptConfig ? (
+            <Button disabled={backup.busy} onClick={() => void backUpAndReset()} size="sm" variant="text">
+              {backup.busy ? <Loader2 className="size-3 animate-spin" /> : null}
+              {t.onboarding.configBackUpAndReset}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {backup.savedAs ? <p className="mt-1.5 text-xs">{t.onboarding.configBackedUp(backup.savedAs)}</p> : null}
+      {backup.error ? <p className="mt-1.5 text-xs text-destructive">{backup.error}</p> : null}
       {detail && detail !== reason ? (
         <details className="mt-1.5 text-xs">
           <summary className="cursor-pointer select-none">{t.notifications.details}</summary>
           <p className="mt-1 break-words font-mono">{detail}</p>
+        </details>
+      ) : null}
+    </div>
+  )
+}
+
+// A plain sentence for a failed start; the raw engine/IPC text only under Details (QA D-7).
+export function BootErrorNotice({ error }: { error: string }) {
+  const { t } = useI18n()
+  const cause = classifyLocalBootFailure(error)
+  const headline = cause ? t.boot.causes[cause] : t.boot.failure.title
+
+  return (
+    <div className="text-xs text-destructive">
+      <p>{headline}</p>
+      {error.trim() ? (
+        <details className="mt-1 text-muted-foreground">
+          <summary className="cursor-pointer select-none">{t.notifications.details}</summary>
+          <p className="mt-1 break-words font-mono">{error}</p>
         </details>
       ) : null}
     </div>
@@ -462,10 +544,11 @@ function Preparing({ boot }: { boot: DesktopBootState }) {
         value={progress / 100}
       />
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="truncate">{boot.message}</span>
+        {/* On failure boot.message is "Desktop boot failed: <raw>": the plain headline below replaces it. */}
+        <span className="truncate">{hasError ? '' : boot.message}</span>
         <span>{progress}%</span>
       </div>
-      {hasError ? <p className="text-xs text-destructive">{boot.error}</p> : null}
+      {hasError ? <BootErrorNotice error={boot.error ?? ''} /> : null}
     </div>
   )
 }

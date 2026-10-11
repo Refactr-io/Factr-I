@@ -21,8 +21,10 @@ import {
   modeRemovesAgent,
   modeRemovesUserData,
   resolveRemovableAppPath,
+  resolveUninstallPlan,
   shouldRemoveAppBundle,
-  uninstallArgsForMode
+  uninstallArgsForMode,
+  type UninstallPlanInput
 } from './desktop-uninstall'
 
 // --- uninstallArgsForMode ---
@@ -341,4 +343,185 @@ test('appBundleRemovalBlocker explains translocated, disk-image and read-only bu
     appBundleRemovalBlocker('C:\\Program Files\\Factr-I', 'win32', () => false)?.reason,
     'not-writable'
   )
+})
+
+// --- resolveUninstallPlan (D-2): the confirmation and the deletion use ONE set of targets ---
+
+const QA_EXEC = '/Users/qa/factri-qa/apps/r1010 d06 space.app/Contents/MacOS/Factr-I'
+
+function planInput(over: Partial<UninstallPlanInput> = {}): UninstallPlanInput {
+  return {
+    mode: 'gui',
+    platform: 'darwin',
+    execPath: QA_EXEC,
+    env: {},
+    isPackaged: true,
+    userDataDir: '/Users/qa/runs/t/d06 space/user data',
+    configHome: '/Users/qa/runs/t/d06 space/factr',
+    homeDir: '/Users/qa',
+    agentRoot: null,
+    sourceBuiltArtifacts: [],
+    canWrite: () => true,
+    isSymlink: () => false,
+    ...over
+  }
+}
+
+const paths = (plan: ReturnType<typeof resolveUninstallPlan>) => plan.targets.map(t => `${t.kind}:${t.path}`)
+
+test('a QA copy elsewhere targets ITS bundle and ITS overridden userData, never the standard install', () => {
+  const plan = resolveUninstallPlan(planInput())
+
+  assert.deepEqual(paths(plan), [
+    'app:/Users/qa/factri-qa/apps/r1010 d06 space.app',
+    'userdata:/Users/qa/runs/t/d06 space/user data'
+  ])
+  assert.ok(!plan.targets.some(t => t.path.startsWith('/Applications')))
+  assert.ok(!plan.targets.some(t => t.path.includes('Application Support/Factr-I')))
+  assert.deepEqual(plan.refused, [])
+  assert.equal(plan.appBlocked, null)
+})
+
+test('the default install resolves to /Applications and the default userData', () => {
+  const plan = resolveUninstallPlan(
+    planInput({
+      execPath: '/Applications/Factr-I.app/Contents/MacOS/Factr-I',
+      userDataDir: '/Users/qa/Library/Application Support/Factr-I',
+      configHome: '/Users/qa/.factr'
+    })
+  )
+
+  assert.deepEqual(paths(plan), [
+    'app:/Applications/Factr-I.app',
+    'userdata:/Users/qa/Library/Application Support/Factr-I'
+  ])
+})
+
+test('lite keeps the config home; full adds the config home this copy runs with', () => {
+  assert.ok(!paths(resolveUninstallPlan(planInput({ mode: 'lite' }))).some(p => p.startsWith('config:')))
+  assert.ok(paths(resolveUninstallPlan(planInput({ mode: 'full' }))).includes('config:/Users/qa/runs/t/d06 space/factr'))
+})
+
+test('a source install lists its built artifacts, and lite/full its agent checkout', () => {
+  const input = planInput({
+    isPackaged: false,
+    agentRoot: '/Users/qa/.factr/factr-backend',
+    sourceBuiltArtifacts: ['/Users/qa/.factr/factr-backend/desktop/dist']
+  })
+
+  assert.deepEqual(paths(resolveUninstallPlan(input)), [
+    'artifact:/Users/qa/.factr/factr-backend/desktop/dist',
+    'userdata:/Users/qa/runs/t/d06 space/user data'
+  ])
+  // The agent checkout contains the artifact: listed once, as the checkout.
+  assert.deepEqual(paths(resolveUninstallPlan({ ...input, mode: 'lite' })), [
+    'artifact:/Users/qa/.factr/factr-backend/desktop/dist',
+    'agent:/Users/qa/.factr/factr-backend',
+    'userdata:/Users/qa/runs/t/d06 space/user data'
+  ])
+})
+
+test('refuses HOME, /, /Applications, /Users and their parents as targets', () => {
+  for (const bad of ['/Users/qa', '/', '/Applications', '/Users', '/Users/qa/Library', '/Users/qa/Library/Application Support']) {
+    const plan = resolveUninstallPlan(planInput({ mode: 'full', userDataDir: bad }))
+
+    assert.ok(
+      plan.refused.some(r => r.kind === 'userdata' && r.reason === 'protected'),
+      `${bad} should be refused`
+    )
+    assert.ok(!plan.targets.some(t => t.path === bad))
+  }
+
+  const config = resolveUninstallPlan(planInput({ mode: 'full', configHome: '/Users/qa' }))
+
+  assert.ok(config.refused.some(r => r.kind === 'config' && r.reason === 'protected'))
+})
+
+test('refuses a symlinked or relative target, and one whose real path is protected', () => {
+  const linked = resolveUninstallPlan(planInput({ isSymlink: p => p.endsWith('user data') }))
+
+  assert.equal(linked.refused[0]?.reason, 'symlink')
+  assert.ok(!linked.targets.some(t => t.kind === 'userdata'))
+
+  const relative = resolveUninstallPlan(planInput({ userDataDir: 'user data' }))
+
+  assert.equal(relative.refused[0]?.reason, 'not-absolute')
+
+  const resolvesHome = resolveUninstallPlan(
+    planInput({ realpath: p => (p.endsWith('user data') ? '/Users/qa' : p) })
+  )
+
+  assert.equal(resolvesHome.refused[0]?.reason, 'protected')
+})
+
+test('gui/lite refuse a userData folder holding the kept config home; full removes it once', () => {
+  const nested = { userDataDir: '/Users/qa/sandbox/ud', configHome: '/Users/qa/sandbox/ud/factr-home' }
+  const gui = resolveUninstallPlan(planInput(nested))
+
+  assert.equal(gui.refused[0]?.reason, 'contains-kept-data')
+  assert.ok(!gui.targets.some(t => t.kind === 'userdata'))
+
+  const full = resolveUninstallPlan(planInput({ ...nested, mode: 'full' }))
+
+  assert.deepEqual(full.refused, [])
+  assert.ok(paths(full).includes('userdata:/Users/qa/sandbox/ud'))
+  assert.ok(!full.targets.some(t => t.kind === 'config'))
+})
+
+test('a translocated, disk-image or read-only bundle is reported, and a dev run lists no bundle', () => {
+  const transl = resolveUninstallPlan(
+    planInput({ execPath: '/private/var/folders/x/AppTranslocation/ABC/d/Factr-I.app/Contents/MacOS/Factr-I' })
+  )
+
+  assert.equal(transl.appBlocked?.reason, 'translocated')
+
+  const dmg = resolveUninstallPlan(planInput({ execPath: '/Volumes/Factr-I/Factr-I.app/Contents/MacOS/Factr-I' }))
+
+  assert.equal(dmg.appBlocked?.reason, 'disk-image')
+  assert.equal(resolveUninstallPlan(planInput({ canWrite: () => false })).appBlocked?.reason, 'not-writable')
+
+  const dev = resolveUninstallPlan(planInput({ isPackaged: false, execPath: '/Users/qa/src/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron' }))
+
+  assert.ok(!dev.targets.some(t => t.kind === 'app'))
+})
+
+test('Windows: the per-user install dir and roaming userData resolve; AppData itself is refused', () => {
+  const win = planInput({
+    platform: 'win32',
+    execPath: 'C:\\Users\\qa\\AppData\\Local\\Programs\\Factr-I\\Factr-I.exe',
+    userDataDir: 'C:\\Users\\qa\\AppData\\Roaming\\Factr-I',
+    configHome: 'C:\\Users\\qa\\.factr',
+    homeDir: 'C:\\Users\\qa'
+  })
+
+  assert.deepEqual(paths(resolveUninstallPlan(win)), [
+    'app:C:\\Users\\qa\\AppData\\Local\\Programs\\Factr-I',
+    'userdata:C:\\Users\\qa\\AppData\\Roaming\\Factr-I'
+  ])
+  assert.equal(
+    resolveUninstallPlan({ ...win, userDataDir: 'C:\\Users\\qa\\AppData\\Roaming' }).refused[0]?.reason,
+    'protected'
+  )
+})
+
+test('the cleanup scripts hand the confirmed targets to the Python uninstaller', () => {
+  const targets = [{ kind: 'userdata' as const, path: "/Users/qa/it's here/user data" }]
+
+  const args = {
+    desktopPid: 1,
+    pythonExe: '/py',
+    pythonPath: null,
+    agentRoot: '/src',
+    uninstallArgs: ['-m', 'factr_backend.uninstall', '--mode', 'gui'],
+    appPath: null,
+    factrHome: '/Users/qa/.factr',
+    targets
+  }
+
+  for (const script of [buildPosixCleanupScript(args), buildWindowsCleanupScript(args)]) {
+    const encoded = /FACTR_UNINSTALL_TARGETS_B64='?([A-Za-z0-9+/=]+)/.exec(script)?.[1]
+
+    assert.ok(encoded, script)
+    assert.deepEqual(JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')), { targets })
+  }
 })

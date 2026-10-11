@@ -1,7 +1,7 @@
 import { useContext, useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import type { DesktopUninstallMode, DesktopUninstallSummary } from '@/global'
+import type { DesktopUninstallMode, DesktopUninstallSummary, DesktopUninstallTarget } from '@/global'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, Loader2, Trash2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
@@ -45,6 +45,14 @@ const OPTIONS: ModeOption[] = [
     needsAgent: true
   }
 ]
+
+const TARGET_LABELS: Record<DesktopUninstallTarget['kind'], string> = {
+  agent: 'Agent',
+  app: 'App',
+  artifact: 'Build files',
+  config: 'Config and chats',
+  userdata: 'App data'
+}
 
 export function UninstallSection() {
   const hasBreadcrumb = useContext(SettingsBreadcrumbContext)
@@ -122,6 +130,9 @@ export function UninstallSection() {
   }
 
   const pendingOption = OPTIONS.find(opt => opt.mode === pending) ?? null
+  // What this mode deletes on THIS copy, resolved by main from the running app and its real data folders.
+  const pendingPlan = pending ? (summary?.plans?.[pending] ?? null) : null
+  const planBlocked = Boolean(pendingPlan && (pendingPlan.appBlocked || pendingPlan.refused.length > 0))
 
   return (
     <div className={cn('mx-auto w-full max-w-2xl', !hasBreadcrumb && 'mt-8')}>
@@ -139,14 +150,36 @@ export function UninstallSection() {
             <p className="mt-1 text-xs text-muted-foreground">
               This removes {pendingOption.consequence}. This can&apos;t be undone.
             </p>
-            {summary?.running_app_path && (
-              <p className="mt-1 font-mono text-[0.6875rem] text-muted-foreground/90">
-                App: {summary.running_app_path}
-              </p>
+            {pendingPlan ? (
+              <ul className="mt-2 flex flex-col gap-0.5 text-[0.6875rem] text-muted-foreground/90">
+                {pendingPlan.targets.map(target => (
+                  <li className="min-w-0 break-all" key={`${target.kind}:${target.path}`}>
+                    <span className="text-foreground/80">{TARGET_LABELS[target.kind]}: </span>
+                    <span className="font-mono">{target.path}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              summary?.running_app_path && (
+                <p className="mt-1 font-mono text-[0.6875rem] text-muted-foreground/90">
+                  App: {summary.running_app_path}
+                </p>
+              )
             )}
+            {pendingPlan?.appBlocked && <p className="mt-2 text-xs text-destructive">{pendingPlan.appBlocked.message}</p>}
+            {pendingPlan?.refused.map(refusal => (
+              <p className="mt-2 text-xs text-destructive" key={`${refusal.kind}:${refusal.path}`}>
+                {refusal.message}
+              </p>
+            ))}
             {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Button disabled={running} onClick={() => void handleConfirm()} size="sm" variant="destructive">
+              <Button
+                disabled={running || planBlocked}
+                onClick={() => void handleConfirm()}
+                size="sm"
+                variant="destructive"
+              >
                 {running && <Loader2 className="size-3 animate-spin" />}
                 {running ? 'Uninstalling…' : 'Yes, uninstall'}
               </Button>

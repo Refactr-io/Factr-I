@@ -101,6 +101,7 @@ import { detectBundleSwap } from './bundle-swap'
 import { registerChatOnboardingWindow } from './chat-onboarding-window'
 import { installCommandScreenshot } from './command-screenshot'
 import { writeComposerPaste } from './composer-paste'
+import { backupCorruptConfig } from './config-backup'
 import { applyConnectionChange, teardownSshState } from './connection-apply'
 import {
   connectionInstallIds,
@@ -183,14 +184,14 @@ import {
 } from './desktop-profile'
 import { resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
 import {
-  appBundleRemovalBlocker,
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
   bundledUninstallPython,
   modeRemovesAgent,
   modeRemovesUserData,
   resolveRemovableAppPath,
-  shouldRemoveAppBundle,
+  resolveUninstallPlan,
+  UNINSTALL_MODES,
   uninstallArgsForMode
 } from './desktop-uninstall'
 import { describeDevCdpDecision, resolveDevCdpPort } from './dev-cdp'
@@ -17198,6 +17199,69 @@ function canWriteDir(dir) {
   }
 }
 
+function isSymlinkPath(target) {
+  try {
+    return fs.lstatSync(target).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
+function realpathOrSelf(target) {
+  try {
+    return fs.realpathSync.native(target)
+  } catch {
+    return target
+  }
+}
+
+// What one uninstall mode deletes on THIS running copy: the summary the
+// confirmation renders and the run both come from here, so they cannot differ.
+function desktopUninstallPlan(mode, sourceBuiltArtifacts: string[] = []) {
+  const runtime = uninstallRuntime()
+
+  return resolveUninstallPlan({
+    mode,
+    platform: process.platform,
+    execPath: process.execPath,
+    env: process.env,
+    isPackaged: IS_PACKAGED,
+    userDataDir: app.getPath('userData'),
+    configHome: FACTR_CONFIG_HOME,
+    homeDir: app.getPath('home'),
+    agentRoot: runtime.bundled ? null : runtime.cwd,
+    sourceBuiltArtifacts,
+    canWrite: canWriteDir,
+    isSymlink: isSymlinkPath,
+    realpath: realpathOrSelf
+  })
+}
+
+// Built GUI artifacts of a source install, as the last summary listed them: the
+// run deletes exactly what the confirmation showed, never a fresher probe.
+let lastSummaryArtifacts: string[] = []
+
+// Pin the summary to the running copy: the Python probe only knows the standard
+// install locations and the default userData, not where THIS build runs from.
+function withRunningCopyTargets(summary) {
+  const artifacts = Array.isArray(summary.source_built_artifacts) ? summary.source_built_artifacts.map(String) : []
+  const plans = Object.fromEntries(UNINSTALL_MODES.map(mode => [mode, desktopUninstallPlan(mode, artifacts)]))
+  const bundle = plans.gui.targets.find(target => target.kind === 'app')?.path ?? null
+  const userData = app.getPath('userData')
+
+  lastSummaryArtifacts = artifacts
+
+  return {
+    ...summary,
+    packaged_app_paths: bundle ? [bundle] : [],
+    running_app_path: bundle,
+    userdata_dir: userData,
+    userdata_exists: fileExists(userData),
+    factr_home: FACTR_CONFIG_HOME,
+    plans
+  }
+}
+
 async function getUninstallSummary() {
   const runtime = uninstallRuntime()
   const py = runtime.pythonExe
@@ -17205,7 +17269,7 @@ async function getUninstallSummary() {
 
   // Fast JS-side fallback used when the agent venv is gone (lite client) or the
   // probe fails — the renderer still needs *something* to render options from.
-  const fallback = () => ({
+  const fallback = () => withRunningCopyTargets({
     factr_home: FACTR_CONFIG_HOME,
     agent_installed: runtime.bundled ? fileExists(py) : isFactrSourceRoot(agentRoot) && fileExists(py),
     gui_installed: true,
@@ -17243,6 +17307,7 @@ async function getUninstallSummary() {
           env: {
             ...process.env,
             FACTR_CONFIG_HOME,
+            FACTR_UNINSTALL_USERDATA: app.getPath('userData'),
             NO_COLOR: '1',
             PYTHONDONTWRITEBYTECODE: '1',
             ...(runtime.pythonPath ? { PYTHONPATH: runtime.pythonPath } : {})
@@ -17263,17 +17328,13 @@ async function getUninstallSummary() {
         try {
           const line = stdout.trim().split('\n').filter(Boolean).pop() || '{}'
           const parsed = JSON.parse(line)
-          // The app bundle the renderer would be removing on *this* machine,
-          // resolved from the running exe (the Python probe only knows the
-          // standard locations, not where THIS build actually runs from).
-          parsed.running_app_path = resolveRemovableAppPath(process.execPath, process.platform, process.env)
 
           // The packaged app IS the agent install (bundled runtime + backend), so lite/full apply.
           if (runtime.bundled) {
             parsed.agent_installed = true
           }
 
-          done(parsed)
+          done(withRunningCopyTargets(parsed))
         } catch {
           done(fallback())
         }
@@ -17334,14 +17395,19 @@ async function runDesktopUninstall(mode) {
     }
   }
 
-  const appPath = resolveRemovableAppPath(process.execPath, process.platform, process.env)
-  const removeBundle = shouldRemoveAppBundle(IS_PACKAGED, appPath) ? appPath : null
+  // The same resolution the confirmation rendered (getUninstallSummary): the
+  // running bundle, this copy's real userData and config home, nothing else.
+  const plan = desktopUninstallPlan(mode, lastSummaryArtifacts)
+  const removeBundle = plan.targets.find(target => target.kind === 'app')?.path ?? null
+
   // Refuse up front when the bundle cannot be deleted (translocated, disk image, read-only folder):
   // the detached script runs after the app quits and could not report the failure here.
-  const blocked = removeBundle ? appBundleRemovalBlocker(removeBundle, process.platform, canWriteDir) : null
+  if (plan.appBlocked) {
+    return { ok: false, error: `bundle-${plan.appBlocked.reason}`, message: plan.appBlocked.message }
+  }
 
-  if (blocked) {
-    return { ok: false, error: `bundle-${blocked.reason}`, message: blocked.message }
+  if (plan.refused.length > 0) {
+    return { ok: false, error: `target-${plan.refused[0].reason}`, message: plan.refused[0].message }
   }
 
   // CRITICAL (Windows): tear down every backend the desktop owns and wait for
@@ -17363,7 +17429,8 @@ async function runDesktopUninstall(mode) {
     agentRoot: runtime.cwd,
     uninstallArgs,
     appPath: removeBundle,
-    factrHome: FACTR_CONFIG_HOME
+    factrHome: FACTR_CONFIG_HOME,
+    targets: plan.targets
   }
 
   let scriptPath
@@ -17410,6 +17477,21 @@ async function runDesktopUninstall(mode) {
 
   return { ok: true, mode, willRemoveAppBundle: Boolean(removeBundle), scriptPath }
 }
+
+// "Back up and start fresh" for a config.yaml the engine reports as unreadable:
+// copy it aside, then remove it, never overwrite it. Only a config.yaml under
+// this desktop's config home is accepted.
+ipcMain.handle('factr:config:backup-corrupt', async (_event, configPath) => {
+  const result = backupCorruptConfig(String(configPath || ''), { configRoot: FACTR_CONFIG_HOME })
+
+  rememberLog(
+    'backupPath' in result
+      ? `[config] backed up an unreadable config to ${result.backupPath}`
+      : `[config] backup refused: ${result.message}`
+  )
+
+  return result
+})
 
 ipcMain.handle('factr:uninstall:summary', async () => getUninstallSummary())
 ipcMain.handle('factr:uninstall:run', async (_event, payload) => {

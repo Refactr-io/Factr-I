@@ -417,6 +417,7 @@ contextBridge.exposeInMainWorld('factrDesktop', {
   readDir: dirPath => ipcRenderer.invoke('factr:fs:readDir', dirPath),
   gitRoot: startPath => ipcRenderer.invoke('factr:fs:gitRoot', startPath),
   revealPath: targetPath => ipcRenderer.invoke('factr:fs:reveal', targetPath),
+  backupCorruptConfig: configPath => ipcRenderer.invoke('factr:config:backup-corrupt', configPath),
   openDir: dirPath => ipcRenderer.invoke('factr:fs:openDir', dirPath),
   desktopPluginsRoot: () => ipcRenderer.invoke('factr:fs:desktopPluginsRoot'),
   reconcileDesktopPlugins: () => ipcRenderer.invoke('factr:fs:reconcileDesktopPlugins'),

@@ -423,6 +423,10 @@ declare global {
       gitRoot?: (path: string) => Promise<string | null>
       // Reveal a path in the OS file manager (Finder / Explorer).
       revealPath?: (path: string) => Promise<boolean>
+      /** Copy an unreadable config.yaml to config.yaml.corrupt-<time>, then remove it (never overwrite). */
+      backupCorruptConfig?: (
+        configPath: string
+      ) => Promise<{ backupPath: string; ok: true } | { message: string; ok: false }>
       // Open a DIRECTORY (created if missing) in the OS file manager.
       openDir?: (path: string) => Promise<{ ok: boolean; error?: string }>
       // Local Desktop runtime-plugin root (<FACTR_CONFIG_HOME>/desktop-plugins),
@@ -663,6 +667,19 @@ export interface DesktopUninstallSummary {
   platform: string
   running_app_path?: null | string
   probe?: string
+  /** Per mode: exactly what the confirmation lists and the run may delete (desktop-uninstall.ts). */
+  plans?: Partial<Record<DesktopUninstallMode, DesktopUninstallPlan>>
+}
+
+export interface DesktopUninstallTarget {
+  kind: 'agent' | 'app' | 'artifact' | 'config' | 'userdata'
+  path: string
+}
+
+export interface DesktopUninstallPlan {
+  targets: DesktopUninstallTarget[]
+  refused: (DesktopUninstallTarget & { message: string; reason: string })[]
+  appBlocked: { message: string; reason: string } | null
 }
 
 export interface DesktopUninstallResult {

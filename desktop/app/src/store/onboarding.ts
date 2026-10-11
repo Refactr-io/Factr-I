@@ -14,7 +14,11 @@ import {
 } from '@/factr'
 import { translateNow } from '@/i18n'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
-import { evaluateRuntimeReadiness, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
+import {
+  type ConfigErrorSnapshot,
+  evaluateRuntimeReadiness,
+  type RuntimeReadinessResult
+} from '@/lib/runtime-readiness'
 import { setMainModelAssignment } from '@/store/model-assignment'
 import { notify, notifyError, readableError } from '@/store/notifications'
 import { guidedOnboardingActive } from '@/store/onboarding-gate'
@@ -69,6 +73,8 @@ export interface DesktopOnboardingState {
   reason: null | string
   /** The raw engine text behind a reworded `reason` (shown as Details). */
   reasonDetail?: null | string
+  /** An unreadable config.yaml the engine is ignoring (named with Open folder / Back up actions). */
+  configError?: ConfigErrorSnapshot | null
   requested: boolean
   /** True when the user explicitly chose "I'll choose a provider later" on the
    *  first-run picker. Persisted to localStorage so the blocking overlay never
@@ -736,7 +742,12 @@ export async function refreshOnboarding(ctx: OnboardingContext, stillWanted?: ()
   const reason = runtime.reason || state.reason || DEFAULT_ONBOARDING_REASON
 
   writeCachedConfigured(false)
-  patch({ configured: false, reason, reasonDetail: runtime.reason ? (runtime.reasonDetail ?? null) : (state.reasonDetail ?? null) })
+  patch({
+    configured: false,
+    configError: runtime.configError ?? null,
+    reason,
+    reasonDetail: runtime.reason ? (runtime.reasonDetail ?? null) : (state.reasonDetail ?? null)
+  })
 
   if (state.providers !== null && !state.requested) {
     return false

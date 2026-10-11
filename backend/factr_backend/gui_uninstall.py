@@ -1,6 +1,8 @@
 """Factr Desktop (Chat GUI) uninstaller: removes only GUI state — built Electron artifacts, the packaged
 app, and the desktop's own ``userData`` — never agent source, venv, config, sessions or .env."""
 
+import base64
+import json
 import os
 import shutil
 import sys
@@ -24,8 +26,77 @@ def _env_dir(var: str, fallback: Path) -> Path:
     return Path(value) if (value := os.environ.get(var)) else fallback
 
 
+def explicit_targets() -> "list[dict] | None":
+    """The targets the desktop's uninstall confirmation listed, when the desktop launched this run.
+
+    The desktop passes them as base64 JSON in ``FACTR_UNINSTALL_TARGETS_B64`` (``{"targets": [{"kind",
+    "path"}]}``, kinds: app, artifact, agent, userdata, config). When set, the uninstall deletes those paths
+    and nothing else: no standard install locations, no default userData. ``None`` for a CLI run; an
+    unreadable value is ``[]`` (delete nothing) rather than a fallback to the defaults."""
+    raw = os.environ.get("FACTR_UNINSTALL_TARGETS_B64")
+    if not raw:
+        return None
+    try:
+        targets = json.loads(base64.b64decode(raw).decode("utf-8")).get("targets") or []
+    except Exception:
+        log_warn("The desktop uninstall targets could not be read; nothing will be deleted.")
+        return []
+    return [t for t in targets if isinstance(t, dict) and isinstance(t.get("path"), str)
+            and isinstance(t.get("kind"), str) and os.path.isabs(t["path"])]
+
+
+def explicit_paths(*kinds: str) -> "list[Path] | None":
+    """Paths of the given kinds from :func:`explicit_targets`, or ``None`` for a CLI run."""
+    targets = explicit_targets()
+    if targets is None:
+        return None
+    return [Path(t["path"]) for t in targets if t["kind"] in kinds]
+
+
+def _protected_dirs() -> "list[Path]":
+    """System and home folders an uninstall must never delete, nor any folder containing one."""
+    home = Path.home()
+    if sys.platform == "win32":
+        drive = Path(home.anchor or "C:\\")
+        extra = [os.environ.get(v) for v in ("APPDATA", "LOCALAPPDATA", "ProgramFiles")]
+        return [drive, drive / "Users", drive / "Windows", home, home / "AppData", home / "AppData" / "Roaming",
+                home / "AppData" / "Local", home / "Documents", home / "Desktop"] + [Path(v) for v in extra if v]
+    return [Path(p) for p in ("/", "/Applications", "/Users", "/System", "/Library", "/Volumes", "/home", "/usr",
+                              "/bin", "/etc", "/opt", "/private", "/tmp", "/var")] + [
+        home, home / "Applications", home / "Library", home / "Library" / "Application Support",
+        home / "Documents", home / "Desktop", home / ".config", home / ".local", home / ".local" / "share"]
+
+
+def refusal_reason(path: Path) -> "str | None":
+    """Why ``path`` must not be deleted, or ``None``. Refuses relative paths and any path that is (or
+    contains) a system or home folder, checked both as given and with symlinks resolved."""
+    if not path.is_absolute():
+        return "not an absolute path"
+    candidates = {Path(os.path.normpath(path))}
+    try:
+        candidates.add(path.resolve())
+    except OSError:
+        pass
+    for candidate in candidates:
+        for guarded in _protected_dirs():
+            try:
+                guarded_norm = Path(os.path.normpath(guarded))
+            except (TypeError, ValueError):
+                continue
+            if candidate == guarded_norm or candidate in guarded_norm.parents:
+                return f"it is (or contains) the protected folder {guarded_norm}"
+    return None
+
+
 def desktop_userdata_dir() -> Path:
-    """Electron ``app.getPath('userData')`` for the app named "Factr-I" on each platform (GUI-only state)."""
+    """Electron ``app.getPath('userData')`` for the app named "Factr-I" on each platform (GUI-only state).
+
+    The desktop names the folder its running copy really uses (``FACTR_UNINSTALL_USERDATA`` for the summary
+    probe, the confirmed targets for a run): an overridden or non-default userData is never guessed."""
+    if confirmed := explicit_paths("userdata"):
+        return confirmed[0]
+    if override := os.environ.get("FACTR_UNINSTALL_USERDATA"):
+        return Path(override)
     home = Path.home()
     if sys.platform == "darwin":
         return home / "Library" / "Application Support" / "Factr-I"
@@ -47,7 +118,12 @@ def source_built_gui_artifacts(factr_home: Path) -> "list[Path]":
 def packaged_gui_app_paths() -> "list[Path]":
     """Standard install locations of the packaged desktop distributable for the current OS. Every candidate
     is returned; the caller filters to those that exist. Never globs system-wide — only the well-known
-    electron-builder output locations for the "Factr-I" product."""
+    electron-builder output locations for the "Factr-I" product.
+
+    A desktop-launched run returns none: its cleanup script removes the RUNNING copy's bundle (the one the
+    confirmation showed) after this process exits, never a copy at a standard location."""
+    if explicit_targets() is not None:
+        return []
     home = Path.home()
     if sys.platform == "darwin":
         return [Path("/Applications/Factr-I.app"), home / "Applications" / "Factr-I.app"]
@@ -91,7 +167,11 @@ def gui_install_summary(factr_home: "Path | None" = None) -> dict:
 
 
 def _remove_path(path: Path) -> bool:
-    """Remove a file or directory tree. Returns True when something was removed."""
+    """Remove a file or directory tree. Returns True when something was removed. A symlink is unlinked,
+    never followed; a protected folder (see :func:`refusal_reason`) is refused."""
+    if (reason := refusal_reason(path)) is not None:
+        log_warn(f"Not removing {path}: {reason}")
+        return False
     try:
         if path.is_symlink() or path.is_file():
             path.unlink()
@@ -119,14 +199,19 @@ def uninstall_gui(factr_home: "Path | None" = None, *, remove_userdata: bool = T
                 log_success(f"Removed {path}")
                 removed.append(path)
         return found
+    confirmed_artifacts = explicit_paths("artifact")
     log_info("Removing built GUI artifacts (renderer, release, node_modules)...")
-    _remove_existing(source_built_gui_artifacts(home))
+    # A desktop-launched run removes only the artifacts its confirmation listed.
+    _remove_existing(source_built_gui_artifacts(home) if confirmed_artifacts is None else confirmed_artifacts)
     log_info("Removing installed desktop app...")
     if not _remove_existing(packaged_gui_app_paths()):
         log_info("No packaged desktop app found in standard locations")
-    if remove_userdata and (userdata := desktop_userdata_dir()).exists():
+    # A desktop-launched run removes the userData its confirmation listed, and none when it listed none.
+    confirmed_userdata = explicit_paths("userdata")
+    userdata_dirs = [desktop_userdata_dir()] if confirmed_userdata is None else confirmed_userdata
+    if remove_userdata and any(p.exists() for p in userdata_dirs):
         log_info("Removing desktop app data (Electron userData)...")
-        _remove_existing([userdata])
+        _remove_existing(userdata_dirs)
     if not removed:
         log_info("No desktop GUI artifacts found to remove")
     if sys.platform.startswith("linux"):

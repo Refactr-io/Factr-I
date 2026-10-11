@@ -1,11 +1,11 @@
-import { cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { $desktopOnboarding, type DesktopOnboardingState, type OnboardingContext } from '@/store/onboarding'
 import { makeOAuthProvider } from '@/test/oauth-provider'
 import type { OAuthProvider } from '@/types/factr'
 
-import { Picker, useEscapeClosesManualOnboarding } from '.'
+import { BootErrorNotice, Picker, ReasonNotice, useEscapeClosesManualOnboarding } from '.'
 
 function setProviders(providers: OAuthProvider[]) {
   $desktopOnboarding.set({
@@ -125,5 +125,70 @@ describe('Esc on the provider selector', () => {
     fireEvent.keyDown(window.document, { key: 'Escape' })
 
     expect($desktopOnboarding.get().configured).toBe(false)
+  })
+})
+
+// QA D-7: the disk-full start failure showed the raw IPC text next to the friendly card.
+describe('BootErrorNotice', () => {
+  it('leads with the plain cause and keeps the raw text under Details', () => {
+    const raw =
+      "Error invoking remote method 'factr:connection': Error: Factr-I backend: exited before port announcement (1) " +
+      'Recent backend output: Error: opening factr.db Caused by: 1: database or disk is full'
+
+    render(<BootErrorNotice error={raw} />)
+
+    expect(screen.getByText('The disk is full, so Factr-I could not start.')).toBeTruthy()
+    const details = screen.getByText(raw).closest('details')
+    expect(details).not.toBeNull()
+    expect(details?.open).toBe(false)
+  })
+})
+
+// QA D-3: an unreadable config.yaml is named, with Open the folder / Back up and start fresh.
+describe('ReasonNotice for an unreadable config.yaml', () => {
+  const configError = {
+    line: 4,
+    message: '/x/.factr/config.yaml could not be read (line 4), so Factr-I is ignoring it: bad yaml.',
+    path: '/x/.factr/config.yaml'
+  }
+
+  afterEach(() => {
+    delete (window as { factrDesktop?: unknown }).factrDesktop
+  })
+
+  it('reveals the file and backs it up before anything else', async () => {
+    const revealPath = vi.fn(async () => true)
+
+    const backupCorruptConfig = vi.fn(async () => ({ ok: true as const, backupPath: `${configError.path}.corrupt-1` }))
+
+    ;(window as { factrDesktop?: unknown }).factrDesktop = { backupCorruptConfig, revealPath }
+    setProviders([])
+
+    render(<ReasonNotice configError={configError} ctx={ctx} reason={configError.message} />)
+
+    expect(screen.getByText(configError.message)).toBeTruthy()
+    fireEvent.click(screen.getByText('Open the folder'))
+    expect(revealPath).toHaveBeenCalledWith(configError.path)
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Back up and start fresh'))
+    })
+
+    expect(backupCorruptConfig).toHaveBeenCalledWith(configError.path)
+    expect(screen.getByText(/Saved a copy as \/x\/\.factr\/config\.yaml\.corrupt-1/)).toBeTruthy()
+  })
+
+  it('shows why a backup was refused and keeps the actions', async () => {
+    const backupCorruptConfig = vi.fn(async () => ({ ok: false as const, message: 'not a regular file' }))
+
+    ;(window as { factrDesktop?: unknown }).factrDesktop = { backupCorruptConfig }
+
+    render(<ReasonNotice configError={configError} ctx={ctx} reason={configError.message} />)
+    await act(async () => {
+      fireEvent.click(screen.getByText('Back up and start fresh'))
+    })
+
+    expect(screen.getByText('not a regular file')).toBeTruthy()
+    expect(screen.getByText('Back up and start fresh')).toBeTruthy()
   })
 })

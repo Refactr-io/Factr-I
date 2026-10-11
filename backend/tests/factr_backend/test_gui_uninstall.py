@@ -125,3 +125,85 @@ def test_packaged_app_names_are_factr_i(monkeypatch, tmp_path):
     monkeypatch.setenv("ProgramFiles", str(tmp_path / "PF"))
     names = {p.name for p in gu.packaged_gui_app_paths()}
     assert not ({"Factr.app", "Factr", "Factr.desktop"} & names)
+
+
+# --- D-2: a desktop-launched run deletes exactly what its confirmation listed ---------------------------
+
+def _encode(targets):
+    import base64
+    import json
+    return base64.b64encode(json.dumps({"targets": targets}).encode()).decode()
+
+
+@pytest.fixture
+def fake_home(tmp_path, monkeypatch):
+    """Point every home lookup at a temp dir, so nothing here can reach a real install."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.delenv("FACTR_UNINSTALL_TARGETS_B64", raising=False)
+    monkeypatch.delenv("FACTR_UNINSTALL_USERDATA", raising=False)
+    return home
+
+
+def test_desktop_run_never_targets_standard_app_locations(fake_home, monkeypatch):
+    monkeypatch.setenv("FACTR_UNINSTALL_TARGETS_B64", _encode([]))
+    assert gu.packaged_gui_app_paths() == []
+
+
+def test_desktop_run_removes_the_listed_userdata_only(fake_home, tmp_path, monkeypatch):
+    # The running copy's userData is overridden (FACTR_DESKTOP_USER_DATA_DIR) and has spaces in its path.
+    listed = tmp_path / "QA copies" / "run 1" / "user data"
+    listed.mkdir(parents=True)
+    (listed / "Local Storage").mkdir()
+    # The default location belongs to another copy (the founder's own app): it must survive.
+    default = fake_home / "Library" / "Application Support" / "Factr-I"
+    default.mkdir(parents=True)
+    factr_home = tmp_path / "factr home"
+    factr_home.mkdir()
+    (factr_home / "config.yaml").write_text("model: {}\n")
+    monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
+    monkeypatch.setenv("FACTR_UNINSTALL_TARGETS_B64", _encode([{"kind": "userdata", "path": str(listed)}]))
+
+    removed = gu.uninstall_gui(factr_home)
+
+    assert removed == [listed]
+    assert not listed.exists()
+    assert default.exists()
+    assert (factr_home / "config.yaml").exists()
+
+
+def test_unreadable_desktop_targets_delete_nothing(fake_home, tmp_path, monkeypatch):
+    default = fake_home / "Library" / "Application Support" / "Factr-I"
+    default.mkdir(parents=True)
+    monkeypatch.setattr(gu, "packaged_gui_app_paths", lambda: [])
+    monkeypatch.setenv("FACTR_UNINSTALL_TARGETS_B64", "not base64 json!")
+
+    assert gu.uninstall_gui(tmp_path / "factr") == []
+    assert default.exists()
+
+
+def test_summary_probe_reports_the_running_copys_userdata(fake_home, tmp_path, monkeypatch):
+    override = tmp_path / "custom user data"
+    monkeypatch.setenv("FACTR_UNINSTALL_USERDATA", str(override))
+    assert gu.desktop_userdata_dir() == override
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX paths")
+def test_refusal_reason_protects_system_and_home_folders(fake_home, tmp_path):
+    for path in (Path("/"), Path("/Applications"), Path("/Users"), fake_home, fake_home.parent,
+                 fake_home / "Library" / "Application Support"):
+        assert gu.refusal_reason(path), path
+    assert gu.refusal_reason(Path("relative/dir"))
+    assert gu.refusal_reason(fake_home / "Library" / "Application Support" / "Factr-I") is None
+    assert gu.refusal_reason(tmp_path / "QA copy.app") is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink semantics")
+def test_remove_path_refuses_home_and_a_link_into_it(fake_home, tmp_path):
+    assert gu._remove_path(fake_home) is False
+    assert fake_home.exists()
+    link = tmp_path / "userdata-link"
+    link.symlink_to(fake_home)
+    assert gu._remove_path(link) is False
+    assert fake_home.exists()
