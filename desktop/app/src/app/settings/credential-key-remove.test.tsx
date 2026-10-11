@@ -26,3 +26,10 @@ it('an unset key offers no Remove', () => {
   render(<KeyField info={info(false)} rowProps={rowProps(vi.fn())} varKey="FIREWORKS_API_KEY" />)
   expect(screen.queryByRole('button', { name: 'Remove' })).toBeNull()
 })
+
+it('humanizeEnvName title-cases long words and keeps short acronyms', async () => {
+  const { humanizeEnvName } = await import('./credential-key-ui')
+  expect(humanizeEnvName('A2A_HOME_CHANNEL')).toBe('A2A Home Channel')
+  expect(humanizeEnvName('BRV')).toBe('BRV')
+  expect(humanizeEnvName('FAL')).toBe('FAL')
+})
