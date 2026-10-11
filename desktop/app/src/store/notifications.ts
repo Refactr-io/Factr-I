@@ -262,7 +262,29 @@ export function readableError(
   return { message: summary.message, detail: detail === summary.message ? undefined : detail, action: summary.action }
 }
 
-export function notify(input: NotificationInput): string {
+/** Plugins and views that toast a raw error through `notify` (not `notifyError`) still get the plain
+ *  "no AI provider" sentence, the raw text as the detail, and the Open Providers button. */
+function withPlainProviderError(input: NotificationInput): NotificationInput {
+  const raw = input.message ?? ''
+  const plain = input.kind === 'error' ? providerErrorSentence(raw) : null
+
+  if (!plain) {
+    return input
+  }
+
+  return {
+    ...input,
+    action: input.action ?? {
+      label: translateNow('assistant.thread.errorOpenProviders'),
+      onClick: () => requestRoute(PROVIDERS_ROUTE)
+    },
+    detail: input.detail ?? raw,
+    message: plain
+  }
+}
+
+export function notify(rawInput: NotificationInput): string {
+  const input = withPlainProviderError(rawInput)
   const kind = input.kind ?? 'info'
   const id = input.id ?? `${Date.now()}-${notificationCounter++}`
 

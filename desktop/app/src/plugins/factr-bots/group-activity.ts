@@ -153,7 +153,18 @@ export function groupActivityLabel(event: GroupActivityEntry, group?: null | str
     return `${who} couldn't start — too many bots running`
   }
 
-  return `${who} ${base}${reason ? ` — ${reason}` : ''}`
+  return `${who} ${base}${reason ? ` — ${plainFailureReason(reason)}` : ''}`
+}
+
+// The engine's "<Provider> credentials not available. Run `factr login <x>` first." names a provider the
+// user never chose and a command a desktop user does not have. The plugin fence keeps the app's provider-error
+// readers out of reach, so the one sentence is read here; the raw reason stays on the event and the badge.
+const NO_CREDENTIALS_REASON_RE = /\bcredentials not available\b/i
+const NO_PROVIDER_PLAIN = 'No AI provider is connected yet. Open Settings > Providers to choose one.'
+
+/** A failure reason as the Activity row shows it: plain wording for "no credentials", the reason as is otherwise. */
+function plainFailureReason(reason: string): string {
+  return NO_CREDENTIALS_REASON_RE.test(reason) ? NO_PROVIDER_PLAIN : reason
 }
 
 const GROUP_ACTIVITY_LABELS: Record<GroupActivityKind, string> = {

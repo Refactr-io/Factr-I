@@ -188,6 +188,27 @@ describe('turn arc', () => {
     expect(Object.values(room.data.$botAttention.get())[0]?.reason).toBe('missing_config')
   })
 
+  it('a no-credentials failure reads as plain wording with the in-app place, not a CLI command', async () => {
+    const room = await loadRoom({
+      turn: ({ profile }) => {
+        if (profile === 'builder') {
+          throw new Error('Claude credentials not available. Run `factr login claude` first.')
+        }
+
+        return '(pass)'
+      }
+    })
+
+    room.rounds.sendToGroupChat('No provider', MEMBERS, 'anyone around?')
+    await drain(() => Boolean(room.chat.$groupChats.get()['No provider']?.running))
+
+    const failed = feed(room, 'No provider').find(event => event.kind === 'failed' && event.member === 'builder')
+    const label = room.activity.groupActivityLabel(failed!, 'No provider')
+
+    expect(label).toContain('Open Settings > Providers')
+    expect(label).not.toMatch(/Claude|factr login/)
+  })
+
   // #116458: a member whose backend never got a pool slot is healthy; the
   // room must not describe pool starvation as a bot crash (and never badge it).
   it('a slot-wait timeout reads as could-not-start, not as a bot error', async () => {

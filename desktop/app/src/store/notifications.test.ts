@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from 'vitest'
 
 import { en } from '@/i18n/en'
 
-import { $notifications, clearNotifications, isDiskFullErrorMessage, notifyError } from './notifications'
+import { $notifications, clearNotifications, isDiskFullErrorMessage, notify, notifyError } from './notifications'
 import { $backendRestartRequest, $routeRequest } from './recovery-requests'
 
 beforeEach(() => {
@@ -125,4 +125,26 @@ test('an HTTP 404 outside a provider call is not read as a missing model', () =>
   notifyError(new Error('HTTP 404: session not found'), 'Request failed')
 
   expect(lastMessage()).not.toMatch(/model/i)
+})
+
+test('a plugin error toast with the raw no-credentials text reads plain, with Open Providers and no CLI command', () => {
+  const raw = 'Claude credentials not available. Run `factr login claude` first.'
+
+  notify({ kind: 'error', message: raw })
+
+  const [toast] = $notifications.get()
+  expect(toast?.message).not.toMatch(/Claude|factr login/)
+  expect(toast?.message).toBe(
+    `${en.assistant.thread.errorCodes.no_provider.title}. ${en.assistant.thread.errorCodes.no_provider.body}`
+  )
+  expect(toast?.detail).toBe(raw)
+  toast?.action?.onClick()
+  expect($routeRequest.get()?.path).toBe('/settings?tab=providers')
+})
+
+test('a non-error toast and an unrelated error toast are left as written', () => {
+  notify({ kind: 'info', message: 'Claude credentials not available.' })
+  expect(lastMessage()).toBe('Claude credentials not available.')
+  notify({ kind: 'error', message: 'Could not save the avatar.' })
+  expect(lastMessage()).toBe('Could not save the avatar.')
 })
