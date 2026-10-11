@@ -265,9 +265,20 @@ struct Active {
     tools: HashMap<String, (String, bool)>,
     tool_errors: HashMap<String, String>,
     chat_started: Option<i64>,
+    /// The open model request has streamed a reply (text, reasoning or a tool call). A request
+    /// that replied but reported no `token_usage` is still a model call: the next
+    /// `sending request` phase closes it with unknown usage. A request that never replied (a
+    /// failed attempt the runtime retries) is not counted twice.
+    call_replied: bool,
     model_calls: u64,
     run_kind: &'static str,
     ttft_sent: bool,
+}
+
+impl Active {
+    fn call_kind(&self) -> &'static str {
+        if self.run_kind == "cron" { "cron" } else if self.model_calls == 0 { "chat" } else { "tool_followup" }
+    }
 }
 
 /// The live observer's queue depth, for the shutdown flush (most recently opened observer).
@@ -486,6 +497,8 @@ impl Observer {
             active.status = None;
             active.error = None;
             active.model_calls = 0;
+            active.chat_started = None;
+            active.call_replied = false;
             active.ttft_sent = false;
             active.run_kind = kind;
             "running"
@@ -711,7 +724,7 @@ impl Observer {
                         run: run.clone(),
                         span: format!("{run}:chat:{}", active.next),
                         root: active.root.clone().unwrap_or_else(|| run.clone()),
-                        kind: if active.run_kind == "cron" { "cron" } else if active.model_calls == 0 { "chat" } else { "tool_followup" },
+                        kind: active.call_kind(),
                         model: active.model.clone(),
                         provider: active.provider.clone(),
                         session: session.into(),
@@ -757,6 +770,7 @@ impl Observer {
                 active.tools.clear();
                 active.tool_errors.clear();
                 active.chat_started = None;
+                active.call_replied = false;
                 active.model_calls = 0;
                 active.ttft_sent = false;
             }
@@ -908,8 +922,9 @@ impl Observer {
                     cache_read,
                     cache_write,
                 );
-                let kind = if active.run_kind == "cron" { "cron" } else if active.model_calls == 0 { "chat" } else { "tool_followup" };
+                let kind = active.call_kind();
                 active.model_calls += 1;
+                active.call_replied = false;
                 self.send(
                     Op::Usage {
                         run,
@@ -934,8 +949,42 @@ impl Observer {
                 );
             }
             "connection_phase" => {
-                if active.run.is_some() && active.chat_started.is_none() {
+                let Some(run) = active.run.clone() else { return };
+                // A new request while the previous one replied without reporting usage (an
+                // OpenAI-compatible server that sends `usage` only on the final chunk of a tool
+                // turn): that reply was a model call too. Count it, with unknown usage.
+                if frame["phase"] == "sending request" && std::mem::take(&mut active.call_replied) {
+                    if let Some(started) = active.chat_started.take() {
+                        active.next += 1;
+                        self.send(Op::Usage {
+                            span: format!("{run}:chat:{}", active.next),
+                            root: active.root.clone().unwrap_or_else(|| run.clone()),
+                            run,
+                            kind: active.call_kind(),
+                            model: active.model.clone(),
+                            provider: active.provider.clone(),
+                            session: session.into(),
+                            input: 0,
+                            output: 0,
+                            cache_read: 0,
+                            cache_write: 0,
+                            cost: None,
+                            usage_known: false,
+                            effort: active.effort.clone(),
+                            error: None,
+                            started,
+                            ended: now(),
+                        }, false);
+                        active.model_calls += 1;
+                    }
+                }
+                if active.chat_started.is_none() {
                     active.chat_started = Some(now());
+                }
+            }
+            "text_delta" | "text_replace" | "reasoning_delta" | "tool_call" | "tool_start" | "tool_input_delta" => {
+                if active.chat_started.is_some() {
+                    active.call_replied = true;
                 }
             }
             "turn_stopped" => {
@@ -2124,6 +2173,63 @@ mod tests {
             [&interrupted], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).unwrap();
         assert_eq!((calls, unpriced, cost), (1, 1, None));
+    }
+
+    /// QA B-2: a tool turn is two model requests. Each is a model call whether or not the provider
+    /// reported usage for it; a failed attempt the runtime retries is not a second call.
+    #[test]
+    fn every_model_request_of_a_tool_turn_is_one_model_call() {
+        let mut db = Connection::open_in_memory().unwrap();
+        schema::open(&mut db).unwrap();
+        setup(&mut db).unwrap();
+        let (tx, rx) = mpsc::sync_channel(QUEUE);
+        let observer = Observer {
+            read_db: Mutex::new(Connection::open_in_memory().unwrap()),
+            tx,
+            pending: Arc::new(AtomicUsize::new(0)),
+            dropped: Arc::new(AtomicU64::new(0)),
+            capture_content: false,
+            home: std::env::temp_dir(),
+            sessions: Mutex::new(HashMap::new()),
+            replay: Mutex::new(ReplayState::default()),
+            replay_epoch: "test".into(),
+        };
+        let h = |ev: Value| observer.harness_event(&ev);
+        let phase = |p: &str| json!({"ev":"connection_phase","session_id":"s","phase":p});
+        let tool_turn = |usage_on_tool_call: bool| {
+            let run = observer.start_turn("s", "read note.txt", "invoke_agent", None);
+            h(phase("sending request"));
+            h(phase("waiting for response"));
+            h(json!({"ev":"tool_start","session_id":"s","call_id":"c1","name":"read_file"}));
+            observer.event("s", "tool.start", &json!({"tool_id":"c1","name":"read_file"}));
+            h(json!({"ev":"tool_exec","session_id":"s","call_id":"c1","name":"read_file"}));
+            if usage_on_tool_call {
+                h(json!({"ev":"token_usage","session_id":"s","input":11,"output":7}));
+            }
+            observer.event("s", "tool.complete", &json!({"tool_id":"c1","result_text":"NOTE"}));
+            // A first attempt that fails before replying, then the retry that answers.
+            h(phase("sending request"));
+            h(phase("sending request"));
+            h(phase("waiting for response"));
+            h(json!({"ev":"text_delta","session_id":"s","text":"TOOL-DONE"}));
+            h(json!({"ev":"token_usage","session_id":"s","input":11,"output":7}));
+            observer.event("s", "message.complete", &json!({"status":"complete","text":"TOOL-DONE"}));
+            run
+        };
+        h(json!({"ev":"model_info","session_id":"s","provider":"openai","model":"gpt-5.4"}));
+        let unreported = tool_turn(false);
+        let reported = tool_turn(true);
+        let ops: Vec<Op> = rx.try_iter().collect();
+        let calls = |want: &str| ops.iter().filter_map(|op| match op { Op::Usage { run, usage_known, kind, error, .. } if run == want => Some((*kind, *usage_known, error.is_some())), _ => None }).collect::<Vec<_>>();
+        assert_eq!(calls(&unreported), [("chat", false, false), ("tool_followup", true, false)]);
+        assert_eq!(calls(&reported), [("chat", true, false), ("tool_followup", true, false)]);
+        write_batch(&mut db, ops).unwrap();
+        let row = |id: &str| detail_from_db(&db, id).unwrap()["run"].clone();
+        let (a, b) = (row(&unreported), row(&reported));
+        assert_eq!((a["step_count"].as_i64(), a["tools_called"].as_i64(), a["input_tokens"].as_i64(), a["output_tokens"].as_i64(), a["outcome"].as_str()), (Some(2), Some(1), Some(11), Some(7), Some("ok")), "{a}");
+        assert_eq!(a["priced"], false, "a call with unknown usage leaves the run unpriced, never cheaper: {a}");
+        assert_eq!((b["step_count"].as_i64(), b["tools_called"].as_i64(), b["input_tokens"].as_i64(), b["output_tokens"].as_i64()), (Some(2), Some(1), Some(22), Some(14)), "{b}");
+        assert_eq!(b["priced"], true, "{b}");
     }
 
     #[test]
