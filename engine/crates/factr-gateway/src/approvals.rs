@@ -887,6 +887,8 @@ mod tests {
     #[test]
     fn deletes_inside_a_broad_working_folder_ask_and_project_folders_are_unchanged() {
         use super::gate::{BROAD_FOLDER_DELETE, Decision, decide};
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(home) = test_home() else { return };
         let tmp = std::env::temp_dir().join(format!("approvals-broad-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
@@ -956,6 +958,8 @@ mod tests {
 
     #[test]
     fn broad_folders_are_roots_home_and_its_ancestors_and_the_usual_dumping_grounds() {
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(home) = test_home() else { return };
         for dir in ["/", "/Users", "/home", "/Volumes", "/Volumes/Backup", "relative/dir"] {
             assert!(broad_folder(Path::new(dir)), "{dir}");
@@ -970,6 +974,8 @@ mod tests {
 
     #[test]
     fn an_always_grant_is_bound_to_the_folder_it_was_given_in() {
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(user_home) = test_home() else { return };
         let cfg = std::env::temp_dir().join(format!("approvals-scope-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cfg);
@@ -1006,6 +1012,8 @@ mod tests {
     #[tokio::test]
     async fn a_delete_in_home_prompts_the_window_with_the_broad_folder_reason() {
         use factr_base::hooks::ApprovalHook;
+        // Other tests point HOME elsewhere for a moment, under this lock.
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(home) = test_home() else { return };
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "s").await;
