@@ -614,6 +614,12 @@ def _rmtree_step(path: Path, *, indent: str = "", fully: bool = True) -> None:
             log_info("You may need to manually remove it")
 
 
+def _listed(path: Path, listed: "list[Path]") -> bool:
+    """True when ``path`` is one of ``listed`` (compared with symlinks resolved)."""
+    real = os.path.realpath(path)
+    return any(os.path.realpath(item) == real for item in listed)
+
+
 def _perform_uninstall(
     *,
     project_root: Path,
@@ -627,10 +633,18 @@ def _perform_uninstall(
     print()
     print(color("Uninstalling...", Colors.CYAN, Colors.BOLD))
     print()
-    # 1. Stop and uninstall gateway service + kill standalone processes
-    log_info("Checking for running gateway...")
-    if not uninstall_gateway_service():
-        log_info("No gateway service or processes found")
+    # Launched by the desktop: delete exactly the folders its confirmation listed, nothing else.
+    from factr_backend.gui_uninstall import explicit_paths, refusal_reason
+    confirmed_agent, confirmed_config = explicit_paths("agent"), explicit_paths("config")
+    desktop_run = confirmed_agent is not None
+    if desktop_run:
+        log_info("Desktop uninstall: removing only the folders listed in its confirmation "
+                 "(services, PATH entries and launchers outside them are left as they are)")
+    else:
+        # 1. Stop and uninstall gateway service + kill standalone processes
+        log_info("Checking for running gateway...")
+        if not uninstall_gateway_service():
+            log_info("No gateway service or processes found")
 
     # 2-3b. PATH entries, wrapper, Windows launchers, node symlinks. Windows: factr_home is
     #    %VAR%-expanded because install.ps1 writes literal C:\Users\<u>\...; factr\bin (launchers +
@@ -654,7 +668,7 @@ def _perform_uninstall(
         (True, "Removing Factr-managed node/npm/npx symlinks...",
          lambda: remove_node_symlinks(factr_home), "Removed {}", "No Factr-managed node/npm/npx symlinks found"),
     ):
-        if on_this_platform:
+        if on_this_platform and not desktop_run:
             _remove_step(label, remove, success_fmt, none_msg)
 
     # 3c. Chat GUI artifacts go with the agent code. uninstall_gui() never touches config/sessions/
@@ -670,12 +684,16 @@ def _perform_uninstall(
     # 4. Remove installation directory (code) — we may be running from inside it.
     if is_bundled_source(project_root):
         log_info(f"Leaving {project_root} to the app removal (it is part of the app bundle)")
+    elif desktop_run and not _listed(project_root, confirmed_agent):
+        log_info(f"Keeping {project_root}: the desktop confirmation did not list it")
+    elif (reason := refusal_reason(project_root)) is not None:
+        log_warn(f"Not removing {project_root}: {reason}")
     else:
         log_info("Removing installation directory...")
         _rmtree_step(project_root)
     # 4b. Windows installer tooling (PortableGit, Node, gateway-service) is not user data:
     #     safe to remove in keep-data mode too.
-    if windows:
+    if windows and not desktop_run:
         _remove_step(
             "Removing Windows installer artifacts (PortableGit, Node, gateway-service)...",
             lambda: remove_portable_tooling_windows(factr_home), "Removed {}",
@@ -687,8 +705,13 @@ def _perform_uninstall(
         #     but their services + alias scripts live OUTSIDE the default root.
         for prof in named_profiles if remove_profiles else ():
             _uninstall_profile(prof)
-        log_info("Removing configuration and data...")
-        _rmtree_step(factr_home)
+        if desktop_run and not _listed(factr_home, confirmed_config or []):
+            log_info(f"Keeping {factr_home}: the desktop confirmation did not list it")
+        elif (reason := refusal_reason(factr_home)) is not None:
+            log_warn(f"Not removing {factr_home}: {reason}")
+        else:
+            log_info("Removing configuration and data...")
+            _rmtree_step(factr_home)
     else:
         log_info(f"Keeping configuration and data in {factr_home}")
 
