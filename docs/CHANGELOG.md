@@ -5,6 +5,17 @@
 The 0.0.4 engine plus the sign-in, onboarding and UI work from pull request #2. The engine's labelling and classify
 behaviour is unchanged from 0.0.4.
 
+- Engine restart mid-reply: when the engine process dies while a reply streams, the reply no longer spins forever. Once
+  the restarted engine is reached, the turn ends with "The connection to the engine was interrupted. Your message was
+  not completed." and a Retry button, the turn clock stops, and messages queued behind it wait under Resume.
+- Uninstall: the summary, the confirmation and the deletion now use one list of targets: the running app (refused when
+  translocated, on a disk image or in a read-only folder), this copy's real app-data folder, and for "everything" the
+  config folder it runs with. The confirmation lists every path. Nothing at a standard location is deleted unless it
+  is the running copy, and no target may be a link, a relative path, or a system or home folder.
+- A config.yaml that cannot be read is no longer ignored silently: onboarding names the file and the line, and offers
+  Open the folder and Back up and start fresh (a copy is saved as `config.yaml.corrupt-<time>` before anything changes).
+- The start screen behind a failed start shows the plain cause; the raw error text is only under Details.
+
 - Approval mode label: it no longer flips from Smart to Manual after opening and closing Settings. An empty reply for
   `approvals.mode` (the key is not in config.yaml) was read as Manual; it now keeps the engine default shown.
 - Settings > Model: the main-model context-window override accepts only whole numbers from 0 to 10,000,000 (0 = detect),
