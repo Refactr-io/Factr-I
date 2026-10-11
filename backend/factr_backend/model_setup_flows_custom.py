@@ -98,7 +98,7 @@ def _model_flow_custom(config):
     it appears in the provider menu on subsequent runs."""
     from factr_backend.main_provider_setup import _auto_provider_name, _prompt_custom_api_mode_selection, _save_custom_provider
     from factr_backend.auth import _save_model_choice, deactivate_provider
-    from factr_backend.config import custom_endpoint_key_env, get_env_value, save_env_value
+    from factr_backend.config import custom_endpoint_base_url_identity, custom_endpoint_key_env, get_env_value, save_env_value
     from factr_backend.secret_prompt import masked_secret_prompt
     current_url = get_env_value("OPENAI_BASE_URL") or ""
     current_key = get_env_value("OPENAI_API_KEY") or ""
@@ -166,11 +166,7 @@ def _model_flow_custom(config):
     # See #69449.
     custom_key_env = ""
     if effective_key:
-        _parsed = urllib.parse.urlparse(effective_url)
-        _identity = _parsed.hostname or ""
-        if _parsed.port:
-            _identity = f"{_identity}_{_parsed.port}"
-        custom_key_env = custom_endpoint_key_env(_identity)
+        custom_key_env = custom_endpoint_key_env(custom_endpoint_base_url_identity(effective_url))
         save_env_value(custom_key_env, effective_key)
         print(f"  API key saved to .env as {custom_key_env}")
 

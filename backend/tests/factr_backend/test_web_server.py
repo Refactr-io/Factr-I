@@ -1442,6 +1442,68 @@ CONFIG_SCHEMA = ProviderConfigSchema(
             fb.reset_for_tests()
 
 
+    def _set_custom_main(self, monkeypatch, key="sk-custom-secret-0001", url="http://127.0.0.1:8081/v1"):
+        monkeypatch.setattr("factr_backend.model_cost_guard.expensive_model_warning", lambda *_a, **_k: None)
+        monkeypatch.setattr("agent.bedrock_adapter.has_aws_credentials", lambda: False)
+        return self.client.post(
+            "/api/model/set",
+            json={"scope": "main", "provider": "custom", "model": "local-model", "base_url": url, "api_key": key},
+        )
+
+    def test_model_set_custom_key_goes_to_env_and_config_holds_a_pointer(self, monkeypatch):
+        """A custom endpoint's key saved from the app lives in .env; config.yaml (raw) carries only a
+        ``${VAR}`` pointer, in ``model`` and in the ``custom_providers`` row (``key_env``)."""
+        from factr_backend.config import (
+            custom_endpoint_base_url_identity, custom_endpoint_key_env, get_config_path, load_env, read_raw_config,
+        )
+
+        resp = self._set_custom_main(monkeypatch)
+        assert resp.status_code == 200 and resp.json()["ok"] is True
+        var = custom_endpoint_key_env(custom_endpoint_base_url_identity("http://127.0.0.1:8081/v1"))
+        assert var == "FACTR_CUSTOM_127_0_0_1_8081_API_KEY"
+        assert load_env().get(var) == "sk-custom-secret-0001"
+        assert "sk-custom-secret-0001" not in get_config_path().read_text()
+        raw = read_raw_config()
+        assert raw["model"]["api_key"] == "${" + var + "}"
+        assert "key_env" not in raw["model"]
+        rows = raw.get("custom_providers") or []
+        assert rows and rows[0].get("key_env") == var and not rows[0].get("api_key")
+
+    def test_model_set_custom_key_replaces_a_stale_key_env_pointer(self, monkeypatch):
+        """A previous endpoint's ``key_env`` outranks ``api_key`` at resolution time, so the new save drops it."""
+        from factr_backend.config import load_config, read_raw_config, save_config
+
+        cfg = load_config()
+        cfg["model"] = {"provider": "custom", "default": "old", "base_url": "http://127.0.0.1:9/v1",
+                        "key_env": "FACTR_CUSTOM_OLD_API_KEY"}
+        save_config(cfg)
+        assert self._set_custom_main(monkeypatch).status_code == 200
+        raw = read_raw_config()["model"]
+        assert "key_env" not in raw and raw["api_key"].startswith("${FACTR_CUSTOM_127_0_0_1_8081")
+
+    def test_model_set_custom_key_stays_inline_when_env_cannot_take_it(self, monkeypatch):
+        """A managed install (or any .env write that does not stick) must not lose the key: it stays inline."""
+        from factr_backend.config import read_raw_config
+
+        monkeypatch.setattr("factr_backend.config.save_env_value", lambda *_a, **_k: None)
+        assert self._set_custom_main(monkeypatch).status_code == 200
+        raw = read_raw_config()
+        assert raw["model"]["api_key"] == "sk-custom-secret-0001"
+
+    def test_model_set_custom_without_a_key_writes_none(self, monkeypatch):
+        from factr_backend.config import load_env, read_raw_config
+
+        assert self._set_custom_main(monkeypatch, key="").status_code == 200
+        assert not read_raw_config()["model"].get("api_key")
+        assert not [k for k in load_env() if k.startswith("FACTR_CUSTOM_")]
+
+    def test_custom_endpoint_env_name_matches_the_cli_setup(self):
+        from factr_backend.config import custom_endpoint_base_url_identity as ident, custom_endpoint_key_env as env
+
+        assert env(ident("https://llm.example.com/v1")) == "FACTR_CUSTOM_LLM_EXAMPLE_COM_API_KEY"
+        assert env(ident("http://localhost:11434/v1")) == env("localhost:11434")
+
+
     def test_reveal_env_var(self, tmp_path):
         """POST /api/env/reveal should return the real unredacted value."""
         from factr_backend.config import save_env_value
@@ -1604,15 +1666,20 @@ CONFIG_SCHEMA = ProviderConfigSchema(
         assert isinstance(model_cfg, dict)
         assert model_cfg["provider"] == "custom"
         assert model_cfg["base_url"] == "https://text.example.com/v1"
+        # load_config() expands the ``${VAR}`` pointer; the secret itself lives in .env, not config.yaml.
         assert model_cfg["api_key"] == "sk-secret"
+        from factr_backend.config import get_config_path
+
+        assert "sk-secret" not in get_config_path().read_text()
 
         # Registered in custom_providers (dedup by base_url) so the picker shows
-        # a proper ready row instead of the "needs setup" dead-end.
+        # a proper ready row instead of the "needs setup" dead-end. The row points at .env (key_env).
         custom = cfg.get("custom_providers") or []
         assert any(
             isinstance(e, dict)
             and e.get("base_url") == "https://text.example.com/v1"
-            and e.get("api_key") == "sk-secret"
+            and e.get("key_env") == "FACTR_CUSTOM_TEXT_EXAMPLE_COM_API_KEY"
+            and not e.get("api_key")
             and e.get("model") == "gpt-oss-120b"
             for e in custom
         )

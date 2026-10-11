@@ -609,14 +609,39 @@ def _resolve_assignment_credentials(model_cfg: dict, provider: str, provider_ent
         model_cfg["api_key"] = raw_key if raw_key.startswith("${") and raw_key.endswith("}") else provider_entry["api_key"]
 
 
-def _register_custom_endpoint(base_url: str, api_key: str, model: str) -> None:
+def _store_custom_endpoint_key(base_url: str, api_key: str) -> str:
+    """Save a custom endpoint's API key to ``.env`` and return the variable name, or "" (nothing saved) when there
+    is no key, no endpoint, or ``.env`` did not take the value (a managed install, a locked variable): the caller
+    then keeps the key inline so it is never lost. Same slot the CLI setup uses (``host`` or ``host_port``)."""
+    key = (api_key or "").strip()
+    if not key or not (base_url or "").strip():
+        return ""
+    try:
+        from factr_backend.config import (
+            custom_endpoint_base_url_identity,
+            custom_endpoint_key_env,
+            invalidate_env_cache,
+            load_env,
+            save_env_value,
+        )
+
+        var = custom_endpoint_key_env(custom_endpoint_base_url_identity(base_url))
+        save_env_value(var, key)
+        invalidate_env_cache()
+        return var if load_env().get(var) else ""
+    except Exception:
+        _log.debug("custom endpoint key not saved to .env; keeping it inline", exc_info=True)
+        return ""
+
+
+def _register_custom_endpoint(base_url: str, api_key: str, model: str, key_env: str = "") -> None:
     """Register a named ``custom_providers`` entry for a custom/local endpoint (mirrors the
     ``factr model`` custom flow) so the picker gets a proper ready row instead of a "needs
     setup" dead-end. Dedups by base_url; never blocks the already-persisted assignment."""
     try:
         from factr_backend.main_provider_setup import _auto_provider_name, _save_custom_provider
 
-        _save_custom_provider(base_url, api_key, model, name=_auto_provider_name(base_url))
+        _save_custom_provider(base_url, api_key, model, name=_auto_provider_name(base_url), key_env=key_env)
     except Exception:
         _log.debug("custom_providers registration skipped", exc_info=True)
 
@@ -676,14 +701,21 @@ def _apply_main_assignment_sync(cfg: dict, provider: str, model: str, base_url: 
     base_url, result = prepared or _prepare_main_assignment(cfg, provider, model, base_url, api_key)
     provider, model = result.target_provider, result.new_model
     provider_entry = _provider_entry(cfg, provider)
-    model_cfg = _apply_main_model_assignment(cfg.get("model", {}), result, api_key)
+    new_provider = provider.strip().lower()
+    # A custom endpoint's key goes to .env (like the CLI setup and Settings do) and config.yaml carries only a
+    # ``${VAR}`` pointer. Empty when there is no key or .env could not take it: then the key stays inline, as before.
+    key_env = _store_custom_endpoint_key(base_url, api_key) if new_provider in {"custom", "local"} else ""
+    model_cfg = _apply_main_model_assignment(cfg.get("model", {}), result, f"${{{key_env}}}" if key_env else api_key)
+    if key_env:
+        # A previous endpoint's key_env would outrank the pointer written above at resolution time.
+        model_cfg.pop("key_env", None)
+        model_cfg.pop("api_key_env", None)
     _resolve_assignment_credentials(model_cfg, provider, provider_entry)
     cfg["model"] = model_cfg
 
-    new_provider = provider.strip().lower()
     save_config(cfg)
     if new_provider in {"custom", "local"} and base_url:
-        _register_custom_endpoint(base_url, api_key, model)
+        _register_custom_endpoint(base_url, "" if key_env else api_key, model, key_env=key_env)
     # The serve process's boot record may still say "nothing configured"; the chat gates on it.
     reconcile_record()
 

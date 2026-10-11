@@ -2732,6 +2732,20 @@ def custom_endpoint_key_env(identity: str) -> str:
     return f"FACTR_CUSTOM_{slug}_API_KEY" if slug else "FACTR_CUSTOM_API_KEY"
 
 
+def custom_endpoint_base_url_identity(base_url: str) -> str:
+    """``host`` or ``host_port`` of a custom endpoint URL: the identity the CLI setup and the desktop's
+    onboarding both pass to :func:`custom_endpoint_key_env`, so one server gets one credential slot."""
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(str(base_url or ""))
+    identity = parsed.hostname or ""
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    return f"{identity}_{port}" if port else identity
+
+
 def remove_env_value(key: str) -> bool:
     """Remove a key from ~/.factr/.env and os.environ; True if it was found and removed."""
     if _env_write_blocked(key, "remove"):
