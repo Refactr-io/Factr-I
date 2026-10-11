@@ -598,6 +598,16 @@ export function toggleFileBrowserOpen() {
   setTreeSideCollapsed(fileBrowserSide(), !open)
 }
 
+/** First launch only: the right sidebar starts CLOSED. A install that already saved a side choice (it toggled the
+ *  sidebar, or an earlier version saved one) keeps it; `applied` makes this a one-shot per interface mode. */
+export function applyRightSidebarFirstRunDefault(hadSavedChoice: boolean, applied: boolean): boolean {
+  if (!applied && !hadSavedChoice) {
+    setFileBrowserOpen(false)
+  }
+
+  return true
+}
+
 export function setFileBrowserOpen(open: boolean) {
   $fileBrowserOpen.set(open)
   setTreeSideCollapsed(fileBrowserSide(), !open)

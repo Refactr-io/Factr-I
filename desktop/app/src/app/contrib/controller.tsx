@@ -21,6 +21,7 @@ import {
   bindToolPaneCollapse,
   declareDefaultTree,
   dismissTreePane,
+  hadSavedSideState,
   hideOnDemandTools,
   isPaneVisible,
   markCollapsePane,
@@ -71,6 +72,7 @@ import {
   FILE_BROWSER_DEFAULT_WIDTH,
   FILE_BROWSER_MAX_WIDTH,
   FILE_BROWSER_MIN_WIDTH,
+  applyRightSidebarFirstRunDefault,
   fileBrowserSide,
   setFileBrowserOpen,
   setSidebarOpen,
@@ -615,6 +617,15 @@ const applyToolsOnDemand = () =>
   })
 
 applyToolsOnDemand()
+
+// First launch: the right sidebar starts closed (a saved open/closed choice is kept). One-shot per interface mode.
+const $rightSidebarFirstRunDone = modeLayout.atom<boolean>('factr.rightSidebarClosedFirstRun.v1', () => false, Codecs.json<boolean>())
+
+queueMicrotask(() => {
+  $rightSidebarFirstRunDone.set(
+    applyRightSidebarFirstRunDefault(hadSavedSideState(), $rightSidebarFirstRunDone.get())
+  )
+})
 // The Browser is the sidebar's resting tab, so it exists whether or not the sidebar is open right now.
 queueMicrotask(() => !isBrowserWindow() && !isHudWindow() && ensureBrowserTab())
 modeLayout.onRestore(applyToolsOnDemand)

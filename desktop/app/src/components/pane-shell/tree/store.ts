@@ -1060,6 +1060,9 @@ export const $collapsedTreeSides = modeLayout.atom<ReadonlySet<TreeSide>>(LAYOUT
 })
 const hasPersistedSides = modeLayout.has(LAYOUT_KEYS.collapsed)
 
+/** Did this install already have a saved side open/closed choice when the app started? */
+export const hadSavedSideState = () => hasPersistedSides
+
 // Side visibility is DERIVED from an app store (the binding owns persistence
 // + button state). Reveals un-collapse the column directly instead of writing
 // back through the setter — the right side's store IS the file tree's toggle,

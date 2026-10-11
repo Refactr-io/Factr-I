@@ -7,6 +7,9 @@
   empty list, so a project that was saved to `projects.db` was never shown. It now reads your projects from
   `projects.db` (read-only), lists each one with its folders, and files chats under the project whose folder (or repo)
   holds the chat's working folder, deepest folder first. Projects you already created show up with no migration.
+- Projects: the sidebar lists only the projects you created. A git repo or a chat folder that is not one of your projects is
+  no longer shown as a project (this also applies to the engine's `projects.tree`); its chats stay in Home.
+- The right sidebar is closed the first time the app opens. If you have already opened or closed it, Factr-I keeps your choice.
 
 ## v0.0.5 (2026-10-11)
 

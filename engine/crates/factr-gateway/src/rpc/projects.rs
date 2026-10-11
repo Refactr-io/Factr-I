@@ -1,6 +1,7 @@
-//! `projects.tree` / `projects.list` / `projects.project_sessions` / `projects.record_repos`, served
-//! from the engine's own sessions grouped by working directory (project = git repo root, or the
-//! directory itself outside git; sessions with no usable directory fall into the "Home" bucket).
+//! `projects.tree` / `projects.list` / `projects.project_sessions` / `projects.record_repos`, served from the
+//! engine's own sessions and the projects the user created (`projects.db`). Only those projects are listed: a session
+//! whose working folder is under one of a project's folders is filed under it, every other session stays in the
+//! "Home" bucket (a git repo or a chat folder that is not a user project is not a project).
 //! Factr's `state.db` never holds engine chats, so forwarding these showed an empty sidebar.
 //! Ids and lane keys follow the desktop's persisted-state contract (`tui_gateway/project_tree.py`).
 
@@ -183,17 +184,15 @@ fn checkout_place(c: &Checkout) -> (String, String, String, Option<String>, bool
 }
 
 /// Build the tree from desktop-shaped session rows (`map::session_info`, each with `cwd`).
-/// `resolve` maps a directory to its checkout (`None`: not git); `exists` says whether it is still there.
+/// `resolve` maps a directory to its checkout (`None`: not git).
 /// `explicit` are the user's own projects: they claim sessions by folder (deepest folder wins) and are listed
-/// even when empty; every other session is grouped by repo / directory, or falls into "Home".
+/// even when empty; every other session falls into "Home".
 pub(super) fn build_tree(
     sessions: &[Value],
-    home: &str,
     preview_limit: usize,
     hydrate: bool,
     explicit: &[ExplicitProject],
     resolve: &dyn Fn(&str) -> Option<Checkout>,
-    exists: &dyn Fn(&str) -> bool,
 ) -> Value {
     let active: Vec<(usize, &ExplicitProject)> = explicit.iter().enumerate().filter(|(_, p)| !p.archived).collect();
     // Declared folder -> owning project; the first project keeps a folder two projects share.
@@ -249,37 +248,9 @@ pub(super) fn build_tree(
                 lane_path,
                 is_main,
             }
-        } else if cwd.is_empty() || cwd == home.trim_end_matches('/') || !exists(cwd) {
-            home_place()
-        } else if let Some(c) = &checkout {
-            row["git_repo_root"] = json!(c.repo_root);
-            row["git_branch"] = json!(c.branch);
-            let (repo, lane, lane_label, lane_path, is_main) = checkout_place(c);
-            Place {
-                project: repo.clone(),
-                project_label: base_name(&repo),
-                project_path: Some(repo.clone()),
-                repo_label: base_name(&repo),
-                repo_path: Some(repo.clone()),
-                repo,
-                lane,
-                lane_label,
-                lane_path,
-                is_main,
-            }
         } else {
-            Place {
-                project: cwd.to_string(),
-                project_label: base_name(cwd),
-                project_path: Some(cwd.to_string()),
-                repo: cwd.to_string(),
-                repo_label: base_name(cwd),
-                repo_path: Some(cwd.to_string()),
-                lane: format!("{cwd}::branch::"),
-                lane_label: "main".to_string(),
-                lane_path: Some(cwd.to_string()),
-                is_main: true,
-            }
+            // Only projects the user created are projects; every other chat stays in Home.
+            home_place()
         };
         let explicit_idx = explicit.iter().position(|p| p.id == place.project && !p.archived);
         let bucket = projects.entry(place.project).or_insert_with(|| Bucket { label: place.project_label, path: place.project_path, explicit: explicit_idx, repos: BTreeMap::new() });
@@ -366,15 +337,15 @@ fn home_place() -> Place {
 }
 
 /// The RPC bodies, from the live sessions list and `projects.db`.
-pub(super) fn tree_reply(sessions: &[Value], home: &str, params: &Value, explicit: &[ExplicitProject], active: Option<String>) -> Value {
+pub(super) fn tree_reply(sessions: &[Value], _home: &str, params: &Value, explicit: &[ExplicitProject], active: Option<String>) -> Value {
     let limit = |k: &str, d: usize| params[k].as_u64().map_or(d, |n| n as usize);
-    let mut t = build_tree(sessions, home, limit("preview_limit", 3), false, explicit, &resolve_git, &|p| Path::new(p).is_dir());
+    let mut t = build_tree(sessions, limit("preview_limit", 3), false, explicit, &resolve_git);
     t["active_id"] = json!(active);
     t
 }
 
-pub(super) fn project_sessions_reply(sessions: &[Value], home: &str, project_id: &str, explicit: &[ExplicitProject]) -> Value {
-    let t = build_tree(sessions, home, 0, true, explicit, &resolve_git, &|p| Path::new(p).is_dir());
+pub(super) fn project_sessions_reply(sessions: &[Value], _home: &str, project_id: &str, explicit: &[ExplicitProject]) -> Value {
+    let t = build_tree(sessions, 0, true, explicit, &resolve_git);
     json!({ "project": t["projects"].as_array().and_then(|l| l.iter().find(|p| p["id"] == project_id)).cloned() })
 }
 
@@ -404,35 +375,41 @@ mod tests {
     }
 
     #[test]
-    fn groups_sessions_by_repo_lane_and_home() {
+    fn only_user_projects_are_projects_everything_else_is_home() {
+        // A git repo, a plain folder, a session with no folder and a vanished one: none is a project unless the user made it.
         let s = vec![
             row("a", "/w/app/src", 10.0), row("b", "/w/app/.worktrees/x", 30.0), row("c", "/w/plain", 20.0),
             row("d", "", 5.0), row("e", "/gone", 6.0),
         ];
-        let t = build_tree(&s, "/Users/me", 2, true, &[], &git, &|p| p != "/gone");
+        let t = build_tree(&s, 2, true, &[], &git);
         let ps = t["projects"].as_array().unwrap();
         let ids: Vec<&str> = ps.iter().map(|p| p["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["/w/app", "/w/plain", NO_PROJECT_ID]);
-        let app = &ps[0];
-        assert_eq!(app["label"], "app");
-        assert_eq!(app["sessionCount"], 2);
-        assert_eq!(app["totalTokens"], 10);
-        assert_eq!(app["lastActive"], 30.0);
-        let lanes: Vec<&str> = app["repos"][0]["groups"].as_array().unwrap().iter().map(|g| g["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, [NO_PROJECT_ID], "no auto-derived project");
+        assert_eq!(ps[0]["isNoProject"], true);
+        assert_eq!(ps[0]["sessionCount"], 5);
+        assert_eq!(t["scoped_session_ids"], json!([]));
+        // With a user project over /w/app: its chats move under it, the rest stay in Home, /w/plain is still no project.
+        let mine = explicit("p_1", "Mine", &["/w/app"]);
+        let t = build_tree(&s, 2, true, &[mine], &git);
+        let ps = t["projects"].as_array().unwrap();
+        let ids: Vec<&str> = ps.iter().map(|p| p["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["p_1", NO_PROJECT_ID]);
+        let mine = &ps[0];
+        assert_eq!((mine["label"].as_str(), mine["isAuto"].as_bool(), mine["sessionCount"].as_u64(), mine["totalTokens"].as_u64()), (Some("Mine"), Some(false), Some(2), Some(10)));
+        assert_eq!(mine["previewSessions"][0]["id"], "b");
+        let lanes: Vec<&str> = mine["repos"][0]["groups"].as_array().unwrap().iter().map(|g| g["id"].as_str().unwrap()).collect();
         assert_eq!(lanes, ["/w/app/.worktrees/x", "/w/app::branch::dev"]);
-        assert_eq!(app["previewSessions"][0]["id"], "b");
-        assert_eq!(ps[1]["repos"][0]["groups"][0]["id"], "/w/plain::branch::");
-        assert_eq!(ps[2]["isNoProject"], true);
-        assert_eq!(ps[2]["sessionCount"], 2);
-        assert_eq!(t["scoped_session_ids"].as_array().unwrap().len(), 3);
+        assert_eq!(ps[1]["sessionCount"], 3);
+        assert_eq!(t["scoped_session_ids"].as_array().unwrap().len(), 2);
     }
 
     #[test]
     fn tree_lanes_carry_no_rows_but_drill_in_does() {
         let s = vec![row("a", "/w/app", 1.0)];
-        let lean = build_tree(&s, "/h", 3, false, &[], &git, &|_| true);
+        let mine = || explicit("p_1", "Mine", &["/w/app"]);
+        let lean = build_tree(&s, 3, false, &[mine()], &git);
         assert_eq!(lean["projects"][0]["repos"][0]["groups"][0]["sessions"], json!([]));
-        let full = build_tree(&s, "/h", 0, true, &[], &git, &|_| true);
+        let full = build_tree(&s, 0, true, &[mine()], &git);
         assert_eq!(full["projects"][0]["repos"][0]["groups"][0]["sessions"][0]["git_branch"], "dev");
         assert_eq!(full["projects"][0]["previewSessions"], json!([]));
     }
@@ -459,8 +436,10 @@ mod tests {
     #[test]
     fn project_sessions_picks_one_project() {
         let s = vec![row("a", "/w/app", 1.0), row("c", "/w/plain", 2.0)];
-        let t = build_tree(&s, "/h", 0, true, &[], &git, &|_| true);
+        let t = build_tree(&s, 0, true, &[explicit("p_1", "Mine", &["/w/app"])], &git);
         assert_eq!(t["projects"].as_array().unwrap().len(), 2);
+        let one = project_sessions_reply(&s, "/h", "p_1", &[explicit("p_1", "Mine", &["/w/app"])]);
+        assert_eq!(one["project"]["sessionIds"], json!(["a"]));
         assert_eq!(record_repos_reply(&json!({}))["accepted"], true);
     }
 
@@ -481,14 +460,15 @@ mod tests {
     fn a_project_with_no_sessions_is_still_listed() {
         // The bug: only session-derived projects were listed, so a project created from the sidebar never showed.
         let s = vec![row("a", "/w/plain", 5.0)];
-        let t = build_tree(&s, "/Users/me", 3, false, &[explicit("p_297a2943", "Refactr", &[ICLOUD])], &git, &|_| true);
+        let t = build_tree(&s, 3, false, &[explicit("p_297a2943", "Refactr", &[ICLOUD])], &git);
         let ps = t["projects"].as_array().unwrap();
         let p = ps.iter().find(|p| p["id"] == "p_297a2943").expect("the new project is in the tree");
         assert_eq!((p["label"].as_str(), p["isAuto"].as_bool(), p["sessionCount"].as_u64()), (Some("Refactr"), Some(false), Some(0)));
         assert_eq!(p["path"], ICLOUD);
         assert_eq!(p["repos"][0]["path"], ICLOUD);
         assert_eq!(p["repos"][0]["groups"], json!([]));
-        assert!(ps.iter().any(|p| p["id"] == "/w/plain"), "auto projects stay");
+        assert!(!ps.iter().any(|p| p["id"] == "/w/plain"), "an auto-derived folder is not a project");
+        assert_eq!(ps.iter().find(|p| p["id"] == NO_PROJECT_ID).map(|p| p["sessionCount"].clone()), Some(json!(1)), "its chat stays in Home");
     }
 
     #[test]
@@ -496,7 +476,7 @@ mod tests {
         let inside = format!("{ICLOUD}/notes");
         let s = vec![row("a", &inside, 9.0), row("b", "/w/app/src", 8.0), row("c", "/w/other", 7.0), row("d", "/w/ap", 6.0)];
         let mine = explicit("p_1", "Mine", &[ICLOUD, "/w/app"]);
-        let t = build_tree(&s, "/Users/me", 3, true, &[mine], &git, &|_| true);
+        let t = build_tree(&s, 3, true, &[mine], &git);
         let ps = t["projects"].as_array().unwrap();
         let p = ps.iter().find(|p| p["id"] == "p_1").unwrap();
         assert_eq!(p["sessionCount"], 2);
@@ -507,8 +487,9 @@ mod tests {
         assert_eq!((lane["id"].as_str(), lane["sessions"][0]["id"].as_str()), (Some(format!("{ICLOUD}::branch::").as_str()), Some("a")));
         assert_eq!(p["repos"][1]["groups"][0]["id"], "/w/app::branch::dev");
         // Not under a declared folder (a sibling sharing a name prefix included): not claimed.
-        assert!(ps.iter().any(|p| p["id"] == "/w/other") && ps.iter().any(|p| p["id"] == "/w/ap"));
-        assert_eq!(t["scoped_session_ids"].as_array().unwrap().len(), 4);
+        assert!(!ps.iter().any(|p| p["id"] == "/w/other" || p["id"] == "/w/ap"));
+        assert_eq!(ps.iter().find(|p| p["id"] == NO_PROJECT_ID).map(|p| p["sessionCount"].clone()), Some(json!(2)));
+        assert_eq!(t["scoped_session_ids"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -518,7 +499,7 @@ mod tests {
         let inner = explicit("p_in", "Inner", &["/w/app"]);
         let mut gone = explicit("p_gone", "Gone", &["/w/app/src"]);
         gone.archived = true;
-        let t = build_tree(&s, "/h", 3, false, &[outer, inner, gone], &git, &|_| true);
+        let t = build_tree(&s, 3, false, &[outer, inner, gone], &git);
         let count = |id: &str| t["projects"].as_array().unwrap().iter().find(|p| p["id"] == id).map(|p| p["sessionCount"].clone());
         assert_eq!(count("p_in"), Some(json!(1)));
         assert_eq!(count("p_out"), Some(json!(0)));
