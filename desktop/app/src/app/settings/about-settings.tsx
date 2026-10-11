@@ -70,6 +70,7 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
   const apply = useStore($updateApply)
   const checking = useStore($updateChecking)
   const [justChecked, setJustChecked] = useState(false)
+  const checkedAgo = relativeTime(status?.fetchedAt, a)
 
   // The version atom is loaded once at app boot, which makes About show a
   // stale number after a self-update (the running binary is current, the
@@ -207,8 +208,8 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
             <div className="min-w-0">
               <p className="font-medium">{statusLine}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {a.lastChecked(relativeTime(status?.fetchedAt, a))}
-                {justChecked && !checking ? a.justNowSuffix : ''}
+                {a.lastChecked(checkedAgo)}
+                {justChecked && !checking && checkedAgo !== a.justNow ? a.justNowSuffix : ''}
               </p>
             </div>
           </div>
