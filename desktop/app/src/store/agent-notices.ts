@@ -54,11 +54,29 @@ const ROUTINE_TRANSPORT =
 
 const FAILURE_WORDS = /refused|error|fail|denied|unauthori[sz]ed|forbidden|invalid|expired|timed? ?out|\b[45]\d\d\b|limit|unavailable|⚠|✕|✗/i
 
+// The engine falls back from websocket to https on its own and then sits out a cooldown
+// ("https fallback: websocket error", "https cooldown 53s"): a handled transport hiccup, not a
+// failed turn. Only a real refusal (auth, quota, refused, 4xx) keeps such a line a warning.
+const TRANSPORT_FALLBACK =
+  /\b(?:https (?:cooldown|fallback)|websocket (?:cooldown|fallback|error|closed|unavailable)|falling back to https|using https)\b/i
+
+const HARD_FAILURE = /refused|denied|unauthori[sz]ed|forbidden|invalid|expired|\b[45]\d\d\b|limit|⚠|✕|✗/i
+
 /** Whether a notice line is routine transport progress, not a problem. */
 export function isRoutineTransportNotice(text: string | undefined): boolean {
-  const line = (text ?? '').trim()
+  const raw = (text ?? '').trim()
+  const line = stripGlyph(raw)
 
-  return line.length > 0 && ROUTINE_TRANSPORT.test(line) && !FAILURE_WORDS.test(line)
+  // A leading warning/error glyph is the engine calling it a problem.
+  if (!line || /^[⚠✕✗]/u.test(raw)) {
+    return false
+  }
+
+  if (TRANSPORT_FALLBACK.test(line)) {
+    return !HARD_FAILURE.test(line)
+  }
+
+  return ROUTINE_TRANSPORT.test(line) && !FAILURE_WORDS.test(line)
 }
 
 const ROUTINE_NOTICE_MS = 2500

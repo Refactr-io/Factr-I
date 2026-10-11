@@ -200,7 +200,10 @@ describe('routine transport notices', () => {
     'reconnecting...',
     'retrying (2/4)',
     'https cooldown 30s',
-    'https fallback: websocket closed by peer'
+    'https fallback: websocket closed by peer',
+    'https fallback: websocket error',
+    '• https cooldown 53s',
+    'websocket error, https cooldown 53s'
   ])('treats %j as routine', text => {
     expect(isRoutineTransportNotice(text)).toBe(true)
   })
@@ -210,6 +213,7 @@ describe('routine transport notices', () => {
     '401',
     'opening websocket failed: 401 unauthorized',
     'https fallback: connection refused',
+    'https fallback: websocket error 401 unauthorized',
     "⚠ 'a' is unavailable; falling back to 'b'",
     'incomplete response: max_tokens',
     '',

@@ -8,6 +8,8 @@ vi.mock('@/store/session-control', () => ({ refreshSupportedSessionControlAfterT
 
 import type { GatewayEventName } from '@factr/shared'
 
+import { $gatewaySwapTarget } from '@/store/profile'
+
 import { handleMessageStreamEvent } from './message-stream'
 import type { GatewayEventContext } from './types'
 
@@ -46,6 +48,14 @@ function context(type: GatewayEventName): GatewayEventContext {
     sessionId: 's1'
   }
 }
+
+describe('handleMessageStreamEvent profile wake', () => {
+  it('clears the "Waking up" overlay target on the first token', () => {
+    $gatewaySwapTarget.set('default')
+    handleMessageStreamEvent(context('message.delta'))
+    expect($gatewaySwapTarget.get()).toBeNull()
+  })
+})
 
 describe('handleMessageStreamEvent session-control integration', () => {
   it('refreshes only after message.complete, through the store seam', () => {
