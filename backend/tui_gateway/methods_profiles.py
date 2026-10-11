@@ -263,11 +263,35 @@ def _profile_ui_meta_fields(row: dict, profile_dir) -> None:
     row["has_avatar"] = _try(lambda: any((profile_dir / "assets" / f"avatar.{e}").is_file() for e in _ASSET_EXTS), False)
 
 
+_TEAMMATE_MCP_SWEEP_AT = 0.0
+
+
+def _ensure_teammate_mcp(force: bool = False) -> None:
+    """Give every Bot-Mode bot profile the engine-side message_agent MCP server (never the default profile).
+    The roster poll runs this at most once a minute; create/configure force it."""
+    global _TEAMMATE_MCP_SWEEP_AT
+    import time
+
+    if not force and time.monotonic() - _TEAMMATE_MCP_SWEEP_AT < 60:
+        return
+    _TEAMMATE_MCP_SWEEP_AT = time.monotonic()
+
+    def _sweep():
+        from tools.bot_mode_probe import _factr_root
+        from tools.bot_relay import _default_home
+        from tools.message_agent_mcp import ensure_teammate_mcp
+
+        ensure_teammate_mcp(_factr_root(Path(_default_home())))
+
+    _best_effort(_sweep)
+
+
 @_profile_handler("profiles.list", 5061)
 def _(rid, params: dict) -> dict:
     """List Factr profiles. ``include_sessions`` (default true) adds ``last_session`` /
     ``worker_session`` / ``canonical_session`` so a roster paints previews without N calls."""
     from factr_backend.profiles import list_profiles
+    _ensure_teammate_mcp()
     include_sessions = is_truthy_value(params.get("include_sessions", True))
     out = []
     # Roster polls this every 5s: ``skill_count`` is the last known value, refreshed off-request.
@@ -419,6 +443,7 @@ def _(rid, params: dict) -> dict:
         model_set = _best_effort(lambda: _pin_profile_model(path, provider, model))
     elif is_truthy_value(params.get("mirror_credentials", True)):
         mirrored["model_inherited"] = _try(lambda: _inherit_launch_model(path), False)
+    _ensure_teammate_mcp(force=True)
     return _ok(rid, {"ok": True, "name": name, "path": str(path), "soul_written": soul_written,
                      "model_set": model_set, "mirrored": mirrored})
 
@@ -642,6 +667,8 @@ def _(rid, params: dict) -> dict:
     confirm_message = _configure_model(profile_dir, params, applied)
     if any(isinstance(params.get(k), list) for k in ("disabled_skills", "enabled_toolsets", "enabled_mcp_servers")):
         _configure_cfg_sections(profile_dir, params, applied)
+    if isinstance(params.get("ui_meta"), dict):
+        _ensure_teammate_mcp(force=True)  # the Bot Mode block is what makes a profile a bot
     # confirm_* is the shape config.set returns, so clients reuse one confirm handler.
     return _ok(rid, {"ok": all(applied.values()) if applied else True, "applied": applied,
                      **({"confirm_required": True, "confirm_message": confirm_message}

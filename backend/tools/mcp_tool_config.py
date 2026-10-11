@@ -373,7 +373,11 @@ def _load_mcp_config() -> Dict[str, dict]:
         except Exception:
             pass
         safe_servers: Dict[str, dict] = {}
+        from tools.bot_relay import TEAMMATES_MCP_SERVER
+
         for name, cfg in _filter_suspicious_mcp_servers(servers if isinstance(servers, dict) else {}).items():
+            if name == TEAMMATES_MCP_SERVER:
+                continue  # for the Rust engine; this loop has the native message_agent tool
             interpolated = _interpolate_env_vars(cfg)
             if isinstance(interpolated, dict):
                 _warn_hidden_whitespace(name, interpolated)

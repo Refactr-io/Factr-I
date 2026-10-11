@@ -85,6 +85,8 @@ _HANDLE_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 # One turn in a profile's canonical Bot Chat: ``factr -p <profile> *BOT_CHAT_TURN_ARGS``.
 # ``-c "Bot Chat"`` must match ``bot_mode_probe.BOT_CHAT_TITLE``.
 BOT_CLI_MODULE = "factr_backend.main"
+# The stdio MCP server that gives an engine-run bot profile its message_agent tool (tools/message_agent_mcp.py).
+TEAMMATES_MCP_SERVER = "factr_teammates"
 BOT_CHAT_TURN_ARGS = ("chat", "--in", "~", "-c", "Bot Chat", "--create-if-missing", "-Q")
 
 # Set by a dispatcher on the ONE policy-gated re-run of a failed delivery turn (``tools.bot_mode_dm``,
