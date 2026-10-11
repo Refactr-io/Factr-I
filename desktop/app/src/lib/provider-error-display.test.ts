@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { TRANSLATIONS } from '@/i18n'
 
@@ -7,6 +7,8 @@ import { errorCardText } from './error-surface-copy'
 import {
   inferErrorSurface,
   isRawProviderDump,
+  isUnsupportedModelError,
+  noteSavedProvider,
   noUsableCredentialsMessage,
   providerErrorStatus,
   tidyErrorDetails
@@ -159,5 +161,62 @@ describe('noUsableCredentialsMessage', () => {
     expect(noUsableCredentialsMessage('The custom endpoint https://h/v1 needs an API key and none was found.', null)).toBeNull()
     expect(noUsableCredentialsMessage('No usable credentials found for Claude.', undefined)).toBeNull()
     expect(noUsableCredentialsMessage(null, null)).toBeNull()
+  })
+})
+
+describe('a saved provider whose model or credentials the engine could not use', () => {
+  const noCreds = 'OpenAI credentials not available. Run `factr login openai` first.'
+
+  const unsupported =
+    "Unsupported OpenAI model 'gpt-6-astra'. Use /model to choose from the models available to your account."
+
+  afterEach(() => noteSavedProvider(undefined))
+
+  it('says "no AI provider" only when nothing is saved (or the engine does not say)', () => {
+    noteSavedProvider(null)
+    expect(title(noCreds)).toBe('No AI provider is connected yet')
+    noteSavedProvider(undefined)
+    expect(title(noCreds)).toBe('No AI provider is connected yet')
+    noteSavedProvider('  ')
+    expect(title(noCreds)).toBe('No AI provider is connected yet')
+  })
+
+  it('does not claim nothing is connected when a provider is saved', () => {
+    noteSavedProvider('openai-api')
+    expect(title(noCreds)).toBe('Your saved provider could not be used')
+    expect(body(noCreds)).toContain('Check its key and the selected model in Settings > Providers')
+    const plan = errorRecoveryPlan(inferErrorSurface(noCreds))
+    expect(plan.openProviders).toBe(true)
+    expect(plan.chooseModel).toBe(true)
+    expect(plan.retry).toBe(false)
+  })
+
+  it('reads an unsupported saved model as a model problem, with or without a saved provider', () => {
+    for (const saved of [null, undefined, 'openai-api']) {
+      noteSavedProvider(saved)
+      expect(title(unsupported)).toBe('The provider does not have this model')
+      expect(body(unsupported)).toBe('Choose another model, then send your message again.')
+      expect(errorRecoveryPlan(inferErrorSurface(unsupported)).chooseModel).toBe(true)
+    }
+
+    noteSavedProvider(null)
+    expect(title(`${unsupported} ${noCreds}`)).toBe('The provider does not have this model')
+  })
+
+  it('reads the engine\'s real "saved model failed and so did the startup model" text as a model problem', () => {
+    // From the O-01c QA run: a saved OpenAI key, a saved default the account list lacks.
+    const raw =
+      "the saved model gpt-6-astra failed (Unsupported OpenAI model 'gpt-6-astra'. Use /model to choose from the models available to your account.) and so did the startup model claude-opus-5-5: Claude credentials not available. Run `factr login claude` first."
+
+    noteSavedProvider('openai-api')
+    expect(title(raw)).toBe('The provider does not have this model')
+    expect(tidyErrorDetails(raw)).toContain("Unsupported OpenAI model 'gpt-6-astra'")
+  })
+
+  it('recognises the unsupported-model text only', () => {
+    expect(isUnsupportedModelError(unsupported)).toBe(true)
+    expect(isUnsupportedModelError('Unsupported model foo')).toBe(true)
+    expect(isUnsupportedModelError(noCreds)).toBe(false)
+    expect(isUnsupportedModelError(undefined)).toBe(false)
   })
 })

@@ -11,6 +11,26 @@ import type { ErrorSurface } from './error-surface'
 // per-provider variants: no provider has credentials, so nothing is connected.
 const NO_CREDENTIALS_RE = /\bcredentials not available\b/i
 
+// "Unsupported OpenAI model 'gpt-6-astra'. Use /model to choose ..." : the provider is connected, the saved
+// model is the problem. Checked before NO_CREDENTIALS_RE so a text carrying both reads as a model problem.
+const UNSUPPORTED_MODEL_RE = /\bunsupported (?:[a-z][\w.-]* )?model\b/i
+
+/** Whether the engine's text says the saved model is not one this provider serves. */
+export function isUnsupportedModelError(raw: null | string | undefined): boolean {
+  return UNSUPPORTED_MODEL_RE.test(raw ?? '')
+}
+
+// config.yaml's saved provider as the last `setup.status` reported it: undefined = not known yet (or an
+// engine that does not report it), null = the user never saved one. Display only: it lets "credentials not
+// available" say "your saved provider could not be used" instead of "no AI provider is connected yet" when a
+// provider IS saved (for example its saved model was rejected). Never read by anything that decides behaviour.
+let knownSavedProvider: null | string | undefined
+
+/** Record `setup.status`'s `saved_provider` for the plain wording of provider errors. */
+export function noteSavedProvider(value: null | string | undefined): void {
+  knownSavedProvider = typeof value === 'string' ? (value.trim() ? value.trim() : null) : value
+}
+
 // The engine's readiness text for a provider with no credential: "No usable credentials found for Claude."
 const NO_USABLE_CREDENTIALS_RE = /\bNo usable credentials found for ([^\n]+?)\.(?:\s|$)/i
 
@@ -89,8 +109,15 @@ export function inferErrorSurface(raw: null | string | undefined): ErrorSurface 
     return null
   }
 
+  if (UNSUPPORTED_MODEL_RE.test(text)) {
+    return { code: 'provider_model_missing', layer: 'provider', retryable: false }
+  }
+
   if (NO_CREDENTIALS_RE.test(text)) {
-    return { code: 'no_provider', layer: 'auth', retryable: false }
+    // A provider is saved but the engine could not start with it: not "no provider connected".
+    return knownSavedProvider
+      ? { code: 'provider_unusable', layer: 'provider', retryable: false }
+      : { code: 'no_provider', layer: 'auth', retryable: false }
   }
 
   const providerText = PROVIDER_CONTEXT_RE.test(text)

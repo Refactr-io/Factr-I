@@ -1,4 +1,4 @@
-import { noUsableCredentialsMessage } from './provider-error-display'
+import { noteSavedProvider, noUsableCredentialsMessage } from './provider-error-display'
 
 /** config.yaml exists but cannot be parsed: the engine ignores it (newer engines only). The message
  *  names the file and the parser's line; it never carries the file's text. */
@@ -112,6 +112,10 @@ export async function fetchRuntimeReadinessSignals(
     requestWithFallback<SetupStatusSnapshot>(requestGateway, 'setup.status'),
     requestWithFallback<RuntimeCheckSnapshot>(requestGateway, 'setup.runtime_check', runtimeParams)
   ])
+
+  if (setup.value) {
+    noteSavedProvider(setup.value.saved_provider)
+  }
 
   return {
     setup: setup.value,

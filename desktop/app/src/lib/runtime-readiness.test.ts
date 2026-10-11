@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
+import { inferErrorSurface, noteSavedProvider } from './provider-error-display'
 import { fetchRuntimeReadinessSignals, interpretRuntimeReadiness, runtimeReadinessDisplay } from './runtime-readiness'
 
 describe('interpretRuntimeReadiness', () => {
@@ -109,6 +110,27 @@ describe('fetchRuntimeReadinessSignals', () => {
       { method: 'setup.status' },
       { method: 'setup.runtime_check', params: { provider: 'openrouter' } }
     ])
+  })
+
+  describe('the saved provider it learns for plain error wording', () => {
+    const noCreds = 'OpenAI credentials not available. Run `factr login openai` first.'
+
+    const statusWith = (saved: Record<string, unknown>) => async <T = unknown>(method: string) => {
+      if (method === 'setup.status') {
+        return { provider_configured: true, ...saved } as T
+      }
+
+      return { ok: false } as T
+    }
+
+    afterEach(() => noteSavedProvider(undefined))
+
+    it('a saved provider turns "credentials not available" into "your saved provider could not be used"', async () => {
+      await fetchRuntimeReadinessSignals(statusWith({ saved_provider: 'openai-api' }))
+      expect(inferErrorSurface(noCreds)?.code).toBe('provider_unusable')
+      await fetchRuntimeReadinessSignals(statusWith({ saved_provider: null }))
+      expect(inferErrorSurface(noCreds)?.code).toBe('no_provider')
+    })
   })
 })
 

@@ -4,7 +4,7 @@ import { translateNow, TRANSLATIONS } from '@/i18n'
 import { getRuntimeI18nLocale } from '@/i18n/runtime'
 import { errorCardText } from '@/lib/error-surface-copy'
 import { isOutOfSyncRpcParams } from '@/lib/gateway-rpc'
-import { inferErrorSurface } from '@/lib/provider-error-display'
+import { inferErrorSurface, isUnsupportedModelError } from '@/lib/provider-error-display'
 import { isLocalBackendSlotWaitTimeout, requestPoolLimitsSettings } from '@/store/pool-limits'
 import { requestBackendRestart, requestRoute } from '@/store/recovery-requests'
 
@@ -138,13 +138,18 @@ interface ErrorSummaryRule {
   action?: (msg: string) => NotificationAction
 }
 
-/** The plain card sentence when an error says no AI provider is connected, or null.
+/** The plain card sentence when an error says no AI provider is connected (or the saved one or its model cannot be used), or null.
  *  Display only: the raw engine text stays the toast detail. HTTP-status readings are
  *  left to turn errors (card and turn toast): any other request can 404 too. */
 function providerErrorSentence(message: string): null | string {
   const surface = inferErrorSurface(message)
 
-  if (surface?.code !== 'no_provider') {
+  const plain =
+    surface?.code === 'no_provider' ||
+    surface?.code === 'provider_unusable' ||
+    (surface?.code === 'provider_model_missing' && isUnsupportedModelError(message))
+
+  if (!plain) {
     return null
   }
 

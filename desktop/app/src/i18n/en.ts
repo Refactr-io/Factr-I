@@ -4208,6 +4208,10 @@ export const en: Translations = {
           title: 'The provider does not have this model',
           body: 'Check that the model is installed on your local server (for Ollama: ollama pull <model>), or choose another model.'
         },
+        provider_unusable: {
+          title: 'Your saved provider could not be used',
+          body: 'A provider is saved, but Factr-I could not start with it. Check its key and the selected model in Settings > Providers, then send your message again. Details has the exact reason.'
+        },
         provider_rate_limited: {
           title: 'Rate limited. Try again in a moment.',
           body: provider => `${provider} is limiting requests. Wait a moment, then send your message again.`

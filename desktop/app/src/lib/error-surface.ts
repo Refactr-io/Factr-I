@@ -60,7 +60,8 @@ export const ERROR_CODE_KEYS = [
   'provider_model_missing',
   'provider_model_not_installed',
   'provider_rate_limited',
-  'provider_server_error'
+  'provider_server_error',
+  'provider_unusable'
 ] as const
 
 export type ErrorCodeKey = (typeof ERROR_CODE_KEYS)[number]
@@ -267,6 +268,7 @@ const CODE_PLANS: Partial<Record<ErrorCodeKey, Partial<ErrorRecoveryPlan>>> = {
   provider_key_rejected: { retry: false },
   provider_model_missing: { chooseModel: true, retry: false },
   provider_model_not_installed: { chooseModel: true, retry: false },
+  provider_unusable: { chooseModel: true, openProviders: true, retry: false },
   payload_too_large: { compress: true, retry: false, startNewSession: true }
 }
 
