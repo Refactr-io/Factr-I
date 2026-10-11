@@ -2129,26 +2129,28 @@ impl Conn {
                 }
                 Ok(json!({ "count": messages.len(), "messages": messages }))
             }
-            // Projects are the engine's sessions grouped by working directory (Factr's state.db never
-            // holds engine chats).
+            // The tree is the engine's sessions grouped by working directory (Factr's state.db never holds
+            // engine chats) plus the projects the user created, read from `projects.db`; creating and editing
+            // a project stays with the Python backend, which owns that file.
             "projects.tree" | "projects.list" | "projects.project_sessions" | "projects.record_repos" => {
                 if method == "projects.record_repos" {
                     return Ok(projects::record_repos_reply(p));
                 }
+                let (explicit, active) = factr_base::factr_config::home().map(|h| projects::read_explicit(&h)).unwrap_or_default();
                 if method == "projects.list" {
-                    return Ok(json!({ "projects": [], "active_id": null }));
+                    return Ok(projects::list_reply(&explicit, active));
                 }
                 let reply = call(json!({ "req": "list_sessions", "limit": 5000 })).await?;
                 let rows: Vec<Value> = reply["sessions"].as_array().map(|l| l.iter().filter(|s| s["parent_session_id"].is_null()).map(map::session_info).collect()).unwrap_or_default();
                 let home = factr_base::platform::user_home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
                 if method == "projects.tree" {
-                    return Ok(projects::tree_reply(&rows, &home, p));
+                    return Ok(projects::tree_reply(&rows, &home, p, &explicit, active));
                 }
                 let id = p["project_id"].as_str().unwrap_or_default();
                 if id.is_empty() {
                     return Err(RpcError { code: 5063, message: "project_id required".into(), data: None });
                 }
-                Ok(projects::project_sessions_reply(&rows, &home, id))
+                Ok(projects::project_sessions_reply(&rows, &home, id, &explicit))
             }
             // The engine's own tools, grouped by toolset; Factr's registry has different ones.
             "tools.list" | "toolsets.list" => {
