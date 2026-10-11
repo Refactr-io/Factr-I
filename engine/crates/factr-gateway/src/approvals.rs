@@ -911,7 +911,7 @@ mod tests {
             ("shred a.txt", Some(home.clone()), "broad"),
             ("truncate -s 0 a.txt", Some(home.clone()), "broad"),
             ("echo x > notes.txt", Some(home.clone()), "broad"),
-            (qa, p("/Users"), "broad"),
+            ("rm a.txt", p("/Users"), "broad"),
             ("rm a.txt", p("/home"), "broad"),
             (qa, p("/"), "broad"),
             ("rm a.txt", p("/Volumes/X"), "broad"),
