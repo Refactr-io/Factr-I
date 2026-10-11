@@ -1,6 +1,6 @@
 [package]
 name = "factr-cli"
-version = "0.0.6"
+version = "0.0.7"
 description = "Factr-I engine: agent runtime and desktop gateway"
 edition = "2024"
 autobins = false

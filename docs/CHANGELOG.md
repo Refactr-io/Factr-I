@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.0.7 (unreleased)
+## v0.0.7 (2026-10-11)
 
 - Bots: delivering a message to another bot (message_agent, @mentions, relay) in the installed app. Delivery ran
   `factr -p <bot> chat ...`, but the installed app has no `factr` command that can run `chat` (the bundled `factr` is the
