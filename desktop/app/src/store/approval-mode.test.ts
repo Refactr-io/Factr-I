@@ -23,6 +23,21 @@ describe('profile-scoped approval mode cache', () => {
     expect(approvalModeForProfile('default')).toBe('manual')
   })
 
+  it('does not flip to Manual when the backend reports no value (unset key, empty reply)', async () => {
+    reconcileApprovalModeForProfile('default', 'smart')
+
+    for (const reply of [{}, { value: '' }, { value: null }, undefined]) {
+      await syncApprovalModeForProfile(
+        vi.fn(async () => reply),
+        'default'
+      )
+      expect(approvalModeForProfile('default')).toBe('smart')
+    }
+
+    reconcileApprovalModeForProfile('default', undefined)
+    expect(approvalModeForProfile('default')).toBe('smart')
+  })
+
   it('keeps profile values isolated', async () => {
     await syncApprovalModeForProfile(
       vi.fn(async () => ({ value: 'manual' })),

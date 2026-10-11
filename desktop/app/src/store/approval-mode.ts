@@ -28,6 +28,13 @@ function normalizeApprovalMode(value: unknown): ApprovalMode {
   return APPROVAL_MODES.has(normalized) ? normalized : 'manual'
 }
 
+/** True when the backend actually reported a mode. An unset key (not written to config.yaml yet)
+ *  comes back empty; that must not be read as 'manual', it means "engine default" which the UI
+ *  already shows. */
+function hasReportedMode(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() !== ''
+}
+
 export function approvalModeForProfile(profile: string): ApprovalMode {
   return $approvalModes.get()[profileKey(profile)] ?? 'smart'
 }
@@ -39,6 +46,11 @@ function cacheApprovalMode(profile: string, mode: ApprovalMode): void {
 
 export function reconcileApprovalModeForProfile(profile: string, value: unknown): ApprovalMode {
   const key = profileKey(profile)
+
+  if (!hasReportedMode(value)) {
+    return approvalModeForProfile(key)
+  }
+
   const mode = normalizeApprovalMode(value)
   nextRevision(key)
   confirmedModes.set(key, mode)
@@ -54,9 +66,9 @@ export async function syncApprovalModeForProfile(
   const key = profileKey(profile)
   const revision = nextRevision(key)
   const result = (await requestGateway('config.get', { key: 'approvals.mode' })) as { value?: string }
-  const mode = normalizeApprovalMode(result?.value)
+  const mode = hasReportedMode(result?.value) ? normalizeApprovalMode(result?.value) : approvalModeForProfile(key)
 
-  if (revisions.get(key) === revision) {
+  if (hasReportedMode(result?.value) && revisions.get(key) === revision) {
     confirmedModes.set(key, mode)
     cacheApprovalMode(key, mode)
   }
