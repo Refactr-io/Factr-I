@@ -39,6 +39,9 @@ import {
   tombstoneSessions
 } from './session-removal'
 
+// These cases describe the profile-switching view; Bot Mode (and its profiles) is hidden in the shipped app.
+vi.mock('@/lib/hidden-features', () => ({ botsHidden: false, HIDDEN_BUNDLED_PLUGINS: new Set() }))
+
 vi.mock('@/i18n', () => ({
   translateNow: (key: string) => key
 }))

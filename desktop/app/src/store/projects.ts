@@ -13,6 +13,7 @@ import { translateNow } from '@/i18n'
 import { desktopDefaultCwd, isDesktopFsRemoteMode, selectDesktopPaths, writeDesktopFileText } from '@/lib/desktop-fs'
 import { desktopGit } from '@/lib/desktop-git'
 import { isMissingRestEndpoint, isMissingRpcMethod } from '@/lib/gateway-rpc'
+import { botsHidden } from '@/lib/hidden-features'
 import { isUnderPath } from '@/lib/path-compare'
 import { persistentAtom } from '@/lib/persisted'
 import { revealFile } from '@/store/file-actions'
@@ -289,7 +290,13 @@ async function gatewayRequest<T>(method: string, params: Record<string, unknown>
 export function projectProfile(): null | string {
   const profile = normalizeProfileKey($activeGatewayProfile.get())
 
-  return $profileScope.get() === ALL_PROFILES || profile === ALL_PROFILES ? null : profile
+  if (profile === ALL_PROFILES) {
+    return null
+  }
+
+  // With Bot Mode hidden the default profile is the only one, so "all profiles" is that profile: its projects
+  // load over the gateway's projects.* RPC (the all-profiles REST fan-out is not served by the engine).
+  return $profileScope.get() === ALL_PROFILES && !botsHidden ? null : profile
 }
 
 // All profiles filters the sidebar. Writes still belong to the live gateway profile.
@@ -480,7 +487,7 @@ async function refreshProjectTreeOn(context: ActiveProjectsContext): Promise<voi
 // sessions + the scoped-session-id set). Best-effort: a failure leaves the
 // cached tree intact so the sidebar doesn't flicker.
 export async function refreshProjectTree(): Promise<void> {
-  if ($profileScope.get() === ALL_PROFILES) {
+  if ($profileScope.get() === ALL_PROFILES && !botsHidden) {
     await refreshProjectTreeAcrossProfiles()
 
     return
