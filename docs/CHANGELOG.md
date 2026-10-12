@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.0.8 (unreleased)
+## v0.0.8 (2026-10-12)
 
 - Bots are hidden from the app until they work in the installed app: no Bots tab, no @mention or `message_agent` hints,
   no Bots entry in Capabilities > Plugins, and no Warm Bot Backends setting. Your profiles, chats and settings stay on
