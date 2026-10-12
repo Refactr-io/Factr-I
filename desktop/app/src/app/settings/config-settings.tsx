@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { getElevenLabsVoices, getFactrConfigSchema, saveFactrConfig } from '@/factr'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
+import { botsHidden } from '@/lib/hidden-features'
 import { isSubmitEnter } from '@/lib/ime'
 import { confirm } from '@/store/confirm'
 import {
@@ -462,7 +463,7 @@ function ConfigSettingsInner({
             label={c.disableF12Title}
             onChange={setDisableF12}
           />
-          <PoolLimitsSetting />
+          {!botsHidden && <PoolLimitsSetting />}
           <QuickEntrySettings />
         </>
       )}

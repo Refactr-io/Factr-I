@@ -13,6 +13,8 @@
  *    — the agent's/user's doors, watched + hot-reloaded by the runtime loader.
  */
 
+import { HIDDEN_BUNDLED_PLUGINS } from '@/lib/hidden-features'
+
 import { trackGatewayEventDisposers } from './events'
 import { createPluginContext, type FactrPlugin } from './plugin'
 import { pluginActive, publishPlugin } from './plugins-store'
@@ -35,6 +37,11 @@ export function discoverBundledPlugins(): void {
 
   for (const [path, mod] of Object.entries(modules)) {
     const plugin = mod.default
+
+    // Hidden features never register, so no surface (rail, Settings, Capabilities, composer) shows them.
+    if (plugin?.id && HIDDEN_BUNDLED_PLUGINS.has(plugin.id)) {
+      continue
+    }
 
     if (!plugin?.id || typeof plugin.register !== 'function') {
       console.warn(`[plugins] ${path} has no valid default FactrPlugin export — skipped`)

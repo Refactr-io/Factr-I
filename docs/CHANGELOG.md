@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.8 (unreleased)
+
+- Bots are hidden from the app until they work in the installed app: no Bots tab, no @mention or `message_agent` hints,
+  no Bots entry in Capabilities > Plugins, and no Warm Bot Backends setting. Your profiles, chats and settings stay on
+  disk. Telegram, Discord and the other messaging platforms, scheduled jobs and the engine's subagents are not affected.
+  The code stays in the bundle; removing `factr-bots` from `src/lib/hidden-features.ts` brings it back.
+
 ## v0.0.7 (2026-10-11)
 
 - Bots, known issue (0.0.6 and 0.0.7): bots do not work in the installed desktop app yet. The app sends every bot to the
