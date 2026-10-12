@@ -2,12 +2,11 @@
 
 ## v0.0.7 (2026-10-11)
 
-- Bots: bot-to-bot messages (the `message_agent` tool, @mentions and relay between connected Desktops) work in the installed
-  app again. In 0.0.6 the delivery command did not exist in the installed app and the engine's Bot Chats had no messaging
-  tool. Each bot now gets the tool through its own config (`mcp_servers.factr_teammates`); the default profile and every
-  default chat are unchanged. Delivery runs through the bundled Python backend, which is the seam for moving bots to Rust
-  later. Verified end to end with a stub model (bot A messages bot B and the reply returns). A check with a real signed-in
-  model account was not done for this release.
+- Bots, known issue (0.0.6 and 0.0.7): bots do not work in the installed desktop app yet. The app sends every bot to the
+  single default engine, which cannot serve another profile, so a bot's chat stays on "Waking up..." and bot-to-bot
+  messages never run. The 0.0.7 backend changes (a per-bot `message_agent` tool and a fixed delivery command) are verified
+  only headless with a stub model, not in the app. A fix is planned for 0.0.8. Ordinary chats, projects and the default
+  Factr-I bot are not affected.
 - Bots: a plain message when a bot has no AI provider, and the Bots list reads the profile folders from disk at startup.
 - Fixed in 0.0.7: in 0.0.6, giving the app a place to install packages for voice dictation also let the backend download
   cloud provider SDKs (AWS, Google) in the background when you connected a provider. Only voice transcription may install
