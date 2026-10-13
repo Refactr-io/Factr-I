@@ -32,6 +32,7 @@ You only do this once.
 
 1. Run the `.exe`.
 2. If Windows SmartScreen warns you, click **More info**, then **Run anyway**.
+3. To build the installer yourself, see [docs/WINDOWS-BUILD.md](docs/WINDOWS-BUILD.md).
 
 ### Install on Linux
 
