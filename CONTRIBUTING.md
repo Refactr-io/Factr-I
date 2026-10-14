@@ -47,9 +47,10 @@ It must print zero hits. CI runs it.
 
 ## License
 
-Factr-I is MIT licensed (see `LICENSE`). By submitting a contribution you agree
-that it is licensed under the MIT license and that you have the right to submit
-it (Developer Certificate of Origin, https://developercertificate.org/).
+Factr-I is licensed under FSL-1.1-ALv2 (see `LICENSE`). By submitting a
+contribution you agree that it is licensed under those same terms and that you
+have the right to submit it (Developer Certificate of Origin,
+https://developercertificate.org/).
 Sign-off with `git commit -s` is welcome but not required.
 
 ## Conduct and security

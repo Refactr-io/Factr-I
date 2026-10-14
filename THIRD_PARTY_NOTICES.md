@@ -1,6 +1,7 @@
 # Third-party notices
 
-Factr-I is MIT licensed (see LICENSE). It includes code derived from the
+Factr-I is licensed under FSL-1.1-ALv2 (see LICENSE). The MIT-licensed material
+below keeps its own license; nothing here relicenses it. It includes code derived from the
 MIT-licensed projects below; their notices are reproduced verbatim inside the
 marked regions. Other files may contain portions derived from the same
 upstream projects; where a file carries its own header, that header applies.
