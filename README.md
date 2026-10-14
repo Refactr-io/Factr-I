@@ -114,4 +114,9 @@ You do not need to build anything to use Factr-I. If you want to develop or veri
 
 ## License
 
-MIT, see `LICENSE`. Third-party notices: `THIRD_PARTY_NOTICES.md`.
+Functional Source License 1.1 with an Apache 2.0 future license (FSL-1.1-ALv2), see `LICENSE`.
+Free for internal use, education and research. Using it to build a product or service that
+competes with Factr-I or with Refactr's deployment offering is not permitted. Each version
+becomes Apache 2.0 two years after its release.
+
+Third-party notices: `THIRD_PARTY_NOTICES.md`.
