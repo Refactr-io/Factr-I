@@ -107,6 +107,18 @@ def _pkce_code_challenge(code_verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
+_LOOPBACK_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Factr-I</title>
+<style>
+html,body{{height:100%;margin:0}}
+body{{display:grid;place-items:center;background:#1c1b19;color:#ece8e1;
+font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}}
+main{{text-align:center;padding:0 24px}}
+h1{{margin:0 0 10px;font-size:28px;font-weight:600;letter-spacing:-0.01em}}
+p{{margin:0;color:#a7a198}}
+</style></head><body><main><h1>{title}</h1><p>{sub}</p></main></body></html>"""
+
+
 def _make_loopback_callback_handler(
     expected_path: str, *, display_name: str,
 ) -> tuple[type[BaseHTTPRequestHandler], dict[str, Any]]:
@@ -134,10 +146,10 @@ def _make_loopback_callback_handler(
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            outcome = "failed" if result["error"] else "received"
-            self.wfile.write(
-                f"<html><body><h1>{display_name} authorization {outcome}.</h1>"
-                "You can close this tab.</body></html>".encode("utf-8"))
+            failed = bool(result["error"])
+            head = f"{display_name} sign-in didn't finish" if failed else "You're signed in"
+            sub = "Return to Factr-I and try again." if failed else "You can close this tab and go back to Factr-I."
+            self.wfile.write(_LOOPBACK_PAGE.format(title=head, sub=sub).encode("utf-8"))
 
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
             return
