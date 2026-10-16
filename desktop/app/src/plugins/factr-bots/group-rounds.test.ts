@@ -71,10 +71,9 @@ beforeEach(() => {
   runTimersInline()
 })
 
-// Ordering assertions here depend on millisecond timestamps and flake only under heavy CPU load (they pass alone).
-vi.setConfig({ retry: 2 })
-
-describe('routing', () => {
+// Ordering assertions here depend on millisecond timestamps and flake only under heavy CPU load (they pass alone),
+// so every group retries twice.
+describe('routing', { retry: 2 }, () => {
   it('reads (pass), pass, pass. and empty as silence, but not real text', async () => {
     const { turns } = await loadRoom()
 
@@ -331,7 +330,7 @@ describe('routing', () => {
   })
 })
 
-describe('round lifecycle', () => {
+describe('round lifecycle', { retry: 2 }, () => {
   it('clears each exact member turn on success, failure and supersession without clearing a newer turn', async () => {
     for (const outcome of ['success', 'failure', 'superseded', 'newer-turn']) {
       let finish!: () => void
@@ -538,7 +537,7 @@ describe('round lifecycle', () => {
   })
 })
 
-describe('per-member delta', () => {
+describe('per-member delta', { retry: 2 }, () => {
   it('retained-log trimming cannot acknowledge messages appended during inference', async () => {
     let release!: (reply: string) => void
 
@@ -708,7 +707,7 @@ describe('per-member delta', () => {
   })
 })
 
-describe('threads', () => {
+describe('threads', { retry: 2 }, () => {
   it('mints a new thread per composer send and lands replies in it', async () => {
     const room = await loadRoom()
     const member: GroupMember[] = [{ name: 'research', title: '' }]
