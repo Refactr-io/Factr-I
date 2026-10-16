@@ -394,34 +394,6 @@ export function useComposerActions({
     [attachToMain]
   )
 
-  const pickContextPaths = useCallback(
-    async (kind: 'file' | 'folder') => {
-      const paths = await selectDesktopPaths({
-        title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
-        defaultPath: currentCwd || undefined,
-        directories: kind === 'folder'
-      })
-
-      if (!paths?.length) {
-        return
-      }
-
-      for (const path of paths) {
-        const rel = contextPath(path, currentCwd)
-
-        attachToMain({
-          id: attachmentId(kind, rel),
-          kind,
-          label: pathLabel(path),
-          detail: rel,
-          refText: `@${kind}:${formatRefValue(rel)}`,
-          path
-        })
-      }
-    },
-    [attachToMain, currentCwd]
-  )
-
   const insertContextPathInlineRef = useCallback(
     (path: string, isDirectory = false) => {
       if (!path) {
@@ -505,9 +477,51 @@ export function useComposerActions({
     [attachToMain, copy.imagePreviewFailed, scope]
   )
 
+  const pickContextPaths = useCallback(
+    async (kind: 'file' | 'folder') => {
+      const paths = await selectDesktopPaths({
+        title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
+        defaultPath: currentCwd || undefined,
+        directories: kind === 'folder'
+      })
+
+      if (!paths?.length) {
+        return
+      }
+
+      for (const path of paths) {
+        // An image picked through Files… is still an image: attach it as one so the model receives the pixels
+        // instead of an `@file:` path it can only Read.
+        if (kind === 'file' && isImagePath(path)) {
+          await attachImagePath(path)
+
+          continue
+        }
+
+        const rel = contextPath(path, currentCwd)
+
+        attachToMain({
+          id: attachmentId(kind, rel),
+          kind,
+          label: pathLabel(path),
+          detail: rel,
+          refText: `@${kind}:${formatRefValue(rel)}`,
+          path
+        })
+      }
+    },
+    [attachImagePath, attachToMain, currentCwd]
+  )
+
   const attachImageBlob = useCallback(
     async (blob: Blob, isCurrent: () => boolean = () => true) => {
-      if (blob.size === 0 || !isCurrent()) {
+      if (!isCurrent()) {
+        return false
+      }
+
+      if (blob.size === 0) {
+        notify({ kind: 'warning', title: copy.imageAttach, message: copy.imageWriteFailed })
+
         return false
       }
 
