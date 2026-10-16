@@ -30,7 +30,6 @@ vi.mock('@/i18n', () => ({
         updateAvailableTip: (version: null | string) =>
           version ? `Update available: Factr-I v${version}` : 'Update available',
         updateDownloadingTip: (version: string) => `Downloading Factr-I v${version}`,
-        updateReadyTip: (version: string) => `Update ready: install Factr-I v${version}`,
         updateRestartTip: 'Restart to update',
         updateInstallTip: 'Install update',
         updateBusyTip: 'Finish the current task first'

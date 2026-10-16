@@ -459,6 +459,7 @@ import { waitForUpdateClearance } from './update-gate'
 import { clearPostUpdate, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
+import { closeUpdateSplash, showUpdateSplash } from './update-splash'
 import { installAndRestart, stageUpdate, type SwapDeps } from './update-swap'
 import {
   observeUpdaterHandoff,
@@ -14139,6 +14140,9 @@ function createWindow() {
 
   bindWindowChromeEvents(mainWindow, sendWindowStateChanged)
 
+  // The update animation (if it is up) hands over to the first real window with no gap.
+  mainWindow.once('show', closeUpdateSplash)
+
   // Reopen where the user left off. close is the backstop, flushed
   // synchronously before the window is gone.
   bindGeometryPersistence(mainWindow, schedulePersistWindowState)
@@ -17164,24 +17168,8 @@ async function applyUpdateAtLaunch(): Promise<boolean> {
 
   rememberLog(`[update] applying ${ready.version} at launch`)
 
-  const splash = new BrowserWindow({
-    width: 340,
-    height: 110,
-    frame: false,
-    resizable: false,
-    movable: true,
-    show: true,
-    alwaysOnTop: true,
-    backgroundColor: '#1E1E1D',
-    webPreferences: { sandbox: true, contextIsolation: true }
-  })
-
-  void splash.loadURL(
-    'data:text/html;charset=utf-8,' +
-      encodeURIComponent(
-        `<body style="margin:0;height:100vh;display:grid;place-items:center;background:#1E1E1D;color:#FFFDFC;font:15px -apple-system,BlinkMacSystemFont,system-ui,sans-serif"><div style="text-align:center"><div style="font-weight:600">Updating Factr-I to ${ready.version}</div><div style="margin-top:6px;color:#AFAEAC">One moment...</div></div></body>`
-      )
-  )
+  // A mascot animation, no text and no version; the same one carries over the relaunch (see POST_UPDATE below).
+  showUpdateSplash(opts => new BrowserWindow(opts))
 
   const result = await installAndRestart(ready, swapDeps())
 
@@ -17191,9 +17179,7 @@ async function applyUpdateAtLaunch(): Promise<boolean> {
 
   rememberLog(`[update] launch update skipped: ${(result as { reason: string }).reason}`)
 
-  if (!splash.isDestroyed()) {
-    splash.close()
-  }
+  closeUpdateSplash()
 
   return false
 }
@@ -17946,6 +17932,12 @@ if (isLockedDownBuild(app.isPackaged, isQaBuild())) {
 app.whenReady().then(async () => {
   if (await applyUpdateAtLaunch()) {
     return
+  }
+
+  // First start after an update: keep the animation up across the relaunch until the first real window shows.
+  if (POST_UPDATE && process.platform === 'darwin') {
+    showUpdateSplash(opts => new BrowserWindow(opts))
+    setTimeout(closeUpdateSplash, 30_000).unref()
   }
 
   // Warm the login-shell PATH resolution immediately so it usually completes

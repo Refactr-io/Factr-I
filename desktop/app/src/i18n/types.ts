@@ -423,7 +423,6 @@ export interface Translations {
     updateReadyMessageUnknown: string
     updateAvailableTip: (version: null | string) => string
     updateDownloadingTip: (version: string) => string
-    updateReadyTip: (version: string) => string
     updateRestartTip: string
     updateInstallTip: string
     updateBusyTip: string

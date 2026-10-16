@@ -13,7 +13,7 @@ import { notify } from '@/store/notifications'
 const IDLE: DesktopUpdateDownloadState = { status: 'idle', version: null, file: null, kind: null }
 
 export const $updateDownload = atom<DesktopUpdateDownloadState>(IDLE)
-/** The "Download updates automatically" setting (default ON, persisted by the main process). */
+/** The "Download updates in the background" setting (default ON, persisted by the main process). */
 export const $autoDownload = atom<boolean>(true)
 
 /** "Updated to X" after a swap: the main process reports { from, to } once, on the first launch after one. */
