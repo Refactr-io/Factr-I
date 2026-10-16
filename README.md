@@ -5,6 +5,9 @@
 A desktop AI agent that runs on your computer. Chat with it, give it tasks, and let it work in your own folders, with
 your approval for anything risky. Your chats, projects and settings stay on your machine.
 
+Built by [Refactr](https://www.refactr.net), which deploys private AI infrastructure on hardware you
+already own.
+
 **[Download the latest release](https://github.com/Refactr-io/Factr-I/releases/latest)** for macOS, Windows or Linux.
 
 ## Download
@@ -32,6 +35,7 @@ You only do this once.
 
 1. Run the `.exe`.
 2. If Windows SmartScreen warns you, click **More info**, then **Run anyway**.
+3. To build the installer yourself, see [docs/WINDOWS-BUILD.md](docs/WINDOWS-BUILD.md).
 
 ### Install on Linux
 
@@ -73,6 +77,15 @@ Everything stays on your computer:
 
 - `~/.factr/` holds your settings, sign-ins, chats and projects. On Windows the app uses `%LOCALAPPDATA%\factr`.
 - The in-app uninstall lists exactly what it will delete before it deletes anything.
+
+## Running this for a business
+
+Factr-I is the agent layer. [Refactr](https://www.refactr.net) builds the rest: Epsilon, a serving runtime
+that makes open models fast enough to sit behind an agent on GPUs you already own, including consumer and
+AMD cards.
+
+If you want this running for a team, on your own hardware, with your data staying inside your network,
+[talk to us about a pilot](https://www.refactr.net/request-demo).
 
 ## Troubleshooting
 
