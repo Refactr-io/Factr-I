@@ -617,6 +617,8 @@ contextBridge.exposeInMainWorld('factrDesktop', {
     check: opts => ipcRenderer.invoke('factr:updates:check', opts),
     apply: opts => ipcRenderer.invoke('factr:updates:apply', opts),
     install: () => ipcRenderer.invoke('factr:updates:install'),
+    downloadNow: () => ipcRenderer.invoke('factr:updates:download-now'),
+    getPostUpdate: () => ipcRenderer.invoke('factr:updates:post-update'),
     getDownloadState: () => ipcRenderer.invoke('factr:updates:download-state'),
     onDownloadState: callback => {
       const listener = (_event, state) => callback(state)

@@ -175,6 +175,7 @@ export const ja = defineLocale({
     updateDownloadingTip: version => `Factr-I v${version} をダウンロード中`,
     updateReadyTip: version => `アップデートの準備ができました: Factr-I v${version} をインストール`,
     updateRestartTip: '再起動してアップデート',
+    updateInstallTip: 'アップデートをインストール',
     updateBusyTip: 'まず現在のタスクを終えてください',
     updateInstallFallback: '自動でアップデートできませんでした。ダウンロードは Finder にあります',
     updateBannerReady: v => `Factr-I ${v} の準備ができました。再起動してアップデートします。`,
@@ -922,7 +923,7 @@ export const ja = defineLocale({
       automaticUpdatesDesc: 'Factr-I はバックグラウンドで自動的に更新を確認し、利用可能になったら通知します。',
       downloadUpdatesAutomatically: 'アップデートを自動でダウンロード',
       downloadUpdatesAutomaticallyDesc:
-        'Factr-I は新しいバージョンをバックグラウンドでダウンロードするので、インストールはワンクリックで済みます。あなたの操作なしに何もインストールされません。',
+        'Factr-I は新しいバージョンをバックグラウンドでダウンロードし、次回の起動時 (macOS) または「再起動してアップデート」をクリックしたときにインストールします。手動で更新する場合はオフにしてください。',
       branchCommit: (branch, commit) => `ブランチ ${branch} · コミット ${commit}`,
       never: '未確認',
       justNow: 'たった今',

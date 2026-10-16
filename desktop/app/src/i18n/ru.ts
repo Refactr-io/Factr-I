@@ -193,6 +193,7 @@ export const ru = defineLocale({
     updateDownloadingTip: version => `Скачивание Factr-I v${version}`,
     updateReadyTip: version => `Обновление готово: установить Factr-I v${version}`,
     updateRestartTip: 'Перезапустите для обновления',
+    updateInstallTip: 'Установить обновление',
     updateBusyTip: 'Сначала завершите текущую задачу',
     updateInstallFallback: 'Не удалось обновить автоматически. Загрузка готова в Finder',
     updateBannerReady: v => `Factr-I ${v} готов. Перезапустите для обновления.`,
@@ -1039,7 +1040,7 @@ export const ru = defineLocale({
       automaticUpdatesDesc: 'Factr-I автоматически проверяет обновления в фоне и сообщает, когда они готовы.',
       downloadUpdatesAutomatically: 'Скачивать обновления автоматически',
       downloadUpdatesAutomaticallyDesc:
-        'Factr-I скачивает новые версии в фоне, чтобы установка занимала один клик. Ничего не устанавливается без вашего участия.',
+        'Factr-I скачивает новые версии в фоне и устанавливает их при следующем запуске (macOS) или по нажатию «Перезапустите для обновления». Выключите, чтобы обновляться вручную.',
       branchCommit: (branch, commit) => `Ветка ${branch} · Коммит ${commit}`,
       never: 'никогда',
       justNow: 'только что',

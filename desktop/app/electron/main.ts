@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -456,9 +456,10 @@ import { createUpdateDownloader } from './update-download'
 import { readAutoDownload, writeAutoDownload } from './update-download-pref'
 import { createUpdateFeed } from './update-feed'
 import { waitForUpdateClearance } from './update-gate'
+import { clearPostUpdate, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
-import { installAndRestart } from './update-swap'
+import { installAndRestart, stageUpdate, type SwapDeps } from './update-swap'
 import {
   observeUpdaterHandoff,
   resolveStagedUpdaterBinary,
@@ -12335,6 +12336,10 @@ async function runFactrStart({ supervisorRecovery = false }: { supervisorRecover
 
       markLaunchHealthy()
 
+      if (POST_UPDATE) {
+        writeHealthMarker(POST_UPDATE)
+      }
+
       return {
         baseUrl: attached.baseUrl,
         mode: 'local',
@@ -12570,6 +12575,10 @@ async function runFactrStart({ supervisorRecovery = false }: { supervisorRecover
     })
 
     markLaunchHealthy()
+
+    if (POST_UPDATE) {
+      writeHealthMarker(POST_UPDATE)
+    }
 
     // A successful boot (including a soft restart that the repair-guard
     // chose over a hard reinstall, see #74874) means any in-flight repair
@@ -17074,6 +17083,11 @@ const updateDownloader = createUpdateDownloader({
   devOrigin: DEV_FEED_URL ? new URL(DEV_FEED_URL).origin : null,
   log: rememberLog,
   onState: state => {
+    // Unzip and check a finished download in the background, so "Restart to update" only has to swap.
+    if (state.status === 'ready' && state.file?.endsWith('.zip') && state.version) {
+      void stageUpdate({ file: state.file, kind: 'zip', version: state.version }, swapDeps())
+    }
+
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
         win.webContents.send('factr:updates:download-state-changed', state)
@@ -17081,6 +17095,108 @@ const updateDownloader = createUpdateDownloader({
     }
   }
 })
+
+const UPDATES_DIR = path.join(app.getPath('userData'), 'updates')
+
+// "Restart to update" (macOS): see update-swap.ts. Everything the swap touches is injected here.
+function swapDeps(): SwapDeps {
+  return {
+    execPath: app.getPath('exe'),
+    currentVersion: app.getVersion(),
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    isBusy: () => mergeActiveWork(activeWorkByWebContents.values()).count > 0,
+    updatesDir: UPDATES_DIR,
+    exec: (command, args) =>
+      new Promise(resolve =>
+        execFile(command, args, { maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) =>
+          resolve({
+            code: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
+            stdout: String(stdout),
+            stderr: String(stderr)
+          })
+        )
+      ),
+    fs: {
+      writable: dir => fs.promises.access(dir, fs.constants.W_OK).then(() => true, () => false),
+      exists: target => fs.promises.access(target).then(() => true, () => false),
+      list: dir => fs.promises.readdir(dir).catch(() => []),
+      mkdir: async dir => void (await fs.promises.mkdir(dir, { recursive: true })),
+      remove: target => fs.promises.rm(target, { recursive: true, force: true }),
+      writeFile: (file, content, mode) => fs.promises.writeFile(file, content, { mode })
+    },
+    spawnDetached: (command, args) => {
+      spawn(command, args, { detached: true, stdio: 'ignore' }).unref()
+    },
+    quit: () => app.quit(),
+    log: rememberLog
+  }
+}
+
+// What the swap helper left for the app it just launched (null on a normal start).
+const POST_UPDATE = readPostUpdateSync(UPDATES_DIR, app.getVersion())
+
+if (POST_UPDATE) {
+  process.env.FACTR_UPDATED_FROM = POST_UPDATE.from
+}
+
+ipcMain.handle('factr:updates:post-update', () => {
+  const record = POST_UPDATE ? { from: POST_UPDATE.from, to: POST_UPDATE.to } : null
+
+  if (record) {
+    clearPostUpdate(UPDATES_DIR)
+  }
+
+  return record
+})
+
+/** At launch, with auto-update on: a downloaded update is installed before the first window opens. */
+async function applyUpdateAtLaunch(): Promise<boolean> {
+  if (process.platform !== 'darwin' || !app.isPackaged || !autoDownloadEnabled) {
+    return false
+  }
+
+  const ready = findReadyZip(UPDATES_DIR, app.getVersion())
+
+  if (!ready) {
+    return false
+  }
+
+  rememberLog(`[update] applying ${ready.version} at launch`)
+
+  const splash = new BrowserWindow({
+    width: 340,
+    height: 110,
+    frame: false,
+    resizable: false,
+    movable: true,
+    show: true,
+    alwaysOnTop: true,
+    backgroundColor: '#1E1E1D',
+    webPreferences: { sandbox: true, contextIsolation: true }
+  })
+
+  void splash.loadURL(
+    'data:text/html;charset=utf-8,' +
+      encodeURIComponent(
+        `<body style="margin:0;height:100vh;display:grid;place-items:center;background:#1E1E1D;color:#FFFDFC;font:15px -apple-system,BlinkMacSystemFont,system-ui,sans-serif"><div style="text-align:center"><div style="font-weight:600">Updating Factr-I to ${ready.version}</div><div style="margin-top:6px;color:#AFAEAC">One moment...</div></div></body>`
+      )
+  )
+
+  const result = await installAndRestart(ready, swapDeps())
+
+  if (result.ok) {
+    return true
+  }
+
+  rememberLog(`[update] launch update skipped: ${(result as { reason: string }).reason}`)
+
+  if (!splash.isDestroyed()) {
+    splash.close()
+  }
+
+  return false
+}
 
 ipcMain.handle('factr:updates:check', async (_event, opts) => {
   const status = await updateFeed.check({ force: Boolean(opts?.force) })
@@ -17095,29 +17211,36 @@ ipcMain.handle('factr:updates:apply', async () => updateFeed.apply())
 
 ipcMain.handle('factr:updates:download-state', () => updateDownloader.getState())
 
+// The rail indicator's click with auto-update off: fetch now, still only when online and idle.
+ipcMain.handle('factr:updates:download-now', () => {
+  updateDownloader.maybeStart(lastFeedStatus, { ignoreEnabled: true })
+})
+
 // A Ready file is installed for the user: macOS (zip) swaps the app in place and restarts through update-swap.ts,
 // Windows opens the installer, Linux reveals the AppImage, a dmg opens in Finder; anything else falls back to the
 // release page. Never while an agent turn or tool call is running, and never silently.
 ipcMain.handle('factr:updates:install', async () => {
   const state = updateDownloader.getState()
 
-  if (state.status === 'ready' && state.file && state.version && state.kind && fs.existsSync(state.file)) {
+  if (state.status === 'ready' && state.file && state.version && fs.existsSync(state.file)) {
     if (mergeActiveWork(activeWorkByWebContents.values()).count > 0) {
       return { ok: false, error: 'busy', message: 'Finish the current task first.' }
     }
 
-    if (state.kind === 'zip') {
-      // TODO(release chat): replace {} with the real SwapDeps once update-swap.ts lands.
-      const swapped = await installAndRestart({ file: state.file, kind: 'zip', version: state.version }, {} as never)
+    if (state.file.endsWith('.zip')) {
+      const swapped = await installAndRestart({ file: state.file, kind: 'zip', version: state.version }, swapDeps())
 
       if (swapped.ok) {
         return { ok: true, restarting: true }
       }
 
-      rememberLog(`[update-download] swap failed: ${(swapped as { reason?: string }).reason ?? "unknown"}`)
+      const reason = (swapped as { reason: string }).reason
+
+      rememberLog(`[update-download] swap failed: ${reason}`)
       shell.showItemInFolder(state.file)
 
-      return { ok: false, error: 'swap-failed', fellBack: true, message: 'Could not update automatically. The download is ready in Finder.' }
+      // fallback tells the renderer to say so quietly; it is never an error.
+      return { ok: true, openedInstaller: true, fallback: reason }
     }
 
     if (process.platform === 'linux') {
@@ -17216,8 +17339,6 @@ ipcMain.handle('factr:version', async () => {
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
     platform: process.platform,
-    // Set by the updater on the relaunch after a swap (the old version); the renderer shows "Updated to X" once.
-    updatedFrom: process.env.FACTR_UPDATED_FROM || null,
     factrRoot: resolveUpdateRoot(),
     bundleOutOfSync: skew.outOfSync,
     bundleCommitsBehind: skew.desktopCommitsBehind,
@@ -17822,7 +17943,11 @@ if (isLockedDownBuild(app.isPackaged, isQaBuild())) {
   stripRemoteDebuggingSwitches(app.commandLine)
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (await applyUpdateAtLaunch()) {
+    return
+  }
+
   // Warm the login-shell PATH resolution immediately so it usually completes
   // before the backend start path awaits the same single-flight promise.
   void ensureLoginShellPath()

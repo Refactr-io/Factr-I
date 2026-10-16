@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { DesktopUpdateDownloadState } from '@/global'
 
-import { $updatedNote, dismissUpdatedNote, noteUpdatedFrom, updateBannerState } from './update-notices'
+import { $updatedNote, dismissUpdatedNote, noteUpdated, updateBannerState } from './update-notices'
 
 const readyZip: DesktopUpdateDownloadState = { status: 'ready', version: '0.0.10', file: '/u/a.zip', kind: 'zip' }
 
@@ -17,34 +17,29 @@ describe('updateBannerState', () => {
     expect(updateBannerState(null).visible).toBe(false)
   })
 
-  it('is hidden while onboarding, during a turn, after dismissal, or with auto-download off', () => {
+  it('is hidden while onboarding, during a turn, or after dismissal', () => {
     expect(updateBannerState(readyZip, { onboarding: true }).visible).toBe(false)
     expect(updateBannerState(readyZip, { turnActive: true }).visible).toBe(false)
     expect(updateBannerState(readyZip, { dismissed: true }).visible).toBe(false)
-    expect(updateBannerState(readyZip, { autoDownload: false }).visible).toBe(false)
   })
 })
 
 describe('updated note', () => {
-  it('appears once for the first launch after a swap, then is forgotten', () => {
-    window.localStorage.removeItem('factr:updated-note-seen')
+  it('appears for the record the main process reports once, and closes', () => {
     $updatedNote.set(null)
 
-    noteUpdatedFrom({ appVersion: '0.0.10', updatedFrom: '0.0.9' })
+    noteUpdated({ from: '0.0.9', to: '0.0.10' })
     expect($updatedNote.get()).toEqual({ from: '0.0.9', version: '0.0.10' })
 
     dismissUpdatedNote()
     expect($updatedNote.get()).toBeNull()
-
-    noteUpdatedFrom({ appVersion: '0.0.10', updatedFrom: '0.0.9' })
-    expect($updatedNote.get()).toBeNull()
   })
 
-  it('ignores a missing or identical source version', () => {
-    window.localStorage.removeItem('factr:updated-note-seen')
-    noteUpdatedFrom({ appVersion: '0.0.10', updatedFrom: null })
-    noteUpdatedFrom({ appVersion: '0.0.10', updatedFrom: '0.0.10' })
-    noteUpdatedFrom(null)
+  it('ignores a missing or identical record', () => {
+    $updatedNote.set(null)
+    noteUpdated(null)
+    noteUpdated({ from: '0.0.10', to: '0.0.10' })
+    noteUpdated({ from: '0.0.9' })
 
     expect($updatedNote.get()).toBeNull()
   })

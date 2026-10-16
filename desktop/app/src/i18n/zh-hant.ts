@@ -171,6 +171,7 @@ export const zhHant = defineLocale({
     updateDownloadingTip: version => `正在下載 Factr-I v${version}`,
     updateReadyTip: version => `更新已就緒：安裝 Factr-I v${version}`,
     updateRestartTip: '重新啟動以更新',
+    updateInstallTip: '安裝更新',
     updateBusyTip: '請先完成目前的任務',
     updateInstallFallback: '無法自動更新。下載已在 Finder 中就緒',
     updateBannerReady: v => `Factr-I ${v} 已就緒。重新啟動以更新。`,
@@ -995,7 +996,7 @@ export const zhHant = defineLocale({
       automaticUpdatesDesc: 'Factr-I 會在背景自動檢查更新，並在有可用更新時通知你。',
       downloadUpdatesAutomatically: '自動下載更新',
       downloadUpdatesAutomaticallyDesc:
-        'Factr-I 會在背景下載新版本，安裝只需一次點擊。未經你的操作不會安裝任何內容。',
+        'Factr-I 會在背景下載新版本，並在下次啟動時（macOS）或你點擊「重新啟動以更新」時安裝。關閉後可手動更新。',
       branchCommit: (branch, commit) => `分支 ${branch} · 提交 ${commit}`,
       never: '從未',
       justNow: '剛剛',

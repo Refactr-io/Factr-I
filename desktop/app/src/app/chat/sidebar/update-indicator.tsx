@@ -4,7 +4,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { CircleArrowDownFilled, CircleArrowUp, Loader } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import { installDownloadedUpdate } from '@/store/update-download'
+import { $autoDownload, installDownloadedUpdate, startDownloadNow } from '@/store/update-download'
 import { $turnActive, $updateIndicator } from '@/store/update-indicator'
 import { openUpdatesWindow } from '@/store/updates'
 
@@ -15,7 +15,8 @@ const RAIL_BUTTON =
  *  It stays for as long as the update does (the toast snooze does not touch it) and opens the updates overlay. */
 export function UpdateIndicator() {
   const { t } = useI18n()
-  const { kind, phase, version, visible } = useStore($updateIndicator)
+  const { downloadable, kind, phase, version, visible } = useStore($updateIndicator)
+  const autoDownload = useStore($autoDownload)
   const turnActive = useStore($turnActive)
 
   if (!visible) {
@@ -31,8 +32,8 @@ export function UpdateIndicator() {
     ? n.updateBusyTip
     : restart
       ? n.updateRestartTip
-      : phase === 'ready' && version
-        ? n.updateReadyTip(version)
+      : phase === 'ready'
+        ? n.updateInstallTip
         : phase === 'downloading' && version
           ? n.updateDownloadingTip(version)
           : n.updateAvailableTip(version)
@@ -45,7 +46,16 @@ export function UpdateIndicator() {
         data-phase={phase}
         data-tour="rail-update-available"
         disabled={blocked}
-        onClick={() => (phase === 'ready' ? void installDownloadedUpdate() : openUpdatesWindow('client'))}
+        onClick={() => {
+          if (phase === 'ready') {
+            void installDownloadedUpdate()
+          } else if (phase === 'available' && !autoDownload && downloadable) {
+            // Auto-update is off: the click is the user's go-ahead to download now.
+            void startDownloadNow()
+          } else {
+            openUpdatesWindow('client')
+          }
+        }}
         type="button"
       >
         {phase === 'downloading' ? (
