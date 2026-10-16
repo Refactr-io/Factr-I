@@ -74,7 +74,7 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
         "numpy==2.4.3",
         # faster-whisper 1.2.1 calls av.open(..., metadata_errors=...), which av 19 removed: an unpinned
         # install resolved av 19 and every dictation failed with "unexpected keyword argument".
-        "av==18.1.0",
+        "av==17.0.0",
     ),
     # SILK voice-note decoding (WeChat/QQ); silk-v3 codec binding.
     "stt.silk": ("pilk==0.2.4",),
