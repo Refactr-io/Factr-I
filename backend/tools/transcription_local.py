@@ -133,6 +133,25 @@ def _hub_cache_miss_error() -> type:
     return LocalEntryNotFoundError
 
 
+def prefetch_local_stt_model(model_name: Optional[str] = None) -> bool:
+    """Download the local dictation model files to the Hub cache without loading them.
+
+    Run once in the background after the desktop backend starts, so the first dictation does not
+    wait on a ~150 MB download. Loading into RAM still happens on first use (and the idle watcher
+    unloads it afterwards), so prefetching costs disk only. Returns True when the files are cached.
+    """
+    try:
+        from faster_whisper.utils import download_model
+    except ImportError:
+        return False
+    try:
+        download_model(_normalize_local_model(model_name))
+        return True
+    except Exception as exc:  # network down, disk full: the first dictation retries and reports it
+        logger.info("STT model prefetch skipped: %s", exc)
+        return False
+
+
 def _create_whisper_model(model_name: str, *, device: str, compute_type: str):
     """Use a cached model without contacting the Hub, downloading only on a cache miss."""
     from faster_whisper import WhisperModel

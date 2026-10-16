@@ -221,6 +221,14 @@ async def _lifespan(app: "FastAPI"):
         except Exception:
             _log.exception("Desktop startup: orphan gateway reap failed")
 
+        # Dictation works right after install: fetch the local speech model in the background.
+        try:
+            from tools.transcription_tools import prefetch_stt_in_background
+
+            prefetch_stt_in_background()
+        except Exception:
+            _log.debug("STT prefetch not started", exc_info=True)
+
         # Under the Factr engine its timer owns WHEN jobs fire (POST /api/cron/tick); no ticker here.
         if not os.environ.get("FACTR_ENGINE_URL"):
             cron_stop = threading.Event()

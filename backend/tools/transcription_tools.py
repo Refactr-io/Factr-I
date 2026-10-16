@@ -506,6 +506,31 @@ def _no_provider_error(provider: str, stt_config: Dict[str, Any]) -> Dict[str, A
         "or OPENAI_API_KEY for the OpenAI Whisper API.")
 
 
+def prefetch_stt_in_background() -> None:
+    """Desktop only: make the default local dictation engine ready before the user first needs it.
+
+    Installs the faster-whisper package (lazy-install, desktop-scoped) and caches the model files,
+    off-thread after startup. No-op when STT is disabled, a cloud/command provider is configured,
+    or ``stt.prefetch`` is false. Never raises.
+    """
+    def _run() -> None:
+        try:
+            cfg = _load_stt_config()
+            if not is_stt_enabled(cfg) or cfg.get("prefetch", True) is False:
+                return
+            if cfg.get("provider", DEFAULT_PROVIDER) not in ("local", None) or _has_local_command():
+                return
+            if not _HAS_FASTER_WHISPER and not _try_lazy_install_stt():
+                return
+            from tools.transcription_local import prefetch_local_stt_model
+            local_cfg = cfg.get("local") or {}
+            prefetch_local_stt_model(local_cfg.get("model", DEFAULT_LOCAL_MODEL))
+        except Exception:  # best-effort warm-up
+            logger.debug("STT prefetch failed", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True, name="stt-prefetch").start()
+
+
 def transcribe_audio(
     file_path: str, model: Optional[str] = None, source: Optional[str] = None) -> Dict[str, Any]:
     """Validate, preprocess supported inputs, and dispatch transcription. ``source`` is a caller-surface
