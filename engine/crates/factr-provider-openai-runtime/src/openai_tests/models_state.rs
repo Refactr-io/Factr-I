@@ -441,3 +441,10 @@ fn resolve_api_base_precedence_and_validation() {
     let _p5 = EnvVarGuard::set("FACTR_OPENAI_API_BASE", "not-a-url");
     assert_eq!(OpenAIProvider::resolve_api_base(), "https://b.example/v1");
 }
+
+#[test]
+fn openai_provider_accepts_image_input() {
+    // Regression: the default `false` stripped attached images before they reached the model.
+    let provider = OpenAIProvider::new_without_credentials();
+    assert!(Provider::supports_image_input(&provider));
+}

@@ -12,6 +12,12 @@ fn catalog_error_is_auth_rejection(err: &anyhow::Error) -> bool {
 
 #[async_trait]
 impl Provider for OpenAIProvider {
+    /// The Responses API takes `input_image` parts. The trait default (false) made the engine
+    /// replace every attached image with "[Image omitted ...]" before the request was built.
+    fn supports_image_input(&self) -> bool {
+        true
+    }
+
     fn reload_credentials(&self) {
         self.reload_credentials_now();
     }
