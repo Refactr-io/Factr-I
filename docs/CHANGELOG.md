@@ -13,7 +13,16 @@
 - Dictation is ready after install: the desktop backend now downloads the local speech model in the background after
   launch (disk only; nothing is loaded into RAM until you dictate), so the first dictation no longer waits on a ~150 MB
   download. Set `stt.prefetch: false` to turn it off.
-- The engine code is unchanged (only its version string).
+- Fixed: dictation failed on every fresh install ("open() got an unexpected keyword argument 'metadata_errors'"). The
+  background install picked up a newer `av` package that faster-whisper 1.2.1 cannot use; `av` is now pinned.
+- Fixed: images you attach or paste now reach the model on the ChatGPT-login and OpenAI paths. Before, the engine replaced
+  every image with "[Image omitted ...]" and the model answered that it could not see it. Models known to be text-only
+  (o1-mini, o3-mini, gpt-3.5, Codex-Spark) still skip images. Paste image now reads every clipboard shape (bitmap, PNG
+  data from the Snipping Tool, a copied image file), "Files..." attaches images as images, and a failed paste shows a message.
+- The app icon is redone: a Mist Green squircle with Apple-style depth and a larger solid helmet; inside the app the helmet
+  is drawn bare, with no tile.
+- The engine's agent loop, tools and prompts are unchanged; the only engine edits are the version string and the image
+  support check for the OpenAI provider.
 
 ## v0.0.8 (2026-10-12)
 
