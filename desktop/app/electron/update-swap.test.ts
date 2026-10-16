@@ -221,6 +221,7 @@ exit 0
     expect(res.status).toBe(0)
     expect(fs.readFileSync(path.join(s.old, 'Contents', 'version'), 'utf8')).toBe('new')
     expect(fs.existsSync(path.join(s.apps, '.Factr-I.app.old'))).toBe(false)
+    expect(fs.existsSync(path.join(s.apps, '.Factr-I-0.0.9.staging'))).toBe(false)
     expect(fs.readFileSync(path.join(s.root, 'launches.log'), 'utf8').trim()).toBe('new')
     expect(fs.readFileSync(path.join(s.updates, 'helper.log'), 'utf8')).toMatch(/ok: the new app reported healthy/)
   })

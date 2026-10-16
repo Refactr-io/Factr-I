@@ -118,6 +118,7 @@ while alive; do
   if [ "$i" -gt $((PROC_WAIT * 2)) ]; then
     log "abort: the old app is still running after \${PROC_WAIT}s; nothing was changed"
     rm -rf "$NEW"
+    case "$(basename "$(dirname "$NEW")")" in .*.staging) rm -rf "$(dirname "$NEW")" ;; esac
     exit 1
   fi
   sleep 0.5
@@ -138,6 +139,8 @@ if ! mv "$NEW" "$OLD"; then
   "$OPEN" -n "$OLD" >/dev/null 2>&1
   exit 1
 fi
+STAGING="$(dirname "$NEW")"
+case "$(basename "$STAGING")" in .*.staging) rm -rf "$STAGING" ;; esac
 log "swapped; launching the new app"
 
 # 3. relaunch and wait for the new app to prove it is healthy
