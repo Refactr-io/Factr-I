@@ -11,7 +11,7 @@ export function BrandClose({ ref }: BrandCloseProps) {
       ref={ref}
       style={{ willChange: 'transform, opacity' }}
     >
-      <HelmetMark className="h-[32vmin] w-auto text-[#FFFDFC] dark:text-[#FFFDFC]" />
+      <HelmetMark className="h-[32vmin] w-auto" tone="dark" />
       <div className="flex flex-col items-center gap-[1.6vmin]">
         <h1
           className="text-[10.2vmin] leading-none uppercase text-white/95"
