@@ -22,7 +22,7 @@ function status(data: Uint8Array, overrides: Partial<FeedStatus['asset'] & objec
     currentVersion: '0.0.8',
     latestVersion: '0.0.9',
     fetchedAt: 0,
-    asset: { name: 'Factr-I-0.0.9-mac-arm64.dmg', url: URL_OK, size: data.byteLength, sha256: sha(data), ...overrides }
+    asset: { kind: 'dmg', name: 'Factr-I-0.0.9-mac-arm64.dmg', url: URL_OK, size: data.byteLength, sha256: sha(data), ...overrides }
   }
 }
 
@@ -144,7 +144,7 @@ describe('createUpdateDownloader', () => {
 
     const final = '/ud/updates/0.0.9/Factr-I-0.0.9-mac-arm64.dmg'
 
-    expect(dl.getState()).toEqual({ status: 'ready', version: '0.0.9', file: final })
+    expect(dl.getState()).toEqual({ status: 'ready', version: '0.0.9', file: final, kind: 'dmg' })
     expect(mem.files.get(final)).toEqual(data)
     expect(mem.files.has(`${final}.partial`)).toBe(false)
     expect(mem.files.has('/ud/updates/0.0.7/old.dmg')).toBe(false)

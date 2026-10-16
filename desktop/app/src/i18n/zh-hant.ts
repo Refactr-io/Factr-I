@@ -170,6 +170,12 @@ export const zhHant = defineLocale({
     updateAvailableTip: version => (version ? `有可用更新：Factr-I v${version}` : '有可用更新'),
     updateDownloadingTip: version => `正在下載 Factr-I v${version}`,
     updateReadyTip: version => `更新已就緒：安裝 Factr-I v${version}`,
+    updateRestartTip: '重新啟動以更新',
+    updateBusyTip: '請先完成目前的任務',
+    updateInstallFallback: '無法自動更新。下載已在 Finder 中就緒',
+    updateBannerReady: v => `Factr-I ${v} 已就緒。重新啟動以更新。`,
+    updateBannerRestart: '重新啟動',
+    updatedTo: v => `已更新至 ${v}`,
     seeWhatsNew: '查看新增內容',
     mcp: {
       needsAuthTitle: 'MCP 伺服器需要重新驗證',

@@ -17211,24 +17211,30 @@ ipcMain.handle('factr:updates:apply', async () => updateFeed.apply())
 
 ipcMain.handle('factr:updates:download-state', () => updateDownloader.getState())
 
-// A Ready file is opened for the user (the .dmg in Finder, the installer on Windows, the folder on Linux);
-// anything else falls back to the release page. Nothing installs by itself.
+// A Ready file is installed for the user: macOS (zip) swaps the app in place and restarts through update-swap.ts,
+// Windows opens the installer, Linux reveals the AppImage, a dmg opens in Finder; anything else falls back to the
+// release page. Never while an agent turn or tool call is running, and never silently.
 ipcMain.handle('factr:updates:install', async () => {
   const state = updateDownloader.getState()
 
-  if (state.status === 'ready' && state.file?.endsWith('.zip') && state.version && fs.existsSync(state.file)) {
-    const swapped = await installAndRestart({ file: state.file, kind: 'zip', version: state.version }, swapDeps())
-
-    if (swapped.ok) {
-      return { ok: true, restarting: true }
+  if (state.status === 'ready' && state.file && state.version && state.kind && fs.existsSync(state.file)) {
+    if (mergeActiveWork(activeWorkByWebContents.values()).count > 0) {
+      return { ok: false, error: 'busy', message: 'Finish the current task first.' }
     }
 
-    shell.showItemInFolder(state.file)
+    if (state.kind === 'zip') {
+      const swapped = await installAndRestart({ file: state.file, kind: 'zip', version: state.version }, swapDeps())
 
-    return { ok: true, openedInstaller: true, fallback: (swapped as { reason: string }).reason }
-  }
+      if (swapped.ok) {
+        return { ok: true, restarting: true }
+      }
 
-  if (state.status === 'ready' && state.file && fs.existsSync(state.file)) {
+      rememberLog(`[update-download] swap failed: ${(swapped as { reason?: string }).reason ?? "unknown"}`)
+      shell.showItemInFolder(state.file)
+
+      return { ok: false, error: 'swap-failed', fellBack: true, message: 'Could not update automatically. The download is ready in Finder.' }
+    }
+
     if (process.platform === 'linux') {
       shell.showItemInFolder(state.file)
 
@@ -17325,6 +17331,8 @@ ipcMain.handle('factr:version', async () => {
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
     platform: process.platform,
+    // Set by the updater on the relaunch after a swap (the old version); the renderer shows "Updated to X" once.
+    updatedFrom: process.env.FACTR_UPDATED_FROM || null,
     factrRoot: resolveUpdateRoot(),
     bundleOutOfSync: skew.outOfSync,
     bundleCommitsBehind: skew.desktopCommitsBehind,

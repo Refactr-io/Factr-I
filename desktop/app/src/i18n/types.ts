@@ -424,6 +424,12 @@ export interface Translations {
     updateAvailableTip: (version: null | string) => string
     updateDownloadingTip: (version: string) => string
     updateReadyTip: (version: string) => string
+    updateRestartTip: string
+    updateBusyTip: string
+    updateInstallFallback: string
+    updateBannerReady: (version: string) => string
+    updateBannerRestart: string
+    updatedTo: (version: string) => string
     seeWhatsNew: string
     mcp: {
       needsAuthTitle: string

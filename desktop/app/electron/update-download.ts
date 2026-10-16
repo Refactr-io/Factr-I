@@ -12,7 +12,7 @@
 
 import { createHash } from 'node:crypto'
 
-import type { FeedStatus, UpdateAsset } from './update-feed'
+import type { FeedStatus, UpdateAsset, UpdateAssetKind } from './update-feed'
 
 export type DownloadStatus = 'downloading' | 'failed-silent' | 'idle' | 'ready'
 
@@ -21,6 +21,8 @@ export interface DownloadState {
   version: null | string
   /** Absolute path of the verified installer when status is 'ready'. */
   file: null | string
+  /** What the verified file is (zip = macOS app archive for the swap), when ready. */
+  kind: null | UpdateAssetKind
 }
 
 export interface DownloadFetchResponse {
@@ -61,7 +63,7 @@ export interface DownloaderDeps {
 const ALLOWED_HOSTS = new Set(['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'])
 const MAX_REDIRECTS = 5
 
-const IDLE: DownloadState = { status: 'idle', version: null, file: null }
+const IDLE: DownloadState = { status: 'idle', version: null, file: null, kind: null }
 
 /** https only, and only GitHub's own hosts (the dev origin aside). */
 export function isAllowedDownloadUrl(raw: string, devOrigin?: null | string): boolean {
@@ -156,13 +158,13 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
 
     // An earlier run may have left a complete, verified file: reuse it.
     if ((await deps.fs.size(finalPath)) === asset.size && (await hashFile(finalPath)) === asset.sha256) {
-      setState({ status: 'ready', version, file: finalPath })
+      setState({ status: 'ready', version, file: finalPath, kind: asset.kind })
 
       return
     }
 
     await deps.fs.remove(partialPath)
-    setState({ status: 'downloading', version, file: null })
+    setState({ status: 'downloading', version, file: null, kind: null })
 
     controller = new AbortController()
     const { signal } = controller
@@ -206,7 +208,7 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
       }
 
       await deps.fs.rename(partialPath, finalPath)
-      setState({ status: 'ready', version, file: finalPath })
+      setState({ status: 'ready', version, file: finalPath, kind: asset.kind })
       log(`ready ${asset.name}`)
     } catch (error) {
       await handle?.close().catch(() => undefined)
@@ -217,7 +219,7 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
         setState(IDLE)
       } else {
         failed.add(version)
-        setState({ status: 'failed-silent', version, file: null })
+        setState({ status: 'failed-silent', version, file: null, kind: null })
         log(`failed ${asset.name}: ${error instanceof Error ? error.message : String(error)}`)
       }
     } finally {
@@ -253,7 +255,7 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
         await download(asset, version)
       } catch (error) {
         log(`unexpected: ${String(error)}`)
-        setState({ status: 'failed-silent', version, file: null })
+        setState({ status: 'failed-silent', version, file: null, kind: null })
       } finally {
         running = null
       }

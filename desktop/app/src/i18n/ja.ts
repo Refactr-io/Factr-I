@@ -174,6 +174,12 @@ export const ja = defineLocale({
     updateAvailableTip: version => (version ? `アップデートがあります: Factr-I v${version}` : 'アップデートがあります'),
     updateDownloadingTip: version => `Factr-I v${version} をダウンロード中`,
     updateReadyTip: version => `アップデートの準備ができました: Factr-I v${version} をインストール`,
+    updateRestartTip: '再起動してアップデート',
+    updateBusyTip: 'まず現在のタスクを終えてください',
+    updateInstallFallback: '自動でアップデートできませんでした。ダウンロードは Finder にあります',
+    updateBannerReady: v => `Factr-I ${v} の準備ができました。再起動してアップデートします。`,
+    updateBannerRestart: '再起動',
+    updatedTo: v => `${v} にアップデートしました`,
     seeWhatsNew: '新機能を見る',
     mcp: {
       needsAuthTitle: 'MCP サーバーの再認証が必要です',

@@ -14,9 +14,15 @@ vi.mock('@/store/update-download', async () => {
 
   return {
     $autoDownload: atom(true),
-    $updateDownload: atom({ status: 'idle', version: null, file: null }),
+    $updateDownload: atom({ status: 'idle', version: null, file: null, kind: null }),
     installDownloadedUpdate: vi.fn()
   }
+})
+
+vi.mock('@/store/session-states', async () => {
+  const { atom } = await import('nanostores')
+
+  return { $workingSessionIds: atom<string[]>([]) }
 })
 
 vi.mock('@/components/ui/tooltip', () => ({ Tip: ({ children }: { children: React.ReactNode }) => children }))
@@ -28,13 +34,16 @@ vi.mock('@/i18n', () => ({
         updateAvailableTip: (version: null | string) =>
           version ? `Update available: Factr-I v${version}` : 'Update available',
         updateDownloadingTip: (version: string) => `Downloading Factr-I v${version}`,
-        updateReadyTip: (version: string) => `Update ready: install Factr-I v${version}`
+        updateReadyTip: (version: string) => `Update ready: install Factr-I v${version}`,
+        updateRestartTip: 'Restart to update',
+        updateBusyTip: 'Finish the current task first'
       }
     }
   })
 }))
 
 import { setOnboardingSurfaceActive } from '@/store/onboarding-presence'
+import { $workingSessionIds } from '@/store/session-states'
 import { $updateDownload, installDownloadedUpdate } from '@/store/update-download'
 import { $updateStatus, openUpdatesWindow } from '@/store/updates'
 
@@ -56,7 +65,7 @@ describe('UpdateIndicator', () => {
     setOnboardingSurfaceActive('intro', false)
     vi.mocked(openUpdatesWindow).mockClear()
     vi.mocked(installDownloadedUpdate).mockClear()
-    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'idle', version: null, file: null })
+    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'idle', version: null, file: null, kind: null })
   })
 
   afterEach(cleanup)
@@ -102,7 +111,7 @@ describe('UpdateIndicator', () => {
 
   it('shows a spinning loader while downloading and still opens the overlay on click', () => {
     setStatus(available)
-    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'downloading', version: '0.0.10', file: null })
+    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'downloading', version: '0.0.10', file: null, kind: null })
     render(<UpdateIndicator />)
 
     const button = screen.getByRole('button', { name: 'Downloading Factr-I v0.0.10' })
@@ -115,12 +124,36 @@ describe('UpdateIndicator', () => {
 
   it('shows the ready state and installs on click instead of opening the overlay', () => {
     setStatus(available)
-    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'ready', version: '0.0.10', file: '/x.dmg' })
+    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'ready', version: '0.0.10', file: '/x.dmg', kind: 'dmg' })
     render(<UpdateIndicator />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Update ready: install Factr-I v0.0.10' }))
 
     expect(installDownloadedUpdate).toHaveBeenCalledTimes(1)
     expect(openUpdatesWindow).not.toHaveBeenCalled()
+  })
+
+  it('a ready macOS zip says Restart to update and installs on click', () => {
+    setStatus(available)
+    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'ready', version: '0.0.10', file: '/x.zip', kind: 'zip' })
+    render(<UpdateIndicator />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restart to update' }))
+
+    expect(installDownloadedUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('is disabled with Finish the current task first while a turn runs', () => {
+    setStatus(available)
+    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'ready', version: '0.0.10', file: '/x.zip', kind: 'zip' })
+    ;($workingSessionIds as unknown as { set: (v: string[]) => void }).set(['s1'])
+    render(<UpdateIndicator />)
+
+    const button = screen.getByRole('button', { name: 'Finish the current task first' }) as HTMLButtonElement
+
+    expect(button.disabled).toBe(true)
+    fireEvent.click(button)
+    expect(installDownloadedUpdate).not.toHaveBeenCalled()
+    ;($workingSessionIds as unknown as { set: (v: string[]) => void }).set([])
   })
 })

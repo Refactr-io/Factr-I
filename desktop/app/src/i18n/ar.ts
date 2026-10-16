@@ -158,6 +158,12 @@ export const ar = defineLocale({
     updateAvailableTip: version => (version ? `تحديث متاح: Factr-I v${version}` : 'يتوفر تحديث'),
     updateDownloadingTip: version => `جارٍ تنزيل Factr-I v${version}`,
     updateReadyTip: version => `التحديث جاهز: ثبّت Factr-I v${version}`,
+    updateRestartTip: 'أعد التشغيل للتحديث',
+    updateBusyTip: 'أنهِ المهمة الحالية أولاً',
+    updateInstallFallback: 'تعذّر التحديث تلقائياً. التنزيل جاهز في Finder',
+    updateBannerReady: v => `Factr-I ${v} جاهز. أعد التشغيل للتحديث.`,
+    updateBannerRestart: 'إعادة التشغيل',
+    updatedTo: v => `تم التحديث إلى ${v}`,
     seeWhatsNew: 'عرض الجديد',
     mcp: {
       needsAuthTitle: 'خادم MCP يحتاج إلى إعادة المصادقة',
