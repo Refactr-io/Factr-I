@@ -334,3 +334,26 @@ describe('createUpdateDownloader', () => {
     expect(dl.getState().status).toBe('failed-silent')
   })
 })
+
+describe('adopt (a verified file from an earlier session)', () => {
+  it('shows Ready at once when idle and never replaces a running download', async () => {
+    const { createUpdateDownloader } = await import('./update-download')
+    const seen: string[] = []
+    const dl = createUpdateDownloader({
+      fetch: async () => {
+        throw new Error('no network at launch')
+      },
+      fs: {} as never,
+      updatesDir: '/u',
+      join: (...p: string[]) => p.join('/'),
+      isEnabled: () => true,
+      isOnline: () => false,
+      isBusy: () => false,
+      onState: s => void seen.push(s.status)
+    })
+
+    dl.adopt({ file: '/u/0.0.10/Factr-I-0.0.10-mac-arm64.zip', version: '0.0.10' })
+    expect(dl.getState()).toMatchObject({ status: 'ready', version: '0.0.10', kind: 'zip' })
+    expect(seen).toEqual(['ready'])
+  })
+})

@@ -271,5 +271,15 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
     controller?.abort()
   }
 
-  return { getState: () => state, maybeStart, pause }
+  /**
+   * A verified file from an earlier session (found on disk at launch, offline): show it as Ready right away instead of
+   * waiting for the next feed check. Never replaces a download that is in progress.
+   */
+  function adopt(found: { file: string; version: string }) {
+    if (state.status === 'idle' || state.status === 'failed-silent') {
+      setState({ ...IDLE, status: 'ready', version: found.version, file: found.file, kind: 'zip' })
+    }
+  }
+
+  return { adopt, getState: () => state, maybeStart, pause }
 }

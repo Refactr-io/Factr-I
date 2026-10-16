@@ -17198,6 +17198,15 @@ async function applyUpdateAtLaunch(): Promise<boolean> {
   return false
 }
 
+// A download finished in an earlier session shows up as Ready at once (no network needed).
+{
+  const earlier = process.platform === 'darwin' && app.isPackaged ? findReadyZip(UPDATES_DIR, app.getVersion()) : null
+
+  if (earlier) {
+    updateDownloader.adopt(earlier)
+  }
+}
+
 ipcMain.handle('factr:updates:check', async (_event, opts) => {
   const status = await updateFeed.check({ force: Boolean(opts?.force) })
 
