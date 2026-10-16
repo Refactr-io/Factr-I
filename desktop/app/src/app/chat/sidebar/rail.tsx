@@ -7,7 +7,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { Command } from '@/lib/icons'
+import { Command, Home, HomeFilled } from '@/lib/icons'
 import { profileShortLabel } from '@/lib/profile-short-label'
 import { cn } from '@/lib/utils'
 import { SIDEBAR_RAIL_WIDTH } from '@/store/layout'
@@ -95,6 +95,7 @@ export function SidebarRail() {
   const others = panes.filter(pane => pane.id !== 'sessions')
   const labelFor = (item: SidebarNavItem) => t.sidebar.nav[item.id] ?? item.label
   const { commandCenterOpen, toggleCommandCenter } = useOverlayRouting()
+
   const commandCenterLabel = commandCenterOpen
     ? t.shell.statusbar.closeCommandCenter
     : t.shell.statusbar.openCommandCenter
@@ -123,7 +124,7 @@ export function SidebarRail() {
           onClick={openSessions}
           tour="rail-nav-sessions"
         >
-          <Codicon name="home" size="1rem" />
+          {activeId === 'sessions' && !pageActive ? <HomeFilled className="size-4" /> : <Home className="size-4" />}
         </RailButton>
       )}
       {items.map(item => {
@@ -142,7 +143,11 @@ export function SidebarRail() {
             tip={item.keybindActionId ? <TipKeybindLabel actionId={item.keybindActionId} text={label} /> : undefined}
             tour={`rail-nav-${item.id}`}
           >
-            <item.icon className="size-4" />
+            {isNavItemActive(item, view, pathname) && item.filledIcon ? (
+              <item.filledIcon className="size-4" />
+            ) : (
+              <item.icon className="size-4" />
+            )}
           </RailButton>
         )
       })}

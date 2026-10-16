@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
 import { useContributions } from '@/contrib/react/use-contributions'
+import { Apps, AppsFilled, CalendarEvent, CalendarEventFilled, Files, FilesFilled, ListCheck, ListCheckFilled, MessageCircle, MessageCircleFilled } from '@/lib/icons'
 import { $interfaceMode, shownInMode } from '@/store/interface-mode'
 
 import {
@@ -29,14 +30,16 @@ export const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'capabilities',
     label: '',
-    icon: props => <Codicon name="symbol-misc" {...props} />,
+    icon: Apps,
+    filledIcon: AppsFilled,
     route: CAPABILITIES_ROUTE,
     keybindActionId: 'nav.capabilities'
   },
   {
     id: 'messaging',
     label: '',
-    icon: props => <Codicon name="comment" {...props} />,
+    icon: MessageCircle,
+    filledIcon: MessageCircleFilled,
     route: MESSAGING_ROUTE,
     keybindActionId: 'nav.messaging'
   },
@@ -45,7 +48,8 @@ export const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'artifacts',
     label: '',
-    icon: props => <Codicon name="files" {...props} />,
+    icon: Files,
+    filledIcon: FilesFilled,
     route: ARTIFACTS_ROUTE,
     keybindActionId: 'nav.artifacts',
     tier: 'advanced'
@@ -53,7 +57,8 @@ export const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'cron',
     label: '',
-    icon: props => <Codicon name="watch" {...props} />,
+    icon: CalendarEvent,
+    filledIcon: CalendarEventFilled,
     route: CRON_ROUTE,
     keybindActionId: 'nav.cron',
     tier: 'advanced'
@@ -61,7 +66,8 @@ export const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'agents',
     label: '',
-    icon: props => <Codicon name="history" {...props} />,
+    icon: ListCheck,
+    filledIcon: ListCheckFilled,
     route: AGENTS_ROUTE,
     keybindActionId: 'nav.agents',
     tier: 'advanced'

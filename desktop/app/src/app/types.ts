@@ -131,6 +131,8 @@ export interface SidebarNavItem extends Tiered {
   id: SidebarNavId | (string & {})
   label: string
   icon: React.ComponentType<{ className?: string }>
+  /** Solid twin shown while the row is the selected one (the rail's filled-when-active look). */
+  filledIcon?: React.ComponentType<{ className?: string }>
   route?: string
   action?: 'new-session'
   /** Keybind action id — when set, the tooltip shows the keybind hint. */
