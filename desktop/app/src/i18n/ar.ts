@@ -156,6 +156,8 @@ export const ar = defineLocale({
     updateReadyMessage: count => `${count} تغيير جديد متاح.`,
     updateReadyMessageUnknown: 'يتوفر تحديث جديد.',
     updateAvailableTip: version => (version ? `تحديث متاح: Factr-I v${version}` : 'يتوفر تحديث'),
+    updateDownloadingTip: version => `جارٍ تنزيل Factr-I v${version}`,
+    updateReadyTip: version => `التحديث جاهز: ثبّت Factr-I v${version}`,
     seeWhatsNew: 'عرض الجديد',
     mcp: {
       needsAuthTitle: 'خادم MCP يحتاج إلى إعادة المصادقة',
@@ -834,6 +836,9 @@ export const ar = defineLocale({
       justNowSuffix: 'الآن',
       automaticUpdates: 'التحديثات التلقائية',
       automaticUpdatesDesc: 'اسمح لـ Factr-I بالتحقق من التحديثات وتثبيتها.',
+      downloadUpdatesAutomatically: 'تنزيل التحديثات تلقائياً',
+      downloadUpdatesAutomaticallyDesc:
+        'ينزّل Factr-I الإصدارات الجديدة في الخلفية ليتم التثبيت بنقرة واحدة. لا يتم تثبيت شيء دون موافقتك.',
       branchCommit: (branch, commit) => `${branch} عند ${commit}`,
       never: 'أبدا',
       justNow: 'الآن',

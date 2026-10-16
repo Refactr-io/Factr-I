@@ -168,6 +168,8 @@ export const zhHant = defineLocale({
     updateReadyMessage: count => `有 ${count} 項新變更可用。`,
     updateReadyMessageUnknown: '有新更新可用。',
     updateAvailableTip: version => (version ? `有可用更新：Factr-I v${version}` : '有可用更新'),
+    updateDownloadingTip: version => `正在下載 Factr-I v${version}`,
+    updateReadyTip: version => `更新已就緒：安裝 Factr-I v${version}`,
     seeWhatsNew: '查看新增內容',
     mcp: {
       needsAuthTitle: 'MCP 伺服器需要重新驗證',
@@ -985,6 +987,9 @@ export const zhHant = defineLocale({
       justNowSuffix: ' · 剛剛',
       automaticUpdates: '自動更新',
       automaticUpdatesDesc: 'Factr-I 會在背景自動檢查更新，並在有可用更新時通知你。',
+      downloadUpdatesAutomatically: '自動下載更新',
+      downloadUpdatesAutomaticallyDesc:
+        'Factr-I 會在背景下載新版本，安裝只需一次點擊。未經你的操作不會安裝任何內容。',
       branchCommit: (branch, commit) => `分支 ${branch} · 提交 ${commit}`,
       never: '從未',
       justNow: '剛剛',

@@ -422,6 +422,8 @@ export interface Translations {
     updateReadyMessage: (count: number) => string
     updateReadyMessageUnknown: string
     updateAvailableTip: (version: null | string) => string
+    updateDownloadingTip: (version: string) => string
+    updateReadyTip: (version: string) => string
     seeWhatsNew: string
     mcp: {
       needsAuthTitle: string
@@ -970,6 +972,8 @@ export interface Translations {
       justNowSuffix: string
       automaticUpdates: string
       automaticUpdatesDesc: string
+      downloadUpdatesAutomatically: string
+      downloadUpdatesAutomaticallyDesc: string
       branchCommit: (branch: string, commit: string) => string
       never: string
       justNow: string

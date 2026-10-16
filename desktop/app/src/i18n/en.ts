@@ -395,6 +395,8 @@ export const en: Translations = {
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     updateReadyMessageUnknown: 'A new update is available.',
     updateAvailableTip: version => (version ? `Update available: Factr-I v${version}` : 'Update available'),
+    updateDownloadingTip: version => `Downloading Factr-I v${version}`,
+    updateReadyTip: version => `Update ready: install Factr-I v${version}`,
     seeWhatsNew: "See what's new",
     mcp: {
       needsAuthTitle: 'MCP server needs re-authentication',
@@ -1165,6 +1167,9 @@ export const en: Translations = {
       automaticUpdates: 'Automatic updates',
       automaticUpdatesDesc:
         'Factr-I checks for updates automatically in the background and lets you know when one is ready.',
+      downloadUpdatesAutomatically: 'Download updates automatically',
+      downloadUpdatesAutomaticallyDesc:
+        'Factr-I downloads new versions in the background so installing takes one click. Nothing is installed without you.',
       branchCommit: (branch, commit) => `Branch ${branch} · Commit ${commit}`,
       never: 'never',
       justNow: 'just now',

@@ -7,22 +7,32 @@
 
 import { atom, computed } from 'nanostores'
 
-import type { DesktopUpdateStatus } from '@/global'
+import type { DesktopUpdateDownloadState, DesktopUpdateStatus } from '@/global'
 import { $onboardingSurfaces } from '@/store/onboarding-presence'
+import { $autoDownload, $updateDownload } from '@/store/update-download'
 import { $updateStatus } from '@/store/updates'
 
+export type UpdateIndicatorPhase = 'available' | 'downloading' | 'ready'
+
 export interface UpdateIndicatorState {
+  /** available: a newer release exists; downloading / ready: its installer is being fetched / verified on disk. */
+  phase: UpdateIndicatorPhase
   visible: boolean
   /** The newest release version when the feed names one (no leading "v"), else null. */
   version: null | string
 }
 
-const HIDDEN: UpdateIndicatorState = { visible: false, version: null }
+const HIDDEN: UpdateIndicatorState = { phase: 'available', visible: false, version: null }
 
 /** Visibility rules, pure so they can be tested without stores. */
 export function updateIndicatorState(
   status: DesktopUpdateStatus | null | undefined,
-  { onboarding = false, online = true }: { onboarding?: boolean; online?: boolean } = {}
+  {
+    autoDownload = true,
+    download,
+    onboarding = false,
+    online = true
+  }: { autoDownload?: boolean; download?: DesktopUpdateDownloadState | null; onboarding?: boolean; online?: boolean } = {}
 ): UpdateIndicatorState {
   if (!status || status.supported === false || status.error || onboarding || !online) {
     return HIDDEN
@@ -37,7 +47,17 @@ export function updateIndicatorState(
 
   const version = status.latestVersion?.trim().replace(/^v/i, '') || null
 
-  return { visible: true, version }
+  // The download state only counts for the version the feed currently offers, and only while auto-download is on.
+  const forThisVersion = autoDownload && version !== null && download?.version === version
+
+  const phase: UpdateIndicatorPhase =
+    forThisVersion && download?.status === 'ready'
+      ? 'ready'
+      : forThisVersion && download?.status === 'downloading'
+        ? 'downloading'
+        : 'available'
+
+  return { phase, visible: true, version }
 }
 
 /** Reactive online flag; the browser events are the only signal there is. */
@@ -48,6 +68,8 @@ if (typeof window !== 'undefined') {
   window.addEventListener('offline', () => $online.set(false))
 }
 
-export const $updateIndicator = computed([$updateStatus, $onboardingSurfaces, $online], (status, surfaces, online) =>
-  updateIndicatorState(status, { onboarding: surfaces.size > 0, online })
+export const $updateIndicator = computed(
+  [$updateStatus, $onboardingSurfaces, $online, $updateDownload, $autoDownload],
+  (status, surfaces, online, download, autoDownload) =>
+    updateIndicatorState(status, { autoDownload, download, onboarding: surfaces.size > 0, online })
 )

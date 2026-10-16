@@ -452,6 +452,8 @@ import {
   windowOpacityFor,
   windowOpacityOptions
 } from './translucency'
+import { createUpdateDownloader } from './update-download'
+import { readAutoDownload, writeAutoDownload } from './update-download-pref'
 import { createUpdateFeed } from './update-feed'
 import { waitForUpdateClearance } from './update-gate'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
@@ -16555,6 +16557,13 @@ ipcMain.on('factr:active-work', (event, payload) => {
 
   activeWorkByWebContents.set(id, normalizeActiveWork(payload))
   updateStreamThrottleFromActiveWork()
+
+  // A running turn pauses the update download; the next idle moment resumes it.
+  if (mergeActiveWork(activeWorkByWebContents.values()).count > 0) {
+    updateDownloader.pause()
+  } else {
+    updateDownloader.maybeStart()
+  }
 })
 
 ipcMain.on('factr:titlebar-theme', (_event, payload) => {
@@ -17022,16 +17031,107 @@ const terminalIpc = registerTerminalIpc({
 const disposeTerminalSession = terminalIpc.disposeTerminalSession
 
 // Update check: ask GitHub for the latest published release and compare it with this build. There
-// is no auto-install while the app is unsigned: "apply" opens the release page in the browser.
+// is no silent self-replace while the app is unsigned: "apply" opens the release page, and a verified
+// installer (downloaded in the background, see update-download.ts) is only ever opened for the user.
+//
+// Dev/test hook (never in a packaged build): FACTR_UPDATE_FEED_URL replaces the GitHub releases API URL, so a
+// local server can serve a fake release JSON plus a small fake asset (its browser_download_url may point at the
+// same local origin; that origin alone may be fetched over plain http).
+const DEV_FEED_URL = !app.isPackaged ? process.env.FACTR_UPDATE_FEED_URL?.trim() || undefined : undefined
+
 const updateFeed = createUpdateFeed({
   fetch: (url, init) => electronNet.fetch(url, init as RequestInit),
   getVersion: () => app.getVersion(),
+  apiUrl: DEV_FEED_URL,
   openExternal: url => shell.openExternal(url)
 })
 
-ipcMain.handle('factr:updates:check', async (_event, opts) => updateFeed.check({ force: Boolean(opts?.force) }))
+const AUTO_DOWNLOAD_PREF = path.join(app.getPath('userData'), 'update-auto-download.json')
+let autoDownloadEnabled = readAutoDownload(AUTO_DOWNLOAD_PREF)
+let lastFeedStatus = null
+
+const updateDownloader = createUpdateDownloader({
+  fetch: (url, init) => electronNet.fetch(url, init as RequestInit) as never,
+  fs: {
+    mkdir: async dir => void (await fs.promises.mkdir(dir, { recursive: true })),
+    remove: target => fs.promises.rm(target, { recursive: true, force: true }),
+    list: async dir => fs.promises.readdir(dir).catch(() => []),
+    size: async file => fs.promises.stat(file).then(info => info.size, () => null),
+    rename: (from, to) => fs.promises.rename(from, to),
+    open: async file => {
+      const handle = await fs.promises.open(file, 'w')
+
+      return { write: async chunk => void (await handle.write(chunk)), close: () => handle.close() }
+    },
+    read: file => fs.createReadStream(file) as AsyncIterable<Uint8Array>
+  },
+  updatesDir: path.join(app.getPath('userData'), 'updates'),
+  join: (...parts) => path.join(...parts),
+  isEnabled: () => autoDownloadEnabled,
+  isOnline: () => electronNet.isOnline(),
+  isBusy: () => mergeActiveWork(activeWorkByWebContents.values()).count > 0,
+  devOrigin: DEV_FEED_URL ? new URL(DEV_FEED_URL).origin : null,
+  log: rememberLog,
+  onState: state => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('factr:updates:download-state-changed', state)
+      }
+    }
+  }
+})
+
+ipcMain.handle('factr:updates:check', async (_event, opts) => {
+  const status = await updateFeed.check({ force: Boolean(opts?.force) })
+
+  lastFeedStatus = status
+  updateDownloader.maybeStart(status)
+
+  return status
+})
 
 ipcMain.handle('factr:updates:apply', async () => updateFeed.apply())
+
+ipcMain.handle('factr:updates:download-state', () => updateDownloader.getState())
+
+// A Ready file is opened for the user (the .dmg in Finder, the installer on Windows, the folder on Linux);
+// anything else falls back to the release page. Nothing installs by itself.
+ipcMain.handle('factr:updates:install', async () => {
+  const state = updateDownloader.getState()
+
+  if (state.status === 'ready' && state.file && fs.existsSync(state.file)) {
+    if (process.platform === 'linux') {
+      shell.showItemInFolder(state.file)
+
+      return { ok: true, openedInstaller: true }
+    }
+
+    const failure = await shell.openPath(state.file)
+
+    if (!failure) {
+      return { ok: true, openedInstaller: true }
+    }
+  }
+
+  return updateFeed.apply()
+})
+
+ipcMain.handle('factr:updates:get-auto-download', () => autoDownloadEnabled)
+
+ipcMain.handle('factr:updates:set-auto-download', (_event, enabled) => {
+  autoDownloadEnabled = enabled !== false
+  writeAutoDownload(AUTO_DOWNLOAD_PREF, autoDownloadEnabled)
+
+  if (autoDownloadEnabled) {
+    updateDownloader.maybeStart(lastFeedStatus)
+  } else {
+    updateDownloader.pause()
+  }
+
+  return autoDownloadEnabled
+})
+
+app.on('before-quit', () => updateDownloader.pause())
 
 // Resolve the canonical Factr version (the one `release.py` bumps in
 // factr_backend/__init__.py + pyproject.toml) so the desktop About panel shows the

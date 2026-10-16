@@ -7,6 +7,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { type Translations, useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, ExternalLink, Info, Loader2, RefreshCw } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $autoDownload, setAutoDownload } from '@/store/update-download'
 import {
   $desktopVersion,
   $updateApply,
@@ -18,7 +19,7 @@ import {
   startActiveUpdate
 } from '@/store/updates'
 
-import { ListRow, SectionHeading, SettingsContent } from './primitives'
+import { ListRow, SectionHeading, SettingsContent, ToggleRow } from './primitives'
 import { UninstallSection } from './uninstall-section'
 
 const RELEASE_NOTES_URL = 'https://github.com/Refactr-io/Factr-I'
@@ -67,6 +68,7 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
   const a = t.settings.about
   const version = useStore($desktopVersion)
   const status = useStore($updateStatus)
+  const autoDownload = useStore($autoDownload)
   const apply = useStore($updateApply)
   const checking = useStore($updateChecking)
   const [justChecked, setJustChecked] = useState(false)
@@ -270,6 +272,13 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
           description={a.automaticUpdatesDesc}
           hint={feed ? undefined : a.branchCommit(status?.branch ?? 'unknown', status?.currentSha?.slice(0, 7) ?? 'unknown')}
           title={a.automaticUpdates}
+        />
+
+        <ToggleRow
+          checked={autoDownload}
+          description={a.downloadUpdatesAutomaticallyDesc}
+          label={a.downloadUpdatesAutomatically}
+          onChange={on => void setAutoDownload(on)}
         />
 
         {includeUninstall && <UninstallSection />}

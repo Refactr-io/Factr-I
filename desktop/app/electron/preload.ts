@@ -615,7 +615,18 @@ contextBridge.exposeInMainWorld('factrDesktop', {
   },
   updates: {
     check: opts => ipcRenderer.invoke('factr:updates:check', opts),
-    apply: opts => ipcRenderer.invoke('factr:updates:apply', opts)
+    apply: opts => ipcRenderer.invoke('factr:updates:apply', opts),
+    install: () => ipcRenderer.invoke('factr:updates:install'),
+    getDownloadState: () => ipcRenderer.invoke('factr:updates:download-state'),
+    onDownloadState: callback => {
+      const listener = (_event, state) => callback(state)
+
+      ipcRenderer.on('factr:updates:download-state-changed', listener)
+
+      return () => ipcRenderer.removeListener('factr:updates:download-state-changed', listener)
+    },
+    getAutoDownload: () => ipcRenderer.invoke('factr:updates:get-auto-download'),
+    setAutoDownload: enabled => ipcRenderer.invoke('factr:updates:set-auto-download', enabled)
   },
   // Find-in-page (Ctrl/Cmd+F): delegates to Electron's
   // webContents.findInPage on the IPC sender's window so a Cmd+F pressed

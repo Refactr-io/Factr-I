@@ -2,8 +2,9 @@ import { useStore } from '@nanostores/react'
 
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { CircleArrowUp } from '@/lib/icons'
+import { CircleArrowDownFilled, CircleArrowUp, Loader } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { installDownloadedUpdate } from '@/store/update-download'
 import { $updateIndicator } from '@/store/update-indicator'
 import { openUpdatesWindow } from '@/store/updates'
 
@@ -14,27 +15,37 @@ const RAIL_BUTTON =
  *  It stays for as long as the update does (the toast snooze does not touch it) and opens the updates overlay. */
 export function UpdateIndicator() {
   const { t } = useI18n()
-  const { visible, version } = useStore($updateIndicator)
+  const { phase, version, visible } = useStore($updateIndicator)
 
   if (!visible) {
     return null
   }
 
-  const label = t.notifications.updateAvailableTip(version)
+  const n = t.notifications
+  const label = phase === 'ready' && version ? n.updateReadyTip(version) : phase === 'downloading' && version ? n.updateDownloadingTip(version) : n.updateAvailableTip(version)
 
   return (
     <Tip label={label} placement="left-rail">
       <button
         aria-label={label}
         className={cn(RAIL_BUTTON, 'relative')}
+        data-phase={phase}
         data-tour="rail-update-available"
-        onClick={() => openUpdatesWindow('client')}
+        onClick={() => (phase === 'ready' ? void installDownloadedUpdate() : openUpdatesWindow('client'))}
         type="button"
       >
-        <CircleArrowUp className="size-4" />
-        <span aria-hidden="true" className="absolute right-1 top-1 size-1.5 rounded-full bg-(--ui-accent)" />
+        {phase === 'downloading' ? (
+          // A slow, steady turn (static under reduced motion): quiet progress, no glow.
+          <Loader className="size-4 motion-safe:animate-[spin_1.6s_linear_infinite]" />
+        ) : phase === 'ready' ? (
+          <CircleArrowDownFilled className="size-4 text-foreground" />
+        ) : (
+          <CircleArrowUp className="size-4" />
+        )}
+        {phase !== 'downloading' && (
+          <span aria-hidden="true" className="absolute right-1 top-1 size-1.5 rounded-full bg-(--ui-accent)" />
+        )}
       </button>
     </Tip>
   )
 }
-

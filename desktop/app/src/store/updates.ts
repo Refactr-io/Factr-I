@@ -21,6 +21,7 @@ import { reconnectGateway } from '@/store/gateway-reconnect'
 import { dismissNotification, notify } from '@/store/notifications'
 import { onboardingSurfaceActive } from '@/store/onboarding-presence'
 import { $connection } from '@/store/session'
+import { startUpdateDownloadSync } from '@/store/update-download'
 import type { BackendUpdateCheckResponse } from '@/types/factr'
 
 export interface UpdateApplyState {
@@ -1028,6 +1029,7 @@ export function startUpdatePoller(): void {
   }
 
   pollerStarted = true
+  startUpdateDownloadSync()
   runPassiveChecks()
   void refreshDesktopVersion()
 

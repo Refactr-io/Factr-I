@@ -586,6 +586,12 @@ declare global {
       updates: {
         check: (opts?: { force?: boolean }) => Promise<DesktopUpdateStatus>
         apply: (opts?: DesktopUpdateApplyOptions) => Promise<DesktopUpdateApplyResult>
+        /** Opens the verified installer when one is Ready, else the release page. Never installs by itself. */
+        install?: () => Promise<DesktopUpdateApplyResult>
+        getDownloadState?: () => Promise<DesktopUpdateDownloadState>
+        onDownloadState?: (callback: (state: DesktopUpdateDownloadState) => void) => () => void
+        getAutoDownload?: () => Promise<boolean>
+        setAutoDownload?: (enabled: boolean) => Promise<boolean>
       }
       uninstall: {
         summary: () => Promise<DesktopUninstallSummary>
@@ -721,6 +727,12 @@ export interface DesktopUpdateStatus {
   commits?: DesktopUpdateCommit[]
   dirty?: boolean
   fetchedAt?: number
+}
+
+export interface DesktopUpdateDownloadState {
+  status: 'downloading' | 'failed-silent' | 'idle' | 'ready'
+  version: null | string
+  file: null | string
 }
 
 export type DesktopUpdateDirtyStrategy = 'abort' | 'stash' | 'force'

@@ -182,6 +182,8 @@ export const zh = defineLocale({
     updateReadyMessage: count => `有 ${count} 项新更改可用。`,
     updateReadyMessageUnknown: '有新更新可用。',
     updateAvailableTip: version => (version ? `有可用更新：Factr-I v${version}` : '有可用更新'),
+    updateDownloadingTip: version => `正在下载 Factr-I v${version}`,
+    updateReadyTip: version => `更新已就绪：安装 Factr-I v${version}`,
     seeWhatsNew: '查看更新内容',
     mcp: {
       needsAuthTitle: 'MCP 服务器需要重新认证',
@@ -1176,6 +1178,9 @@ export const zh = defineLocale({
       justNowSuffix: ' · 刚刚',
       automaticUpdates: '自动更新',
       automaticUpdatesDesc: 'Factr-I 会在后台自动检查更新，并在有可用更新时通知你。',
+      downloadUpdatesAutomatically: '自动下载更新',
+      downloadUpdatesAutomaticallyDesc:
+        'Factr-I 会在后台下载新版本，安装只需一次点击。未经你的操作不会安装任何内容。',
       branchCommit: (branch, commit) => `分支 ${branch} · 提交 ${commit}`,
       never: '从未',
       justNow: '刚刚',

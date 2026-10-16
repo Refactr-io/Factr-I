@@ -172,6 +172,8 @@ export const ja = defineLocale({
     updateReadyMessage: count => `${count} 件の新しい変更が利用可能です。`,
     updateReadyMessageUnknown: '新しい更新が利用可能です。',
     updateAvailableTip: version => (version ? `アップデートがあります: Factr-I v${version}` : 'アップデートがあります'),
+    updateDownloadingTip: version => `Factr-I v${version} をダウンロード中`,
+    updateReadyTip: version => `アップデートの準備ができました: Factr-I v${version} をインストール`,
     seeWhatsNew: '新機能を見る',
     mcp: {
       needsAuthTitle: 'MCP サーバーの再認証が必要です',
@@ -912,6 +914,9 @@ export const ja = defineLocale({
       justNowSuffix: ' · たった今',
       automaticUpdates: '自動更新',
       automaticUpdatesDesc: 'Factr-I はバックグラウンドで自動的に更新を確認し、利用可能になったら通知します。',
+      downloadUpdatesAutomatically: 'アップデートを自動でダウンロード',
+      downloadUpdatesAutomaticallyDesc:
+        'Factr-I は新しいバージョンをバックグラウンドでダウンロードするので、インストールはワンクリックで済みます。あなたの操作なしに何もインストールされません。',
       branchCommit: (branch, commit) => `ブランチ ${branch} · コミット ${commit}`,
       never: '未確認',
       justNow: 'たった今',

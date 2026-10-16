@@ -190,6 +190,8 @@ export const ru = defineLocale({
       `Доступно ${count} ${count % 10 === 1 && count % 100 !== 11 ? 'новое изменение' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'новых изменения' : 'новых изменений'}.`,
     updateReadyMessageUnknown: 'Доступно новое обновление.',
     updateAvailableTip: version => (version ? `Доступно обновление: Factr-I v${version}` : 'Доступно обновление'),
+    updateDownloadingTip: version => `Скачивание Factr-I v${version}`,
+    updateReadyTip: version => `Обновление готово: установить Factr-I v${version}`,
     seeWhatsNew: 'Смотреть, что нового',
     mcp: {
       needsAuthTitle: 'Серверу MCP требуется повторная аутентификация',
@@ -1029,6 +1031,9 @@ export const ru = defineLocale({
       justNowSuffix: ' · только что',
       automaticUpdates: 'Автоматические обновления',
       automaticUpdatesDesc: 'Factr-I автоматически проверяет обновления в фоне и сообщает, когда они готовы.',
+      downloadUpdatesAutomatically: 'Скачивать обновления автоматически',
+      downloadUpdatesAutomaticallyDesc:
+        'Factr-I скачивает новые версии в фоне, чтобы установка занимала один клик. Ничего не устанавливается без вашего участия.',
       branchCommit: (branch, commit) => `Ветка ${branch} · Коммит ${commit}`,
       never: 'никогда',
       justNow: 'только что',

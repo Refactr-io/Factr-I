@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { compareSemver, createUpdateFeed, parseSemver, RELEASES_PAGE_URL, serverWaitMs } from './update-feed'
+import {
+  compareSemver,
+  createUpdateFeed,
+  expectedAssetName,
+  parseDigest,
+  parseSemver,
+  pickUpdateAsset,
+  RELEASES_PAGE_URL,
+  serverWaitMs
+} from './update-feed'
 
 const release = (over: Record<string, unknown> = {}) => ({
   tag_name: 'v0.2.0',
@@ -198,5 +207,62 @@ describe('update feed apply', () => {
 
     await feed.apply()
     expect(openExternal).toHaveBeenCalledWith(RELEASES_PAGE_URL)
+  })
+})
+
+// Asset pick: the installer for this platform, by exact name, with a size and a sha256 digest.
+const DIGEST = `sha256:${'ab'.repeat(32)}`
+
+const releaseAsset = (name: string, extra: Record<string, unknown> = {}) => ({
+  name,
+  size: 1234,
+  digest: DIGEST,
+  browser_download_url: `https://github.com/Refactr-io/Factr-I/releases/download/v0.0.9/${name}`,
+  ...extra
+})
+
+describe('update asset', () => {
+  it('expectedAssetName follows the artifact names per platform and arch', () => {
+    expect(expectedAssetName('0.0.9', 'darwin', 'arm64')).toBe('Factr-I-0.0.9-mac-arm64.dmg')
+    expect(expectedAssetName('0.0.9', 'win32', 'x64')).toBe('Factr-I-0.0.9-win-x64.exe')
+    expect(expectedAssetName('0.0.9', 'linux', 'x64')).toBe('Factr-I-0.0.9-linux-x86_64.AppImage')
+    expect(expectedAssetName('0.0.9', 'darwin', 'x64')).toBeNull()
+    expect(expectedAssetName('0.0.9', 'freebsd', 'x64')).toBeNull()
+  })
+
+  it('parseDigest accepts only sha256:<64 hex> and lower-cases it', () => {
+    expect(parseDigest(`sha256:${'AB'.repeat(32)}`)).toBe('ab'.repeat(32))
+    expect(parseDigest('sha1:abc')).toBeNull()
+    expect(parseDigest('sha256:short')).toBeNull()
+    expect(parseDigest(undefined)).toBeNull()
+  })
+
+  it('pickUpdateAsset picks this platform by exact name and returns size, url and sha', () => {
+    const assets = [
+      releaseAsset('Factr-I-0.0.9-win-x64.exe'),
+      releaseAsset('Factr-I-0.0.9-mac-arm64.dmg'),
+      releaseAsset('Factr-I-0.0.9-mac-arm64.dmg.blockmap')
+    ]
+
+    const picked = pickUpdateAsset(assets, '0.0.9', 'darwin', 'arm64')
+
+    expect(picked?.name).toBe('Factr-I-0.0.9-mac-arm64.dmg')
+    expect(picked?.size).toBe(1234)
+    expect(picked?.sha256).toBe('ab'.repeat(32))
+    expect(picked?.url).toMatch(/^https:\/\/github\.com\/Refactr-io\/Factr-I\//)
+  })
+
+  it('pickUpdateAsset is null (notify only) for a missing asset, digest, size or foreign url', () => {
+    const dmg = 'Factr-I-0.0.9-mac-arm64.dmg'
+
+    expect(pickUpdateAsset([releaseAsset('Factr-I-0.0.9-win-x64.exe')], '0.0.9', 'darwin', 'arm64')).toBeNull()
+    expect(pickUpdateAsset([releaseAsset(dmg, { digest: null })], '0.0.9', 'darwin', 'arm64')).toBeNull()
+    expect(pickUpdateAsset([releaseAsset(dmg, { size: 0 })], '0.0.9', 'darwin', 'arm64')).toBeNull()
+
+    expect(
+      pickUpdateAsset([releaseAsset(dmg, { browser_download_url: 'https://evil.example/x.dmg' })], '0.0.9', 'darwin', 'arm64')
+    ).toBeNull()
+
+    expect(pickUpdateAsset(undefined, '0.0.9', 'darwin', 'arm64')).toBeNull()
   })
 })
