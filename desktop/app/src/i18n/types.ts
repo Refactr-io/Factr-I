@@ -425,6 +425,7 @@ export interface Translations {
     updateDownloadingTip: (version: string) => string
     updateReadyTip: (version: string) => string
     updateRestartTip: string
+    updateInstallTip: string
     updateBusyTip: string
     updateInstallFallback: string
     updateBannerReady: (version: string) => string

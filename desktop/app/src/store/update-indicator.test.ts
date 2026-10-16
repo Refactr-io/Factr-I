@@ -13,11 +13,18 @@ const available: DesktopUpdateStatus = {
 
 describe('updateIndicatorState', () => {
   it('shows with the version when an update is available', () => {
-    expect(updateIndicatorState(available)).toEqual({ kind: null, phase: 'available', visible: true, version: '0.0.10' })
+    expect(updateIndicatorState(available)).toEqual({
+      downloadable: false,
+      kind: null,
+      phase: 'available',
+      visible: true,
+      version: '0.0.10'
+    })
   })
 
   it('shows without a version when the feed names none but a target exists', () => {
     expect(updateIndicatorState({ supported: true, behind: 3, targetSha: 'abc' })).toEqual({
+      downloadable: false,
       kind: null,
       phase: 'available',
       visible: true,
@@ -67,9 +74,16 @@ describe('updateIndicatorState', () => {
     expect(updateIndicatorState(available, { download: { ...base, status: 'failed-silent' } }).phase).toBe('available')
   })
 
-  it('stays plain available when auto-download is off, even with a leftover download state', () => {
-    const download = { status: 'ready' as const, version: '0.0.10', file: '/x.dmg', kind: 'dmg' as const }
+  it('follows the download state whatever the auto-download setting (a manual download shows too)', () => {
+    const download = { status: 'downloading' as const, version: '0.0.10', file: null, kind: null }
 
-    expect(updateIndicatorState(available, { autoDownload: false, download }).phase).toBe('available')
+    expect(updateIndicatorState(available, { download }).phase).toBe('downloading')
+  })
+
+  it('knows whether a download is possible from the feed asset', () => {
+    const asset = { kind: 'zip', name: 'a.zip', sha256: 'ab', size: 1, url: 'https://github.com/x' }
+
+    expect(updateIndicatorState({ ...available, asset }).downloadable).toBe(true)
+    expect(updateIndicatorState(available).downloadable).toBe(false)
   })
 })

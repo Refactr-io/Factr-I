@@ -13,14 +13,10 @@ vi.mock('@/store/session-states', async () => {
   return { $workingSessionIds: atom<string[]>([]) }
 })
 
-vi.mock('@/store/update-download', async () => {
-  const { atom } = await import('nanostores')
+vi.mock('@/store/update-download', async importOriginal => {
+  const actual = (await importOriginal()) as Record<string, unknown>
 
-  return {
-    $autoDownload: atom(true),
-    $updateDownload: atom({ status: 'idle', version: null, file: null, kind: null }),
-    installDownloadedUpdate: vi.fn()
-  }
+  return { ...actual, installDownloadedUpdate: vi.fn(), startDownloadNow: vi.fn() }
 })
 
 vi.mock('@/components/ui/button', () => ({

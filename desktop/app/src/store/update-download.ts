@@ -16,6 +16,22 @@ export const $updateDownload = atom<DesktopUpdateDownloadState>(IDLE)
 /** The "Download updates automatically" setting (default ON, persisted by the main process). */
 export const $autoDownload = atom<boolean>(true)
 
+/** "Updated to X" after a swap: the main process reports { from, to } once, on the first launch after one. */
+export const $updatedNote = atom<null | { from: string; version: string }>(null)
+
+export function noteUpdated(record: { from?: string; to?: string } | null | undefined): void {
+  const from = record?.from?.trim()
+  const version = record?.to?.trim()
+
+  if (from && version && from !== version) {
+    $updatedNote.set({ from, version })
+  }
+}
+
+export function dismissUpdatedNote(): void {
+  $updatedNote.set(null)
+}
+
 let started = false
 
 export function startUpdateDownloadSync(): void {
@@ -28,6 +44,7 @@ export function startUpdateDownloadSync(): void {
   started = true
   bridge.onDownloadState?.(state => $updateDownload.set(state))
   void bridge.getDownloadState?.().then(state => state && $updateDownload.set(state), () => undefined)
+  void bridge.getPostUpdate?.().then(record => record && noteUpdated(record), () => undefined)
   void bridge.getAutoDownload?.().then(value => $autoDownload.set(value !== false), () => undefined)
 }
 
@@ -45,6 +62,15 @@ export async function setAutoDownload(enabled: boolean): Promise<void> {
   }
 }
 
+/** Auto-update is off: the indicator's click starts the download itself. Never throws. */
+export async function startDownloadNow(): Promise<void> {
+  try {
+    await window.factrDesktop?.updates.downloadNow?.()
+  } catch {
+    // Silent: the indicator stays on "available" and its click can try again.
+  }
+}
+
 /**
  * Install the verified update: on macOS the app swaps itself and restarts, elsewhere the installer is opened for the
  * user. When the automatic swap fails the main process reveals the download and we say so quietly (an info notice,
@@ -54,7 +80,7 @@ export async function installDownloadedUpdate(): Promise<void> {
   try {
     const result = await window.factrDesktop?.updates.install?.()
 
-    if (result?.fellBack) {
+    if (result?.fallback) {
       notify({
         kind: 'info',
         message: translateNow('notifications.updateInstallFallback'),
@@ -70,4 +96,5 @@ export function resetUpdateDownloadForTests(): void {
   started = false
   $updateDownload.set(IDLE)
   $autoDownload.set(true)
+  $updatedNote.set(null)
 }

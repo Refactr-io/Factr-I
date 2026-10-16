@@ -227,8 +227,12 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
     }
   }
 
-  /** Start (or resume) the download for the latest feed status when every gate is open. Never throws. */
-  function maybeStart(status?: FeedStatus | null): void {
+  /**
+   * Start (or resume) the download for the latest feed status when every gate is open. `ignoreEnabled` is for an
+   * explicit user click with auto-update off: it skips only the setting; online and idle are still required.
+   * Never throws.
+   */
+  function maybeStart(status?: FeedStatus | null, { ignoreEnabled = false }: { ignoreEnabled?: boolean } = {}): void {
     if (status) {
       latest = status
     }
@@ -237,7 +241,7 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
     const asset = feed?.updateAvailable ? feed.asset : undefined
     const version = feed?.latestVersion
 
-    if (!feed || !asset || !version || running || !deps.isEnabled() || !deps.isOnline() || deps.isBusy()) {
+    if (!feed || !asset || !version || running || (!ignoreEnabled && !deps.isEnabled()) || !deps.isOnline() || deps.isBusy()) {
       return
     }
 

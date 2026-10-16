@@ -10,13 +10,15 @@ import { atom, computed } from 'nanostores'
 import type { DesktopUpdateDownloadState, DesktopUpdateStatus } from '@/global'
 import { $onboardingSurfaces } from '@/store/onboarding-presence'
 import { $workingSessionIds } from '@/store/session-states'
-import { $autoDownload, $updateDownload } from '@/store/update-download'
+import { $updateDownload } from '@/store/update-download'
 import { $updateStatus } from '@/store/updates'
 
 export type UpdateIndicatorPhase = 'available' | 'downloading' | 'ready'
 
 export interface UpdateIndicatorState {
   /** available: a newer release exists; downloading / ready: its installer is being fetched / verified on disk. */
+  /** This platform's installer is listed with a digest, so a download can start from the indicator. */
+  downloadable: boolean
   /** What the ready file is: zip means macOS restart-to-update, the rest open an installer. */
   kind: DesktopUpdateDownloadState['kind']
   phase: UpdateIndicatorPhase
@@ -25,17 +27,12 @@ export interface UpdateIndicatorState {
   version: null | string
 }
 
-const HIDDEN: UpdateIndicatorState = { kind: null, phase: 'available', visible: false, version: null }
+const HIDDEN: UpdateIndicatorState = { downloadable: false, kind: null, phase: 'available', visible: false, version: null }
 
 /** Visibility rules, pure so they can be tested without stores. */
 export function updateIndicatorState(
   status: DesktopUpdateStatus | null | undefined,
-  {
-    autoDownload = true,
-    download,
-    onboarding = false,
-    online = true
-  }: { autoDownload?: boolean; download?: DesktopUpdateDownloadState | null; onboarding?: boolean; online?: boolean } = {}
+  { download, onboarding = false, online = true }: { download?: DesktopUpdateDownloadState | null; onboarding?: boolean; online?: boolean } = {}
 ): UpdateIndicatorState {
   if (!status || status.supported === false || status.error || onboarding || !online) {
     return HIDDEN
@@ -50,8 +47,8 @@ export function updateIndicatorState(
 
   const version = status.latestVersion?.trim().replace(/^v/i, '') || null
 
-  // The download state only counts for the version the feed currently offers, and only while auto-download is on.
-  const forThisVersion = autoDownload && version !== null && download?.version === version
+  // The download state only counts for the version the feed currently offers.
+  const forThisVersion = version !== null && download?.version === version
 
   const phase: UpdateIndicatorPhase =
     forThisVersion && download?.status === 'ready'
@@ -60,7 +57,13 @@ export function updateIndicatorState(
         ? 'downloading'
         : 'available'
 
-  return { kind: phase === 'ready' ? (download?.kind ?? null) : null, phase, visible: true, version }
+  return {
+    downloadable: Boolean(status.asset),
+    kind: phase === 'ready' ? (download?.kind ?? null) : null,
+    phase,
+    visible: true,
+    version
+  }
 }
 
 /** Reactive online flag; the browser events are the only signal there is. */
@@ -72,9 +75,8 @@ if (typeof window !== 'undefined') {
 }
 
 export const $updateIndicator = computed(
-  [$updateStatus, $onboardingSurfaces, $online, $updateDownload, $autoDownload],
-  (status, surfaces, online, download, autoDownload) =>
-    updateIndicatorState(status, { autoDownload, download, onboarding: surfaces.size > 0, online })
+  [$updateStatus, $onboardingSurfaces, $online, $updateDownload],
+  (status, surfaces, online, download) => updateIndicatorState(status, { download, onboarding: surfaces.size > 0, online })
 )
 
 /** True while any chat is mid-turn: restart-to-update must wait (the main process refuses too). */

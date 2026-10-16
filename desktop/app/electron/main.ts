@@ -17211,28 +17211,36 @@ ipcMain.handle('factr:updates:apply', async () => updateFeed.apply())
 
 ipcMain.handle('factr:updates:download-state', () => updateDownloader.getState())
 
+// The rail indicator's click with auto-update off: fetch now, still only when online and idle.
+ipcMain.handle('factr:updates:download-now', () => {
+  updateDownloader.maybeStart(lastFeedStatus, { ignoreEnabled: true })
+})
+
 // A Ready file is installed for the user: macOS (zip) swaps the app in place and restarts through update-swap.ts,
 // Windows opens the installer, Linux reveals the AppImage, a dmg opens in Finder; anything else falls back to the
 // release page. Never while an agent turn or tool call is running, and never silently.
 ipcMain.handle('factr:updates:install', async () => {
   const state = updateDownloader.getState()
 
-  if (state.status === 'ready' && state.file && state.version && state.kind && fs.existsSync(state.file)) {
+  if (state.status === 'ready' && state.file && state.version && fs.existsSync(state.file)) {
     if (mergeActiveWork(activeWorkByWebContents.values()).count > 0) {
       return { ok: false, error: 'busy', message: 'Finish the current task first.' }
     }
 
-    if (state.kind === 'zip') {
+    if (state.file.endsWith('.zip')) {
       const swapped = await installAndRestart({ file: state.file, kind: 'zip', version: state.version }, swapDeps())
 
       if (swapped.ok) {
         return { ok: true, restarting: true }
       }
 
-      rememberLog(`[update-download] swap failed: ${(swapped as { reason?: string }).reason ?? "unknown"}`)
+      const reason = (swapped as { reason: string }).reason
+
+      rememberLog(`[update-download] swap failed: ${reason}`)
       shell.showItemInFolder(state.file)
 
-      return { ok: false, error: 'swap-failed', fellBack: true, message: 'Could not update automatically. The download is ready in Finder.' }
+      // fallback tells the renderer to say so quietly; it is never an error.
+      return { ok: true, openedInstaller: true, fallback: reason }
     }
 
     if (process.platform === 'linux') {
@@ -17331,8 +17339,6 @@ ipcMain.handle('factr:version', async () => {
     electronVersion: process.versions.electron,
     nodeVersion: process.versions.node,
     platform: process.platform,
-    // Set by the updater on the relaunch after a swap (the old version); the renderer shows "Updated to X" once.
-    updatedFrom: process.env.FACTR_UPDATED_FROM || null,
     factrRoot: resolveUpdateRoot(),
     bundleOutOfSync: skew.outOfSync,
     bundleCommitsBehind: skew.desktopCommitsBehind,

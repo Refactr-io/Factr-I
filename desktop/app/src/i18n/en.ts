@@ -398,6 +398,7 @@ export const en: Translations = {
     updateDownloadingTip: version => `Downloading Factr-I v${version}`,
     updateReadyTip: version => `Update ready: install Factr-I v${version}`,
     updateRestartTip: 'Restart to update',
+    updateInstallTip: 'Install update',
     updateBusyTip: 'Finish the current task first',
     updateInstallFallback: 'Could not update automatically. The download is ready in Finder',
     updateBannerReady: v => `Factr-I ${v} is ready. Restart to update.`,
@@ -1175,7 +1176,7 @@ export const en: Translations = {
         'Factr-I checks for updates automatically in the background and lets you know when one is ready.',
       downloadUpdatesAutomatically: 'Download updates automatically',
       downloadUpdatesAutomaticallyDesc:
-        'Factr-I downloads new versions in the background so installing takes one click. Nothing is installed without you.',
+        'Factr-I downloads new versions in the background and installs them the next time it starts (macOS), or when you click Restart to update. Turn off to update manually.',
       branchCommit: (branch, commit) => `Branch ${branch} · Commit ${commit}`,
       never: 'never',
       justNow: 'just now',

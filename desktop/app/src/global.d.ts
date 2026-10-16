@@ -588,6 +588,10 @@ declare global {
         apply: (opts?: DesktopUpdateApplyOptions) => Promise<DesktopUpdateApplyResult>
         /** Opens the verified installer when one is Ready, else the release page. Never installs by itself. */
         install?: () => Promise<DesktopUpdateApplyResult>
+        /** Start the download now even with auto-update off (still needs to be online and idle). */
+        downloadNow?: () => Promise<void>
+        /** { from, to } once after an update swapped the app (then cleared), else null. */
+        getPostUpdate?: () => Promise<null | { from: string; to: string }>
         getDownloadState?: () => Promise<DesktopUpdateDownloadState>
         onDownloadState?: (callback: (state: DesktopUpdateDownloadState) => void) => () => void
         getAutoDownload?: () => Promise<boolean>
@@ -629,8 +633,6 @@ export interface DesktopVersionInfo {
   electronVersion: string
   nodeVersion: string
   platform: string
-  /** The version the app was updated from, set only on the first launch after an update (FACTR_UPDATED_FROM). */
-  updatedFrom?: null | string
   factrRoot: string
   /** True when the running renderer bundle predates desktop changes in the
    *  installed source tree (runtime updated, app binary not rebuilt/swapped). */
@@ -726,6 +728,8 @@ export interface DesktopUpdateStatus {
   releaseUrl?: string
   notes?: string
   targetSha?: string
+  /** Present when this platform's installer is listed with a digest, so a background download is possible. */
+  asset?: { kind: string; name: string; sha256: string; size: number; url: string }
   commits?: DesktopUpdateCommit[]
   dirty?: boolean
   fetchedAt?: number
@@ -773,8 +777,8 @@ export interface DesktopUpdateApplyResult {
   restarting?: boolean
   /** The verified installer / folder was opened for the user. */
   openedInstaller?: boolean
-  /** The automatic swap failed; the download was revealed in Finder instead. */
-  fellBack?: boolean
+  /** The automatic swap failed; the download was revealed in Finder instead (the reason). */
+  fallback?: string
   command?: string
   factrRoot?: string
   /** True when the backend was updated but the GUI couldn't be relaunched in

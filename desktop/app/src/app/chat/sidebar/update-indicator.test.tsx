@@ -9,14 +9,10 @@ vi.mock('@/store/updates', async () => {
   return { $updateStatus: atom(null), openUpdatesWindow: vi.fn() }
 })
 
-vi.mock('@/store/update-download', async () => {
-  const { atom } = await import('nanostores')
+vi.mock('@/store/update-download', async importOriginal => {
+  const actual = (await importOriginal()) as Record<string, unknown>
 
-  return {
-    $autoDownload: atom(true),
-    $updateDownload: atom({ status: 'idle', version: null, file: null, kind: null }),
-    installDownloadedUpdate: vi.fn()
-  }
+  return { ...actual, installDownloadedUpdate: vi.fn(), startDownloadNow: vi.fn() }
 })
 
 vi.mock('@/store/session-states', async () => {
@@ -36,6 +32,7 @@ vi.mock('@/i18n', () => ({
         updateDownloadingTip: (version: string) => `Downloading Factr-I v${version}`,
         updateReadyTip: (version: string) => `Update ready: install Factr-I v${version}`,
         updateRestartTip: 'Restart to update',
+        updateInstallTip: 'Install update',
         updateBusyTip: 'Finish the current task first'
       }
     }
@@ -44,7 +41,7 @@ vi.mock('@/i18n', () => ({
 
 import { setOnboardingSurfaceActive } from '@/store/onboarding-presence'
 import { $workingSessionIds } from '@/store/session-states'
-import { $updateDownload, installDownloadedUpdate } from '@/store/update-download'
+import { $autoDownload, $updateDownload, installDownloadedUpdate, startDownloadNow } from '@/store/update-download'
 import { $updateStatus, openUpdatesWindow } from '@/store/updates'
 
 import { UpdateIndicator } from './update-indicator'
@@ -65,6 +62,8 @@ describe('UpdateIndicator', () => {
     setOnboardingSurfaceActive('intro', false)
     vi.mocked(openUpdatesWindow).mockClear()
     vi.mocked(installDownloadedUpdate).mockClear()
+    vi.mocked(startDownloadNow).mockClear()
+    $autoDownload.set(true)
     ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'idle', version: null, file: null, kind: null })
   })
 
@@ -127,7 +126,7 @@ describe('UpdateIndicator', () => {
     ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'ready', version: '0.0.10', file: '/x.dmg', kind: 'dmg' })
     render(<UpdateIndicator />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Update ready: install Factr-I v0.0.10' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install update' }))
 
     expect(installDownloadedUpdate).toHaveBeenCalledTimes(1)
     expect(openUpdatesWindow).not.toHaveBeenCalled()
@@ -155,5 +154,42 @@ describe('UpdateIndicator', () => {
     fireEvent.click(button)
     expect(installDownloadedUpdate).not.toHaveBeenCalled()
     ;($workingSessionIds as unknown as { set: (v: string[]) => void }).set([])
+  })
+
+  it('with auto-update off, an available update with an installer starts the download on click', () => {
+    $autoDownload.set(false)
+    setStatus({ ...available, asset: { kind: 'zip', name: 'a.zip', sha256: 'ab', size: 1, url: 'https://github.com/x' } })
+    render(<UpdateIndicator />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Update available/ }))
+
+    expect(startDownloadNow).toHaveBeenCalledTimes(1)
+    expect(openUpdatesWindow).not.toHaveBeenCalled()
+  })
+
+  it('with auto-update on, or no installer listed, the click still opens the overlay', () => {
+    setStatus({ ...available, asset: { kind: 'zip', name: 'a.zip', sha256: 'ab', size: 1, url: 'https://github.com/x' } })
+    const { unmount } = render(<UpdateIndicator />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Update available/ }))
+    expect(openUpdatesWindow).toHaveBeenCalledWith('client')
+    expect(startDownloadNow).not.toHaveBeenCalled()
+    unmount()
+
+    $autoDownload.set(false)
+    setStatus(available)
+    render(<UpdateIndicator />)
+    fireEvent.click(screen.getByRole('button', { name: /Update available/ }))
+    expect(startDownloadNow).not.toHaveBeenCalled()
+  })
+
+  it('a ready Windows or Linux installer reads Install update', () => {
+    setStatus(available)
+    ;($updateDownload as unknown as { set: (v: unknown) => void }).set({ status: 'ready', version: '0.0.10', file: '/x.exe', kind: 'exe' })
+    render(<UpdateIndicator />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Install update' }))
+
+    expect(installDownloadedUpdate).toHaveBeenCalledTimes(1)
   })
 })

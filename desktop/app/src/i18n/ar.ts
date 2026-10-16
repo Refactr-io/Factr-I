@@ -159,6 +159,7 @@ export const ar = defineLocale({
     updateDownloadingTip: version => `جارٍ تنزيل Factr-I v${version}`,
     updateReadyTip: version => `التحديث جاهز: ثبّت Factr-I v${version}`,
     updateRestartTip: 'أعد التشغيل للتحديث',
+    updateInstallTip: 'ثبّت التحديث',
     updateBusyTip: 'أنهِ المهمة الحالية أولاً',
     updateInstallFallback: 'تعذّر التحديث تلقائياً. التنزيل جاهز في Finder',
     updateBannerReady: v => `Factr-I ${v} جاهز. أعد التشغيل للتحديث.`,
@@ -844,7 +845,7 @@ export const ar = defineLocale({
       automaticUpdatesDesc: 'اسمح لـ Factr-I بالتحقق من التحديثات وتثبيتها.',
       downloadUpdatesAutomatically: 'تنزيل التحديثات تلقائياً',
       downloadUpdatesAutomaticallyDesc:
-        'ينزّل Factr-I الإصدارات الجديدة في الخلفية ليتم التثبيت بنقرة واحدة. لا يتم تثبيت شيء دون موافقتك.',
+        'ينزّل Factr-I الإصدارات الجديدة في الخلفية ويثبّتها عند التشغيل التالي (macOS)، أو عند النقر على «أعد التشغيل للتحديث». أوقف الخيار للتحديث يدوياً.',
       branchCommit: (branch, commit) => `${branch} عند ${commit}`,
       never: 'أبدا',
       justNow: 'الآن',

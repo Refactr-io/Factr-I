@@ -237,6 +237,29 @@ describe('createUpdateDownloader', () => {
     }
   })
 
+  it('ignoreEnabled (an explicit click with auto-update off) skips only the setting, not online or idle', async () => {
+    const data = bytes('installer-bytes-0123456789')
+
+    const off = setup({ isEnabled: () => false })
+
+    vi.mocked(off.deps.fetch).mockResolvedValue(ok(chunks(data)))
+    off.dl.maybeStart(status(data))
+    await settle()
+    expect(off.deps.fetch).not.toHaveBeenCalled()
+
+    off.dl.maybeStart(undefined, { ignoreEnabled: true })
+    await settle()
+    expect(off.dl.getState().status).toBe('ready')
+
+    for (const gate of [{ isBusy: () => true }, { isOnline: () => false }]) {
+      const blocked = setup({ isEnabled: () => false, ...gate })
+
+      blocked.dl.maybeStart(status(data), { ignoreEnabled: true })
+      await settle()
+      expect(blocked.deps.fetch).not.toHaveBeenCalled()
+    }
+  })
+
   it('does nothing without an asset or when no update is available', async () => {
     const { dl, deps } = setup()
 
