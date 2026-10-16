@@ -38,7 +38,6 @@ export function FeaturedProviderRow({
       onClick={() => onSelect(provider)}
       type="button"
     >
-      <span aria-hidden className="arc-border arc-reverse arc-featured" />
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[length:var(--conversation-text-font-size)] font-semibold">

@@ -167,7 +167,7 @@ const renderRow = (session: SessionInfo, extra?: { card?: boolean }) =>
 // store the way the app does. $workingSessionIds is the actual computed here
 // (the mock above only overrides its siblings), which is what makes this cover
 // the wiring rather than the predicate — the arc has gone missing before.
-describe('SidebarSessionRow running arc', () => {
+describe('SidebarSessionRow working state', () => {
   afterEach(() => {
     clearAllSessionStates()
   })
@@ -180,12 +180,12 @@ describe('SidebarSessionRow running arc', () => {
     expect(arc(container)).toBeNull()
   })
 
-  it('paints the arc while the session is running', () => {
+  it('paints no ring while the session is running (the working border is retired)', () => {
     publishSessionState('rt1', { ...createClientSessionState('s1'), busy: true })
 
     const { container } = renderRow(makeSession({ title: 'Running' }))
 
-    expect(arc(container)).toBeTruthy()
+    expect(arc(container)).toBeNull()
   })
 })
 

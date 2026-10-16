@@ -1444,7 +1444,6 @@ export function ChatBar({
                   onToggle={toggleStatusDrawer}
                 />
               )}
-              {hudMode && busy && <span aria-hidden className="arc-border arc-composer" />}
               <div
                 className={cn(
                   // grid-cols-[minmax(0,1fr)]: the implicit `auto` column sized

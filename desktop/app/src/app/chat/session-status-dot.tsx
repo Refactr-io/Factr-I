@@ -20,9 +20,7 @@ type DotVariant = {
 // Shared base for every active dot; idle is smaller and uses its own class.
 const DOT_BASE = 'size-1.5 rounded-full'
 
-// Three colors and one fill/hollow axis, none of it moving. Motion on a 6px
-// circle can only say "something is happening" — which the row's arc already
-// says, better — while costing a repaint per frame on every row at once. What
+// Three colors and one fill/hollow axis; only the working dot moves, and only as a quiet opacity pulse. What
 // the dot is for is telling states APART, and that is a job for color and fill:
 // filled means producing, hollow means open but quiet. The two states this
 // replaces differed by 30% opacity and were, in practice, the same dot.
@@ -35,10 +33,10 @@ const DOT_VARIANTS: Record<SessionDotState, DotVariant> = {
     role: 'status',
     title: r => r.waitingForAnswer
   },
-  // Accent — the turn is running. The row's arc carries the motion.
+  // Accent — the turn is running. A slow opacity pulse is the only motion (no ring, no glow), off under reduced motion.
   working: {
     ariaLabel: r => r.sessionRunning,
-    className: `${DOT_BASE} bg-(--ui-accent)`,
+    className: `${DOT_BASE} bg-(--ui-accent) motion-safe:animate-pulse`,
     role: 'status'
   },
   // Hollow accent — still authoritatively running, but nothing has arrived for
