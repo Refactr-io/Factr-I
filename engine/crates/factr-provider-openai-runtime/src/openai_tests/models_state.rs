@@ -443,8 +443,14 @@ fn resolve_api_base_precedence_and_validation() {
 }
 
 #[test]
-fn openai_provider_accepts_image_input() {
+fn openai_provider_accepts_image_input_except_for_known_text_only_models() {
     // Regression: the default `false` stripped attached images before they reached the model.
     let provider = OpenAIProvider::new_without_credentials();
     assert!(Provider::supports_image_input(&provider));
+    for vision in ["gpt-6-luna", "gpt-6.1-sol", "gpt-5.2", "gpt-6-luna[1m]", "openai/gpt-6-luna"] {
+        assert!(!crate::openai_provider_impl::is_text_only_openai_model(vision), "{vision}");
+    }
+    for text_only in ["o3-mini", "o1-mini", "gpt-3.5-turbo", "gpt-5.3-codex-spark", "OpenAI/o3-mini"] {
+        assert!(crate::openai_provider_impl::is_text_only_openai_model(text_only), "{text_only}");
+    }
 }

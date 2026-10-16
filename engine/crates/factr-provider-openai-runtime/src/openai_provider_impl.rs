@@ -10,12 +10,29 @@ fn catalog_error_is_auth_rejection(err: &anyhow::Error) -> bool {
         .is_some_and(|status| status.0 == 401 || status.0 == 403)
 }
 
+/// OpenAI models that reject `input_image`. Matching is on the bare model id (vendor prefix and a
+/// `[1m]` style suffix removed); a model not listed here is assumed to accept images.
+pub(crate) fn is_text_only_openai_model(model: &str) -> bool {
+    let id = model.rsplit('/').next().unwrap_or(model);
+    let id = id.split('[').next().unwrap_or(id).trim().to_ascii_lowercase();
+    id == "o1-mini"
+        || id == "o3-mini"
+        || id.starts_with("o1-mini-")
+        || id.starts_with("o3-mini-")
+        || id.starts_with("gpt-3.5")
+        || id.starts_with("text-")
+        || id.ends_with("-spark")
+        || id.contains("codex-spark")
+}
+
 #[async_trait]
 impl Provider for OpenAIProvider {
     /// The Responses API takes `input_image` parts. The trait default (false) made the engine
     /// replace every attached image with "[Image omitted ...]" before the request was built.
+    /// Known text-only models keep the omission (the API would answer 400); every other model,
+    /// including ones released after this build, gets the image.
     fn supports_image_input(&self) -> bool {
-        true
+        !is_text_only_openai_model(&self.model())
     }
 
     fn reload_credentials(&self) {
