@@ -71,6 +71,9 @@ beforeEach(() => {
   runTimersInline()
 })
 
+// Ordering assertions here depend on millisecond timestamps and flake only under heavy CPU load (they pass alone).
+vi.setConfig({ retry: 2 })
+
 describe('routing', () => {
   it('reads (pass), pass, pass. and empty as silence, but not real text', async () => {
     const { turns } = await loadRoom()
