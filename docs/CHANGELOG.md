@@ -15,6 +15,9 @@
   download. Set `stt.prefetch: false` to turn it off.
 - Fixed: dictation failed on every fresh install ("open() got an unexpected keyword argument 'metadata_errors'"). The
   background install picked up a newer `av` package that faster-whisper 1.2.1 cannot use; `av` is now pinned.
+- Fixed: the voice call could not speak. The text-to-speech package (edge-tts 7.2.7) is refused by Microsoft's speech
+  service with HTTP 403; updated to 7.3.1, which works (checked live). Dictation into the call was already covered by the
+  `av` fix above.
 - Fixed: images you attach or paste now reach the model on the ChatGPT-login and OpenAI paths. Before, the engine replaced
   every image with "[Image omitted ...]" and the model answered that it could not see it. Models known to be text-only
   (o1-mini, o3-mini, gpt-3.5, Codex-Spark) still skip images. Paste image now reads every clipboard shape (bitmap, PNG
