@@ -192,6 +192,12 @@ export const ru = defineLocale({
     updateAvailableTip: version => (version ? `Доступно обновление: Factr-I v${version}` : 'Доступно обновление'),
     updateDownloadingTip: version => `Скачивание Factr-I v${version}`,
     updateReadyTip: version => `Обновление готово: установить Factr-I v${version}`,
+    updateRestartTip: 'Перезапустите для обновления',
+    updateBusyTip: 'Сначала завершите текущую задачу',
+    updateInstallFallback: 'Не удалось обновить автоматически. Загрузка готова в Finder',
+    updateBannerReady: v => `Factr-I ${v} готов. Перезапустите для обновления.`,
+    updateBannerRestart: 'Перезапустить',
+    updatedTo: v => `Обновлено до ${v}`,
     seeWhatsNew: 'Смотреть, что нового',
     mcp: {
       needsAuthTitle: 'Серверу MCP требуется повторная аутентификация',

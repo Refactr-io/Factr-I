@@ -397,6 +397,12 @@ export const en: Translations = {
     updateAvailableTip: version => (version ? `Update available: Factr-I v${version}` : 'Update available'),
     updateDownloadingTip: version => `Downloading Factr-I v${version}`,
     updateReadyTip: version => `Update ready: install Factr-I v${version}`,
+    updateRestartTip: 'Restart to update',
+    updateBusyTip: 'Finish the current task first',
+    updateInstallFallback: 'Could not update automatically. The download is ready in Finder',
+    updateBannerReady: v => `Factr-I ${v} is ready. Restart to update.`,
+    updateBannerRestart: 'Restart',
+    updatedTo: v => `Updated to ${v}`,
     seeWhatsNew: "See what's new",
     mcp: {
       needsAuthTitle: 'MCP server needs re-authentication',

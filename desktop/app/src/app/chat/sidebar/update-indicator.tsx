@@ -5,7 +5,7 @@ import { useI18n } from '@/i18n'
 import { CircleArrowDownFilled, CircleArrowUp, Loader } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { installDownloadedUpdate } from '@/store/update-download'
-import { $updateIndicator } from '@/store/update-indicator'
+import { $turnActive, $updateIndicator } from '@/store/update-indicator'
 import { openUpdatesWindow } from '@/store/updates'
 
 const RAIL_BUTTON =
@@ -15,22 +15,36 @@ const RAIL_BUTTON =
  *  It stays for as long as the update does (the toast snooze does not touch it) and opens the updates overlay. */
 export function UpdateIndicator() {
   const { t } = useI18n()
-  const { phase, version, visible } = useStore($updateIndicator)
+  const { kind, phase, version, visible } = useStore($updateIndicator)
+  const turnActive = useStore($turnActive)
 
   if (!visible) {
     return null
   }
 
   const n = t.notifications
-  const label = phase === 'ready' && version ? n.updateReadyTip(version) : phase === 'downloading' && version ? n.updateDownloadingTip(version) : n.updateAvailableTip(version)
+  // A ready macOS update restarts the app in place, which must never cut a running task short.
+  const restart = phase === 'ready' && kind === 'zip'
+  const blocked = restart && turnActive
+
+  const label = blocked
+    ? n.updateBusyTip
+    : restart
+      ? n.updateRestartTip
+      : phase === 'ready' && version
+        ? n.updateReadyTip(version)
+        : phase === 'downloading' && version
+          ? n.updateDownloadingTip(version)
+          : n.updateAvailableTip(version)
 
   return (
     <Tip label={label} placement="left-rail">
       <button
         aria-label={label}
-        className={cn(RAIL_BUTTON, 'relative')}
+        className={cn(RAIL_BUTTON, 'relative', blocked && 'opacity-50')}
         data-phase={phase}
         data-tour="rail-update-available"
+        disabled={blocked}
         onClick={() => (phase === 'ready' ? void installDownloadedUpdate() : openUpdatesWindow('client'))}
         type="button"
       >

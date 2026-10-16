@@ -222,8 +222,8 @@ const releaseAsset = (name: string, extra: Record<string, unknown> = {}) => ({
 })
 
 describe('update asset', () => {
-  it('expectedAssetName follows the artifact names per platform and arch', () => {
-    expect(expectedAssetName('0.0.9', 'darwin', 'arm64')).toBe('Factr-I-0.0.9-mac-arm64.dmg')
+  it('expectedAssetName follows the artifact names per platform and arch (macOS prefers the zip)', () => {
+    expect(expectedAssetName('0.0.9', 'darwin', 'arm64')).toBe('Factr-I-0.0.9-mac-arm64.zip')
     expect(expectedAssetName('0.0.9', 'win32', 'x64')).toBe('Factr-I-0.0.9-win-x64.exe')
     expect(expectedAssetName('0.0.9', 'linux', 'x64')).toBe('Factr-I-0.0.9-linux-x86_64.AppImage')
     expect(expectedAssetName('0.0.9', 'darwin', 'x64')).toBeNull()
@@ -237,19 +237,33 @@ describe('update asset', () => {
     expect(parseDigest(undefined)).toBeNull()
   })
 
-  it('pickUpdateAsset picks this platform by exact name and returns size, url and sha', () => {
+  it('pickUpdateAsset picks this platform by exact name and returns kind, size, url and sha', () => {
     const assets = [
       releaseAsset('Factr-I-0.0.9-win-x64.exe'),
       releaseAsset('Factr-I-0.0.9-mac-arm64.dmg'),
-      releaseAsset('Factr-I-0.0.9-mac-arm64.dmg.blockmap')
+      releaseAsset('Factr-I-0.0.9-mac-arm64.zip'),
+      releaseAsset('Factr-I-0.0.9-mac-arm64.zip.blockmap')
     ]
 
     const picked = pickUpdateAsset(assets, '0.0.9', 'darwin', 'arm64')
 
-    expect(picked?.name).toBe('Factr-I-0.0.9-mac-arm64.dmg')
+    expect(picked?.name).toBe('Factr-I-0.0.9-mac-arm64.zip')
+    expect(picked?.kind).toBe('zip')
     expect(picked?.size).toBe(1234)
     expect(picked?.sha256).toBe('ab'.repeat(32))
     expect(picked?.url).toMatch(/^https:\/\/github\.com\/Refactr-io\/Factr-I\//)
+  })
+
+  it('macOS falls back to the dmg when no usable zip is listed', () => {
+    const noDigestZip = releaseAsset('Factr-I-0.0.9-mac-arm64.zip', { digest: null })
+    const picked = pickUpdateAsset([noDigestZip, releaseAsset('Factr-I-0.0.9-mac-arm64.dmg')], '0.0.9', 'darwin', 'arm64')
+
+    expect(picked?.kind).toBe('dmg')
+    expect(pickUpdateAsset([releaseAsset('Factr-I-0.0.9-win-x64.exe')], '0.0.9', 'win32', 'x64')?.kind).toBe('exe')
+
+    expect(pickUpdateAsset([releaseAsset('Factr-I-0.0.9-linux-x86_64.AppImage')], '0.0.9', 'linux', 'x64')?.kind).toBe(
+      'appimage'
+    )
   })
 
   it('pickUpdateAsset is null (notify only) for a missing asset, digest, size or foreign url', () => {

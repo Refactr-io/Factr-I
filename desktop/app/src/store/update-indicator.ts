@@ -9,6 +9,7 @@ import { atom, computed } from 'nanostores'
 
 import type { DesktopUpdateDownloadState, DesktopUpdateStatus } from '@/global'
 import { $onboardingSurfaces } from '@/store/onboarding-presence'
+import { $workingSessionIds } from '@/store/session-states'
 import { $autoDownload, $updateDownload } from '@/store/update-download'
 import { $updateStatus } from '@/store/updates'
 
@@ -16,13 +17,15 @@ export type UpdateIndicatorPhase = 'available' | 'downloading' | 'ready'
 
 export interface UpdateIndicatorState {
   /** available: a newer release exists; downloading / ready: its installer is being fetched / verified on disk. */
+  /** What the ready file is: zip means macOS restart-to-update, the rest open an installer. */
+  kind: DesktopUpdateDownloadState['kind']
   phase: UpdateIndicatorPhase
   visible: boolean
   /** The newest release version when the feed names one (no leading "v"), else null. */
   version: null | string
 }
 
-const HIDDEN: UpdateIndicatorState = { phase: 'available', visible: false, version: null }
+const HIDDEN: UpdateIndicatorState = { kind: null, phase: 'available', visible: false, version: null }
 
 /** Visibility rules, pure so they can be tested without stores. */
 export function updateIndicatorState(
@@ -57,7 +60,7 @@ export function updateIndicatorState(
         ? 'downloading'
         : 'available'
 
-  return { phase, visible: true, version }
+  return { kind: phase === 'ready' ? (download?.kind ?? null) : null, phase, visible: true, version }
 }
 
 /** Reactive online flag; the browser events are the only signal there is. */
@@ -73,3 +76,6 @@ export const $updateIndicator = computed(
   (status, surfaces, online, download, autoDownload) =>
     updateIndicatorState(status, { autoDownload, download, onboarding: surfaces.size > 0, online })
 )
+
+/** True while any chat is mid-turn: restart-to-update must wait (the main process refuses too). */
+export const $turnActive = computed($workingSessionIds, ids => ids.length > 0)

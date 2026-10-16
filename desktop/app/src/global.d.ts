@@ -629,6 +629,8 @@ export interface DesktopVersionInfo {
   electronVersion: string
   nodeVersion: string
   platform: string
+  /** The version the app was updated from, set only on the first launch after an update (FACTR_UPDATED_FROM). */
+  updatedFrom?: null | string
   factrRoot: string
   /** True when the running renderer bundle predates desktop changes in the
    *  installed source tree (runtime updated, app binary not rebuilt/swapped). */
@@ -733,6 +735,8 @@ export interface DesktopUpdateDownloadState {
   status: 'downloading' | 'failed-silent' | 'idle' | 'ready'
   version: null | string
   file: null | string
+  /** zip = macOS app archive (restart-to-update), dmg / exe / appimage = installer opened for the user. */
+  kind: 'appimage' | 'dmg' | 'exe' | 'zip' | null
 }
 
 export type DesktopUpdateDirtyStrategy = 'abort' | 'stash' | 'force'
@@ -765,6 +769,12 @@ export interface DesktopUpdateApplyResult {
   manual?: boolean
   /** The app is unsigned: apply only opened the release page in the browser. */
   openedReleasePage?: boolean
+  /** The swap started and the app is quitting by itself. */
+  restarting?: boolean
+  /** The verified installer / folder was opened for the user. */
+  openedInstaller?: boolean
+  /** The automatic swap failed; the download was revealed in Finder instead. */
+  fellBack?: boolean
   command?: string
   factrRoot?: string
   /** True when the backend was updated but the GUI couldn't be relaunched in

@@ -119,6 +119,7 @@ import { AppContextMenu } from '../context-menu/app-context-menu'
 import { HudShell } from '../hud/hud-shell'
 import { $terminalTakeover, setTerminalTakeover } from '../right-sidebar/store'
 import { $workspaceIsPage, WORKSPACE_PAGE_HEADER_AREA } from '../routes'
+import { UpdateNotices } from '../shell/update-notices'
 
 import { BASIC_TREE, DEFAULT_TREE, registerLayoutPresets } from './layout-presets'
 import { bindLayoutSides } from './layout-sides'
@@ -898,7 +899,8 @@ export function ContribController() {
               edge, small gap to the window's right and bottom edges). */}
           <div className="flex min-h-0 flex-1">
             <SidebarRail />
-            <div className="flex min-h-0 min-w-0 flex-1 pr-1.5 pb-1.5" style={{ paddingTop: TITLEBAR_HEIGHT }}>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col pr-1.5 pb-1.5" style={{ paddingTop: TITLEBAR_HEIGHT }}>
+              <UpdateNotices />
               <div
                 className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-(--shell-block-edge) bg-(--shell-block-bg)"
                 data-shell-block=""

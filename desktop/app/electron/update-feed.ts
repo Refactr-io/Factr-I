@@ -21,7 +21,11 @@ const TIMEOUT_MS = 8000
 const NOTES_MAX = 2000
 
 /** The installer for this platform, exactly as the GitHub release lists it. */
+export type UpdateAssetKind = 'appimage' | 'dmg' | 'exe' | 'zip'
+
 export interface UpdateAsset {
+  /** zip is macOS only (the swap needs the .app inside); dmg stays the fallback when no zip is listed. */
+  kind: UpdateAssetKind
   name: string
   /** https://github.com/Refactr-io/Factr-I/releases/download/... (redirects to GitHub's asset CDN). */
   url: string
@@ -159,21 +163,29 @@ export function parseDigest(raw: unknown): string | null {
   return match ? match[1].toLowerCase() : null
 }
 
-/** The installer file name electron-builder gives this platform/arch (see package.json artifactName). */
-export function expectedAssetName(version: string, platform: string, arch: string): string | null {
+/** The installer file names electron-builder gives this platform/arch, best first (see package.json artifactName). */
+export function expectedAssets(version: string, platform: string, arch: string): { kind: UpdateAssetKind; name: string }[] {
   if (platform === 'darwin' && arch === 'arm64') {
-    return `Factr-I-${version}-mac-arm64.dmg`
+    return [
+      { kind: 'zip', name: `Factr-I-${version}-mac-arm64.zip` },
+      { kind: 'dmg', name: `Factr-I-${version}-mac-arm64.dmg` }
+    ]
   }
 
   if (platform === 'win32' && arch === 'x64') {
-    return `Factr-I-${version}-win-x64.exe`
+    return [{ kind: 'exe', name: `Factr-I-${version}-win-x64.exe` }]
   }
 
   if (platform === 'linux' && arch === 'x64') {
-    return `Factr-I-${version}-linux-x86_64.AppImage`
+    return [{ kind: 'appimage', name: `Factr-I-${version}-linux-x86_64.AppImage` }]
   }
 
-  return null
+  return []
+}
+
+/** The preferred installer name for this platform, or null when it has none. */
+export function expectedAssetName(version: string, platform: string, arch: string): string | null {
+  return expectedAssets(version, platform, arch)[0]?.name ?? null
 }
 
 /**
@@ -187,25 +199,26 @@ export function pickUpdateAsset(
   arch: string,
   urlOk: (url: unknown) => url is string = isReleaseUrl
 ): UpdateAsset | null {
-  const wanted = expectedAssetName(version, platform, arch)
-
-  if (!wanted || !Array.isArray(assets)) {
+  if (!Array.isArray(assets)) {
     return null
   }
 
-  const found = assets.find(a => a && typeof a === 'object' && (a as { name?: unknown }).name === wanted) as
-    | { browser_download_url?: unknown; digest?: unknown; size?: unknown }
-    | undefined
+  for (const { kind, name } of expectedAssets(version, platform, arch)) {
+    const found = assets.find(a => a && typeof a === 'object' && (a as { name?: unknown }).name === name) as
+      | { browser_download_url?: unknown; digest?: unknown; size?: unknown }
+      | undefined
 
-  const sha256 = parseDigest(found?.digest)
-  const size = Number(found?.size)
-  const url = found?.browser_download_url
+    const sha256 = parseDigest(found?.digest)
+    const size = Number(found?.size)
+    const url = found?.browser_download_url
 
-  if (!found || !sha256 || !Number.isInteger(size) || size <= 0 || !urlOk(url)) {
-    return null
+    // An entry without a digest, size or a GitHub url is skipped, so a later (fallback) kind can still match.
+    if (found && sha256 && Number.isInteger(size) && size > 0 && urlOk(url)) {
+      return { kind, name, url, size, sha256 }
+    }
   }
 
-  return { name: wanted, url, size, sha256 }
+  return null
 }
 
 export function createUpdateFeed(deps: FeedDeps) {

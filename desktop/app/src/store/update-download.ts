@@ -7,8 +7,10 @@
 import { atom } from 'nanostores'
 
 import type { DesktopUpdateDownloadState } from '@/global'
+import { translateNow } from '@/i18n'
+import { notify } from '@/store/notifications'
 
-const IDLE: DesktopUpdateDownloadState = { status: 'idle', version: null, file: null }
+const IDLE: DesktopUpdateDownloadState = { status: 'idle', version: null, file: null, kind: null }
 
 export const $updateDownload = atom<DesktopUpdateDownloadState>(IDLE)
 /** The "Download updates automatically" setting (default ON, persisted by the main process). */
@@ -43,10 +45,22 @@ export async function setAutoDownload(enabled: boolean): Promise<void> {
   }
 }
 
-/** Open the verified installer (or, failing that, the release page). Never throws. */
+/**
+ * Install the verified update: on macOS the app swaps itself and restarts, elsewhere the installer is opened for the
+ * user. When the automatic swap fails the main process reveals the download and we say so quietly (an info notice,
+ * never an error). Never throws.
+ */
 export async function installDownloadedUpdate(): Promise<void> {
   try {
-    await window.factrDesktop?.updates.install?.()
+    const result = await window.factrDesktop?.updates.install?.()
+
+    if (result?.fellBack) {
+      notify({
+        kind: 'info',
+        message: translateNow('notifications.updateInstallFallback'),
+        title: translateNow('notifications.updateFactr')
+      })
+    }
   } catch {
     // Nothing to show: a failed open must not become an error dot.
   }
