@@ -514,6 +514,7 @@ import {
 import { installWindowsSystemCaTrust } from './windows-system-ca'
 import { readWindowsUserEnvVar } from './windows-user-env'
 import { isPackagedInstallPath as isPackagedInstallPathUnderRoots } from './workspace-cwd'
+import { readClipboardImage } from './clipboard-image'
 import { readWslWindowsClipboardImage } from './wsl-clipboard-image'
 import { resolvePickerDefaultPath, setActiveGatewayProfile, setWslBridgeProfileState } from './wsl-path-bridge'
 
@@ -12804,6 +12805,15 @@ const sessionWindows = createSessionWindowRegistry()
 const minimizeToTray = createMinimizeToTray({
   preferencesPath: path.join(app.getPath('userData'), 'minimize-to-tray.json'),
   getIconPath: getAppIconPath,
+  getTrayIconPath: () => {
+    const name = process.platform === 'darwin' ? 'trayTemplate.png' : 'tray-32.png'
+
+    return [
+      path.join(APP_ROOT, 'public', 'tray', name),
+      path.join(APP_ROOT, 'dist', 'tray', name),
+      path.join(unpackedPathFor(APP_ROOT), 'dist', 'tray', name)
+    ].find(candidate => fs.existsSync(candidate))
+  },
   restoreMainWindow: () => ensureMainWindow(mainWindow, { isReady: app.isReady(), createWindow, focusWindow }),
   isQuittingForHandoff: () => isQuittingForHandoff,
   log: rememberLog
@@ -16490,10 +16500,10 @@ ipcMain.handle('factr:savePastedText', async (_event, payload) => {
 })
 
 ipcMain.handle('factr:saveClipboardImage', async () => {
-  const image = clipboard.readImage()
+  const image = readClipboardImage(clipboard)
 
-  if (image && !image.isEmpty()) {
-    return writeComposerImage(image.toPNG(), '.png')
+  if (image) {
+    return writeComposerImage(image.data, image.ext)
   }
 
   // WSL2/WSLg doesn't bridge clipboard *images* from the Windows host to the

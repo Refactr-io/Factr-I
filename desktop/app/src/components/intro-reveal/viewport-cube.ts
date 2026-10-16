@@ -161,8 +161,7 @@ function textureImage(): HTMLImageElement | null {
     texture = img
   }
 
-  // Not `factr-mark.png`: that asset is the BrandMark tile art, dark on white, and
-  // reads as a solid white block once it is wrapped around a cube. This one is
+  // Not the BrandMark artwork: a solid helmet reads as a solid white block once it is wrapped around a cube. This one is
   // the same mark as light-on-dark line work, so the faces keep their shading and the channel
   // split has edges to offset.
   img.src = `${import.meta.env.BASE_URL}intro-mark.png`

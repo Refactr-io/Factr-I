@@ -604,10 +604,11 @@ export function ChatBar({
       // the Linux clipboard the DOM paste event reads, so a host screenshot
       // arrives as an empty paste (no blobs, no text). Fall back to the main
       // process, which pulls the image straight off the Windows clipboard.
-      // Silent so a genuinely-empty paste doesn't pop a "no image" warning.
+      // Not silent: an image the clipboard holds in a shape neither the paste event nor the main process can
+      // read (or an empty clipboard) must say so, never look like the paste did nothing.
       if (onPasteClipboardImage) {
         triggerHaptic('selection')
-        void onPasteClipboardImage({ silent: true })
+        void onPasteClipboardImage()
       }
 
       return

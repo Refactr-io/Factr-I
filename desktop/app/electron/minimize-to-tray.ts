@@ -11,6 +11,8 @@ export interface MinimizeToTrayStatus {
 interface Options {
   preferencesPath: string
   getIconPath: () => string | undefined
+  /** The bare helmet made for the tray (macOS template image, a haloed Forest Black helmet elsewhere). */
+  getTrayIconPath?: () => string | undefined
   restoreMainWindow: () => void
   isQuittingForHandoff: () => boolean
   log: (message: string) => void
@@ -137,19 +139,28 @@ export function createMinimizeToTray(options: Options) {
           return status()
         }
 
-        const iconPath = options.getIconPath()
-        const icon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
+        const trayPath = options.getTrayIconPath?.()
+        const trayArt = trayPath ? nativeImage.createFromPath(trayPath) : null
 
-        if (icon.isEmpty()) {
-          throw new Error('No usable tray icon')
+        if (trayArt && !trayArt.isEmpty()) {
+          // The bare helmet is already tray-sized (a macOS Template image keeps its @2x and adapts to the menu bar).
+          tray = new Tray(process.platform === 'darwin' ? trayArt : trayArt.resize({ width: 24, height: 24 }))
+        } else {
+          const iconPath = options.getIconPath()
+          const icon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
+
+          if (icon.isEmpty()) {
+            throw new Error('No usable tray icon')
+          }
+
+          tray = new Tray(
+            icon.resize({
+              width: process.platform === 'darwin' ? 18 : 24,
+              height: process.platform === 'darwin' ? 18 : 24
+            })
+          )
         }
 
-        tray = new Tray(
-          icon.resize({
-            width: process.platform === 'darwin' ? 18 : 24,
-            height: process.platform === 'darwin' ? 18 : 24
-          })
-        )
         tray.setToolTip('Factr-I')
         tray.setContextMenu(
           Menu.buildFromTemplate([
