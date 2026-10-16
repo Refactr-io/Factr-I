@@ -12805,6 +12805,15 @@ const sessionWindows = createSessionWindowRegistry()
 const minimizeToTray = createMinimizeToTray({
   preferencesPath: path.join(app.getPath('userData'), 'minimize-to-tray.json'),
   getIconPath: getAppIconPath,
+  getTrayIconPath: () => {
+    const name = process.platform === 'darwin' ? 'trayTemplate.png' : 'tray-32.png'
+
+    return [
+      path.join(APP_ROOT, 'public', 'tray', name),
+      path.join(APP_ROOT, 'dist', 'tray', name),
+      path.join(unpackedPathFor(APP_ROOT), 'dist', 'tray', name)
+    ].find(candidate => fs.existsSync(candidate))
+  },
   restoreMainWindow: () => ensureMainWindow(mainWindow, { isReady: app.isReady(), createWindow, focusWindow }),
   isQuittingForHandoff: () => isQuittingForHandoff,
   log: rememberLog
