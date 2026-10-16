@@ -171,6 +171,7 @@ export const ja = defineLocale({
     updateReadyTitle: '更新の準備ができました',
     updateReadyMessage: count => `${count} 件の新しい変更が利用可能です。`,
     updateReadyMessageUnknown: '新しい更新が利用可能です。',
+    updateAvailableTip: version => (version ? `アップデートがあります: Factr-I v${version}` : 'アップデートがあります'),
     seeWhatsNew: '新機能を見る',
     mcp: {
       needsAuthTitle: 'MCP サーバーの再認証が必要です',

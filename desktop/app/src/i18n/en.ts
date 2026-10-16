@@ -394,6 +394,7 @@ export const en: Translations = {
     updateReadyTitle: 'Update ready',
     updateReadyMessage: count => `${count} new change${count === 1 ? '' : 's'} available.`,
     updateReadyMessageUnknown: 'A new update is available.',
+    updateAvailableTip: version => (version ? `Update available: Factr-I v${version}` : 'Update available'),
     seeWhatsNew: "See what's new",
     mcp: {
       needsAuthTitle: 'MCP server needs re-authentication',

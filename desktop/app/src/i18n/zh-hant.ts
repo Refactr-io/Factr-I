@@ -167,6 +167,7 @@ export const zhHant = defineLocale({
     updateReadyTitle: '有可用更新',
     updateReadyMessage: count => `有 ${count} 項新變更可用。`,
     updateReadyMessageUnknown: '有新更新可用。',
+    updateAvailableTip: version => (version ? `有可用更新：Factr-I v${version}` : '有可用更新'),
     seeWhatsNew: '查看新增內容',
     mcp: {
       needsAuthTitle: 'MCP 伺服器需要重新驗證',

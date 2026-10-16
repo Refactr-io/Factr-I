@@ -155,6 +155,7 @@ export const ar = defineLocale({
     updateReadyTitle: 'التحديث جاهز',
     updateReadyMessage: count => `${count} تغيير جديد متاح.`,
     updateReadyMessageUnknown: 'يتوفر تحديث جديد.',
+    updateAvailableTip: version => (version ? `تحديث متاح: Factr-I v${version}` : 'يتوفر تحديث'),
     seeWhatsNew: 'عرض الجديد',
     mcp: {
       needsAuthTitle: 'خادم MCP يحتاج إلى إعادة المصادقة',

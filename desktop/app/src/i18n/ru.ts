@@ -189,6 +189,7 @@ export const ru = defineLocale({
     updateReadyMessage: count =>
       `Доступно ${count} ${count % 10 === 1 && count % 100 !== 11 ? 'новое изменение' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'новых изменения' : 'новых изменений'}.`,
     updateReadyMessageUnknown: 'Доступно новое обновление.',
+    updateAvailableTip: version => (version ? `Доступно обновление: Factr-I v${version}` : 'Доступно обновление'),
     seeWhatsNew: 'Смотреть, что нового',
     mcp: {
       needsAuthTitle: 'Серверу MCP требуется повторная аутентификация',

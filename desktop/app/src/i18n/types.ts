@@ -421,6 +421,7 @@ export interface Translations {
     updateReadyTitle: string
     updateReadyMessage: (count: number) => string
     updateReadyMessageUnknown: string
+    updateAvailableTip: (version: null | string) => string
     seeWhatsNew: string
     mcp: {
       needsAuthTitle: string

@@ -22,6 +22,7 @@ import type { SidebarNavItem } from '../../types'
 import { isNavItemActive } from './nav-active'
 import { useSidebarNavItems } from './nav-model'
 import { ProfileSwitcher } from './profile-dropdown-switcher'
+import { UpdateIndicator } from './update-indicator'
 
 const RAIL_BUTTON =
   'grid size-8 place-items-center rounded-md text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] active:scale-[0.97] hover:bg-(--ui-control-hover-background) hover:text-foreground'
@@ -163,6 +164,7 @@ export function SidebarRail() {
         </RailButton>
       ))}
       <div className="mt-auto flex flex-col items-center gap-1 pb-2">
+        <UpdateIndicator />
         {/* The way into every other surface (was the status bar's ⌘). */}
         <RailButton
           active={commandCenterOpen}
