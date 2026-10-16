@@ -19,3 +19,9 @@ def test_prefix_entry_covers_the_namespace(monkeypatch):
 def test_unset_keeps_every_feature(monkeypatch):
     monkeypatch.delenv("FACTR_LAZY_INSTALL_ONLY", raising=False)
     assert lazy_deps._unsupported_feature_reason("provider.bedrock") is None
+
+
+def test_dictation_install_pins_av():
+    # faster-whisper 1.2.1 breaks with av 19 (metadata_errors): a fresh install must not resolve it.
+    from tools import lazy_deps
+    assert any(spec.startswith("av==") for spec in lazy_deps.LAZY_DEPS["stt.faster_whisper"])
