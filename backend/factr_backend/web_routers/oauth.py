@@ -371,7 +371,98 @@ def _resolve_provider_status(provider_id: str, status_fn) -> Dict[str, Any]:
     return {"logged_in": False}
 
 
+def _codex_browser_login_worker(session_id: str, server, result: Dict[str, Any], state: str, verifier: str,
+                                redirect_uri: str, timeout_seconds: float) -> None:
+    """Finish the Codex browser (PKCE + loopback) sign-in: wait for the redirect, exchange, save.
+
+    The listener is bound by the caller (so the authorize URL names a port we own) and is always
+    closed here, including on cancel, so port 1455 never stays held after the user backs out.
+    """
+    import hmac
+    from factr_backend.auth_codex_browser import _codex_browser_exchange_code
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True)
+    thread.start()
+    try:
+        with _oauth_sessions_lock:
+            sess = _oauth_sessions.get(session_id)
+            if not sess:
+                return
+            session_profile = sess.get("profile")
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline and not (result["code"] or result["error"]) and not sess.get("cancelled"):
+            time.sleep(0.1)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1.0)
+    try:
+        if _codex_cancelled(sess, session_id, " while waiting for the browser"):
+            return
+        if result["error"]:
+            raise RuntimeError(f"OpenAI authorization failed: {result.get('error_description') or result['error']}")
+        if not result["code"]:
+            with _oauth_sessions_lock:
+                sess["status"] = "expired"
+                sess["error_message"] = "Sign-in timed out before you finished in the browser"
+            return
+        if not hmac.compare_digest(str(result.get("state") or ""), state):
+            raise RuntimeError("Authorization callback state mismatch; the redirect did not come from this sign-in.")
+        tokens = _codex_browser_exchange_code(str(result["code"]), redirect_uri=redirect_uri, code_verifier=verifier)
+        from factr_backend.auth import _save_codex_tokens
+        with _oauth_sessions_lock:
+            if _codex_cancelled(sess, session_id, " before token save"):
+                return
+            with _profile_scope(session_profile):
+                _save_codex_tokens({"access_token": tokens.get("access_token", ""),
+                                    "refresh_token": tokens.get("refresh_token", "")})
+            sess["status"] = "approved"
+        _log.info("oauth/browser: openai-codex login completed (session=%s)", session_id)
+    except Exception as e:
+        _log.warning("codex browser worker failed (session=%s): %s", session_id, e)
+        with _oauth_sessions_lock:
+            s = _oauth_sessions.get(session_id)
+            if s:
+                s["status"] = "error"
+                s["error_message"] = str(e)
+
+
+def _start_codex_browser(profile: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Browser sign-in on http://localhost:1455/auth/callback; ``None`` when that port is busy
+    (a Codex CLI sign-in may be running), so the caller falls back to the device-code flow."""
+    from factr_backend.auth_codex_browser import (
+        CODEX_BROWSER_CALLBACK_PATH, CODEX_BROWSER_CALLBACK_PORT, CODEX_BROWSER_CALLBACK_TIMEOUT_SECONDS,
+        CODEX_BROWSER_PORT_BUSY_CODE, _codex_browser_authorize_url)
+    from factr_backend.auth_constants import AuthError, _codex_err
+    from factr_backend.auth_device_flow import (
+        _bind_loopback_callback_server, _make_loopback_callback_handler, _pkce_code_challenge, _pkce_code_verifier)
+    verifier = _pkce_code_verifier()
+    state = secrets.token_urlsafe(32)
+    handler_cls, result = _make_loopback_callback_handler(CODEX_BROWSER_CALLBACK_PATH, display_name="OpenAI Codex")
+    try:
+        server = _bind_loopback_callback_server(
+            "127.0.0.1", CODEX_BROWSER_CALLBACK_PORT, handler_cls, err=_codex_err,
+            bind_failed_code=CODEX_BROWSER_PORT_BUSY_CODE)
+    except AuthError as exc:
+        if exc.code != CODEX_BROWSER_PORT_BUSY_CODE:
+            raise
+        return None
+    redirect_uri = f"http://localhost:{server.server_address[1]}{CODEX_BROWSER_CALLBACK_PATH}"
+    url = _codex_browser_authorize_url(redirect_uri=redirect_uri, state=state, code_challenge=_pkce_code_challenge(verifier))
+    sid, sess = _new_oauth_session("openai-codex", "device_code", profile=profile)
+    timeout = CODEX_BROWSER_CALLBACK_TIMEOUT_SECONDS
+    sess["expires_at"] = time.time() + timeout
+    threading.Thread(
+        target=_codex_browser_login_worker, args=(sid, server, result, state, verifier, redirect_uri, timeout),
+        daemon=True, name=f"oauth-codex-browser-{sid[:6]}").start()
+    # Same /start shape as the device-code flow, with an empty user_code: nothing to type.
+    return {"session_id": sid, "flow": "device_code", "user_code": "", "verification_url": url,
+            "expires_in": int(timeout), "poll_interval": 2}
+
+
 async def _start_codex_device_code(profile: Optional[str]) -> Dict[str, Any]:
+    browser = _start_codex_browser(profile)
+    if browser is not None:
+        return browser
     # The full Codex helper polls inline, so it runs in a worker thread and
     # proxies user_code + verification_url back via the session dict; block
     # briefly until the worker has populated the user_code, OR errored.

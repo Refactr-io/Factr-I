@@ -141,8 +141,12 @@ export function FlowPanel({
 
   return (
     <Step title={t.onboarding.signInWith(title)}>
-      <p className="text-sm text-muted-foreground">{t.onboarding.deviceCodeOpened(title)}</p>
-      <DeviceCode code={flow.start.user_code} copied={flow.copied} onCopy={() => void copyDeviceCode()} />
+      {flow.start.user_code && (
+        <>
+          <p className="text-sm text-muted-foreground">{t.onboarding.deviceCodeOpened(title)}</p>
+          <DeviceCode code={flow.start.user_code} copied={flow.copied} onCopy={() => void copyDeviceCode()} />
+        </>
+      )}
       <FlowFooter left={<DocsLink href={flow.start.verification_url}>{t.onboarding.reopenVerification}</DocsLink>}>
         <span className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" />
