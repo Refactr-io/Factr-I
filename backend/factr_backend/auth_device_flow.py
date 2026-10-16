@@ -107,7 +107,7 @@ def _pkce_code_challenge(code_verifier: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
-# The Factr-I helmet mascot, drawn bare (no tile, outline only) in Rose Alloy on the Forest Black page; same art as the app. The tab
+# The Factr-I helmet mascot, drawn bare (no tile, outline only) in Rose Alloy on the Charcoal Surface page; same art as the app. The tab
 # icon is the tiled app icon at 32px, inlined so the page makes no external request.
 _HELMET_ICON_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="137 101 741 820" width="741" height="820">'
@@ -115,13 +115,13 @@ _HELMET_ICON_SVG = (
 )
 _HELMET_ICON_DATA_URI = "data:image/png;base64,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"
 
-# Website palette: Forest Black canvas, Rose Alloy text, soft Mist Green secondary text (no pure black or white).
+# Website palette: Charcoal Surface canvas (#1E1E1D), Rose Alloy text, soft Mist Green secondary text (no pure black or white).
 _LOOPBACK_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Factr-I</title>
 <link rel="icon" type="image/png" href="{icon_uri}">
 <style>
 html,body{{height:100%;margin:0}}
-body{{display:grid;place-items:center;background:#1D3023;color:#FFFDFC;
+body{{display:grid;place-items:center;background:#1E1E1D;color:#FFFDFC;
 font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}}
 main{{text-align:center;padding:0 24px}}
 .mark{{display:block;width:56px;height:62px;margin:0 auto 28px}}
