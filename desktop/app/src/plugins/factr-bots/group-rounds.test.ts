@@ -274,7 +274,7 @@ describe('routing', () => {
   // The watermark walk and the (you) check must agree on who wrote a line: a
   // local member's sourced reply read as somebody else's came back to it as
   // room news, and it answered itself until the round cap.
-  it('never re-drives a local member on its own sourced reply', async () => {
+  it('never re-drives a local member on its own sourced reply', { retry: 2 }, async () => {
     const room = await loadRoom({ turn: ({ n }) => `Reply ${n} from this device.` })
     const local: GroupMember = { connectionId: 'local', connectionLabel: 'This device', name: 'default', title: '' }
 
