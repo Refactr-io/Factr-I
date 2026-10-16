@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildSwapScript,
   installAndRestart,
+  preflightLaunch,
   readPostUpdate,
   resolveAppBundle,
   stagingDirFor,
@@ -51,13 +52,14 @@ function baseDeps(over: Partial<SwapDeps> = {}): { deps: SwapDeps; calls: string
     execPath: '/Applications/Factr-I.app/Contents/MacOS/Factr-I',
     currentVersion: '0.0.8',
     platform: 'darwin',
+    arch: 'arm64',
     isPackaged: true,
     isBusy: () => false,
     updatesDir: '/tmp/none',
     exec: async (cmd, args) => {
       calls.push(`${cmd} ${args[0]}`)
 
-      return { code: 0, stdout: cmd.endsWith('plutil') ? (args[1] === 'CFBundleShortVersionString' ? '0.0.9' : 'net.refactr.factr') : '', stderr: '' }
+      return { code: 0, stdout: cmd.endsWith('lipo') ? 'arm64' : cmd.endsWith('plutil') ? (args[1] === 'CFBundleShortVersionString' ? '0.0.9' : 'net.refactr.factr') : '', stderr: '' }
     },
     fs: {
       writable: async () => true,
@@ -154,6 +156,36 @@ describe('installAndRestart preconditions', () => {
   })
 })
 
+describe('architecture and launch preflight', () => {
+  it('refuses an update that is not built for this Mac and never quits', async () => {
+    const { deps, calls } = baseDeps({
+      arch: 'x64',
+      exec: async (cmd, args) => ({
+        code: 0,
+        stdout: cmd.endsWith('lipo') ? 'arm64' : cmd.endsWith('plutil') ? (args[1] === 'CFBundleShortVersionString' ? '0.0.9' : 'net.refactr.factr') : '',
+        stderr: ''
+      })
+    })
+    const result = await installAndRestart(ready, deps)
+
+    expect(result.ok).toBe(false)
+    expect((result as { reason: string }).reason).toMatch(/not built for this Mac/)
+    expect(calls).not.toContain('quit')
+  })
+
+  it('writes a skip marker when the launch-time location is not usable, once per version', async () => {
+    const written: string[] = []
+    const { deps } = baseDeps({
+      execPath: '/Volumes/X/Factr-I.app/Contents/MacOS/Factr-I',
+      fs: { ...baseDeps().deps.fs, writeFile: async file => void written.push(file) }
+    })
+
+    expect(await preflightLaunch(ready, deps)).toBe(false)
+    expect(written.some(f => f.endsWith('0.0.9/skipped'))).toBe(true)
+    expect(await preflightLaunch(ready, baseDeps().deps)).toBe(true)
+  })
+})
+
 describe('post-update handoff', () => {
   it('only trusts the record for the version that is running', async () => {
     const rec = JSON.stringify({ from: '0.0.8', to: '0.0.9', marker: '/u/0.0.9/ok' })
@@ -236,6 +268,66 @@ exit 0
     expect(fs.existsSync(path.join(s.updates, 'post-update.json'))).toBe(false)
     expect(fs.existsSync(path.join(s.updates, '0.0.9', 'rolledback'))).toBe(true)
     expect(fs.readFileSync(path.join(s.root, 'launches.log'), 'utf8').trim().split('\n')).toEqual(['new', 'old'])
+  })
+
+  it('keeps waiting while the new app is alive, so a slow first launch is not rolled back', () => {
+    const s = setup()
+    const slow = path.join(s.root, 'slow-open.sh')
+
+    // the "new app" is a process whose command line contains the bundle path; it writes the marker after 4 s
+    fs.writeFileSync(
+      slow,
+      `#!/bin/sh
+APP="$2"
+echo "$(cat "$APP/Contents/version")" >> "${s.root}/launches.log"
+M=$(sed -n 's/.*"marker":"\\([^"]*\\)".*/\\1/p' "${s.updates}/post-update.json")
+mkdir -p "$(dirname "$M")"
+nohup /bin/sh -c 'sleep 4; : > "$1"' "$APP/Contents/MacOS/x" "$M" >/dev/null 2>&1 &
+exit 0
+`,
+      { mode: 0o755 }
+    )
+
+    const res = run(s, slow, { FACTR_SWAP_HEALTH_WAIT: '1', FACTR_SWAP_EXTRA_WAIT: '12' })
+
+    expect(res.status).toBe(0)
+    expect(fs.readFileSync(path.join(s.old, 'Contents', 'version'), 'utf8')).toBe('new')
+    expect(fs.existsSync(path.join(s.updates, '0.0.9', 'rolledback'))).toBe(false)
+  })
+
+  it('relaunches the old app when it never exits, and lets a later launch retry', () => {
+    const s = setup()
+    const holder = spawn('/bin/sh', ['-c', 'sleep 30; :', `${s.old}/Contents/x`], { detached: true, stdio: 'ignore' })
+
+    holder.unref()
+
+    try {
+      const res = run(s, fakeOpen(s.root, 'healthy'), { FACTR_SWAP_PROC_WAIT: '1' })
+
+      expect(res.status).toBe(1)
+      expect(fs.readFileSync(path.join(s.root, 'launches.log'), 'utf8').trim()).toBe('old')
+      expect(fs.existsSync(path.join(s.updates, '0.0.9', 'attempted'))).toBe(false)
+    } finally {
+      try {
+        process.kill(holder.pid as number)
+      } catch {
+        // gone
+      }
+    }
+  })
+
+  it('handles an app path with regex characters', () => {
+    const s = setup()
+    const odd = path.join(s.apps, 'Factr-I (2).app')
+
+    fs.renameSync(s.old, odd)
+    const res = spawnSync('/bin/sh', [s.script, odd, s.staged, '0.0.9', s.updates, '0.0.8'], {
+      env: { ...process.env, FACTR_SWAP_OPEN: fakeOpen(s.root, 'healthy'), FACTR_SWAP_PROC_WAIT: '2', FACTR_SWAP_HEALTH_WAIT: '3' },
+      encoding: 'utf8'
+    })
+
+    expect(res.status).toBe(0)
+    expect(fs.readFileSync(path.join(odd, 'Contents', 'version'), 'utf8')).toBe('new')
   })
 
   it('changes nothing when the old app is still running', () => {

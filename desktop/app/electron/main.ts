@@ -456,10 +456,10 @@ import { createUpdateDownloader } from './update-download'
 import { readAutoDownload, writeAutoDownload } from './update-download-pref'
 import { createUpdateFeed } from './update-feed'
 import { waitForUpdateClearance } from './update-gate'
-import { clearPostUpdate, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
+import { cleanupUpdateLeftovers, clearPostUpdate, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
-import { installAndRestart, stageUpdate, type SwapDeps } from './update-swap'
+import { installAndRestart, preflightLaunch, resolveAppBundle, stageUpdate, type SwapDeps } from './update-swap'
 import {
   observeUpdaterHandoff,
   resolveStagedUpdaterBinary,
@@ -17104,6 +17104,7 @@ function swapDeps(): SwapDeps {
     execPath: app.getPath('exe'),
     currentVersion: app.getVersion(),
     platform: process.platform,
+    arch: process.arch,
     isPackaged: app.isPackaged,
     isBusy: () => mergeActiveWork(activeWorkByWebContents.values()).count > 0,
     updatesDir: UPDATES_DIR,
@@ -17140,6 +17141,16 @@ if (POST_UPDATE) {
   process.env.FACTR_UPDATED_FROM = POST_UPDATE.from
 }
 
+if (process.platform === 'darwin' && app.isPackaged) {
+  setTimeout(() => {
+    const bundle = resolveAppBundle(app.getPath('exe'))
+
+    if (bundle) {
+      cleanupUpdateLeftovers(bundle, app.getVersion())
+    }
+  }, 20_000).unref()
+}
+
 ipcMain.handle('factr:updates:post-update', () => {
   const record = POST_UPDATE ? { from: POST_UPDATE.from, to: POST_UPDATE.to } : null
 
@@ -17159,6 +17170,15 @@ async function applyUpdateAtLaunch(): Promise<boolean> {
   const ready = findReadyZip(UPDATES_DIR, app.getVersion())
 
   if (!ready) {
+    return false
+  }
+
+  // A factr:// link or file open that started this launch would be lost by the restart: apply next time instead.
+  if (process.argv.some(arg => /^[a-z][a-z0-9+.-]*:\/\//i.test(arg))) {
+    return false
+  }
+
+  if (!(await preflightLaunch(ready, swapDeps()))) {
     return false
   }
 

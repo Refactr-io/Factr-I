@@ -51,7 +51,7 @@ export function findReadyZip(updatesDir: string, currentVersion: string): null |
     const dir = path.join(updatesDir, version)
     const file = path.join(dir, `Factr-I-${version}-mac-arm64.zip`)
 
-    if (!fs.existsSync(file) || fs.existsSync(path.join(dir, 'rolledback'))) {
+    if (!fs.existsSync(file) || ['rolledback', 'attempted', 'skipped'].some(marker => fs.existsSync(path.join(dir, marker)))) {
       continue
     }
 
@@ -93,5 +93,29 @@ export function clearPostUpdate(updatesDir: string): void {
     fs.rmSync(path.join(updatesDir, 'post-update.json'), { force: true })
   } catch {
     // ignore
+  }
+}
+
+/**
+ * Leftovers of an interrupted or finished swap next to the installed app: the old copy, a failed copy and staging
+ * folders for versions that are not newer than the running one. Never touches a staging folder for a newer version
+ * (that is a pending, pre-checked update).
+ */
+export function cleanupUpdateLeftovers(appPath: string, currentVersion: string): void {
+  const parent = path.dirname(appPath)
+  const base = path.basename(appPath, '.app')
+
+  try {
+    for (const name of fs.readdirSync(parent)) {
+      const full = path.join(parent, name)
+      const old = name === `.${base}.app.old` || name === `.${base}.app.failed` || name === `${base}.app.failed`
+      const staging = /^\.(.+)-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\.staging$/.exec(name)
+
+      if (old || (staging && staging[1] === base && compare(staging[2], currentVersion) <= 0)) {
+        fs.rmSync(full, { recursive: true, force: true })
+      }
+    }
+  } catch {
+    // best effort
   }
 }

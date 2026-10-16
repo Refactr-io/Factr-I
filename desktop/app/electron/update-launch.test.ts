@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
+import { cleanupUpdateLeftovers, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
 
 const dirs: string[] = []
 const mk = () => {
@@ -60,5 +60,30 @@ describe('post-update record and health marker', () => {
     expect(record).toEqual({ from: '0.0.8', to: '0.0.9', marker })
     writeHealthMarker(record!)
     expect(fs.existsSync(marker)).toBe(true)
+  })
+})
+
+describe('retry guards and leftovers', () => {
+  it('skips versions that were attempted, skipped or rolled back', () => {
+    for (const marker of ['attempted', 'skipped', 'rolledback']) {
+      const root = mk()
+
+      put(root, '0.0.9')
+      fs.writeFileSync(path.join(root, '0.0.9', marker), '')
+      expect(findReadyZip(root, '0.0.8')).toBeNull()
+    }
+  })
+
+  it('removes the old copy and old staging folders but keeps a staging folder for a newer version', () => {
+    const apps = mk()
+    const app = path.join(apps, 'Factr-I.app')
+
+    fs.mkdirSync(app)
+    for (const name of ['.Factr-I.app.old', '.Factr-I.app.failed', '.Factr-I-0.0.9.staging', '.Factr-I-0.0.10.staging', 'Other.app']) {
+      fs.mkdirSync(path.join(apps, name))
+    }
+
+    cleanupUpdateLeftovers(app, '0.0.9')
+    expect(fs.readdirSync(apps).sort()).toEqual(['.Factr-I-0.0.10.staging', 'Factr-I.app', 'Other.app'])
   })
 })

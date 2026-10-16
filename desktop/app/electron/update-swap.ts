@@ -47,6 +47,8 @@ export interface SwapDeps {
   execPath: string
   currentVersion: string
   platform: NodeJS.Platform
+  /** process.arch ('arm64' | 'x64'). */
+  arch: string
   isPackaged: boolean
   isBusy: () => boolean
   updatesDir: string
@@ -99,16 +101,20 @@ export function buildSwapScript(): string {
   return `#!/bin/sh
 OLD="$1"; NEW="$2"; VERSION="$3"; UPDATES="$4"; FROM="$5"
 OPEN="\${FACTR_SWAP_OPEN:-/usr/bin/open}"
-PROC_WAIT="\${FACTR_SWAP_PROC_WAIT:-60}"
-HEALTH_WAIT="\${FACTR_SWAP_HEALTH_WAIT:-45}"
+PROC_WAIT="\${FACTR_SWAP_PROC_WAIT:-180}"
+HEALTH_WAIT="\${FACTR_SWAP_HEALTH_WAIT:-120}"
+EXTRA_WAIT="\${FACTR_SWAP_EXTRA_WAIT:-180}"
 LOG="$UPDATES/helper.log"
 BACKUP="$(dirname "$OLD")/.$(basename "$OLD").old"
 MARKER="$UPDATES/$VERSION/ok"
 POST="$UPDATES/post-update.json"
 log() { printf '%s %s\\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*" >> "$LOG" 2>/dev/null; }
-alive() { pgrep -f "$OLD/Contents/" >/dev/null 2>&1; }
+# the app path is matched literally (escaped for pgrep's regex), so "Factr-I (2).app" and friends work
+PATTERN="$(printf '%s' "$OLD" | sed 's/[][\\\\.*^$()+?{}|]/\\\\&/g')/Contents/"
+alive() { pgrep -f -- "$PATTERN" >/dev/null 2>&1; }
 
 mkdir -p "$UPDATES/$VERSION" 2>/dev/null
+: > "$UPDATES/$VERSION/attempted"
 log "helper start: $OLD -> $VERSION (from $FROM)"
 
 # 1. wait for the old app and its engine/backend/helpers to exit
@@ -117,8 +123,10 @@ while alive; do
   i=$((i + 1))
   if [ "$i" -gt $((PROC_WAIT * 2)) ]; then
     log "abort: the old app is still running after \${PROC_WAIT}s; nothing was changed"
+    rm -f "$UPDATES/$VERSION/attempted"
     rm -rf "$NEW"
     case "$(basename "$(dirname "$NEW")")" in .*.staging) rm -rf "$(dirname "$NEW")" ;; esac
+    "$OPEN" -n "$OLD" >/dev/null 2>&1
     exit 1
   fi
   sleep 0.5
@@ -156,6 +164,16 @@ while [ ! -f "$MARKER" ]; do
   sleep 0.5
 done
 
+# a slow first launch (Gatekeeper scan, migration) is not a failure: keep waiting while the new app is alive
+if [ ! -f "$MARKER" ] && alive; then
+  log "no health marker yet but the new app is running; waiting up to \${EXTRA_WAIT}s more"
+  j=0
+  while [ ! -f "$MARKER" ] && alive && [ "$j" -lt $((EXTRA_WAIT * 2)) ]; do
+    j=$((j + 1))
+    sleep 0.5
+  done
+fi
+
 if [ -f "$MARKER" ]; then
   rm -rf "$BACKUP"
   log "ok: the new app reported healthy; the backup was removed"
@@ -164,7 +182,7 @@ fi
 
 # 4. rollback: the new app did not report healthy in time
 log "rollback: no health marker after \${HEALTH_WAIT}s; restoring the old app"
-pkill -f "$OLD/Contents/" >/dev/null 2>&1
+pkill -f -- "$PATTERN" >/dev/null 2>&1
 n=0
 while alive && [ "$n" -lt 20 ]; do n=$((n + 1)); sleep 0.5; done
 rm -f "$POST"
@@ -254,6 +272,17 @@ export async function stageUpdate(ready: ReadyUpdate, deps: SwapDeps): Promise<S
     if (!stagedId || stagedId !== currentId) {throw new Error(`bundle id mismatch (${stagedId ?? 'none'} vs ${currentId ?? 'none'})`)}
     if (stagedVersion !== ready.version) {throw new Error(`version mismatch (${stagedVersion ?? 'none'} vs ${ready.version})`)}
 
+    // The release assets are arm64 only; an Intel Mac must never swap in a build it cannot run.
+    const executable = await plistValue(deps, stagedPlist, 'CFBundleExecutable')
+    const wanted = deps.arch === 'x64' ? 'x86_64' : deps.arch
+    const lipo = executable
+      ? await deps.exec('/usr/bin/lipo', ['-archs', path.join(stagedApp, 'Contents', 'MacOS', executable)])
+      : { code: 1, stdout: '', stderr: '' }
+
+    if (lipo.code !== 0 || !lipo.stdout.split(/\s+/).includes(wanted)) {
+      throw new Error(`the update is not built for this Mac (${lipo.stdout.trim() || 'unknown'} vs ${wanted})`)
+    }
+
     const verify = await deps.exec('/usr/bin/codesign', ['--verify', '--deep', '--strict', stagedApp])
 
     if (verify.code !== 0) {throw new Error(`code signature check failed: ${verify.stderr.trim() || verify.code}`)}
@@ -268,6 +297,29 @@ export async function stageUpdate(ready: ReadyUpdate, deps: SwapDeps): Promise<S
 
     return fail(error instanceof Error ? error.message : String(error))
   }
+}
+
+/**
+ * Launch-time guard, run BEFORE any window is shown: the location must allow the swap. On failure a per-version
+ * "skipped" marker is written so the user does not see an update flash on every launch.
+ */
+export async function preflightLaunch(ready: ReadyUpdate, deps: SwapDeps): Promise<boolean> {
+  const bad = precheck(ready, deps)
+  const appPath = resolveAppBundle(deps.execPath)
+  let reason = bad
+
+  if (!reason && appPath) {
+    if (!(await deps.fs.writable(path.dirname(appPath)))) {reason = `${path.dirname(appPath)} is not writable`}
+    else if (!(await deps.fs.exists(ready.file))) {reason = 'the downloaded file is missing'}
+  }
+
+  if (!reason) {return true}
+
+  deps.log?.(`update at launch skipped: ${reason}`)
+  await deps.fs.mkdir(path.join(deps.updatesDir, ready.version)).catch(() => {})
+  await deps.fs.writeFile(path.join(deps.updatesDir, ready.version, 'skipped'), reason, 0o644).catch(() => {})
+
+  return false
 }
 
 /**
