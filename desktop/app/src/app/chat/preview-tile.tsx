@@ -19,7 +19,7 @@ import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { translateNow } from '@/i18n'
 import { openExternalLink } from '@/lib/external-link'
-import { World } from '@/lib/icons'
+import { Browser } from '@/lib/icons'
 import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab, setFileBrowserOpen } from '@/store/layout'
 import {
   $browserPages,
@@ -164,7 +164,7 @@ function PreviewTabLead({ tabId }: { tabId: string }) {
   }
 
   if (target.kind === 'url') {
-    return <World className="size-3.5 shrink-0 opacity-75" stroke={1.6} />
+    return <Browser className="size-3.5 shrink-0 opacity-75" stroke={1.6} />
   }
 
   return <FileTypeIcon className="opacity-70" path={target.path || target.url} size="0.6875rem" />

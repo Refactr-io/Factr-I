@@ -18,6 +18,7 @@ import {
   IconBookmarkFilled as BookmarkFilled,
   IconBox as Box,
   IconBrain as Brain,
+  IconBrowser as Browser,
   IconBug as Bug,
   IconCalendarEvent as CalendarEvent,
   IconCalendarEventFilled as CalendarEventFilled,
@@ -58,7 +59,7 @@ import {
   IconGitBranch as GitBranchIcon,
   IconGitFork as GitFork,
   IconGitFork as GitForkIcon,
-  IconGlobe as Globe,
+  IconWorld as Globe,
   IconHash as Hash,
   IconHelpCircle as HelpCircle,
   IconHome as Home,
@@ -135,7 +136,6 @@ import {
   IconVolume2 as Volume2Icon,
   IconVolumeOff as VolumeX,
   IconVolumeOff as VolumeXIcon,
-  IconWorld as World,
   IconTool as Wrench,
   IconX as X,
   IconX as XIcon,
@@ -144,9 +144,7 @@ import {
   IconZoomIn as ZoomIn,
   IconZoomOut as ZoomOut,
 } from '@tabler/icons-react'
-import { createElement, forwardRef } from 'react'
 
-import { Globe as PhosphorGlobe } from '@/components/icons/phosphor'
 
 export {
   Activity,
@@ -168,6 +166,7 @@ export {
   BookmarkFilled,
   Box,
   Brain,
+  Browser,
   Bug,
   CalendarEvent,
   CalendarEventFilled,
@@ -285,7 +284,6 @@ export {
   Volume2Icon,
   VolumeX,
   VolumeXIcon,
-  World,
   Wrench,
   X,
   XIcon,
@@ -298,14 +296,7 @@ export {
 import type { Icon as IconComponent } from '@tabler/icons-react'
 export type { IconComponent }
 
-// The browser's own glyph (Phosphor globe, drawn the same everywhere the browser appears). Wrapped to the
-// Tabler Icon shape so nav rows and headers take it like their neighbours; `size`/`stroke` are Tabler-only.
-export const Browser: IconComponent = forwardRef<SVGSVGElement, Record<string, unknown>>(function Browser(
-  { size: _size, stroke: _stroke, ...rest },
-  ref
-) {
-  return createElement(PhosphorGlobe, { ...rest, ref } as never)
-}) as unknown as IconComponent
+
 
 /**
  * Named icon-size scale — the single source of truth for SVG icon dimensions,
