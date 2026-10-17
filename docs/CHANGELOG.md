@@ -50,6 +50,11 @@
 - Messaging platforms and providers use their full-colour logos (Slack, Teams, Discord, Telegram and others; also in Settings
   and the model picker); a few platforms without an official mark keep a neutral glyph. The preview console button has its own
   bottom-panel icon, and built-in pages show a quiet loader instead of a blank flash on first open.
+- Settings: the sidebar sub-menu shows one unbroken line with a marker that slides to the current section, page titles and
+  section headings are larger and clearer, switches, checkboxes and sliders use the standard blue with a smooth 180 ms
+  switch motion, text fields are wider and have a visible edge, and the nav no longer shows a scrollbar rail. The search
+  field is rebuilt (32 px, small squircle, ⌘ and K as small keys) and is the same everywhere. Corners top out at 8 px, the + and
+  slash menus open clear of the composer, and the preview console button has a new icon.
 - The engine's agent loop, tools and prompts are unchanged; the only engine edits are the version string and the image
   support check for the OpenAI provider.
 
