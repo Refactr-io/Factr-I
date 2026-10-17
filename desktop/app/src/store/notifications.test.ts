@@ -1,4 +1,4 @@
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 
 import { en } from '@/i18n/en'
 
@@ -147,4 +147,21 @@ test('a non-error toast and an unrelated error toast are left as written', () =>
   expect(lastMessage()).toBe('Claude credentials not available.')
   notify({ kind: 'error', message: 'Could not save the avatar.' })
   expect(lastMessage()).toBe('Could not save the avatar.')
+})
+
+test('an error without an action clears itself; one with an action stays until answered', () => {
+  vi.useFakeTimers()
+
+  try {
+    notify({ id: 'plain-error', kind: 'error', title: 'Could not do it' })
+    notify({ action: { label: 'Retry', onClick: () => {} }, id: 'actionable-error', kind: 'error', title: 'Offline' })
+    vi.advanceTimersByTime(12_001)
+
+    const ids = $notifications.get().map(item => item.id)
+
+    expect(ids).not.toContain('plain-error')
+    expect(ids).toContain('actionable-error')
+  } finally {
+    vi.useRealTimers()
+  }
 })

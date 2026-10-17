@@ -58,9 +58,12 @@ const timers = new Map<string, number>()
 
 export const $notifications = atom<AppNotification[]>([])
 
-function defaultDuration(kind: NotificationKind) {
+// An error or warning that offers an action (Retry, Reconnect, Restart) stays until it is answered or
+// dismissed. One without an action is information only: it clears itself after a long read (12s) instead of
+// sitting over the page title until someone notices the close button.
+function defaultDuration(kind: NotificationKind, hasAction: boolean) {
   if (kind === 'error' || kind === 'warning') {
-    return 0
+    return hasAction ? 0 : 12_000
   }
 
   return 5_000
@@ -309,7 +312,7 @@ export function notify(rawInput: NotificationInput): string {
   // Visual depth is capped by CardStack, not by discarding queued notifications.
   $notifications.set([notification, ...$notifications.get().filter(item => item.id !== id)])
 
-  const duration = input.durationMs ?? defaultDuration(kind)
+  const duration = input.durationMs ?? defaultDuration(kind, Boolean(input.action || input.secondaryAction))
 
   if (duration > 0) {
     timers.set(
