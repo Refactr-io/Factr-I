@@ -3001,6 +3001,7 @@ export interface Translations {
     setupChoiceDesc: string
     connectExistingTitle: string
     connectExistingShort: string
+    useOwnServer: string
     connectExistingDesc: string
     installLocalTitle: string
     installLocalDesc: string

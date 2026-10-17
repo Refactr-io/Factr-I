@@ -15,7 +15,7 @@ import type {
   DesktopBootstrapState
 } from '@/global'
 import { useI18n } from '@/i18n'
-import { AlertCircle, ChevronDown, ChevronRight, Globe, iconSize, Loader2, Monitor } from '@/lib/icons'
+import { AlertCircle, ChevronDown, ChevronRight, Globe, iconSize, Loader2 } from '@/lib/icons'
 import { capitalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
 
@@ -427,21 +427,8 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <button
-              className="rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) p-4 text-left transition hover:bg-(--chrome-action-hover)"
-              onClick={() => setRemoteOpen(true)}
-              type="button"
-            >
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <Globe className="size-4 text-muted-foreground" />
-                <span>{copy.connectExistingTitle}</span>
-              </div>
-              <p className="mt-2 text-sm leading-5 text-muted-foreground">{copy.connectExistingDesc}</p>
-            </button>
-
-            <button
-              className="rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary) p-4 text-left transition hover:bg-(--chrome-action-hover) disabled:cursor-wait disabled:opacity-60"
+          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <Button
               disabled={localStarting}
               onClick={async () => {
                 setLocalStart({ root: activeRoot, starting: true, error: null })
@@ -458,17 +445,16 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
                   setLocalStart({ root: activeRoot, starting: false, error: errorMessage(err) })
                 }
               }}
+            >
+              {localStarting ? <Loader2 className="size-4 animate-spin" /> : null}
+              {copy.installLocalTitle}
+            </Button>
+            <button
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => setRemoteOpen(true)}
               type="button"
             >
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {localStarting ? (
-                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                ) : (
-                  <Monitor className="size-4 text-muted-foreground" />
-                )}
-                <span>{copy.installLocalTitle}</span>
-              </div>
-              <p className="mt-2 text-sm leading-5 text-muted-foreground">{copy.installLocalDesc}</p>
+              {copy.useOwnServer}
             </button>
           </div>
 

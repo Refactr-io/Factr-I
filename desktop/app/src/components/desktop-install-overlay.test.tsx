@@ -90,7 +90,7 @@ afterEach(() => {
 })
 
 describe('DesktopInstallOverlay first-run setup', () => {
-  it('continues local bootstrap only when Install Factr-I locally is selected', async () => {
+  it('continues local bootstrap only when Install Factr-I is selected', async () => {
     const desktop = installDesktopMock(
       bootstrapState({
         setupChoice: { platform: 'win32', activeRoot: 'C:\\Users\\me\\AppData\\Local\\factr\\factr-backend' }
@@ -99,16 +99,16 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click(await screen.findByText('Install Factr-I locally'))
+    fireEvent.click(await screen.findByText('Install Factr-I'))
 
     expect(desktop.continueBootstrapLocal).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('Set up Factr-I Desktop')).toBeTruthy()
+    expect(screen.getByText('Set up Factr-I')).toBeTruthy()
 
     act(() => {
       desktop.emitBootstrapEvent({ type: 'manifest', protocolVersion: 1, stages: [] })
     })
 
-    await waitFor(() => expect(screen.queryByText('Set up Factr-I Desktop')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('Set up Factr-I')).toBeNull())
     expect(screen.getByText(/Fetching installer manifest/i)).toBeTruthy()
   })
 
@@ -122,7 +122,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     desktop.continueBootstrapLocal = undefined as never
     render(<DesktopInstallOverlay />)
 
-    const install = (await screen.findByText('Install Factr-I locally')).closest('button') as HTMLButtonElement
+    const install = (await screen.findByText('Install Factr-I')).closest('button') as HTMLButtonElement
     fireEvent.click(install)
 
     expect(
@@ -144,7 +144,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     // Click the instant the choice paints, before React drains the passive
     // effect that reacts to the first snapshot. A loaded runner hits this
     // window by accident; observing the DOM directly hits it every time.
-    const install = (await whenPresent('Install Factr-I locally')).closest('button') as HTMLButtonElement
+    const install = (await whenPresent('Install Factr-I')).closest('button') as HTMLButtonElement
     fireEvent.click(install)
 
     await act(async () => {
@@ -166,7 +166,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     desktop.continueBootstrapLocal = undefined as never
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click((await screen.findByText('Install Factr-I locally')).closest('button') as HTMLButtonElement)
+    fireEvent.click((await screen.findByText('Install Factr-I')).closest('button') as HTMLButtonElement)
     expect(
       await screen.findByText('Local installation could not start. Restart Factr-I Desktop and try again.')
     ).toBeTruthy()
@@ -192,13 +192,13 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click(await screen.findByText('Connect to existing Factr-I'))
-    expect(await screen.findByText('Gateway URL')).toBeTruthy()
+    fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
+    expect(await screen.findByText('Server address')).toBeTruthy()
 
     fireEvent.click(screen.getByText('Back'))
 
-    expect(await screen.findByText('Set up Factr-I Desktop')).toBeTruthy()
-    expect(screen.getByText('Install Factr-I locally')).toBeTruthy()
+    expect(await screen.findByText('Set up Factr-I')).toBeTruthy()
+    expect(screen.getByText('Install Factr-I')).toBeTruthy()
   })
 
   it('requires a successful token connection test before applying remote config', async () => {
@@ -229,7 +229,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click(await screen.findByText('Connect to existing Factr-I'))
+    fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
     fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
@@ -288,7 +288,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click(await screen.findByText('Connect to existing Factr-I'))
+    fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
     const urlInput = await screen.findByPlaceholderText('https://gateway.example.com/factr')
     fireEvent.change(urlInput, { target: { value: 'https://gateway.example.com/factr' } })
 
@@ -341,7 +341,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click(await screen.findByText('Connect to existing Factr-I'))
+    fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
     fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
@@ -392,7 +392,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click(await screen.findByText('Connect to existing Factr-I'))
+    fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
     fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
@@ -412,7 +412,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     expect(await screen.findByText('remote apply failed')).toBeTruthy()
     expect(apply.disabled).toBe(false)
-    expect(screen.getByText('Gateway URL')).toBeTruthy()
+    expect(screen.getByText('Server address')).toBeTruthy()
   })
 
   it('signs in, tests, and applies a password-style remote gateway', async () => {
@@ -444,7 +444,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     render(<DesktopInstallOverlay />)
 
-    fireEvent.click(await screen.findByText('Connect to existing Factr-I'))
+    fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
     fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
@@ -502,9 +502,9 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     expect(await screen.findByText('Factr-I needs a one-time install')).toBeTruthy()
 
-    fireEvent.click(screen.getByText('Connect existing'))
+    fireEvent.click(screen.getByText('Connect to another machine'))
 
-    expect(await screen.findByText('Gateway URL')).toBeTruthy()
+    expect(await screen.findByText('Server address')).toBeTruthy()
 
     desktop.probeConnectionConfig.mockResolvedValue({
       authMode: 'token',
