@@ -18,7 +18,7 @@ import {
   IconBookmarkFilled as BookmarkFilled,
   IconBox as Box,
   IconBrain as Brain,
-  IconBrowser as Browser,
+  IconCompass as Browser,
   IconBug as Bug,
   IconCalendarEvent as CalendarEvent,
   IconCalendarEventFilled as CalendarEventFilled,

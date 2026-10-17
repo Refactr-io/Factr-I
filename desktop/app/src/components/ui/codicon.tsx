@@ -1,4 +1,4 @@
-import { type Icon, IconBrowser, IconWorld } from '@tabler/icons-react'
+import { type Icon, IconCompass, IconWorld } from '@tabler/icons-react'
 import type * as React from 'react'
 
 import {
@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 const PHOSPHOR: Record<string, { Glyph: React.ComponentType<React.SVGProps<SVGSVGElement>>; mirror?: boolean }> = {
   // Not codicons: the Tabler browser window for the browser, the flat Tabler world (circle with meridians) for the web.
   // The old globe-on-a-stand glyphs (Phosphor and Tabler `globe`) are retired.
-  'browser-window': { Glyph: IconBrowser },
+  'browser-window': { Glyph: IconCompass },
   globe: { Glyph: IconWorld },
   close: { Glyph: X },
   comment: { Glyph: ChatCircle },
