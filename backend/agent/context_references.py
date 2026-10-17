@@ -454,9 +454,14 @@ def _is_under(path: Path, root: Path) -> bool:
 COMPOSER_PASTES_DIRNAME = "composer-pastes"
 
 
+# Files attached from a desktop whose path the gateway cannot see (SSH / remote gateway) are
+# staged here by tui_gateway.prompt_attachments; the user attached them, so they are admitted too.
+ATTACHMENTS_DIRNAME = "attachments"
+
+
 def _composer_paste_roots() -> list[Path]:
     from agent.file_safety import _factr_dirs
-    return [factr_dir / COMPOSER_PASTES_DIRNAME for factr_dir in _factr_dirs()]
+    return [d / name for d in _factr_dirs() for name in (COMPOSER_PASTES_DIRNAME, ATTACHMENTS_DIRNAME)]
 
 
 def _resolve_path(cwd: Path, target: str, *, allowed_root: Path | None = None) -> Path:

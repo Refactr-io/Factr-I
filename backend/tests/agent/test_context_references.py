@@ -647,3 +647,31 @@ async def test_composer_paste_outside_workspace_is_attached_but_sibling_dir_is_n
     assert "PASTED-BODY-MARKER" in result.message
     assert "LOOKALIKE-SECRET" not in result.message
     assert "outside the allowed workspace" in "\n".join(result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_staged_attachment_outside_workspace_is_attached_but_images_dir_is_not(tmp_path, monkeypatch):
+    """A file attached over SSH is staged under <FACTR_CONFIG_HOME>/attachments; its content must
+    reach the model, while other Factr dirs (images/) stay behind the workspace guard."""
+    from agent.context_references import preprocess_context_references_async
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    factr_home = tmp_path / ".factr"
+    monkeypatch.setenv("FACTR_CONFIG_HOME", str(factr_home))
+    attached = factr_home / "attachments" / "attach.txt"
+    attached.parent.mkdir(parents=True)
+    attached.write_text("ATTACHED-BODY-MARKER\n", encoding="utf-8")
+    other = factr_home / "images" / "note.txt"
+    other.parent.mkdir(parents=True)
+    other.write_text("IMAGES-DIR-TEXT\n", encoding="utf-8")
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+
+    result = await preprocess_context_references_async(
+        f"see @file:{attached} and @file:{other}",
+        cwd=workspace, allowed_root=workspace, context_length=100_000,
+    )
+
+    assert "ATTACHED-BODY-MARKER" in result.message
+    assert "IMAGES-DIR-TEXT" not in result.message
+    assert "outside the allowed workspace" in "\n".join(result.warnings)
