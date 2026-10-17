@@ -40,6 +40,7 @@ import {
   saveSelectedRosterBot
 } from './bot-state'
 import { ensureBotMetadata } from './canonical-chat'
+import { computerWordKey, useBotComputer } from './computer'
 import {
   $botAttention,
   $botMeta,
@@ -142,6 +143,8 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
   // Keep user photos/pets. Drop the 160px SVG backfill so the math face can move.
   const photo = Boolean(image && !isBackfilledFacePng(image))
   const turnBusy = useTurnBusy()
+  const computer = useBotComputer(bot)
+  const computerWord = computer ? computerWordKey(computer.status) : null
   // Preview identity must match click identity (#88200): when the backend
   // resolved the pinned canonical chat, preview THAT session — not the
   // profile's most recent (but unrelated) activity. Activity signals
@@ -287,6 +290,9 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
             <Tip label={rowTooltip}>
               <span className="min-w-0 truncate text-[0.8125rem] font-medium">{displayName(bot, meta)}</span>
             </Tip>
+            {computerWord ? (
+              <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">{b.computer.word[computerWord]}</span>
+            ) : null}
           </div>
           {attention ? (
             <Tip label={botAttentionHint(attention.reason)}>

@@ -16,6 +16,7 @@ import { Button, Codicon, EmptyState, GlyphSpinner, host, Tip, useValue } from '
 import type { RpcEvent } from '@factr/plugin-sdk'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { type BotComputer, formatMemory, formatUptime, useBotComputer, useComputerViewHold } from './computer'
 import { useBots } from './i18n'
 import {
   type DisplayLease,
@@ -144,6 +145,22 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
       offStatus()
     }
   }, [bot, refresh, status?.profile_key])
+
+  const computer = useBotComputer(bot)
+  useComputerViewHold(bot)
+
+  // The computer starting, stopping or dying changes which engine answers `display.*`: re-ask.
+  useEffect(() => {
+    if (computer) {
+      void refresh()
+    }
+  }, [computer?.state, refresh]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startComputer = useCallback(async () => {
+    await computer?.start()
+    setConn('idle')
+    void refresh()
+  }, [computer, refresh])
 
   const detach = useCallback((handBack = false) => {
     attachGeneration.current += 1
@@ -363,6 +380,11 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
     [bot, viewer?.id]
   )
 
+  // A bot whose computer is not up has no desktop to show: say why, with the one action.
+  if (computer && computer.state !== 'on' && (computer.state === 'starting' || state?.unavailable || (status && !status.supported))) {
+    return <ComputerGate computer={computer} onStart={() => void startComputer()} />
+  }
+
   if (state?.unavailable) {
     return <EmptyState description={t.screen.portalUnavailable} title={t.screen.unavailableTitle} />
   }
@@ -381,6 +403,7 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
         <div className="flex flex-col items-center gap-2">
           <div className="text-sm font-medium">{t.screen.stoppedTitle}</div>
           <div className="text-xs text-muted-foreground">{status.blocker ?? t.screen.stoppedBody}</div>
+          {computer ? <ComputerLine computer={computer} onStart={() => void startComputer()} /> : null}
           <Button disabled={busy || Boolean(status.blocker)} onClick={() => void start()} size="sm">
             {busy ? <GlyphSpinner /> : <Codicon name="play" />}
             {t.screen.start}
@@ -403,6 +426,7 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
             {status.display} · {status.geometry}
           </span>
         ) : null}
+        {computer ? <ComputerLine computer={computer} onStart={() => void startComputer()} /> : null}
         <span className="grow" />
         {lease?.holder === 'human' && lease.reason ? (
           // Why control was taken stays readable while the human acts.
@@ -477,6 +501,113 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
         ) : null}
         {conn === 'error' && error ? (
           <div className="absolute inset-x-0 bottom-0 bg-red-950/80 px-3 py-1.5 text-xs text-red-200">{error}</div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** One quiet line about the computer with its Start or Stop action. */
+function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
+  const t = useBots().computer
+  const { memLimitBytes, memUsedBytes, startedAt } = computer.status
+  const [busy, setBusy] = useState(false)
+
+  const stop = async () => {
+    setBusy(true)
+
+    try {
+      await computer.stop()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (computer.state === 'on') {
+    return (
+      <>
+        <span className="text-muted-foreground">
+          {t.onLine(
+            formatUptime(startedAt),
+            memUsedBytes ? formatMemory(memUsedBytes) : null,
+            memLimitBytes ? formatMemory(memLimitBytes) : null
+          )}
+        </span>
+        <Button disabled={busy} onClick={() => void stop()} size="sm" variant="ghost">
+          {busy ? <GlyphSpinner /> : <Codicon name="debug-stop" />}
+          {t.stop}
+        </Button>
+      </>
+    )
+  }
+
+  if (computer.state === 'starting') {
+    return (
+      <span className="text-muted-foreground">
+        <GlyphSpinner /> {t.starting}
+      </span>
+    )
+  }
+
+  if (computer.state === 'no-docker') {
+    return null
+  }
+
+  return (
+    <>
+      <span className="text-muted-foreground">{computer.state === 'error' ? t.failedTitle : t.offTitle}</span>
+      <Button onClick={onStart} size="sm" variant="ghost">
+        <Codicon name="play" />
+        {t.start}
+      </Button>
+    </>
+  )
+}
+
+const DOCKER_URL = 'https://www.docker.com/products/docker-desktop/'
+
+/** The pane when there is no running computer to show: why, and the one thing to do. */
+function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
+  const t = useBots().computer
+  const { error, reason } = computer.status
+  const mac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+  const open = (url: string) => void window.factrDesktop?.openExternal?.(url)
+
+  const view = (() => {
+    if (computer.state === 'starting') {
+      return { body: null, title: t.starting }
+    }
+
+    if (computer.state === 'no-docker') {
+      return reason === 'not-installed'
+        ? { action: { label: t.getDocker, run: () => open(DOCKER_URL) }, body: t.dockerNotInstalledBody, title: t.dockerNotInstalled }
+        : {
+            action: mac
+              ? { label: t.openDocker, run: () => open('file:///Applications/Docker.app') }
+              : { label: t.getDocker, run: () => open(DOCKER_URL) },
+            body: t.dockerNotRunningBody,
+            title: t.dockerNotRunning
+          }
+    }
+
+    return {
+      action: { label: t.start, run: onStart },
+      body: computer.state === 'error' ? error : t.offBody,
+      title: computer.state === 'error' ? t.failedTitle : t.offTitle
+    }
+  })()
+
+  return (
+    <div className="grid min-h-48 place-items-center p-6 text-center">
+      <div className="flex flex-col items-center gap-2">
+        <div className="text-sm font-medium">
+          {computer.state === 'starting' ? <GlyphSpinner /> : null} {view.title}
+        </div>
+        {view.body ? <div className="text-xs text-muted-foreground">{view.body}</div> : null}
+        {'action' in view && view.action ? (
+          <Button onClick={view.action.run} size="sm">
+            {view.action.label}
+          </Button>
         ) : null}
       </div>
     </div>

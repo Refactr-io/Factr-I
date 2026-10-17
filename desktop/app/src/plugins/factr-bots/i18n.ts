@@ -318,6 +318,24 @@ type BotsMessages = {
 
   /** Bot-scoped scheduled jobs. Generic scheduling chrome (weekday names,
    *  Daily/Hourly, the job verbs) resolves against core's `cron` section. */
+  /** Bot computers: one Docker container per bot, started on demand. */
+  computer: {
+    word: { noDocker: string; off: string; on: string; starting: string; working: string }
+    start: string
+    stop: string
+    starting: string
+    offTitle: string
+    offBody: string
+    onLine: (uptime: string, used: null | string, limit: null | string) => string
+    failedTitle: string
+    dockerNotRunning: string
+    dockerNotRunningBody: string
+    dockerNotInstalled: string
+    dockerNotInstalledBody: string
+    openDocker: string
+    getDocker: string
+    teach: string
+  }
   cron: {
     filterHint: string
     needsRosterFirst: string
@@ -626,6 +644,23 @@ const en: BotsMessages = {
     otherControls: 'Another viewer is in control',
     agentControls: 'Bot is in control',
     controlTaken: 'Another viewer took control. Watching only.'
+  },
+  computer: {
+    word: { noDocker: 'No Docker', off: 'Off', on: 'On', starting: 'Starting', working: 'Working' },
+    start: 'Start computer',
+    stop: 'Stop computer',
+    starting: 'Starting your bot\u2019s computer',
+    offTitle: 'Computer is off',
+    offBody: 'Start it to give this bot its own desktop.',
+    onLine: (uptime, used, limit) => `On for ${uptime}${used && limit ? `, ${used} of ${limit}` : ''}`,
+    failedTitle: 'The computer did not start',
+    dockerNotRunning: 'Docker is not running',
+    dockerNotRunningBody: 'Open Docker, then start this bot\u2019s computer.',
+    dockerNotInstalled: 'Docker is not installed',
+    dockerNotInstalledBody: 'Bots get their own computer through Docker Desktop.',
+    openDocker: 'Open Docker',
+    getDocker: 'Get Docker',
+    teach: 'Teach a task'
   },
   cron: {
     filterHint:
@@ -937,6 +972,8 @@ const ja: BotsMessages = {
     agentControls: 'ボットが操作中',
     controlTaken: '別のビューアが操作を引き継ぎました。閲覧のみ。'
   },
+  // English until translated.
+  computer: en.computer,
   cron: {
     filterHint:
       'このプロファイルには定期実行ジョブがありますが、このボット向けのタグが付いたものはありません。ジョブ名を「[bot:<名前>] …」にするとここに表示されます。下のCronでも確認できます。',
@@ -1237,6 +1274,8 @@ const zh: BotsMessages = {
     agentControls: '机器人正在控制',
     controlTaken: '另一位查看者已接管控制。仅可观看。'
   },
+  // English until translated.
+  computer: en.computer,
   cron: {
     filterHint:
       '此配置档案中有定时任务，但没有一个标记给这个机器人。将任务命名为“[bot:<名称>] …”即可显示在这里，也可以在下方的 Cron 中查看。',
@@ -1537,6 +1576,8 @@ const zhHant: BotsMessages = {
     agentControls: '機器人正在控制',
     controlTaken: '另一位檢視者已接手控制。僅可觀看。'
   },
+  // English until translated.
+  computer: en.computer,
   cron: {
     filterHint:
       '此設定檔中有排程工作，但沒有任何一個標記給這個機器人。將工作命名為「[bot:<名稱>] …」即可顯示在這裡，也可以在下方的 Cron 中查看。',

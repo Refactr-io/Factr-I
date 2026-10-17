@@ -1586,6 +1586,8 @@ export {
   type ComposerAttachmentProvider,
   type ComposerMiddleware
 } from '@/app/chat/composer/contrib'
+/** Put text into the active chat composer (and focus it), the way a paste or a dropped link does. */
+export { requestComposerFocus, requestComposerInsert } from '@/app/chat/composer/focus'
 /** THE session status dot — the one primitive the sidebar row, the pane tabs
  *  and the session switcher render, so a session's status can never disagree
  *  between surfaces. Pass the STORED session id and it resolves the rest
