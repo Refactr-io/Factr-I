@@ -90,6 +90,19 @@ import {
 import { decideBootstrapRepair } from './bootstrap-repair-guard'
 import { runBootstrap } from './bootstrap-runner'
 import {
+  computerStatus as botComputerStatus,
+  chooseBotBackend,
+  configureBotComputers,
+  destroyComputer,
+  dockerAvailable,
+  ensureComputer,
+  reconcileComputers,
+  setComputerHold,
+  stopComputer,
+  touchComputer,
+  validateBotProfile
+} from './bot-computers'
+import {
   BROWSER_WINDOW_HEIGHT,
   BROWSER_WINDOW_MIN_HEIGHT,
   BROWSER_WINDOW_MIN_WIDTH,
@@ -10301,6 +10314,9 @@ function profileRouteOptions(profile, request?) {
     // its own backend; absent entries inherit the primary's remote.
     ownEntry: Boolean((config.profiles || {})[key]),
     isolatedBackend: ISOLATED_BACKEND,
+    // Only the packaged build runs the Rust engine (resolveFactrBackend kind 'factr'): one profile per process.
+    // FACTR_BOT_COMPUTERS=1 forces it on (dev runs, where primary is the Python gateway), =0 turns computers off.
+    primarySingleProfile: IS_PACKAGED || process.env.FACTR_BOT_COMPUTERS === '1',
     requestMethod: request?.method,
     requestPath: request?.path
   }
@@ -11289,6 +11305,14 @@ function touchPoolBackend(profile, options: { activeTurn?: boolean } = {}) {
         entry.activeTurn = options.activeTurn
       }
 
+      if (entry.botComputer) {
+        touchComputer(key)
+
+        if (typeof options.activeTurn === 'boolean') {
+          setComputerHold(key, 'turn', options.activeTurn)
+        }
+      }
+
       return
     }
   }
@@ -11432,10 +11456,14 @@ async function runPoolBackendStart(
   // remote is reachable and hand back its connection descriptor. The pool
   // entry keeps `entry.process === null`, which stopPoolBackend/evict already
   // tolerate.
-  const remote = opts.forceLocal ? null : await resolveRemoteBackend(profile, { poolKey })
+  const remote = (opts.forceLocal ? null : await resolveRemoteBackend(profile, { poolKey })) || (await botComputerRemote(profile))
   profileDeletionGate.assertCanStart(profile)
 
   if (remote) {
+    // A bot computer is registered exactly like a process-less remote entry; the pool (liveness probe, idle reap,
+    // delete teardown) already knows how to hold one. This flag only lets keepalive reach the computer's idle timer.
+    entry.botComputer = remote.source === BOT_COMPUTER_SOURCE
+
     await waitForFactr(remote.baseUrl, remote.token, undefined, remote.authMode, remote.headers)
 
     // Recorded on the entry so revalidation can probe this descriptor without
@@ -11461,6 +11489,9 @@ async function runPoolBackendStart(
 
   assertNoSecondLocalBackend(poolKey, {
     isolated: guardRoute.isolatedBackend,
+    // A single-profile primary (packaged Rust engine) cannot multiplex: this per-profile engine IS the route
+    // (no-Docker fallback for a bot profile).
+    singleProfilePrimary: guardRoute.primarySingleProfile,
     primaryRemoteActive: guardRoute.primaryRemoteActive,
     profileRemoteOverride: opts.forceLocal ? false : guardRoute.profileRemoteOverride,
     unscopableRequest: opts.unscopableRequest
@@ -11758,6 +11789,110 @@ const poolStopper = createPoolStopper({
   }
 })
 
+// ── Bot computers (bots-virtual-computers-design.md 3.3) ───────────────────
+// A local bot profile gets its own engine: a container when Docker is up, else its own host engine
+// (runPoolBackendStart below). Never both: ensure/start only runs one of them per profile at a time.
+const BOT_COMPUTER_SOURCE = 'bot-computer'
+let botMasterSecret: string | null = null
+
+// The master secret behind the per-bot tokens. Random, persisted in userData with the same policy as every other
+// desktop secret (plain by default, keychain on opt-in), and stable: a container keeps the token it was created with.
+function botComputersMasterSecret(): string {
+  if (botMasterSecret) {
+    return botMasterSecret
+  }
+
+  const file = path.join(app.getPath('userData'), 'bot-computers-secret.json')
+
+  try {
+    botMasterSecret = decryptDesktopSecret(JSON.parse(fs.readFileSync(file, 'utf8'))) || null
+  } catch {
+    botMasterSecret = null
+  }
+
+  if (!botMasterSecret) {
+    const created = crypto.randomBytes(32).toString('base64url')
+    const secret = encryptDesktopSecret(created)
+
+    if (!secret) {
+      throw new Error('Could not store the bot computer secret.')
+    }
+
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(secret), { mode: 0o600 })
+    botMasterSecret = created
+  }
+
+  return botMasterSecret
+}
+
+configureBotComputers({
+  configHome: FACTR_CONFIG_HOME,
+  masterSecret: botComputersMasterSecret,
+  waitReady: (baseUrl, token) => waitForFactr(baseUrl, token),
+  maxRunning: () => poolMaxBackends(),
+  // Opt-in until the image publishes its auth-store contract: FACTR_BOT_AUTH_STORE=<engine home dir>.
+  authStoreHostDir: process.env.FACTR_BOT_AUTH_STORE || undefined,
+  // Idle or cap stop: drop the pool entry so the renderer parks and re-dials (which wakes it) instead of a dead socket.
+  onStopped: profile => {
+    for (const key of localProfilePoolKeys(profile)) {
+      if (backendPool.has(key)) {
+        broadcastPoolBackendRetiring(key)
+        void stopPoolBackend(key)
+      }
+    }
+  }
+})
+
+// The remote-entry descriptor for a bot's container, or null when this profile is not a bot-computer case
+// (primary profile, remote, Docker down: the host-engine path below then serves it).
+async function botComputerRemote(profile: string) {
+  const facts = { ...profileRouteOptions(profile), disabled: process.env.FACTR_BOT_COMPUTERS === '0' }
+
+  if (!chooseBotBackend(profile, facts, true) || chooseBotBackend(profile, facts, await dockerAvailable()) !== 'container') {
+    return null
+  }
+
+  const computer = await ensureComputer(profile)
+
+  return buildRemoteConnection(computer.url, 'token', computer.token, BOT_COMPUTER_SOURCE, `${profile} computer`, 'url')
+}
+
+// Packaged only: the bot's container engine and a host engine must never own one profile folder together.
+async function startBotComputer(profile: string) {
+  validateBotProfile(profile)
+  const existing = backendPool.get(profile)
+
+  if (existing?.process) {
+    await stopPoolBackend(profile)
+  }
+
+  await ensureBackend(profile, { spawnPriority: 'foreground' })
+
+  return botComputerStatus(profile)
+}
+
+async function stopBotComputerQuietly(profile: string, destroy = false) {
+  try {
+    validateBotProfile(profile)
+    await (destroy ? destroyComputer(profile) : stopComputer(profile))
+  } catch (error) {
+    rememberLog(`Bot computer ${destroy ? 'destroy' : 'stop'} for "${profile}" failed: ${String(error)}`)
+  }
+}
+
+function reconcileBotComputers() {
+  let names: string[] = []
+
+  try {
+    names = fs.readdirSync(path.join(FACTR_CONFIG_HOME, 'profiles'))
+  } catch {
+    // No profiles folder yet: nothing to keep.
+  }
+
+  void reconcileComputers(names).catch(error => rememberLog(`Bot computer reconcile failed: ${String(error)}`))
+}
+
 function stopPoolBackend(profile: string): Promise<void> {
   const entry = backendPool.get(profile)
 
@@ -11800,7 +11935,10 @@ const poolRetirer = createPoolRetirer({
 localBackendLifecycle.signal.addEventListener('abort', poolRetirer.dispose, { once: true })
 
 async function teardownPoolBackendAndWait(profile) {
-  await Promise.all(localProfilePoolKeys(profile).map(key => stopPoolBackend(key)))
+  await Promise.all([
+    ...localProfilePoolKeys(profile).map(key => stopPoolBackend(key)),
+    stopBotComputerQuietly(profile)
+  ])
 }
 
 async function stopAllPoolBackends() {
@@ -11879,6 +12017,8 @@ async function prepareProfileDeleteRequest(request) {
   }
 
   await teardownPoolBackendAndWait(decision.profile)
+  // The bot is going away: remove its computer (and the .computer marker) before the folder is deleted.
+  await stopBotComputerQuietly(decision.profile, true)
 
   return decision.profile
 }
@@ -14510,6 +14650,35 @@ function revalidateSuspectPoolAfterResume() {
   )
 }
 
+// Bot computers (Docker): status, start, stop, and a "screen open" hold so the idle stop skips a watched bot.
+// Failures come back as data, never as a thrown IPC error, so the roster can render them.
+const botComputerIpc = (fn: (profile: string) => Promise<unknown>) => async (_event, profile) => {
+  try {
+    return { ok: true, status: await fn(validateBotProfile(profile)) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+ipcMain.handle('factr:bot-computer:status', botComputerIpc(botComputerStatus))
+ipcMain.handle('factr:bot-computer:start', botComputerIpc(startBotComputer))
+ipcMain.handle(
+  'factr:bot-computer:stop',
+  botComputerIpc(async profile => {
+    await stopComputer(profile)
+
+    return botComputerStatus(profile)
+  })
+)
+ipcMain.handle('factr:bot-computer:hold', async (_event, profile, reason, on) => {
+  try {
+    setComputerHold(validateBotProfile(profile), reason === 'turn' ? 'turn' : 'view', on === true)
+
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+})
 ipcMain.handle('factr:backend:touch', async (_event, profile, options) => {
   touchPoolBackend(profile, options)
 
@@ -18069,6 +18238,7 @@ app.whenReady().then(async () => {
   // its worker waits for the install marker to clear, then reopens every scope
   // captured by the original transaction before removing the journal entry.
   void resumeManagedSshRecoveries()
+  reconcileBotComputers()
   installApplicationMenuAfterFirstWindow({
     isMac: IS_MAC,
     buildMenu: buildApplicationMenu,

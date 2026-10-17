@@ -35,6 +35,13 @@ contextBridge.exposeInMainWorld('factrDesktop', {
   getProfileRoutes: profiles => ipcRenderer.invoke('factr:plugin-profile-routes', profiles),
   revalidateConnection: () => ipcRenderer.invoke('factr:connection:revalidate'),
   touchBackend: (profile, options) => ipcRenderer.invoke('factr:backend:touch', profile, options),
+  // Bot computers (one Docker container per bot). Failures return {ok:false,error}, never throw.
+  botComputer: {
+    status: profile => ipcRenderer.invoke('factr:bot-computer:status', profile),
+    start: profile => ipcRenderer.invoke('factr:bot-computer:start', profile),
+    stop: profile => ipcRenderer.invoke('factr:bot-computer:stop', profile),
+    hold: (profile, reason, on) => ipcRenderer.invoke('factr:bot-computer:hold', profile, reason, on)
+  },
   getPoolLimits: () => ipcRenderer.invoke('factr:pool-limits:get'),
   setPoolLimits: limits => ipcRenderer.invoke('factr:pool-limits:set', limits),
   getGatewayWsUrl: profile => ipcRenderer.invoke('factr:gateway:ws-url', profile),

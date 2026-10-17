@@ -79,3 +79,22 @@ test('the spawn guard and the router agree on which requests keep a backend', ()
     )
   }
 })
+
+// The packaged Rust engine serves ONE profile per process and ignores a `profile` param, so a bot routed to it as a
+// "shared primary" silently ran as the default profile (the 0.0.8/0.0.9 bug).
+test('a single-profile primary (Rust engine) never shares: a bot profile gets its own backend, the primary profile does not', () => {
+  const RUST = { ...LOCAL, primarySingleProfile: true }
+
+  assert.deepEqual(resolveProfileBackendRoute('scout', RUST), { backend: 'pool', descriptorProfile: null, scopePath: false })
+  assert.deepEqual(resolveProfileBackendRoute('scout', LOCAL), {
+    backend: 'primary',
+    descriptorProfile: 'scout',
+    scopePath: true
+  })
+  // The primary profile keeps the primary backend either way.
+  assert.equal(resolveProfileBackendRoute('default', RUST).backend, 'primary')
+  // The per-profile spawn guard lets a bot profile through only when the primary cannot multiplex.
+  assert.throws(() => assertNoSecondLocalBackend('scout', {}), SecondLocalBackendError)
+  assert.doesNotThrow(() => assertNoSecondLocalBackend('scout', { singleProfilePrimary: true }))
+  assert.equal(sharesHostBackend({ singleProfilePrimary: true }), false)
+})

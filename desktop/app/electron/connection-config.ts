@@ -564,6 +564,8 @@ export interface ProfileRouteOptions {
   ownEntry?: boolean
   /** `FACTR_DESKTOP_ISOLATED_BACKEND=1`: opt out of the host singleton. */
   isolatedBackend?: boolean
+  /** The primary backend is the packaged single-profile Rust engine (cannot multiplex profiles). */
+  primarySingleProfile?: boolean
   requestMethod?: null | string
   requestPath?: null | string
 }
@@ -759,7 +761,9 @@ export function unscopableMutatingRequest(opts: ProfileRouteOptions = {}): boole
  *     socket with a `profile` param, never a second socket to the same
  *     process (#120005). The two ways out are
  *     `FACTR_DESKTOP_ISOLATED_BACKEND=1`, which gives this app a private
- *     backend, and a MUTATING request the server cannot scope at all — that
+ *     backend, a primary that is the packaged Rust engine (one profile per
+ *     process, ignores the `profile` param, so every bot would run as the
+ *     default profile), and a MUTATING request the server cannot scope at all — that
  *     one keeps a pooled backend whose FACTR_CONFIG_HOME does the scoping, so a
  *     destructive call can never fall through to the primary's home.
  *
@@ -834,7 +838,13 @@ function resolveProfileBackendRoute(profile, opts: ProfileRouteOptions = {}): Pr
   //    a `factr serve` child of its own — UNLESS this request mutates state
   //    the server cannot scope, in which case the pooled backend's own
   //    FACTR_CONFIG_HOME is the only scope left and it keeps one.
-  if (sharesHostBackend({ isolated: opts.isolatedBackend, unscopableRequest: unscopableMutatingRequest(opts) })) {
+  if (
+    sharesHostBackend({
+      isolated: opts.isolatedBackend,
+      unscopableRequest: unscopableMutatingRequest(opts),
+      singleProfilePrimary: opts.primarySingleProfile
+    })
+  ) {
     return { backend: 'primary', descriptorProfile: scopedProfile, scopePath: true }
   }
 
