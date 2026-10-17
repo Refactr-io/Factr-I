@@ -12,15 +12,17 @@ const html = updateSplashHtml()
 const style = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? ''
 
 describe('updateSplashHtml', () => {
-  it('carries no text at all: no version, no digits, no words outside the drawing', () => {
+  it('says only "Updating Factr-I" and "One moment...", with no version or digits', () => {
     const visible = html
       .replace(/<style>[\s\S]*?<\/style>/, '')
       .replace(/<svg[\s\S]*?<\/svg>/, '')
       .replace(/<title><\/title>/, '')
-      .replace(/<[^>]+>/g, '')
+      .replace(/<[^>]+>/g, '|')
+      .split('|')
+      .filter(Boolean)
 
-    expect(visible.trim()).toBe('')
-    expect(html).not.toMatch(/updating|version|one moment|v?\d+\.\d+\.\d+/i)
+    expect(visible).toEqual(['Updating Factr-I', 'One moment...'])
+    expect(html).not.toMatch(/v?\d+\.\d+\.\d+/)
   })
 
   it('has the reduced-motion rule that stops every animation, leaving the still full mascot', () => {
