@@ -69,7 +69,7 @@ export function OverlaySidebar({ children, className }: OverlaySidebarProps) {
         // they ride up via the shorter shared OVERLAY_TOP_CLEARANCE (same line
         // as a Panel header) instead of main's taller X-clearance. The bg still
         // fills from the card's top edge, so there's no gap above the sidebar.
-        'flex min-h-0 flex-col gap-0.5 overflow-y-auto bg-(--ui-bg-editor) px-3 pb-3',
+        'flex min-h-0 flex-col gap-0.5 overflow-y-auto bg-(--ui-bg-editor) px-3 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         OVERLAY_TOP_CLEARANCE,
         className
       )}
@@ -273,7 +273,7 @@ export function OverlayNav({
   return (
     <>
       <OverlaySidebar className={RAIL_HIDDEN}>
-        {header}
+        {header && <div className="sticky top-0 z-10 -mx-3 bg-(--ui-bg-editor) px-3 pt-1">{header}</div>}
         {groups.map((group, index) => {
           const hasChildren = childrenInRail && Boolean(group.children?.length)
           const sectionLabel = group.section && group.section !== groups[index - 1]?.section ? group.section : null

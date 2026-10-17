@@ -10,7 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { comboTokens } from '@/components/ui/kbd'
+import { comboTokens, KbdGroup } from '@/components/ui/kbd'
+import { searchFieldSurface } from '@/components/ui/search-field'
 import { getFactrConfigDefaults, getFactrConfigRecord, saveFactrConfig } from '@/factr'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
@@ -33,6 +34,7 @@ import {
 } from '@/lib/icons'
 import { isEditableTarget } from '@/lib/keybinds/combo'
 import { typeToFocusChar } from '@/lib/keybinds/composer-focus-keys'
+import { cn } from '@/lib/utils'
 import { $commandPaletteOpen, openCommandPalettePage } from '@/store/command-palette'
 import { confirm } from '@/store/confirm'
 import { $activeConnectionId } from '@/store/connections'
@@ -100,6 +102,7 @@ const NAV_SECTIONS: readonly {
 const NAV_RANK = new Map(
   NAV_SECTIONS.flatMap((section, s) => section.views.map((view, i) => [view, s * 100 + i] as const))
 )
+
 const NAV_SECTION_KEY = new Map(
   NAV_SECTIONS.flatMap(section => section.views.map(view => [view, section.labelKey] as const))
 )
@@ -400,6 +403,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         .map(group => {
           const view = group.id as SettingsViewId
           const children = settingsSubpages(view)
+
           const placed = {
             gapBefore: false,
             section: NAV_SECTION_KEY.has(group.id) ? t.settings.nav[NAV_SECTION_KEY.get(group.id)!] : undefined
@@ -477,20 +481,16 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
 
   const searchField = (
     <button
-      className="mb-3 flex h-9 w-full items-center gap-2.5 rounded-md bg-(--ui-bg-tertiary) px-3 text-left text-(--ui-text-secondary) transition-colors hover:text-foreground"
+      className={cn('mb-3 flex w-full items-center text-left text-(--ui-text-secondary) hover:text-foreground', searchFieldSurface)}
       onClick={() => {
         triggerHaptic('open')
         openCommandPalettePage('settings')
       }}
       type="button"
     >
-      <Search className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-sm leading-none">{t.settings.search.pill}</span>
-      {searchCombo && (
-        <span className="shrink-0 text-xs leading-none text-(--ui-text-tertiary)">
-          {comboTokens(searchCombo).join('')}
-        </span>
-      )}
+      <Search className="size-3.5 shrink-0" />
+      <span className="min-w-0 flex-1 truncate text-[length:var(--conversation-text-font-size)] leading-none">{t.settings.search.pill}</span>
+      {searchCombo && <KbdGroup keys={comboTokens(searchCombo)} size="sm" variant="flat" />}
     </button>
   )
 

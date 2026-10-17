@@ -13,9 +13,9 @@ const DRAWER_SHELL = cn(
   composerPanelCard
 )
 
-export const COMPLETION_DRAWER_CLASS = cn(DRAWER_SHELL, 'bottom-full mb-1')
+export const COMPLETION_DRAWER_CLASS = cn(DRAWER_SHELL, 'bottom-full mb-2')
 
-export const COMPLETION_DRAWER_BELOW_CLASS = cn(DRAWER_SHELL, 'top-full mt-1')
+export const COMPLETION_DRAWER_BELOW_CLASS = cn(DRAWER_SHELL, 'top-full mt-2')
 
 export function ComposerCompletionDrawer({
   adapter,

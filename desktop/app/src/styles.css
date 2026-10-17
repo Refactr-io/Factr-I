@@ -388,8 +388,8 @@
        between the secondary and tertiary greys those lines used to pick
        individually, and dimmed once more by the fade rule below so the prose
        reading column stays primary. */
-    --conversation-scaffold-text: color-mix(in srgb, var(--ui-base) 64%, transparent);
-    --conversation-scaffold-meta: color-mix(in srgb, var(--ui-base) 44%, transparent);
+    --conversation-scaffold-text: color-mix(in srgb, var(--ui-base) 74%, transparent);
+    --conversation-scaffold-meta: color-mix(in srgb, var(--ui-base) 58%, transparent);
     --ui-stroke-primary: color-mix(
       in srgb,
       var(--ui-accent) var(--theme-stroke-primary-accent-mix),
@@ -463,7 +463,7 @@
     --dt-input: var(--ui-stroke-primary);
     /* THE single knob for input-field borders: the resting alpha (% of the ring
        color). Hover doubles it; focus/open go full. 0% = invisible at rest. */
-    --dt-input-border: 7%;
+    --dt-input-border: 18%;
     /* Knob for input-field background fill: alpha (% of --dt-card) across all
        states. 100% = fully opaque, lower = translucent over the blurred chrome. */
     --dt-input-bg: 0%;
@@ -640,7 +640,7 @@
     --dt-input-inset: none;
     --ui-tab-hover-darken: 6%;
     /* Dark needs a lighter resting border than light mode. */
-    --dt-input-border: 4%;
+    --dt-input-border: 16%;
 
     --ui-inline-code-background: color-mix(in srgb, #ffffff 9%, transparent);
     --ui-inline-code-foreground: #ff9fb2;
@@ -1121,10 +1121,10 @@
    2/4/6/8px fallback stays intact in browsers without corner-shape. */
 @supports (corner-shape: superellipse(1.3)) {
   :root {
-    --shape-radius-xs: 0.1875rem;
-    --shape-radius-sm: 0.3125rem;
-    --shape-radius-md: 0.4375rem;
-    --shape-radius-lg: 0.625rem;
+    --shape-radius-xs: 0.125rem;
+    --shape-radius-sm: 0.25rem;
+    --shape-radius-md: 0.375rem;
+    --shape-radius-lg: 0.5rem;
   }
 
   /* One shared mechanism: every box, pseudo-element included, takes the squircle corner. corner-shape only paints
@@ -1343,7 +1343,7 @@ code {
    backdrop-blur flickers (badly on textareas), so the bg fill snaps instead.
    (:focus is declared after :hover so a focused+hovered field shows focus.) */
 .desktop-input-chrome {
-  background: color-mix(in srgb, var(--dt-card) var(--dt-input-bg), transparent);
+  background: color-mix(in srgb, var(--dt-foreground) 4%, transparent);
   border-color: color-mix(in srgb, var(--dt-composer-ring) var(--dt-input-border), transparent);
   box-shadow: var(--dt-input-inset);
   transition: border-color 200ms ease-out;
@@ -2120,7 +2120,7 @@ body.guest-pointer-lock :is(webview, iframe) {
 [data-slot='aui_assistant-message-content'] [data-conversation-scaffold],
 [data-slot='aui_background-result'] [data-conversation-scaffold],
 [data-slot='aui_background-resume'] {
-  opacity: 0.67;
+  opacity: 0.92;
   transition: opacity 120ms ease-out;
 }
 

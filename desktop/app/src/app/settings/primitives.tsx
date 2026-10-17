@@ -195,11 +195,11 @@ export function ListRow({
         data-row-grid=""
       >
         <div className="min-w-0">
-          <div className="text-[length:var(--conversation-text-font-size)] font-medium text-foreground" id={titleId}>
+          <div className="text-[length:var(--conversation-text-font-size)] leading-5 font-medium text-foreground" id={titleId}>
             {title}
           </div>
           {description && (
-            <div className="mt-0.5 max-w-[38rem] text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
+            <div className="mt-1 max-w-[38rem] text-[0.8125rem] leading-[1.125rem] text-(--ui-text-secondary)">
               {description}
             </div>
           )}

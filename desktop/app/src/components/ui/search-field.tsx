@@ -7,6 +7,11 @@ import { useI18n } from '@/i18n'
 import { Loader2, Search } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
+/** One surface for every search field and the Settings search button: 32px, 6px squircle, a tonal fill one step off
+ *  the surface (no stroke), one step darker on hover and focus. */
+export const searchFieldSurface =
+  'h-8 gap-2 rounded-md bg-[color-mix(in_srgb,var(--dt-foreground)_7%,transparent)] px-2.5 transition-colors hover:bg-[color-mix(in_srgb,var(--dt-foreground)_10%,transparent)] focus-within:bg-[color-mix(in_srgb,var(--dt-foreground)_12%,transparent)]'
+
 interface SearchFieldProps {
   placeholder: string
   value: string
@@ -28,8 +33,7 @@ interface SearchFieldProps {
 
 /**
  * Shared search field used everywhere (sessions sidebar, pages, overlays,
- * command center, cron). No box — borderless until focus, then an underline.
- * Rests at low opacity until focused or filled. Width/placement come from
+ * command center, cron). A tonal 32px field, no stroke. Width/placement come from
  * `containerClassName`.
  */
 export function SearchField({
@@ -60,13 +64,12 @@ export function SearchField({
         // min-w-0 is load-bearing: without it the content-sized input sets the
         // container's flex min-width and the field bulldozes its siblings
         // instead of shrinking to fit its context.
-        'inline-flex min-w-0 max-w-full items-center gap-2 border-b border-transparent px-0.5 transition-[color,border-color,opacity]',
-        // Recede until the user reaches for it.
-        !value && 'opacity-30 focus-within:opacity-100',
+        'inline-flex min-w-0 max-w-full items-center',
+        searchFieldSurface,
         containerClassName
       )}
     >
-      <Search className="pointer-events-none size-3.5 shrink-0 text-muted-foreground/90" />
+      <Search className="pointer-events-none size-3.5 shrink-0 text-(--ui-text-secondary)" />
       <input
         aria-label={ariaLabel ?? placeholder}
         className={cn(
@@ -74,7 +77,7 @@ export function SearchField({
           // text; min-w-0 lets it shrink back below content size when the
           // context is narrower — long queries scroll inside the field.
           // text-xs matches the form controls (Input/Select via controlVariants).
-          'h-7 min-w-0 max-w-full bg-transparent text-xs text-foreground [field-sizing:content] placeholder:text-(--ui-text-secondary) focus:outline-none',
+          'h-8 min-w-0 max-w-full bg-transparent text-[length:var(--conversation-text-font-size)] text-foreground [field-sizing:content] placeholder:text-(--ui-text-secondary) focus:outline-none',
           inputClassName
         )}
         onChange={event => onChange(event.target.value)}
