@@ -34,6 +34,12 @@ export function humanizeEnvName(key: string): string {
     .split('_')
     .filter(Boolean)
     .map(word => {
+      const brand = BRAND_WORDS[word]
+
+      if (brand) {
+        return brand
+      }
+
       if (word !== word.toUpperCase() || word.length <= 3) {
         return word
       }
@@ -41,6 +47,17 @@ export function humanizeEnvName(key: string): string {
       return word.charAt(0) + word.slice(1).toLowerCase()
     })
     .join(' ')
+    .replace('Browser USE', 'Browser Use')
+}
+
+/** Product and company names that plain title-casing mangles (Openai, Github, Elevenlabs). */
+const BRAND_WORDS: Record<string, string> = {
+  ELEVENLABS: 'ElevenLabs',
+  FACTR: 'Factr-I',
+  GITHUB: 'GitHub',
+  OPENAI: 'OpenAI',
+  OPENVIKING: 'OpenViking',
+  OPENROUTER: 'OpenRouter'
 }
 
 export const friendlyFieldLabel = (key: string, info: EnvVarInfo) => info.description?.trim() || humanizeEnvName(key)
