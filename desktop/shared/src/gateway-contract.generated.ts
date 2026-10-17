@@ -192,6 +192,9 @@ export interface ModelOptionProvider {
   capabilities?: Record<string, ModelCapabilities> | null
   pricing?: Record<string, ModelPricing> | null
   pricing_pending?: boolean | null
+  detected?: boolean | null
+  adoptable?: boolean | null
+  free_models?: string[] | null
   [key: string]: unknown
 }
 /** ``factr_backend/inventory.py::_apply_capabilities``. */
@@ -1222,7 +1225,8 @@ export interface PasteCollapseResult {
 }
 export interface ModelSaveKeyParams {
   slug: string
-  api_key: string
+  api_key?: string
+  source?: 'opencode' | null
   session_id?: string | null
 }
 export interface ModelSaveKeyResult {

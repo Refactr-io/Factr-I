@@ -2058,3 +2058,9 @@ def _moa_caches_isolated():
     yield
     moa._preset_cache.clear()
     moa._runtime_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_opencode(monkeypatch):
+    """A real OpenCode on the dev machine must not add a detected picker row to unrelated tests."""
+    monkeypatch.setenv("FACTR_OPENCODE_DETECT", "off")
