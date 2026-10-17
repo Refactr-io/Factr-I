@@ -3968,11 +3968,11 @@ input[type='range'].ui-range::-webkit-slider-thumb {
   border-radius: 50%;
   border: 0;
   background: var(--ui-control-on-foreground);
-  outline: 2px solid var(--ui-control-on);
-  outline-offset: -2px;
+  outline: 1px solid color-mix(in srgb, var(--dt-foreground) 24%, transparent);
+  outline-offset: -1px;
 }
 input[type='range'].ui-range:focus-visible::-webkit-slider-thumb {
-  outline-width: 4px;
+  outline: 2px solid var(--ui-control-on);
 }
 
 :root.dark {

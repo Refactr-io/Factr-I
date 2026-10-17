@@ -20,7 +20,7 @@ export function SettingsPageTitle({ title }: { title: string }) {
   return (
     <header className={cn('shrink-0 pb-3', PAGE_INSET_X)}>
       <div className="mx-auto w-full max-w-[46rem]">
-        <h1 className="text-[20.5px] font-[550] leading-[25px] tracking-[-0.0083em] text-foreground">{title}</h1>
+        <h1 className="text-[length:var(--conversation-text-font-size)] font-medium leading-[18px] text-(--ui-text-tertiary)">{title}</h1>
       </div>
     </header>
   )
