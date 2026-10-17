@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { ModelPickerDialog } from '@/components/model-picker'
 import { AgentOrb } from '@/components/ui/agent-orb'
+import { BrandLogo, providerMarkId } from '@/components/ui/brand-logo'
 import { Button } from '@/components/ui/button'
 import { ErrorIcon } from '@/components/ui/error-state'
 import { Input } from '@/components/ui/input'
@@ -269,6 +270,7 @@ function ConfirmingModelPanel({
   const providerRow = options.data?.providers?.find(p => rowSlugs.includes(String(p.slug).toLowerCase()))
 
   const price = providerRow?.pricing?.[flow.currentModel]
+  const markId = providerMarkId(flow.providerSlug)
 
   return (
     <div className="mx-auto grid w-full max-w-xs justify-items-center gap-8 py-8 text-center">
@@ -278,7 +280,11 @@ function ConfirmingModelPanel({
           leaving ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'
         )}
       >
-        <Check aria-hidden className="size-5 shrink-0 text-(--ui-text-secondary)" />
+        {markId ? (
+          <BrandLogo className="text-foreground" id={markId} />
+        ) : (
+          <Check aria-hidden className="size-5 shrink-0 text-(--ui-text-secondary)" />
+        )}
         <h2 className="text-xl font-medium leading-7 tracking-tight text-foreground">
           {t.onboarding.connectedProvider(flow.label)}
         </h2>

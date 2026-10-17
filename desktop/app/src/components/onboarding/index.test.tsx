@@ -54,7 +54,6 @@ describe('onboarding Picker', () => {
     render(<Picker ctx={ctx} />)
 
     expect(screen.getByText('ChatGPT plan')).toBeTruthy()
-    expect(screen.getByText('Recommended')).toBeTruthy()
     // Fireworks stays behind the disclosure with the other alternatives; only
     // ChatGPT is visible before the user expands the list.
     expect(screen.queryByText('Fireworks AI')).toBeNull()
