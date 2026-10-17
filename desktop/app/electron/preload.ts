@@ -40,7 +40,8 @@ contextBridge.exposeInMainWorld('factrDesktop', {
     status: profile => ipcRenderer.invoke('factr:bot-computer:status', profile),
     start: profile => ipcRenderer.invoke('factr:bot-computer:start', profile),
     stop: profile => ipcRenderer.invoke('factr:bot-computer:stop', profile),
-    hold: (profile, reason, on) => ipcRenderer.invoke('factr:bot-computer:hold', profile, reason, on)
+    hold: (profile, reason, on) => ipcRenderer.invoke('factr:bot-computer:hold', profile, reason, on),
+    openDocker: () => ipcRenderer.invoke('factr:bot-computer:open-docker')
   },
   getPoolLimits: () => ipcRenderer.invoke('factr:pool-limits:get'),
   setPoolLimits: limits => ipcRenderer.invoke('factr:pool-limits:set', limits),

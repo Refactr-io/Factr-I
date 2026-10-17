@@ -11,12 +11,12 @@ import type * as ScreenConnection from './screen-connection'
 import { BotScreenPane } from './screen-pane'
 import type { RosterRow } from './types'
 
-const { displayRequest, insert } = vi.hoisted(() => ({ displayRequest: vi.fn(), insert: vi.fn() }))
+const { displayRequest, focus, insert } = vi.hoisted(() => ({ displayRequest: vi.fn(), focus: vi.fn(), insert: vi.fn() }))
 
 vi.mock('@factr/plugin-sdk', async importOriginal => {
   const sdk = await importOriginal<typeof FactrSdk>()
 
-  return { ...sdk, requestComposerInsert: insert, usePluginI18n: () => translateBotsIn('en') }
+  return { ...sdk, requestComposerFocus: focus, requestComposerInsert: insert, usePluginI18n: () => translateBotsIn('en') }
 })
 
 vi.mock('./screen-connection', async importActual => ({
@@ -29,6 +29,7 @@ const MIB = 1024 ** 2
 
 const api = {
   hold: vi.fn(async () => ({ ok: true })),
+  openDocker: vi.fn(async () => ({ ok: true })),
   start: vi.fn(),
   status: vi.fn(),
   stop: vi.fn()
@@ -124,7 +125,7 @@ describe('Screen pane', () => {
     api.stop.mockResolvedValue({ ok: true, status: { busy: false, state: 'off' } })
     render(<BotScreenPane bot={newBot()} />)
 
-    expect(await screen.findByText('On for 12 min, 640 MB of 2 GB')).toBeTruthy()
+    expect(await screen.findByText('On for 12 min, using 640 MB of 2 GB')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: t('computer.stop') }))
     await waitFor(() => expect(api.stop).toHaveBeenCalledTimes(1))
     expect(await screen.findByRole('button', { name: t('computer.start') })).toBeTruthy()
@@ -137,7 +138,8 @@ describe('Screen pane', () => {
 
     expect(await screen.findByText('Docker is not running')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open Docker' }))
-    expect(openExternal).toHaveBeenCalledWith('file:///Applications/Docker.app')
+    expect(api.openDocker).toHaveBeenCalledTimes(1)
+    expect(openExternal).not.toHaveBeenCalled()
     Object.defineProperty(navigator, 'platform', { configurable: true, value: '' })
   })
 
@@ -182,6 +184,7 @@ describe('Teach a task', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Teach a task' }))
 
     expect(insert).toHaveBeenCalledWith(TEACH_TEMPLATE)
+    expect(focus).toHaveBeenCalledTimes(1)
     expect(TEACH_TEMPLATE).not.toMatch(/[\u2013\u2014]/)
     expect(TEACH_TEMPLATE).toContain('save it as a skill')
   })

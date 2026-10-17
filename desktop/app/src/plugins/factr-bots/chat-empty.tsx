@@ -7,7 +7,7 @@
  * says whose it is.
  */
 
-import { Button, host, requestComposerInsert, useValue, Wordmark } from '@factr/plugin-sdk'
+import { Button, host, requestComposerFocus, requestComposerInsert, useValue, Wordmark } from '@factr/plugin-sdk'
 
 import { avatarColor, botAppearance, BotFace } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
@@ -110,7 +110,10 @@ export function BotChatEmpty({ sessionId }: { sessionId: string }) {
         {computerProfile(bot) ? (
           <Button
             className="pointer-events-auto mt-3"
-            onClick={() => requestComposerInsert(TEACH_TEMPLATE)}
+            onClick={() => {
+              requestComposerInsert(TEACH_TEMPLATE)
+              requestComposerFocus()
+            }}
             size="sm"
             variant="ghost"
           >

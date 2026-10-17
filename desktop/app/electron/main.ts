@@ -14679,6 +14679,17 @@ ipcMain.handle(
     return botComputerStatus(profile)
   })
 )
+ipcMain.handle('factr:bot-computer:open-docker', async () => {
+  const app = '/Applications/Docker.app'
+
+  if (process.platform !== 'darwin' || !fs.existsSync(app)) {
+    return { ok: false, error: 'Docker Desktop is not installed at /Applications/Docker.app' }
+  }
+
+  const error = await shell.openPath(app)
+
+  return error ? { ok: false, error } : { ok: true }
+})
 ipcMain.handle('factr:bot-computer:hold', async (_event, profile, reason, on) => {
   try {
     setComputerHold(validateBotProfile(profile), reason === 'turn' ? 'turn' : 'view', on === true)

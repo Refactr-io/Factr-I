@@ -291,7 +291,7 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
               <span className="min-w-0 truncate text-[0.8125rem] font-medium">{displayName(bot, meta)}</span>
             </Tip>
             {computerWord ? (
-              <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">{b.computer.word[computerWord]}</span>
+              <span className="shrink-0 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">{b.computer.word[computerWord]}</span>
             ) : null}
           </div>
           {attention ? (

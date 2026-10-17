@@ -652,7 +652,7 @@ const en: BotsMessages = {
     starting: 'Starting your bot\u2019s computer',
     offTitle: 'Computer is off',
     offBody: 'Start it to give this bot its own desktop.',
-    onLine: (uptime, used, limit) => `On for ${uptime}${used && limit ? `, ${used} of ${limit}` : ''}`,
+    onLine: (uptime, used, limit) => `On for ${uptime}${used && limit ? `, using ${used} of ${limit}` : ''}`,
     failedTitle: 'The computer did not start',
     dockerNotRunning: 'Docker is not running',
     dockerNotRunningBody: 'Open Docker, then start this bot\u2019s computer.',
