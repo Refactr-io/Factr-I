@@ -337,7 +337,7 @@ describe('code-keyed error card copy and actions', () => {
       />
     )
 
-    expect(await screen.findByText(codes.provider_key_rejected.title as string)).toBeTruthy()
+    expect(await screen.findByText((codes.provider_key_rejected.title as (provider: string) => string)('The AI service'))).toBeTruthy()
     expect(screen.queryByText(/Local endpoint hint/)).toBeNull()
   })
 
@@ -347,8 +347,8 @@ describe('code-keyed error card copy and actions', () => {
 
     render(<Harness assistant={withoutDescriptor(raw)} />)
 
-    expect(await screen.findByText(codes.provider_key_rejected.title as string)).toBeTruthy()
-    expect(screen.getByText(/Check or replace it in Settings > Providers/)).toBeTruthy()
+    expect(await screen.findByText((codes.provider_key_rejected.title as (provider: string) => string)('The AI service'))).toBeTruthy()
+    expect(screen.getByText(/Replace it in Settings > Providers/)).toBeTruthy()
     // The raw text is only inside the collapsed Details block, never the headline body.
     expect(screen.getByText(raw).closest('details')).not.toBeNull()
   })

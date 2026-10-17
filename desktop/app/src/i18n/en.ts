@@ -4210,8 +4210,9 @@ export const en: Translations = {
           body: 'Open Settings > Providers (or sign in) to choose one.'
         },
         provider_key_rejected: {
-          title: 'The provider rejected the key or login',
-          body: 'The provider rejected the key. Check or replace it in Settings > Providers, then send your message again.'
+          title: provider => `${provider} rejected the key or sign-in`,
+          body: provider =>
+            `${provider} did not accept the saved key or sign-in. Replace it in Settings > Providers, then send your message again.`
         },
         provider_model_missing: {
           title: 'The provider does not have this model',

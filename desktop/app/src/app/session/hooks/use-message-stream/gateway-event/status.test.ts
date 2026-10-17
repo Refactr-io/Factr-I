@@ -134,7 +134,7 @@ describe('gateway `error` event → error card + toast', () => {
       expect.objectContaining({ code: 'provider_key_rejected' })
     )
     const toast = $notifications.get()[0]
-    expect(toast.message).toMatch(/^The provider rejected the key or login\./)
+    expect(toast.message).toMatch(/^The AI service rejected the key or sign-in\./)
     expect(toast.message).not.toMatch(/endpoint|response|sk-stub|Hint/)
     expect(toast.detail).toContain('status: 401 Unauthorized')
     expect(toast.detail).not.toMatch(/Hint:/)

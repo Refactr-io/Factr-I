@@ -60,7 +60,7 @@ describe('no provider configured', () => {
 describe('provider HTTP status', () => {
   it('401: the provider rejected the key or login, without the local-endpoint hint', () => {
     const raw = dump('http://127.0.0.1:8080/v1/chat/completions', '401 Unauthorized', LOCAL_HINT)
-    expect(title(raw)).toBe('The provider rejected the key or login')
+    expect(title(raw)).toBe('The AI service rejected the key or sign-in')
     expect(tidyErrorDetails(raw)).not.toMatch(/Local endpoint hint/)
     expect(tidyErrorDetails(raw)).toContain('status: 401 Unauthorized')
   })
@@ -99,8 +99,8 @@ describe('provider HTTP status', () => {
     const surface = inferErrorSurface(raw)
     expect(surface?.code).toBe('provider_key_rejected')
     const { body, title } = errorCardText(TRANSLATIONS.en.assistant.thread, surface)
-    expect(title).toBe('The provider rejected the key or login')
-    expect(body).toMatch(/Check or replace it in Settings > Providers/)
+    expect(title).toBe('The AI service rejected the key or sign-in')
+    expect(body).toMatch(/Replace it in Settings > Providers/)
     expect(body).not.toMatch(/factr login/)
     expect(tidyErrorDetails(raw)).toContain(raw.split(':')[0])
   })
