@@ -1638,7 +1638,7 @@ export const ar = defineLocale({
       title: (profile: string) => `ربط ${profile} بمضيف بعيد`,
       description: 'ستعمل جلسات هذا الملف الشخصي على خادم Factr-I البعيد الذي تحدده، بدلاً من هذا الجهاز.',
       urlLabel: 'العنوان البعيد',
-      urlPlaceholder: 'https://factr.example.com',
+      urlPlaceholder: 'http://127.0.0.1:PORT',
       urlInvalid: 'أدخل عنواناً كاملاً يبدأ بـ http:// أو https://',
       tokenLabel: 'رمز الوصول',
       tokenPlaceholder: 'الصق رمز الجلسة البعيد',
