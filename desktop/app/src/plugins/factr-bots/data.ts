@@ -41,6 +41,21 @@ export const ROSTER_KEY = [ID, 'roster']
 // refetchInterval and the gateway-open effect already recover drops.
 const ROSTER_QUERY_RETRY = 2
 
+/** A roster fetch that never settles (gateway socket closed or never opened, a bot engine that refuses the
+ *  connection) keeps the query in its loading state forever and the Bots list on a spinner, retries included.
+ *  Bound each attempt so it turns into an error the pane renders with a Retry action. */
+export const ROSTER_FETCH_TIMEOUT_MS = 10_000
+
+export function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const limit = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(message), { timedOut: true })), ms)
+  })
+
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer))
+}
+
 export const BOT_META_V1_KEY = 'bot-meta'
 const BOT_META_V2_KEY = 'bot-meta-v2'
 const BOT_META_MIGRATION_KEY = 'bot-meta-v2-migrated'
@@ -683,7 +698,15 @@ async function requestRosterList(
 /** One roster snapshot for `activeConnectionId` — the pane's query and the
  *  composer's cold-cache warm-up (`warmRoster`) share it, so both see the same
  *  cross-connection rows. */
-async function fetchRosterSnapshot(activeConnectionId: null | string | undefined): Promise<RosterSnapshot> {
+function fetchRosterSnapshot(activeConnectionId: null | string | undefined): Promise<RosterSnapshot> {
+  return withTimeout(
+    fetchRosterSnapshotUnbounded(activeConnectionId),
+    ROSTER_FETCH_TIMEOUT_MS,
+    'The gateway did not answer in time'
+  )
+}
+
+async function fetchRosterSnapshotUnbounded(activeConnectionId: null | string | undefined): Promise<RosterSnapshot> {
   // Stamp the ISSUE time on the snapshot: mergeServerMeta compares it
   // against each bot's last local meta write, and a fetch issued before
   // a write can only carry pre-write ui_meta. (Issue time is the
@@ -770,7 +793,9 @@ export function useRoster() {
     queryFn: () => fetchRosterSnapshot(activeConnectionId),
     refetchInterval: 5000,
     staleTime: 5000,
-    retry: ROSTER_QUERY_RETRY,
+    // A timeout already spent the whole budget: surface the error now (the 5s refetchInterval and the pane's Retry
+    // keep trying) instead of holding the loader through three more waits.
+    retry: (count, error) => count < ROSTER_QUERY_RETRY && !(error as { timedOut?: boolean })?.timedOut,
     retryDelay: attempt => Math.min(15000, 1000 * 2 ** attempt)
   })
 }

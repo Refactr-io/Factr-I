@@ -732,7 +732,7 @@ export async function reconcileComputers(existingProfiles: Iterable<string>): Pr
     '--filter',
     `name=${BOT_COMPUTER.namePrefix}`,
     '--format',
-    `{{.Names}}|{{.State}}|{{index .Labels "${BOT_COMPUTER.labelBot}"}}`
+    `{{.Names}}|{{.State}}|{{.Label "${BOT_COMPUTER.labelBot}"}}`
   ])
 
   const lines = out.split('\n').filter(Boolean)

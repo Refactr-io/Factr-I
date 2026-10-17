@@ -20,7 +20,7 @@ import {
 } from '@factr/plugin-sdk'
 import { useState } from 'react'
 
-import { $lastRoster, ROSTER_KEY } from './data'
+import { $lastRoster, ROSTER_KEY, withTimeout } from './data'
 import { labeled, ResizableFrame } from './dialog-parts'
 import { useBots } from './i18n'
 import { McpSetupButton } from './mcp-setup'
@@ -143,12 +143,16 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
     // The user just opened this editor: a cold backend takes the pool's
     // reserved slot instead of queuing behind warm roster backends.
     const opened = { spawnPriority: 'foreground' } as const
-    Promise.all([
-      requestForBot(bot, 'profiles.describe', { name: bot.name }, opened) as Promise<ProfileDescribeResponse>,
-      (requestForBot(bot, 'mcp.catalog', { profile: bot.name }, opened) as Promise<McpCatalogResponse>).catch(
-        () => null
-      )
-    ])
+    withTimeout(
+      Promise.all([
+        requestForBot(bot, 'profiles.describe', { name: bot.name }, opened) as Promise<ProfileDescribeResponse>,
+        (requestForBot(bot, 'mcp.catalog', { profile: bot.name }, opened) as Promise<McpCatalogResponse>).catch(
+          () => null
+        )
+      ]),
+      15_000,
+      'The gateway did not answer in time'
+    )
       .then(([res, cat]) => {
         const configured = res.mcp_servers || []
         const have = new Set(configured.map(m => m.name))

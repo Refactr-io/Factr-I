@@ -517,7 +517,7 @@ describe('reconcile', () => {
       'ps', '-a',
       '--filter', 'label=factr.bot',
       '--filter', 'name=bots-factr-bot-',
-      '--format', '{{.Names}}|{{.State}}|{{index .Labels "factr.bot"}}'
+      '--format', '{{.Names}}|{{.State}}|{{.Label "factr.bot"}}'
     ])
     expect(dockerCalls('rm').map(c => c.args)).toEqual([['rm', '-f', 'bots-factr-bot-gone']])
     expect(calls.some(c => c.args.includes('prune'))).toBe(false)
