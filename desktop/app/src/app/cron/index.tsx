@@ -690,10 +690,9 @@ export function CronView({ onClose, onOpenSession, setStatusbarItemGroup: _setSt
                 onSelect={() => setSelectedJobId(job.id)}
               />
             ))}
-            {visibleJobs.length === 0 && (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">
-                {query.trim() ? c.emptyTitleSearch : c.emptyTitleNew}
-              </p>
+            {/* With no jobs at all the detail pane already says so; repeat only for an empty search. */}
+            {visibleJobs.length === 0 && query.trim() && (
+              <p className="px-2 py-4 text-center text-xs text-muted-foreground">{c.emptyTitleSearch}</p>
             )}
             <PanelAddButton label={c.newCron} onClick={() => setEditor({ mode: 'create' })} />
             {visibleBlueprints.length > 0 && (

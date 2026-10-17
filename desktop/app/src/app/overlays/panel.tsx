@@ -388,12 +388,13 @@ export function PanelAddButton({
     <Tip label={label}>
       <Button
         aria-label={label}
-        className="h-7 w-full shrink-0 justify-center text-muted-foreground/90 hover:bg-(--ui-row-hover-background) hover:text-foreground"
+        className="h-8 w-full shrink-0 justify-start gap-2 px-2 text-(--ui-text-secondary) hover:bg-(--ui-row-hover-background) hover:text-foreground"
         onClick={onClick}
         size="sm"
         variant="ghost"
       >
         <Codicon name={icon} size="0.875rem" />
+        {label}
       </Button>
     </Tip>
   )
