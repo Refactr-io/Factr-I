@@ -108,7 +108,7 @@ describe('PreviewBrowserBar', () => {
       <PreviewBrowserBar {...baseProps} onToggleConsole={onToggleConsole} onToggleDevTools={onToggleDevTools} />
     )
 
-    fireEvent.click(rendered.getByRole('button', { name: 'Show preview console' }))
+    fireEvent.click(rendered.getByRole('button', { name: 'Show console' }))
     fireEvent.click(rendered.getByRole('button', { name: 'Open preview DevTools' }))
 
     expect(onToggleConsole).toHaveBeenCalledOnce()
@@ -116,7 +116,7 @@ describe('PreviewBrowserBar', () => {
 
     rendered.rerender(<PreviewBrowserBar {...baseProps} consoleOpen devToolsOpen />)
 
-    expect(rendered.getByRole('button', { name: 'Hide preview console' }).getAttribute('aria-pressed')).toBe('true')
+    expect(rendered.getByRole('button', { name: 'Hide console' }).getAttribute('aria-pressed')).toBe('true')
     expect(rendered.getByRole('button', { name: 'Hide preview DevTools' }).getAttribute('aria-pressed')).toBe('true')
   })
 
