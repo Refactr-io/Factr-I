@@ -41,7 +41,9 @@ pub(crate) fn pet_disabled(method: &str, params: &Value) -> bool {
     if !matches!(method, "pet.info" | "pet.info.meta") || params["session_id"].as_str().is_some_and(|s| !s.is_empty()) {
         return false;
     }
-    let Some(home) = factr_base::factr_config::home() else { return false };
+    // Python layers a managed-scope config over config.yaml; with one present the file alone is not the answer.
+    let managed = std::env::var_os("FACTR_MANAGED_DIR").is_some_and(|d| !d.is_empty()) || std::path::Path::new("/etc/factr").is_dir();
+    let Some(home) = factr_base::factr_config::home().filter(|_| !managed) else { return false };
     pet_disabled_in(&home, params["profile"].as_str().unwrap_or(""))
 }
 
