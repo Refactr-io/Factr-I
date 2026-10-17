@@ -3651,7 +3651,7 @@ export const en: Translations = {
 
   onboarding: {
     headerTitle: 'Connect a model',
-    headerDesc: 'Factr-I needs a model to answer. Sign in with a plan you already have, use an API key, or run one on this computer.',
+    headerDesc: 'Connect an account, add an API key, or use a local model.',
     configOpenFolder: 'Open the folder',
     configBackUpAndReset: 'Back up and start fresh',
     configBackedUp: backupPath => `Saved a copy as ${backupPath}. Set up a provider to start fresh.`,
@@ -3662,7 +3662,8 @@ export const en: Translations = {
     lookingUpProviders: 'Looking up providers...',
     collapse: 'Collapse',
     otherProviders: 'Other providers',
-    haveApiKey: 'I have an API key',
+    haveApiKey: 'Use an API key',
+    apiKeyPitch: 'Paste a key from OpenAI, Anthropic, OpenRouter or another provider',
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',
@@ -3704,7 +3705,7 @@ export const en: Translations = {
     },
     startingSignIn: provider => `Starting sign-in for ${provider}...`,
     verifyingCode: provider => `Verifying your code with ${provider}...`,
-    connectedProvider: provider => `${provider} connected`,
+    connectedProvider: provider => `${provider} is connected`,
     keySavedNote: 'Key saved. Factr-I tries it with your first message.',
     connectedPicking: provider => `${provider} connected. Picking a default model...`,
     signInFailed: 'Sign-in failed. Try again.',
@@ -3736,7 +3737,7 @@ export const en: Translations = {
     free: 'Free',
     price: (input, output) => `${input} in / ${output} out per Mtok`,
     change: 'Change',
-    startChatting: 'Begin',
+    startChatting: 'Start chatting',
     docs: provider => `${provider} docs`
   },
 

@@ -221,7 +221,7 @@ export function OverlayNav({
           return (
             <Fragment key={group.id}>
               {sectionLabel ? (
-                <div className="px-3 pb-1.5 pt-5 text-[length:var(--conversation-caption-font-size)] font-medium leading-4 text-(--ui-text-secondary) first:pt-1">
+                <div className="px-3 pb-1.5 pt-5 text-[length:var(--conversation-caption-font-size)] font-medium leading-4 text-foreground first:pt-1">
                   {sectionLabel}
                 </div>
               ) : (

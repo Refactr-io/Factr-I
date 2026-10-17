@@ -1,6 +1,7 @@
+import { BrandLogo, providerMarkId } from '@/components/ui/brand-logo'
 import { RowButton } from '@/components/ui/row-button'
 import { useI18n } from '@/i18n'
-import { Check, ChevronRight, Terminal } from '@/lib/icons'
+import { Check, ChevronRight, KeyRound, Monitor, Terminal } from '@/lib/icons'
 import { PROVIDER_DISPLAY_NAMES } from '@/lib/model-status-label'
 import type { OAuthProvider } from '@/types/factr'
 
@@ -22,6 +23,12 @@ const orderOf = (p: OAuthProvider) => PROVIDER_ORDER[p.id] ?? 99
 export const sortProviders = (providers: OAuthProvider[]) =>
   [...providers].sort((a, b) => orderOf(a) - orderOf(b) || a.name.localeCompare(b.name))
 
+/** The 20px lead slot every provider row shares: the real mark when there is one, a quiet glyph when not. */
+function RowLead({ children }: { children: React.ReactNode }) {
+  return <span className="grid size-5 shrink-0 place-items-center text-(--ui-text-secondary)">{children}</span>
+}
+
+// The suggested option is marked by being first and by its tonal fill, not by a tag.
 export function FeaturedProviderRow({
   onSelect,
   provider
@@ -34,24 +41,23 @@ export function FeaturedProviderRow({
 
   return (
     <button
-      className="group relative flex w-full items-center justify-between gap-4 rounded-lg bg-primary/[0.06] px-3 py-2.5 text-left transition-colors hover:bg-primary/10"
+      className="group relative flex w-full items-center gap-3 rounded-lg bg-(--ui-control-hover-background) px-3 py-2.5 text-left transition-colors hover:bg-(--ui-control-active-background)"
       onClick={() => onSelect(provider)}
       type="button"
     >
-      <div className="min-w-0">
+      <RowLead>
+        <BrandLogo id={providerMarkId(provider.id)} />
+      </RowLead>
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-[length:var(--conversation-text-font-size)] font-semibold">
+          <span className="text-[length:var(--conversation-text-font-size)] font-medium">
             {providerTitle(provider)}
           </span>
-          {loggedIn ? (
-            <ConnectedTag />
-          ) : (
-            <span className="text-[0.6875rem] font-medium text-(--ui-text-tertiary)">{t.onboarding.recommended}</span>
-          )}
+          {loggedIn ? <ConnectedTag /> : null}
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t.onboarding.featuredPitch}</p>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t.onboarding.featuredPitch}</p>
       </div>
-      <ChevronRight className="size-4 shrink-0 text-primary transition group-hover:translate-x-0.5" />
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
     </button>
   )
 }
@@ -60,7 +66,7 @@ function ConnectedTag() {
   const { t } = useI18n()
 
   return (
-    <span className="inline-flex items-center gap-1 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+    <span className="inline-flex items-center gap-1 text-xs text-(--ui-text-secondary)">
       <Check className="size-3" />
       {t.onboarding.connected}
     </span>
@@ -68,17 +74,28 @@ function ConnectedTag() {
 }
 
 const PROVIDER_ROW_CLASS =
-  'group flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-(--ui-control-hover-background)'
+  'group flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-(--ui-control-hover-background)'
 
 /** Quick-key row for API-key providers (Fireworks leads the expanded list, OpenRouter further down). */
-export function KeyProviderRow({ onClick, pitch, title }: { onClick: () => void; pitch: string; title: string }) {
+export function KeyProviderRow({
+  lead,
+  onClick,
+  pitch,
+  title
+}: {
+  lead?: React.ReactNode
+  onClick: () => void
+  pitch: string
+  title: string
+}) {
   return (
     <RowButton className={PROVIDER_ROW_CLASS} onClick={onClick}>
-      <div className="min-w-0">
-        <span className="text-[length:var(--conversation-text-font-size)] font-semibold">{title}</span>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{pitch}</p>
+      <RowLead>{lead ?? <KeyRound className="size-4" />}</RowLead>
+      <div className="min-w-0 flex-1">
+        <span className="text-[length:var(--conversation-text-font-size)] font-medium">{title}</span>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{pitch}</p>
       </div>
-      <ChevronRight className="size-4 text-muted-foreground transition group-hover:text-foreground" />
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
     </RowButton>
   )
 }
@@ -86,7 +103,14 @@ export function KeyProviderRow({ onClick, pitch, title }: { onClick: () => void;
 export function FireworksProviderRow({ onClick }: { onClick: () => void }) {
   const { t } = useI18n()
 
-  return <KeyProviderRow onClick={onClick} pitch={t.onboarding.fireworksPitch} title="Fireworks AI" />
+  return (
+    <KeyProviderRow
+      lead={<BrandLogo id="fireworks" />}
+      onClick={onClick}
+      pitch={t.onboarding.fireworksPitch}
+      title="Fireworks AI"
+    />
+  )
 }
 
 /** Onboarding row for the managed local runtime: no account, no key — the
@@ -95,14 +119,26 @@ export function LocalModelsProviderRow({ onClick }: { onClick: () => void }) {
   const { t } = useI18n()
 
   return (
-    <KeyProviderRow onClick={onClick} pitch={t.onboarding.localModelsPitch} title={t.onboarding.localModelsTitle} />
+    <KeyProviderRow
+      lead={<Monitor className="size-4" />}
+      onClick={onClick}
+      pitch={t.onboarding.localModelsPitch}
+      title={t.onboarding.localModelsTitle}
+    />
   )
 }
 
 export function OpenRouterProviderRow({ onClick }: { onClick: () => void }) {
   const { t } = useI18n()
 
-  return <KeyProviderRow onClick={onClick} pitch={t.onboarding.openRouterPitch} title="OpenRouter" />
+  return (
+    <KeyProviderRow
+      lead={<BrandLogo id="openrouter" />}
+      onClick={onClick}
+      pitch={t.onboarding.openRouterPitch}
+      title="OpenRouter"
+    />
+  )
 }
 
 export function ProviderRow({
@@ -115,19 +151,21 @@ export function ProviderRow({
   const { t } = useI18n()
   const loggedIn = provider.status?.logged_in
   const Trail = provider.flow === 'external' ? Terminal : ChevronRight
+  const mark = providerMarkId(provider.id)
 
   return (
     <RowButton className={PROVIDER_ROW_CLASS} onClick={() => onSelect(provider)}>
-      <div className="min-w-0">
+      <RowLead>{mark ? <BrandLogo id={mark} /> : <KeyRound className="size-4" />}</RowLead>
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-[length:var(--conversation-text-font-size)] font-semibold">
+          <span className="text-[length:var(--conversation-text-font-size)] font-medium">
             {providerTitle(provider)}
           </span>
           {loggedIn ? <ConnectedTag /> : null}
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{t.onboarding.flowSubtitles[provider.flow]}</p>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t.onboarding.flowSubtitles[provider.flow]}</p>
       </div>
-      <Trail className="size-4 text-muted-foreground transition group-hover:text-foreground" />
+      <Trail className="size-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
     </RowButton>
   )
 }

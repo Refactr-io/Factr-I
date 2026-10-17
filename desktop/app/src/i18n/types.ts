@@ -3069,6 +3069,7 @@ export interface Translations {
     collapse: string
     otherProviders: string
     haveApiKey: string
+    apiKeyPitch: string
     chooseLater: string
     recommended: string
     connected: string
