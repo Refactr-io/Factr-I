@@ -184,10 +184,11 @@ def _resolve_local_name(target: str, roster: list[str], root: Path | None = None
     return next(iter(hits)) if len(hits) == 1 else None
 
 
-def _err(message: str, *, roster: list[str] | None = None, peers: list[str] | None = None) -> str:
+def _err(message: str, *, roster: list[str] | None = None, peers: list[str] | None = None,
+         reason: str | None = None) -> str:
     from tools.bot_failure_reasons import classify_agent_error
 
-    payload: dict[str, Any] = {"error": message, "reason": classify_agent_error(message)}
+    payload: dict[str, Any] = {"error": message, "reason": reason or classify_agent_error(message)}
     if roster is not None:
         payload["teammates"] = roster
     if peers is not None:
@@ -279,6 +280,10 @@ def message_agent_tool(target: str = "", message: str = "", task_id: Optional[st
         return _roster_err(f"No teammate named '{raw_target}' on this install, on a connected "
                            "machine, or on a registered peer. Pick a name from the roster "
                            "(roles are listed in your system prompt).")
+    from tools.bot_failure_reasons import HAS_COMPUTER
+    from tools.bot_relay import HAS_COMPUTER_MESSAGE, has_computer
+    if has_computer(roster_homes[resolved]):
+        return _err(f"@{_handle(resolved)}: {HAS_COMPUTER_MESSAGE}.", reason=HAS_COMPUTER)
     return _start_delivery([*bot_cli_prefix(), "-p", resolved, *BOT_CHAT_TURN_ARGS], content, f"@{_handle(resolved)}",
                            stdin_file=False, profile_home=roster_homes[resolved], author=author, **delivery)
 

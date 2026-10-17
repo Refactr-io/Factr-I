@@ -548,8 +548,39 @@ def bot_cli_profile(argv: "list[str]") -> "str | None":
     return argv[start + 1]
 
 
+# Written into a bot's profile folder by the desktop app (electron/bot-computers.ts) while the bot's container
+# exists, removed when it is destroyed. A bot with a computer owns its folder's SQLite from inside the container, so a
+# host CLI turn against that profile would be a second writer across the VM boundary.
+COMPUTER_MARKER = ".computer"
+HAS_COMPUTER_MESSAGE = "this bot runs on its own computer; handoff between computers comes later"
+
+
+class ComputerHandoffRefused(EnvelopeRefusedError):
+    """Local delivery into a bot that has a computer. ``reason`` is 'has_computer'."""
+
+    def __init__(self, profile: str):
+        super().__init__("has_computer", f"@{profile}: {HAS_COMPUTER_MESSAGE}")
+
+
+def has_computer(home: "str | Path") -> bool:
+    return (Path(home) / COMPUTER_MARKER).exists()
+
+
+def assert_no_computer(profile: str, home: "str | Path | None" = None) -> None:
+    """Refuse a host-side delivery turn into ``profile`` when its container exists."""
+    if home is None:
+        from factr_backend.profiles import get_profile_dir
+        try:
+            home = get_profile_dir(profile)
+        except ValueError:
+            return
+    if has_computer(home):
+        raise ComputerHandoffRefused(profile)
+
+
 def local_delivery_command(profile: str, query_file: str) -> list[str]:
     """argv that delivers a DM into ``profile``'s Bot Chat on THIS gateway."""
+    assert_no_computer(profile)
     return [*bot_cli_prefix(), "-p", profile, *BOT_CHAT_TURN_ARGS, "--query-file", query_file]
 
 

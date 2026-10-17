@@ -141,6 +141,9 @@ def deliver(target: str, message: str, home: Optional[Path] = None) -> tuple[str
 
     resolved = dm._resolve_local_name(raw, list(homes), root)
     if resolved is not None and resolved != me:
+        from tools.bot_relay import HAS_COMPUTER_MESSAGE, has_computer
+        if has_computer(homes[resolved]):
+            return (f"@{_handle(resolved)}: {HAS_COMPUTER_MESSAGE}. Do not retry.", False)
         file = dm._write_dm_file(content)
         cmd = dm._delivery_command([*bot_cli_prefix(), "-p", resolved, *BOT_CHAT_TURN_ARGS], file,
                                    stdin_file=False, profile_home=homes[resolved], author=author)

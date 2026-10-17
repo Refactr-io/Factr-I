@@ -94,6 +94,8 @@ def _(rid, params: dict, _root=_relay_root, _run=_run_delivery,
         resolved = "default" if profile.lower() == "factr" else profile
         if resolved not in known:
             return _err(rid, 4092, f"no profile '{profile}' on this gateway")
+        from tools.bot_relay import assert_no_computer
+        assert_no_computer(resolved)  # a bot with its own computer is not reachable by a host CLI turn
         # The sender stamped itself with its bare @handle; a relayed "@factr" is ANOTHER machine's
         # default, so re-stamp it with the form this gateway can reply to (#103731).
         from tools.bot_mode_probe import local_taken_forms
