@@ -381,7 +381,15 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
   )
 
   // A bot whose computer is not up has no desktop to show: say why, with the one action.
-  if (computer && computer.state !== 'on' && (computer.state === 'starting' || state?.unavailable || (status && !status.supported))) {
+  // Also when the display reads "not running" while the computer itself is off or failed: that is one problem
+  // (Start computer), not two buttons and a stale "backend retired" error from a bot engine that is gone.
+  if (
+    computer &&
+    computer.state !== 'on' &&
+    (computer.state === 'starting' ||
+      state?.unavailable ||
+      (status && (!status.supported || (!status.running && computer.state !== 'no-docker'))))
+  ) {
     return <ComputerGate computer={computer} onStart={() => void startComputer()} />
   }
 

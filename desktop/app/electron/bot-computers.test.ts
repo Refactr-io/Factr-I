@@ -459,6 +459,15 @@ describe('status', () => {
       startedAt: '2026-10-18T10:00:00Z'
     })
   })
+
+  it('busy means a turn is running, not a watched screen', async () => {
+    configure()
+    await ensureComputer('scout')
+    setComputerHold('scout', 'view', true)
+    expect(await computerStatus('scout')).toMatchObject({ state: 'on', busy: false })
+    setComputerHold('scout', 'turn', true)
+    expect(await computerStatus('scout')).toMatchObject({ state: 'on', busy: true })
+  })
 })
 
 describe('stop, destroy, idle', () => {

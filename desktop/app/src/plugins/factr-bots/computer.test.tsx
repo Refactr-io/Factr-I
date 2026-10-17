@@ -114,6 +114,15 @@ describe('Screen pane', () => {
     expect(await screen.findByText(t('computer.starting'))).toBeTruthy()
   })
 
+  it('shows only the computer gate (no Start screen) when the display is stopped and the computer is off', async () => {
+    displayRequest.mockResolvedValue(stopped)
+    answer({ state: 'off' })
+    render(<BotScreenPane bot={newBot()} />)
+
+    expect(await screen.findByRole('button', { name: t('computer.start') })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: t('screen.start') })).toBeNull()
+  })
+
   it('shows uptime, memory and Stop when the computer is on', async () => {
     displayRequest.mockResolvedValue(stopped)
     answer({
