@@ -27,8 +27,26 @@
   background" on (the default) the update is downloaded and checked (size and sha256) while you work, and the indicator
   turns into "Restart to update". Click it, or just quit and reopen: the new version is swapped in and starts, and if it
   does not come up healthy the old one is put back. With auto-update off, click the indicator to download and then
-  restart. An update screen with the mascot (gray outline filling to black, a blink) shows while the swap happens.
+  restart. A small update screen (the mascot filling from gray to black, "Updating Factr-I") shows while the swap happens.
   macOS only for now; Windows and Linux keep the existing updater.
+- Images you send now sit above your own message on the right, like in Claude and Codex, instead of on the assistant's side.
+- Menus and lists highlight the hovered or focused row with a plain fill: the outline ring around the selected row is gone
+  app-wide, and so are the glowing and shimmering strokes (composer, kanban, tour, pet egg).
+- First run is a single calm screen: "Connect a model", the ChatGPT plan marked with a small green Recommended pill, local
+  models, API key, and a quiet "choose later". It no longer shows an error-looking notice on a brand-new install, and the
+  product is called Factr-I everywhere (no "Factr-I Agent", no "Desktop"). Providers and messaging platforms use their
+  real logos; the connected screen is sentence case with a normal model control and a "Start chatting" button.
+- Corners are squircles everywhere with one shared rule, edges are sharper, and Settings uses underline tabs with a sliding
+  indicator, a tidier search field and a clearer sidebar. The browser pane uses a compass mark instead of a window icon,
+  and the preview console has its own icon.
+- Remote: connecting to a Factr-I on another computer over SSH or an SSH tunnel works end to end (tested against a Linux
+  container). Fixed: the Files pane and folder picker on a remote or SSH connection, a clear message when a saved token is
+  rejected, and the wording (no "Factr-I Cloud", no made-up example addresses). Reaching a gateway by its LAN address or
+  hostname is not supported yet; use an SSH tunnel or SSH mode.
+- Smaller fixes: scheduled jobs and messaging screens in plain wording (no "cron", no "Bot Chat" target while bots are
+  hidden), "Add a folder to continue" on New project, error toasts clear themselves, a narrow window collapses the side
+  panes, a rejected key names the provider, the approval card shows the working directory, "Retry" instead of "Refresh",
+  and Tools & Keys labels use proper brand names.
 - The engine's agent loop, tools and prompts are unchanged; the only engine edits are the version string and the image
   support check for the OpenAI provider.
 
