@@ -120,7 +120,7 @@ export const ru = defineLocale({
     revealMissing: 'Этой папки нет на этом компьютере'
   },
   boot: {
-    ready: 'Factr-I Desktop готов',
+    ready: 'Factr-I готов',
     desktopBootFailedWithMessage: message => `Не удалось запустить приложение: ${message}`,
     steps: {
       connectingGateway: 'Подключение к шлюзу',
@@ -128,7 +128,7 @@ export const ru = defineLocale({
       loadingSessions: 'Загрузка последних сеансов',
       retryingRemoteBackend: 'Переподключение к удалённому бэкенду Factr-I…',
       startingDesktopConnection: 'Запуск подключения приложения',
-      startingFactrDesktop: 'Запуск Factr-I Desktop…'
+      startingFactrDesktop: 'Запуск Factr-I…'
     },
     errors: {
       backgroundExited: 'Фоновый процесс Factr-I завершён.',
@@ -217,7 +217,7 @@ export const ru = defineLocale({
       diskFull: 'Диск заполнен — освободите место и повторите.',
       gatewayAuthFailed: 'Аутентификация шлюза не удалась — проверьте API_SERVER_KEY.',
       methodNotAllowed:
-        'Бэкенд приложения отклонил запрос (405 Method Not Allowed). Попробуйте перезапустить Factr-I Desktop.',
+        'Бэкенд приложения отклонил запрос (405 Method Not Allowed). Попробуйте перезапустить Factr-I.',
       microphonePermission: 'Доступ к микрофону запрещён.',
       openaiRejectedApiKey: 'OpenAI отклонил API-ключ.',
       openaiTtsNeedsKey: 'Для TTS OpenAI нужен VOICE_TOOLS_OPENAI_KEY или OPENAI_API_KEY.'
@@ -606,7 +606,7 @@ export const ru = defineLocale({
       advanced: 'Дополнительно'
     },
     searchPlaceholder: {
-      about: 'О Factr-I Desktop',
+      about: 'О Factr-I',
       config: 'Поиск настроек…',
       gateway: 'Подключение шлюза…',
       keys: 'Поиск API-ключей…',
@@ -1012,7 +1012,7 @@ export const ru = defineLocale({
       }
     }),
     about: {
-      heading: 'Factr-I Desktop',
+      heading: 'Factr-I',
       version: value => `Версия ${value}`,
       versionUnavailable: 'Версия недоступна',
       bundleOutOfSync: 'Сборка приложения устарела',
@@ -1274,7 +1274,7 @@ export const ru = defineLocale({
       enterUrlFirst: 'Сначала введите удалённый URL.',
       restartingTitle: 'Перезапуск соединения шлюза',
       savedTitle: 'Настройки шлюза сохранены',
-      restartingMessage: 'Factr-I Desktop переподключится с сохранёнными настройками — оболочка останется открытой.',
+      restartingMessage: 'Factr-I переподключится с сохранёнными настройками — оболочка останется открытой.',
       savedMessage: 'Сохранено для следующего перезапуска.',
       connectedTo: (baseUrl, version) => `Подключено к ${baseUrl}${version ? ` · Factr-I ${version}` : ''}`,
       reachableTitle: 'Удалённый шлюз доступен',
@@ -1320,7 +1320,7 @@ export const ru = defineLocale({
       sshErrNotInstalled:
         'Factr-I не установлен на удалённой машине. Установите его там (https://github.com/Refactr-io/Factr-I/releases) или задайте путь к Factr-I.',
       sshErrPlatform:
-        'Неподдерживаемая удалённая платформа. SSH-режим Factr-I Desktop поддерживает удалённые хосты Linux, macOS и Windows.',
+        'Неподдерживаемая удалённая платформа. SSH-режим Factr-I поддерживает удалённые хосты Linux, macOS и Windows.',
       sshErrTimeout: 'SSH-соединение истекло. Хост может быть недоступен или «спит».',
       sshErrUpdateRequired: 'Перед подключением через SSH обновите Factr-I на удалённой машине.',
       sshErrUnknown: 'SSH-соединение не удалось.'
@@ -2708,7 +2708,7 @@ export const ru = defineLocale({
       '/palette': 'Открыть палитру команд',
       '/usage': 'Показать расход токенов и стоимость за сегодня и за этот сеанс',
       '/platform': 'Приостановить, возобновить или перечислить сбоящие платформы шлюза',
-      '/version': 'Показать версию Factr-I Agent',
+      '/version': 'Показать версию Factr-I',
       '/debug': 'Загрузить отчёт отладки с данными системы и журналами и получить ссылку',
       '/model': 'Переключить модель для этого сеанса'
     },
@@ -3087,7 +3087,7 @@ export const ru = defineLocale({
     copyCommand: 'Копировать команду',
     viewDocs: 'Открыть документацию по установке',
     retryAfterRun: 'Я выполнил — попробовать снова',
-    localStartUnavailable: 'Не удалось начать локальную установку. Перезапустите Factr-I Desktop и попробуйте снова.',
+    localStartUnavailable: 'Не удалось начать локальную установку. Перезапустите Factr-I и попробуйте снова.',
     remoteUrlPlaceholder: 'https://gateway.example.com/factr',
     identityProvider: 'ваш провайдер аутентификации',
     authTitle: 'Аутентификация',
@@ -3103,7 +3103,7 @@ export const ru = defineLocale({
     applyRemote: 'Применить и переподключиться',
     backToSetup: 'Назад',
     failedTitle: 'Установка не удалась',
-    settingUpTitle: 'Настройка Factr-I Agent',
+    settingUpTitle: 'Настройка Factr-I',
     finishingTitle: 'Завершаем',
     failedDesc:
       'Один из шагов установки завершился ошибкой. На Windows это может произойти, если запущена другая инстанция Factr-I CLI или desktop. Остановите все работающие инстанции Factr-I и повторите. Подробности — ниже или в журнале desktop.',
@@ -3125,7 +3125,7 @@ export const ru = defineLocale({
     reloadRetry: 'Перезагрузить и повторить'
   },
   onboarding: {
-    headerTitle: 'Настроим для вас Factr-I Agent',
+    headerTitle: 'Настроим для вас Factr-I',
     headerDesc: 'Подключите провайдера модели, чтобы начать общение. Большинство вариантов — в один клик.',
     preparingInstall: 'Factr-I завершает установку. Обычно это занимает меньше минуты при первом запуске.',
     starting: 'Запускаем Factr-I…',
@@ -3278,7 +3278,7 @@ export const ru = defineLocale({
       update: 'обновление',
       updateInProgress: 'Обновление выполняется',
       commitsBehind: (count, branch) => `${count} ${RU_NOUN(count, 'коммит', 'коммита', 'коммитов')} позади ${branch}`,
-      desktopVersion: version => `Factr-I Desktop v${version}`,
+      desktopVersion: version => `Factr-I v${version}`,
       backendVersion: version => `Бэкенд v${version}`,
       clientLabel: version => `клиент v${version}`,
       connectionSsh: host => `SSH: ${host}`,
@@ -3886,8 +3886,8 @@ export const ru = defineLocale({
     sessionExportFailed: 'Не удалось экспортировать сеанс',
     imageSaved: 'Изображение сохранено',
     downloadStarted: 'Загрузка началась',
-    restartToUseSaveImage: 'Перезапустите Factr-I Desktop, чтобы использовать «Сохранить изображение».',
-    restartToSaveImages: 'Перезапустите Factr-I Desktop, чтобы сохранять изображения',
+    restartToUseSaveImage: 'Перезапустите Factr-I, чтобы использовать «Сохранить изображение».',
+    restartToSaveImages: 'Перезапустите Factr-I, чтобы сохранять изображения',
     imageDownloadFailed: 'Загрузка изображения не удалась',
     openImage: 'Открыть изображение',
     downloadImage: 'Скачать изображение',

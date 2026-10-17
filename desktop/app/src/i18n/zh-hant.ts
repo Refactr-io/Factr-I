@@ -100,7 +100,7 @@ export const zhHant = defineLocale({
   },
 
   boot: {
-    ready: 'Factr-I Desktop 已就緒',
+    ready: 'Factr-I 已就緒',
     desktopBootFailedWithMessage: message => `桌面啟動失敗：${message}`,
     steps: {
       connectingGateway: '正在連線桌面閘道',
@@ -108,7 +108,7 @@ export const zhHant = defineLocale({
       loadingSessions: '正在載入最近工作階段',
       retryingRemoteBackend: '正在重新連線遠端 Factr-I 後端…',
       startingDesktopConnection: '正在啟動桌面連線',
-      startingFactrDesktop: '正在啟動 Factr-I Desktop…'
+      startingFactrDesktop: '正在啟動 Factr-I…'
     },
     errors: {
       backgroundExited: 'Factr-I 背景程序已結束。',
@@ -194,7 +194,7 @@ export const zhHant = defineLocale({
       elevenLabsRejectedKey: 'ElevenLabs 拒絕了該 API 金鑰 (401)。',
       diskFull: '磁碟已滿 — 請騰出一些空間後再試。',
       gatewayAuthFailed: '閘道認證失敗 — 請檢查你的 API_SERVER_KEY。',
-      methodNotAllowed: '桌面後端拒絕了該請求 (405 Method Not Allowed)。請嘗試重新啟動 Factr-I Desktop。',
+      methodNotAllowed: '桌面後端拒絕了該請求 (405 Method Not Allowed)。請嘗試重新啟動 Factr-I。',
       microphonePermission: '麥克風權限已被拒絕。',
       openaiRejectedApiKey: 'OpenAI 拒絕了該 API 金鑰。',
       openaiTtsNeedsKey: 'OpenAI TTS 需要 VOICE_TOOLS_OPENAI_KEY 或 OPENAI_API_KEY。',
@@ -492,7 +492,7 @@ export const zhHant = defineLocale({
       advanced: '進階'
     },
     searchPlaceholder: {
-      about: '關於 Factr-I Desktop',
+      about: '關於 Factr-I',
       config: '搜尋設定…',
       gateway: '閘道連線…',
       keys: '搜尋 API 金鑰…',
@@ -965,7 +965,7 @@ export const zhHant = defineLocale({
       driverHealth: '驅動程式健康狀態'
     },
     about: {
-      heading: 'Factr-I Desktop',
+      heading: 'Factr-I',
       version: value => `版本 ${value}`,
       versionUnavailable: '版本不可用',
       bundleOutOfSync: '應用程式建置版本過舊',
@@ -1096,7 +1096,7 @@ export const zhHant = defineLocale({
       title: '閘道連線',
       envOverride: '環境變數覆寫',
       intro:
-        'Factr-I Desktop 預設會啟動自己的本機閘道。如果您希望此應用程式控制另一台機器或可信代理後面已執行的 Factr-I 後端，請使用遠端閘道。閘道連線屬於本機層級設定；設定檔是從已連線的閘道中探索出來的。',
+        'Factr-I 預設會啟動自己的本機閘道。如果您希望此應用程式控制另一台機器或可信代理後面已執行的 Factr-I 後端，請使用遠端閘道。閘道連線屬於本機層級設定；設定檔是從已連線的閘道中探索出來的。',
       envOverrideTitle: '環境變數正在控制此桌面工作階段。',
       envOverrideDesc: '取消設定 FACTR_DESKTOP_REMOTE_URL 和 FACTR_DESKTOP_REMOTE_TOKEN 後才會使用下方儲存的設定。',
       localTitle: '本機閘道',
@@ -1147,7 +1147,7 @@ export const zhHant = defineLocale({
       enterUrlFirst: '請先輸入遠端 URL。',
       restartingTitle: '閘道連線正在重新啟動',
       savedTitle: '閘道設定已儲存',
-      restartingMessage: 'Factr-I Desktop 將使用已儲存的設定重新連線。',
+      restartingMessage: 'Factr-I 將使用已儲存的設定重新連線。',
       savedMessage: '已儲存，下次重新啟動後生效。',
       connectedTo: (baseUrl, version) => `已連線至 ${baseUrl}${version ? ` · Factr-I ${version}` : ''}`,
       reachableTitle: '遠端閘道可連線',
@@ -1190,7 +1190,7 @@ export const zhHant = defineLocale({
       sshErrHostKey: '自上次連線以來主機金鑰已變更。請確認這是預期的，然後執行 ssh-keygen -R <host> 並重新連線。',
       sshErrNotInstalled:
         '遠端主機上未安裝 Factr-I。請在遠端安裝（https://github.com/Refactr-io/Factr-I/releases）或設定 Factr-I 路徑。',
-      sshErrPlatform: '不支援的遠端平台。Factr-I Desktop 的 SSH 模式支援 Linux、macOS 和 Windows 遠端主機。',
+      sshErrPlatform: '不支援的遠端平台。Factr-I 的 SSH 模式支援 Linux、macOS 和 Windows 遠端主機。',
       sshErrTimeout: 'SSH 連線逾時。主機可能無法存取或處於睡眠狀態。',
       sshErrUpdateRequired: '使用 Desktop SSH 連線前，請更新遠端主機上的 Factr-I。',
       sshErrUnknown: 'SSH 連線失敗。'
@@ -2528,7 +2528,7 @@ export const zhHant = defineLocale({
       '/palette': '開啟模糊搜尋指令面板（也可使用 Ctrl+P）',
       '/usage': '顯示今天與此工作階段的 Token 用量與費用',
       '/platform': '暫停、恢復或列出故障的閘道平台',
-      '/version': '顯示 Factr-I Agent 版本',
+      '/version': '顯示 Factr-I 版本',
       '/debug': '上傳偵錯報告（系統資訊與記錄），並取得可分享連結',
       '/model': '切換此工作階段的模型'
     },
@@ -2865,7 +2865,7 @@ export const zhHant = defineLocale({
     copyCommand: '複製指令',
     viewDocs: '檢視安裝文件',
     retryAfterRun: '我已執行 -- 重試',
-    localStartUnavailable: '無法啟動本機安裝。請重新啟動 Factr-I Desktop 後再試一次。',
+    localStartUnavailable: '無法啟動本機安裝。請重新啟動 Factr-I 後再試一次。',
     remoteUrlPlaceholder: 'https://gateway.example.com/factr',
     identityProvider: '您的身分提供者',
     authTitle: '驗證',
@@ -2881,7 +2881,7 @@ export const zhHant = defineLocale({
     applyRemote: '套用並重新連線',
     backToSetup: '返回',
     failedTitle: '安裝失敗',
-    settingUpTitle: '正在設定 Factr-I Agent',
+    settingUpTitle: '正在設定 Factr-I',
     finishingTitle: '正在收尾',
     failedDesc:
       '某個安裝步驟失敗。在 Windows 上，如果另一個 Factr-I CLI 或桌面執行個體正在執行，可能會出現這種情況。請停止正在執行的 Factr-I 執行個體後重試。可查看下方的詳細資訊或 desktop 記錄中的完整記錄。',
@@ -2903,7 +2903,7 @@ export const zhHant = defineLocale({
   },
 
   onboarding: {
-    headerTitle: '開始設定 Factr-I Agent',
+    headerTitle: '開始設定 Factr-I',
     headerDesc: '連線模型提供方即可開始聊天。大多數選項只需一次點擊。',
     preparingInstall: 'Factr-I 正在完成安裝。首次執行通常不到一分鐘。',
     starting: '正在啟動 Factr-I…',
@@ -3054,7 +3054,7 @@ export const zhHant = defineLocale({
       update: '更新',
       updateInProgress: '更新中',
       commitsBehind: (count, branch) => `落後 ${branch} ${count} 個提交`,
-      desktopVersion: version => `Factr-I Desktop v${version}`,
+      desktopVersion: version => `Factr-I v${version}`,
       backendVersion: version => `後端 v${version}`,
       clientLabel: version => `用戶端 v${version}`,
       connectionSsh: host => `SSH: ${host}`,
@@ -3716,8 +3716,8 @@ export const zhHant = defineLocale({
     sessionExportFailed: '無法匯出工作階段',
     imageSaved: '圖片已儲存',
     downloadStarted: '下載已開始',
-    restartToUseSaveImage: '重新啟動 Factr-I Desktop 後可使用儲存圖片。',
-    restartToSaveImages: '重新啟動 Factr-I Desktop 以儲存圖片',
+    restartToUseSaveImage: '重新啟動 Factr-I 後可使用儲存圖片。',
+    restartToSaveImages: '重新啟動 Factr-I 以儲存圖片',
     imageDownloadFailed: '圖片下載失敗',
     openImage: '開啟圖片',
     downloadImage: '下載圖片',

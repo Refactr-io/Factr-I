@@ -182,7 +182,7 @@ function encryptDesktopSecret(value, safeStorageApi, options: { allowPlainText?:
     }
 
     throw new Error(
-      'Secure token storage is unavailable (no OS keyring service was found), so Factr-I Desktop cannot save remote gateway tokens. ' +
+      'Secure token storage is unavailable (no OS keyring service was found), so Factr-I cannot save remote gateway tokens. ' +
         'Either enable an OS keyring (e.g. GNOME Keyring or KWallet providing org.freedesktop.secrets) and try again, ' +
         'confirm the plain-text storage option when prompted in Settings → Gateway, ' +
         'or set FACTR_DESKTOP_REMOTE_URL and FACTR_DESKTOP_REMOTE_TOKEN in your environment.'

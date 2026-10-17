@@ -93,7 +93,7 @@ export const ar = defineLocale({
     revealMissing: 'هذا المجلد ليس على هذا الحاسوب'
   },
   boot: {
-    ready: 'Factr-I Desktop جاهز',
+    ready: 'Factr-I جاهز',
     desktopBootFailedWithMessage: message => `فشل تشغيل سطح المكتب: ${message}`,
     steps: {
       connectingGateway: 'جار الاتصال ببوابة سطح المكتب',
@@ -101,7 +101,7 @@ export const ar = defineLocale({
       loadingSessions: 'جار تحميل الجلسات الأخيرة',
       retryingRemoteBackend: 'جارٍ إعادة الاتصال بخادم Factr-I البعيد…',
       startingDesktopConnection: 'جار بدء اتصال سطح المكتب',
-      startingFactrDesktop: 'جار تشغيل Factr-I Desktop...'
+      startingFactrDesktop: 'جار تشغيل Factr-I...'
     },
     errors: {
       backgroundExited: 'خرجت عملية Factr-I الخلفية.',
@@ -181,7 +181,7 @@ export const ar = defineLocale({
       sttNoProvider: 'يتطلب الإدخال الصوتي مفتاح تحويل الكلام إلى نص. أضف مفتاح Groq (مجاني) أو OpenAI أو Mistral أو ElevenLabs أو xAI في الإعدادات ← Keys.',
       elevenLabsRejectedKey: 'رفض ElevenLabs مفتاح API (401).',
       diskFull: 'القرص ممتلئ — حرّر مساحة ثم أعد المحاولة.',
-      methodNotAllowed: 'رفضت خلفية سطح المكتب هذا الطلب (405 Method Not Allowed). جرب إعادة تشغيل Factr-I Desktop.',
+      methodNotAllowed: 'رفضت خلفية سطح المكتب هذا الطلب (405 Method Not Allowed). جرب إعادة تشغيل Factr-I.',
       microphonePermission: 'تم رفض إذن الميكروفون.',
       openaiRejectedApiKey: 'رفض OpenAI مفتاح API.',
       openaiTtsNeedsKey: 'يتطلب OpenAI TTS المفتاح VOICE_TOOLS_OPENAI_KEY أو OPENAI_API_KEY.',
@@ -567,7 +567,7 @@ export const ar = defineLocale({
       advanced: 'متقدم'
     },
     searchPlaceholder: {
-      about: 'حول Factr-I Desktop',
+      about: 'حول Factr-I',
       config: 'ابحث في الإعدادات...',
       gateway: 'اتصال البوابة...',
       keys: 'ابحث في مفاتيح API...',
@@ -943,7 +943,7 @@ export const ar = defineLocale({
       title: 'اتصال البوابة',
       envOverride: 'تجاوز من البيئة',
       intro:
-        'يشغّل Factr-I Desktop بوابة محلية خاصة افتراضياً. استخدم بوابة بعيدة عندما تريد أن يتحكم هذا التطبيق بخلفية Factr-I تعمل مسبقاً على جهاز آخر أو خلف وكيل موثوق. اتصالات البوابة إعداد على مستوى الجهاز؛ ويتم اكتشاف الملفات الشخصية من البوابات المتصلة.',
+        'يشغّل Factr-I بوابة محلية خاصة افتراضياً. استخدم بوابة بعيدة عندما تريد أن يتحكم هذا التطبيق بخلفية Factr-I تعمل مسبقاً على جهاز آخر أو خلف وكيل موثوق. اتصالات البوابة إعداد على مستوى الجهاز؛ ويتم اكتشاف الملفات الشخصية من البوابات المتصلة.',
       envOverrideTitle: 'متغيرات البيئة تتحكم في جلسة سطح المكتب هذه.',
       envOverrideDesc: 'أزل FACTR_DESKTOP_REMOTE_URL و FACTR_DESKTOP_REMOTE_TOKEN لاستخدام الإعداد المحفوظ أدناه.',
       localTitle: 'بوابة محلية',
@@ -987,7 +987,7 @@ export const ar = defineLocale({
       enterUrlFirst: 'أدخل رابط البوابة البعيدة أولاً.',
       restartingTitle: 'جار إعادة تشغيل اتصال البوابة',
       savedTitle: 'تم حفظ إعدادات البوابة',
-      restartingMessage: 'سيعيد Factr-I Desktop الاتصال باستخدام الإعدادات المحفوظة.',
+      restartingMessage: 'سيعيد Factr-I الاتصال باستخدام الإعدادات المحفوظة.',
       savedMessage: 'تم الحفظ للتشغيل القادم.',
       connectedTo: (baseUrl, version) => `متصل بـ ${baseUrl}${version ? ` · Factr-I ${version}` : ''}`,
       reachableTitle: 'البوابة البعيدة قابلة للوصول',
@@ -2168,7 +2168,7 @@ export const ar = defineLocale({
       '/palette': 'فتح لوحة الأوامر',
       '/usage': 'عرض استخدام الرموز والتكلفة لليوم ولهذه الجلسة',
       '/platform': 'إيقاف منصة بوابة متعثرة مؤقتًا أو استئنافها أو عرضها',
-      '/version': 'عرض إصدار Factr-I Agent',
+      '/version': 'عرض إصدار Factr-I',
       '/debug': 'رفع تقرير تصحيح يتضمن معلومات النظام والسجلات للحصول على رابط قابل للمشاركة',
       '/model': 'تبديل نموذج هذه الجلسة'
     },
@@ -2525,7 +2525,7 @@ export const ar = defineLocale({
     reloadRetry: 'إعادة التحميل وإعادة المحاولة'
   },
   onboarding: {
-    headerTitle: 'لنُعِدّ لك Factr-I Agent',
+    headerTitle: 'لنُعِدّ لك Factr-I',
     headerDesc: 'اربط مزوّد نماذج لبدء المحادثة. معظم الخيارات تتطلب نقرة واحدة.',
     preparingInstall: 'يُكمل Factr-I التثبيت. عادة ما يستغرق ذلك أقل من دقيقة في أول تشغيل.',
     starting: 'جار بدء Factr-I...',

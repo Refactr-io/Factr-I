@@ -55,7 +55,7 @@ function bridge() {
   const desktop = window.factrDesktop
 
   if (!desktop) {
-    throw new Error('Factr-I Desktop bridge is unavailable')
+    throw new Error('Factr-I bridge is unavailable')
   }
 
   return desktop

@@ -126,7 +126,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     fireEvent.click(install)
 
     expect(
-      await screen.findByText('Local installation could not start. Restart Factr-I Desktop and try again.')
+      await screen.findByText('Local installation could not start. Restart Factr-I and try again.')
     ).toBeTruthy()
     expect(install.disabled).toBe(false)
   })
@@ -152,7 +152,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     })
 
     expect(
-      screen.queryByText('Local installation could not start. Restart Factr-I Desktop and try again.')
+      screen.queryByText('Local installation could not start. Restart Factr-I and try again.')
     ).toBeTruthy()
   })
 
@@ -168,7 +168,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
 
     fireEvent.click((await screen.findByText('Install Factr-I')).closest('button') as HTMLButtonElement)
     expect(
-      await screen.findByText('Local installation could not start. Restart Factr-I Desktop and try again.')
+      await screen.findByText('Local installation could not start. Restart Factr-I and try again.')
     ).toBeTruthy()
 
     act(() => {
@@ -180,7 +180,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
       })
     })
 
-    expect(screen.queryByText('Local installation could not start. Restart Factr-I Desktop and try again.')).toBeNull()
+    expect(screen.queryByText('Local installation could not start. Restart Factr-I and try again.')).toBeNull()
   })
 
   it('returns from the remote connection form to the first-run choice', async () => {

@@ -306,7 +306,7 @@ export const en: Translations = {
   },
 
   boot: {
-    ready: 'Factr-I Desktop is ready',
+    ready: 'Factr-I is ready',
     desktopBootFailedWithMessage: message => `Desktop boot failed: ${message}`,
     steps: {
       connectingGateway: 'Connecting live desktop gateway',
@@ -314,7 +314,7 @@ export const en: Translations = {
       loadingSessions: 'Loading recent sessions',
       retryingRemoteBackend: 'Reconnecting to the remote Factr-I backend…',
       startingDesktopConnection: 'Starting desktop connection',
-      startingFactrDesktop: 'Starting Factr-I Desktop…'
+      startingFactrDesktop: 'Starting Factr-I…'
     },
     errors: {
       backgroundExited:
@@ -332,7 +332,7 @@ export const en: Translations = {
       gatewaySignInRequired: 'Your remote Factr-I signed you out',
       gatewaySignInRequiredDetail: 'Sign in again to reconnect. Your chats and settings are safe.',
       signInAgain: 'Sign in again',
-      ipcBridgeUnavailable: "Factr-I Desktop couldn't talk to its own background layer. Restart the app."
+      ipcBridgeUnavailable: "Factr-I couldn't talk to its own background layer. Restart the app."
     },
     // Plain causes for a local backend boot failure (`classifyBootFailure`);
     // the raw output stays behind "Show recent logs".
@@ -930,7 +930,7 @@ export const en: Translations = {
       advanced: 'Advanced'
     },
     searchPlaceholder: {
-      about: 'About Factr-I Desktop',
+      about: 'About Factr-I',
       config: 'Search settings...',
       gateway: 'Gateway connection...',
       keys: 'Search API keys...',
@@ -1141,7 +1141,7 @@ export const en: Translations = {
       driverHealth: 'Driver health'
     },
     about: {
-      heading: 'Factr-I Desktop',
+      heading: 'Factr-I',
       version: value => `Version ${value}`,
       versionUnavailable: 'Version unavailable',
       bundleOutOfSync: 'App build out of date',
@@ -1378,7 +1378,7 @@ export const en: Translations = {
       loading: 'Loading gateway settings...',
       unavailableTitle: 'Gateway settings unavailable',
       unavailableDesc:
-        'Connection settings can only be changed from the Factr-I Desktop app on the computer running it.',
+        'Connection settings can only be changed from the Factr-I app on the computer running it.',
       title: 'Gateway Connection',
       envOverride: 'env override',
       intro:
@@ -1437,7 +1437,7 @@ export const en: Translations = {
       enterUrlFirst: 'Enter a remote URL first.',
       restartingTitle: 'Gateway connection restarting',
       savedTitle: 'Gateway settings saved',
-      restartingMessage: 'Factr-I Desktop will reconnect using the saved settings — the shell stays open.',
+      restartingMessage: 'Factr-I will reconnect using the saved settings — the shell stays open.',
       savedMessage: 'Saved for the next restart.',
       connectedTo: (baseUrl, version) => `Connected to ${baseUrl}${version ? ` · Factr-I ${version}` : ''}`,
       reachableTitle: 'Remote gateway reachable',
@@ -1482,7 +1482,7 @@ export const en: Translations = {
       sshErrNotInstalled:
         'Factr-I is not installed on the remote host. Install it there (https://github.com/Refactr-io/Factr-I/releases) or set the Factr-I path.',
       sshErrPlatform:
-        'Unsupported remote platform. Factr-I Desktop SSH mode supports Linux, macOS, and Windows remote hosts.',
+        'Unsupported remote platform. Factr-I SSH mode supports Linux, macOS, and Windows remote hosts.',
       sshErrTimeout: 'SSH connection timed out. The host may be unreachable or asleep.',
       sshErrUpdateRequired: 'Update Factr-I on the remote host before connecting with Desktop SSH.',
       sshErrUnknown: 'SSH connection failed.'
@@ -3194,7 +3194,7 @@ export const en: Translations = {
       '/palette': 'Open the fuzzy command palette (also Ctrl+P)',
       '/usage': 'Show token usage and cost for today and this session',
       '/platform': 'Pause, resume, or list a failing gateway platform',
-      '/version': 'Show Factr-I Agent version',
+      '/version': 'Show Factr-I version',
       '/debug': 'Upload debug report (system info + logs) and get shareable links',
       '/model': 'Switch the model for this session'
     },
@@ -3555,7 +3555,7 @@ export const en: Translations = {
       restarting: 'Backend restarting to load the update…',
       notAvailable: 'Update not available for this backend.',
       failed: 'Backend update failed.',
-      noReturn: 'Backend didn’t come back online. The update may not have completed — check the backend host.'
+      noReturn: 'Backend didn’t come back online. The update may not have finished. Check the backend host.'
     }
   },
 
@@ -3597,7 +3597,7 @@ export const en: Translations = {
     useOwnServer: 'Connect to Factr-I on another machine instead',
     installLocalTitle: 'Install Factr-I',
     installLocalDesc: 'Download Factr-I and set it up on this computer.',
-    localStartUnavailable: 'Local installation could not start. Restart Factr-I Desktop and try again.',
+    localStartUnavailable: 'Local installation could not start. Restart Factr-I and try again.',
     remoteSetupTitle: 'Connect to another machine',
     remoteSetupDesc: 'Enter the address of a Factr-I running on a machine you control, such as your own server or a Tailscale address. Factr-I checks whether it needs a token or a sign-in.',
     remoteUrlTitle: 'Server address',
@@ -3605,7 +3605,7 @@ export const en: Translations = {
     remoteUrlPlaceholder: 'https://gateway.example.com/factr',
     probing: 'Checking the server...',
     probeError:
-      "Factr-I can't reach that address. Check the URL and that the other computer is running Factr-I — sign-in options appear once it answers.",
+      "Can't reach that address. Check the URL and that Factr-I is running there.",
     probeErrorDetails: 'Details',
     identityProvider: 'your identity provider',
     authTitle: 'Authentication',
@@ -3626,7 +3626,7 @@ export const en: Translations = {
     applyRemote: 'Apply and reconnect',
     backToSetup: 'Back',
     failedTitle: 'Installation failed',
-    settingUpTitle: 'Setting up Factr-I Agent',
+    settingUpTitle: 'Setting up Factr-I',
     finishingTitle: 'Finishing up',
     failedDesc:
       'One of the setup steps did not finish. This can happen when another copy of Factr-I is running, the internet connection dropped, or antivirus blocked the installer. Close other Factr-I windows, then choose Reload and retry. If it fails again, open the logs and send them to support.',
@@ -3650,8 +3650,8 @@ export const en: Translations = {
   },
 
   onboarding: {
-    headerTitle: "Let's get you setup with Factr-I Agent",
-    headerDesc: 'Connect a model provider to start chatting. Most options take one click.',
+    headerTitle: 'Connect a model',
+    headerDesc: 'Factr-I needs a model to answer. Sign in with a plan you already have, use an API key, or run one on this computer.',
     configOpenFolder: 'Open the folder',
     configBackUpAndReset: 'Back up and start fresh',
     configBackedUp: backupPath => `Saved a copy as ${backupPath}. Set up a provider to start fresh.`,
@@ -3664,11 +3664,11 @@ export const en: Translations = {
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',
-    featuredPitch: 'Sign in with your ChatGPT plan, no API key needed',
-    fireworksPitch: 'Direct model API — Fireworks-hosted frontier models',
+    featuredPitch: 'Sign in with your ChatGPT account. No API key needed.',
+    fireworksPitch: 'Models hosted by Fireworks, through their API',
     localModelsTitle: 'Run models locally',
-    localModelsPitch: 'No account needed — download a model and run it on this machine',
-    openRouterPitch: 'One key, hundreds of models — a solid default',
+    localModelsPitch: 'Download a model and run it on this computer. No account needed.',
+    openRouterPitch: 'One key for hundreds of models',
     apiKeyOptions: {
       fireworks: {
         short: 'direct model API',
@@ -3691,13 +3691,13 @@ export const en: Translations = {
     getKey: 'Get a key',
     replaceCurrent: 'Replace current value',
     pasteApiKey: 'Paste API key',
-    localApiKeyPlaceholder: 'API key (optional — only if your endpoint requires one)',
+    localApiKeyPlaceholder: 'API key (optional, only if your endpoint needs one)',
     couldNotSave: 'Could not save credential.',
     connecting: 'Connecting',
     update: 'Update',
     flowSubtitles: {
       pkce: 'Opens your browser to sign in, then continues here',
-      device_code: 'Opens a verification page in your browser — Factr-I connects automatically',
+      device_code: 'Opens a verification page in your browser. Factr-I connects when you finish.',
       external: 'Sign in once in your terminal, then come back to chat'
     },
     startingSignIn: provider => `Starting sign-in for ${provider}...`,
@@ -3720,7 +3720,7 @@ export const en: Translations = {
     pasteAuthCode: 'Paste authorization code',
     reopenAuthPage: 'Re-open authorization page',
     autoBrowser: provider =>
-      `We opened ${provider} in your browser. Authorize Factr-I there and you'll be connected automatically — nothing to copy or paste.`,
+      `We opened ${provider} in your browser. Authorize Factr-I there and you'll be connected. Nothing to copy or paste.`,
     reopenSignInPage: 'Re-open sign-in page',
     waitingAuthorize: 'Waiting for you to authorize...',
     externalPending: provider =>
@@ -3825,7 +3825,7 @@ export const en: Translations = {
       update: 'update',
       updateInProgress: 'Update in progress',
       commitsBehind: (count, branch) => `${count} commit${count === 1 ? '' : 's'} behind ${branch}`,
-      desktopVersion: version => `Factr-I Desktop v${version}`,
+      desktopVersion: version => `Factr-I v${version}`,
       backendVersion: version => `Backend v${version}`,
       clientLabel: version => `client v${version}`,
       connectionSsh: host => `SSH: ${host}`,
@@ -4683,8 +4683,8 @@ export const en: Translations = {
     sessionExportFailed: 'Could not export session',
     imageSaved: 'Image saved',
     downloadStarted: 'Download started',
-    restartToUseSaveImage: 'Restart Factr-I Desktop to use Save Image.',
-    restartToSaveImages: 'Restart Factr-I Desktop to save images',
+    restartToUseSaveImage: 'Restart Factr-I to use Save Image.',
+    restartToSaveImages: 'Restart Factr-I to save images',
     imageDownloadFailed: 'Image download failed',
     openImage: 'Open image',
     downloadImage: 'Download image',

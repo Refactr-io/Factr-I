@@ -1227,7 +1227,7 @@ export async function requestGatewayForAgent<T>(
   }
 
   if (!window.factrDesktop?.getConnectionFor) {
-    throw new Error('This Desktop build cannot dial registry connections. Update Factr-I Desktop.')
+    throw new Error('This Desktop build cannot dial registry connections. Update Factr-I.')
   }
 
   const entry = g.secondaries.get(scope) ?? createSecondary(key, connectionId)
@@ -1729,7 +1729,7 @@ export async function openGatewayForAgent(
   }
 
   if (!window.factrDesktop?.getConnectionFor) {
-    throw new Error('This Desktop build cannot dial registry connections. Update Factr-I Desktop.')
+    throw new Error('This Desktop build cannot dial registry connections. Update Factr-I.')
   }
 
   const entry = g.secondaries.get(scope) ?? createSecondary(profile, connectionId)
@@ -1783,7 +1783,7 @@ export async function ensureGatewayForAgent(
   }
 
   if (!window.factrDesktop?.getConnectionFor) {
-    throw new Error('This Desktop build cannot dial registry connections. Update Factr-I Desktop.')
+    throw new Error('This Desktop build cannot dial registry connections. Update Factr-I.')
   }
 
   let entry = g.secondaries.get(scope)

@@ -11,6 +11,7 @@ import { getGlobalModelOptions } from '@/factr'
 import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ChevronLeft, KeyRound, Loader2 } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
+import { NO_PROVIDER_YET } from '@/lib/provider-error-display'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
 import type { ConfigErrorSnapshot } from '@/lib/runtime-readiness'
 import { cn } from '@/lib/utils'
@@ -357,6 +358,7 @@ export function DesktopOnboardingOverlay({
   const reason =
     rawReason &&
     !isProviderSetupErrorMessage(rawReason) &&
+    rawReason !== NO_PROVIDER_YET &&
     rawReason !== DEFAULT_ONBOARDING_REASON &&
     rawReason !== DEFAULT_MANUAL_ONBOARDING_REASON
       ? rawReason

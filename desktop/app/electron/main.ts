@@ -4529,7 +4529,7 @@ async function resolveFactrBackend(backendArgs) {
   //    is a recoverable state the GUI can drive through.
   return {
     kind: 'bootstrap-needed',
-    label: 'Factr-I Agent not installed yet; bootstrap required',
+    label: 'Factr-I not installed yet; bootstrap required',
     command: null,
     args: backendArgs,
     bootstrap: true,
@@ -12071,7 +12071,7 @@ function reportPrimaryRecoveryCrashLoop(code: number | null, signal: string | nu
   }
 
   const message =
-    'Factr-I backend keeps crashing right after it restarts; not restarting it again. Relaunch Factr-I Desktop.'
+    'Factr-I backend keeps crashing right after it restarts; not restarting it again. Relaunch Factr-I.'
 
   rememberLog(`[supervisor] ${message}`)
   sendBackendExit({ code, signal, error: message })
@@ -12154,7 +12154,7 @@ async function runFactrStart({ supervisorRecovery = false }: { supervisorRecover
   // otherwise SIGTERMs the running instance's live backend (#87295).
   if (!isPrimaryInstance) {
     rememberLog('[boot] non-primary instance: skipping backend machinery')
-    throw new Error('Factr-I Desktop is already running in another window.')
+    throw new Error('Factr-I is already running in another window.')
   }
 
   await reapOrphanedBackendsOnce()

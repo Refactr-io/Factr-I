@@ -39,7 +39,7 @@ export const PROVIDER_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   anthropic: 'Anthropic API Key',
   'claude-code': 'Anthropic subscription (extra usage credits required)',
   'minimax-oauth': 'MiniMax',
-  'openai-codex': 'ChatGPT or Codex Subscription',
+  'openai-codex': 'ChatGPT plan',
   'qwen-oauth': 'Qwen Code',
   xai: 'xAI',
   'xai-oauth': 'xAI Grok'

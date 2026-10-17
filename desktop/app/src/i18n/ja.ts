@@ -100,7 +100,7 @@ export const ja = defineLocale({
   },
 
   boot: {
-    ready: 'Factr-I Desktop の準備ができました',
+    ready: 'Factr-I の準備ができました',
     desktopBootFailedWithMessage: message => `デスクトップの起動に失敗しました: ${message}`,
     steps: {
       connectingGateway: 'ライブデスクトップゲートウェイに接続中',
@@ -108,7 +108,7 @@ export const ja = defineLocale({
       loadingSessions: '最近のセッションを読み込み中',
       retryingRemoteBackend: 'リモート Factr-I バックエンドに再接続中…',
       startingDesktopConnection: 'デスクトップ接続を開始中',
-      startingFactrDesktop: 'Factr-I Desktop を起動中…'
+      startingFactrDesktop: 'Factr-I を起動中…'
     },
     errors: {
       backgroundExited: 'Factr-I バックグラウンドプロセスが終了しました。',
@@ -199,7 +199,7 @@ export const ja = defineLocale({
       diskFull: 'ディスク容量不足です — 空きを作ってからもう一度お試しください。',
       gatewayAuthFailed: 'ゲートウェイ認証に失敗しました — API_SERVER_KEY を確認してください。',
       methodNotAllowed:
-        'デスクトップバックエンドがそのリクエストを拒否しました (405 Method Not Allowed)。Factr-I Desktop を再起動してください。',
+        'デスクトップバックエンドがそのリクエストを拒否しました (405 Method Not Allowed)。Factr-I を再起動してください。',
       microphonePermission: 'マイクのアクセス許可が拒否されました。',
       openaiRejectedApiKey: 'OpenAI が API キーを拒否しました。',
       openaiTtsNeedsKey: 'OpenAI TTS には VOICE_TOOLS_OPENAI_KEY または OPENAI_API_KEY が必要です。',
@@ -506,7 +506,7 @@ export const ja = defineLocale({
       advanced: '詳細'
     },
     searchPlaceholder: {
-      about: 'Factr-I Desktop について',
+      about: 'Factr-I について',
       config: '設定を検索…',
       gateway: 'ゲートウェイ接続…',
       keys: 'API キーを検索…',
@@ -892,7 +892,7 @@ export const ja = defineLocale({
       }
     }),
     about: {
-      heading: 'Factr-I Desktop',
+      heading: 'Factr-I',
       version: value => `バージョン ${value}`,
       versionUnavailable: 'バージョンを取得できません',
       bundleOutOfSync: 'アプリのビルドが古くなっています',
@@ -1028,7 +1028,7 @@ export const ja = defineLocale({
       title: 'ゲートウェイ接続',
       envOverride: 'env オーバーライド',
       intro:
-        'Factr-I Desktop はデフォルトで独自のローカルゲートウェイを起動します。別のマシンや信頼できるプロキシの背後で既に動作している Factr-I バックエンドをこのアプリで制御する場合は、リモートゲートウェイを使用してください。ゲートウェイ接続はマシン単位の設定で、プロファイルは接続したゲートウェイから検出されます。',
+        'Factr-I はデフォルトで独自のローカルゲートウェイを起動します。別のマシンや信頼できるプロキシの背後で既に動作している Factr-I バックエンドをこのアプリで制御する場合は、リモートゲートウェイを使用してください。ゲートウェイ接続はマシン単位の設定で、プロファイルは接続したゲートウェイから検出されます。',
       envOverrideTitle: '環境変数がこのデスクトップセッションを制御しています。',
       envOverrideDesc:
         '保存された設定を使用するには FACTR_DESKTOP_REMOTE_URL と FACTR_DESKTOP_REMOTE_TOKEN の設定を解除してください。',
@@ -1087,7 +1087,7 @@ export const ja = defineLocale({
       enterUrlFirst: '最初にリモート URL を入力してください。',
       restartingTitle: 'ゲートウェイ接続を再起動中',
       savedTitle: 'ゲートウェイ設定を保存しました',
-      restartingMessage: 'Factr-I Desktop は保存された設定を使用して再接続します。',
+      restartingMessage: 'Factr-I は保存された設定を使用して再接続します。',
       savedMessage: '次回起動時に保存されます。',
       connectedTo: (baseUrl, version) => `${baseUrl}${version ? ` · Factr-I ${version}` : ''} に接続しました`,
       reachableTitle: 'リモートゲートウェイに到達可能',
@@ -1132,7 +1132,7 @@ export const ja = defineLocale({
       sshErrNotInstalled:
         'リモートホストに Factr-I がインストールされていません。リモートでインストールする（https://github.com/Refactr-io/Factr-I/releases）か、Factr-I パスを設定してください。',
       sshErrPlatform:
-        'サポートされていないリモートプラットフォームです。Factr-I Desktop の SSH モードは Linux、macOS、Windows のリモートホストに対応しています。',
+        'サポートされていないリモートプラットフォームです。Factr-I の SSH モードは Linux、macOS、Windows のリモートホストに対応しています。',
       sshErrTimeout: 'SSH 接続がタイムアウトしました。ホストが到達不能、またはスリープ中の可能性があります。',
       sshErrUpdateRequired: 'Desktop SSH で接続する前に、リモートホストの Factr-I を更新してください。',
       sshErrUnknown: 'SSH 接続に失敗しました。'
@@ -2515,7 +2515,7 @@ export const ja = defineLocale({
       '/palette': 'コマンドパレットを開く',
       '/usage': '今日とこのセッションのトークン使用量とコストを表示',
       '/platform': '問題のあるゲートウェイプラットフォームを一時停止、再開、一覧表示',
-      '/version': 'Factr-I Agent のバージョンを表示',
+      '/version': 'Factr-I のバージョンを表示',
       '/debug': 'デバッグレポートを作成',
       '/model': 'このセッションのモデルを切り替え'
     },
@@ -2862,7 +2862,7 @@ export const ja = defineLocale({
     viewDocs: 'インストールドキュメントを見る',
     retryAfterRun: '実行しました — 再試行',
     localStartUnavailable:
-      'ローカルインストールを開始できません。Factr-I Desktop を再起動して、もう一度お試しください。',
+      'ローカルインストールを開始できません。Factr-I を再起動して、もう一度お試しください。',
     remoteUrlPlaceholder: 'https://gateway.example.com/factr',
     identityProvider: 'ID プロバイダー',
     authTitle: '認証',
@@ -2878,7 +2878,7 @@ export const ja = defineLocale({
     applyRemote: '適用して再接続',
     backToSetup: '戻る',
     failedTitle: 'インストールに失敗しました',
-    settingUpTitle: 'Factr-I Agent を設定中',
+    settingUpTitle: 'Factr-I を設定中',
     finishingTitle: '仕上げ中',
     failedDesc:
       'インストール手順のいずれかが失敗しました。Windows では、別の Factr-I CLI またはデスクトップインスタンスが実行中の場合に発生することがあります。実行中の Factr-I インスタンスをすべて停止してから再試行してください。詳細は以下またはデスクトップログで確認できます。',
@@ -2901,7 +2901,7 @@ export const ja = defineLocale({
   },
 
   onboarding: {
-    headerTitle: 'Factr-I Agent のセットアップをしましょう',
+    headerTitle: 'Factr-I のセットアップをしましょう',
     headerDesc: 'チャットを始めるにはモデルプロバイダーを接続してください。ほとんどのオプションはワンクリックです。',
     preparingInstall: 'Factr-I はインストールを完了中です。初回実行では通常 1 分以内に完了します。',
     starting: 'Factr-I を起動中…',
@@ -3061,7 +3061,7 @@ export const ja = defineLocale({
       update: '更新',
       updateInProgress: '更新中',
       commitsBehind: (count, branch) => `${branch} より ${count} コミット遅れています`,
-      desktopVersion: version => `Factr-I Desktop v${version}`,
+      desktopVersion: version => `Factr-I v${version}`,
       backendVersion: version => `バックエンド v${version}`,
       clientLabel: version => `クライアント v${version}`,
       connectionSsh: host => `SSH: ${host}`,
@@ -3775,8 +3775,8 @@ export const ja = defineLocale({
     sessionExportFailed: 'セッションをエクスポートできませんでした',
     imageSaved: '画像を保存しました',
     downloadStarted: 'ダウンロードを開始しました',
-    restartToUseSaveImage: '画像を保存するには Factr-I Desktop を再起動してください。',
-    restartToSaveImages: '画像を保存するには Factr-I Desktop を再起動してください',
+    restartToUseSaveImage: '画像を保存するには Factr-I を再起動してください。',
+    restartToSaveImages: '画像を保存するには Factr-I を再起動してください',
     imageDownloadFailed: '画像のダウンロードに失敗しました',
     openImage: '画像を開く',
     downloadImage: '画像をダウンロード',

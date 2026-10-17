@@ -23,7 +23,7 @@ function desktopApi<T>(path: string, body?: Record<string, unknown>): Promise<T>
   const desktop = window.factrDesktop
 
   if (!desktop) {
-    throw new Error('Factr-I Desktop bridge is unavailable')
+    throw new Error('Factr-I bridge is unavailable')
   }
 
   return factrApi<T>(

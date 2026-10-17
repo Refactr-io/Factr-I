@@ -208,7 +208,7 @@ export const zh = defineLocale({
       elevenLabsRejectedKey: 'ElevenLabs 拒绝了该 API key (401)。',
       diskFull: '磁盘已满 — 请腾出一些空间后再试。',
       gatewayAuthFailed: '网关认证失败 — 请检查你的 API_SERVER_KEY。',
-      methodNotAllowed: '桌面后端拒绝了该请求 (405 Method Not Allowed)。请尝试重启 Factr-I Desktop。',
+      methodNotAllowed: '桌面后端拒绝了该请求 (405 Method Not Allowed)。请尝试重启 Factr-I。',
       microphonePermission: '麦克风权限已被拒绝。',
       openaiRejectedApiKey: 'OpenAI 拒绝了该 API key。',
       openaiTtsNeedsKey: 'OpenAI TTS 需要 VOICE_TOOLS_OPENAI_KEY 或 OPENAI_API_KEY。',
@@ -684,7 +684,7 @@ export const zh = defineLocale({
       advanced: '高级'
     },
     searchPlaceholder: {
-      about: '关于 Factr-I Desktop',
+      about: '关于 Factr-I',
       config: '搜索设置…',
       gateway: '网关连接…',
       keys: '搜索 API 密钥…',
@@ -1157,7 +1157,7 @@ export const zh = defineLocale({
       driverHealth: '驱动健康状态'
     },
     about: {
-      heading: 'Factr-I Desktop',
+      heading: 'Factr-I',
       version: value => `版本 ${value}`,
       versionUnavailable: '版本不可用',
       bundleOutOfSync: '应用构建版本过旧',
@@ -1374,7 +1374,7 @@ export const zh = defineLocale({
       title: '网关连接',
       envOverride: '环境变量覆盖',
       intro:
-        'Factr-I Desktop 默认会启动自己的本地网关。当你希望此应用控制另一台机器上或可信代理后的现有 Factr-I 后端时，可以使用远程网关。网关连接属于本机级设置；profile 是从所连接的网关中发现的。',
+        'Factr-I 默认会启动自己的本地网关。当你希望此应用控制另一台机器上或可信代理后的现有 Factr-I 后端时，可以使用远程网关。网关连接属于本机级设置；profile 是从所连接的网关中发现的。',
       envOverrideTitle: '环境变量正在控制此桌面会话。',
       envOverrideDesc: '取消设置 FACTR_DESKTOP_REMOTE_URL 和 FACTR_DESKTOP_REMOTE_TOKEN 后才会使用下面保存的设置。',
       modeTitle: '连接模式',
@@ -1426,7 +1426,7 @@ export const zh = defineLocale({
       enterUrlFirst: '请先输入远程 URL。',
       restartingTitle: '网关连接正在重启',
       savedTitle: '网关设置已保存',
-      restartingMessage: 'Factr-I Desktop 将使用已保存设置重新连接（界面保持打开）。',
+      restartingMessage: 'Factr-I 将使用已保存设置重新连接（界面保持打开）。',
       savedMessage: '已保存，下一次重启生效。',
       connectedTo: (baseUrl, version) => `已连接到 ${baseUrl}${version ? ` · Factr-I ${version}` : ''}`,
       reachableTitle: '远程网关可访问',
@@ -1469,7 +1469,7 @@ export const zh = defineLocale({
       sshErrHostKey: '自上次连接以来主机密钥已更改。请确认这是预期的，然后运行 ssh-keygen -R <host> 并重新连接。',
       sshErrNotInstalled:
         '远程主机上未安装 Factr-I。请在远程安装（https://github.com/Refactr-io/Factr-I/releases）或设置 Factr-I 路径。',
-      sshErrPlatform: '不支持的远程平台。Factr-I Desktop 的 SSH 模式支持 Linux、macOS 和 Windows 远程主机。',
+      sshErrPlatform: '不支持的远程平台。Factr-I 的 SSH 模式支持 Linux、macOS 和 Windows 远程主机。',
       sshErrTimeout: 'SSH 连接超时。主机可能无法访问或处于休眠状态。',
       sshErrUpdateRequired: '使用 Desktop SSH 连接前，请更新远程主机上的 Factr-I。',
       sshErrUnknown: 'SSH 连接失败。'
@@ -3080,7 +3080,7 @@ export const zh = defineLocale({
       '/palette': '打开模糊搜索命令面板（也可使用 Ctrl+P）',
       '/usage': '显示今天和本会话的 Token 用量与费用',
       '/platform': '暂停、恢复或列出故障的网关平台',
-      '/version': '显示 Factr-I Agent 版本',
+      '/version': '显示 Factr-I 版本',
       '/debug': '上传调试报告（系统信息与日志），并获取可分享链接',
       '/model': '切换此会话的模型'
     },
@@ -3453,7 +3453,7 @@ export const zh = defineLocale({
     copyCommand: '复制命令',
     viewDocs: '查看安装文档',
     retryAfterRun: '我已运行 -- 重试',
-    localStartUnavailable: '无法启动本地安装。请重启 Factr-I Desktop 后重试。',
+    localStartUnavailable: '无法启动本地安装。请重启 Factr-I 后重试。',
     remoteUrlPlaceholder: 'https://gateway.example.com/factr',
     identityProvider: '你的身份提供方',
     authTitle: '认证',
@@ -3469,7 +3469,7 @@ export const zh = defineLocale({
     applyRemote: '应用并重新连接',
     backToSetup: '返回',
     failedTitle: '安装失败',
-    settingUpTitle: '正在设置 Factr-I Agent',
+    settingUpTitle: '正在设置 Factr-I',
     finishingTitle: '正在收尾',
     failedDesc:
       '某个安装步骤失败。在 Windows 上，如果另一个 Factr-I CLI 或桌面实例正在运行，可能会出现这种情况。请停止正在运行的 Factr-I 实例后重试。可查看下面的详情或 desktop 日志中的完整记录。',
@@ -3491,7 +3491,7 @@ export const zh = defineLocale({
   },
 
   onboarding: {
-    headerTitle: '开始设置 Factr-I Agent',
+    headerTitle: '开始设置 Factr-I',
     headerDesc: '连接模型提供方即可开始对话。大多数选项只需一次点击。',
     preparingInstall: 'Factr-I 正在完成安装。首次运行通常不到一分钟。',
     starting: '正在启动 Factr-I…',
@@ -3644,7 +3644,7 @@ export const zh = defineLocale({
       update: '更新',
       updateInProgress: '正在更新',
       commitsBehind: (count, branch) => `落后 ${branch} ${count} 个提交`,
-      desktopVersion: version => `Factr-I Desktop v${version}`,
+      desktopVersion: version => `Factr-I v${version}`,
       backendVersion: version => `后端 v${version}`,
       clientLabel: version => `客户端 v${version}`,
       connectionSsh: host => `SSH: ${host}`,

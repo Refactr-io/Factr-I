@@ -32,7 +32,7 @@ const CHATGPT_FALLBACK_PROVIDER: OAuthProvider = {
   docs_url: 'https://platform.openai.com/docs',
   flow: 'device_code',
   id: 'openai-codex',
-  name: 'ChatGPT or Codex Subscription',
+  name: 'ChatGPT plan',
   status: { logged_in: false }
 }
 
@@ -733,7 +733,7 @@ export async function refreshOnboarding(ctx: OnboardingContext, stillWanted?: ()
       kind: 'error',
       title: 'Runtime not ready',
       message:
-        'Factr-I Desktop could not verify the running backend on startup. Some features may be unavailable until the gateway is reachable.'
+        'Factr-I could not verify the running backend on startup. Some features may be unavailable until the gateway is reachable.'
     })
 
     return false

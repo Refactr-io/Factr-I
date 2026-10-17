@@ -1161,7 +1161,7 @@ describe('saveOnboardingApiKey: a failed model save says why', () => {
 
       if (path === '/api/model/set') {
         throw new Error(
-          '400: {"detail":"ChatGPT or Codex Subscription is not connected: no API key or login was found for it. Add one with `factr auth add openai-codex`, or pick a connected provider in /model.\\n  Details: No Codex credentials stored."}'
+          '400: {"detail":"ChatGPT plan is not connected: no API key or login was found for it. Add one with `factr auth add openai-codex`, or pick a connected provider in /model.\\n  Details: No Codex credentials stored."}'
         )
       }
 
@@ -1174,7 +1174,7 @@ describe('saveOnboardingApiKey: a failed model save says why', () => {
 
     expect(result.ok).toBe(false)
     expect(result.message).toContain('Factr-I could not save the selected model.')
-    expect(result.message).toContain('ChatGPT or Codex Subscription is not connected')
+    expect(result.message).toContain('ChatGPT plan is not connected')
     expect(result.message).not.toContain('Details:')
   })
 })

@@ -53,7 +53,7 @@ describe('onboarding Picker', () => {
     ])
     render(<Picker ctx={ctx} />)
 
-    expect(screen.getByText('ChatGPT or Codex Subscription')).toBeTruthy()
+    expect(screen.getByText('ChatGPT plan')).toBeTruthy()
     expect(screen.getByText('Recommended')).toBeTruthy()
     // Fireworks stays behind the disclosure with the other alternatives; only
     // ChatGPT is visible before the user expands the list.
@@ -68,10 +68,10 @@ describe('onboarding Picker', () => {
   })
 
   it('puts ChatGPT first with no Fireworks preselected when only the fallback list is known', () => {
-    setProviders([makeOAuthProvider('openai-codex', 'ChatGPT or Codex Subscription')])
+    setProviders([makeOAuthProvider('openai-codex', 'ChatGPT plan')])
     render(<Picker ctx={ctx} />)
 
-    expect(screen.getByText('ChatGPT or Codex Subscription')).toBeTruthy()
+    expect(screen.getByText('ChatGPT plan')).toBeTruthy()
     expect(screen.queryByText('Fireworks AI')).toBeNull()
     expect(screen.queryByRole('textbox')).toBeNull()
   })

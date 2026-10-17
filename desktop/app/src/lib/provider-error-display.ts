@@ -31,6 +31,10 @@ export function noteSavedProvider(value: null | string | undefined): void {
   knownSavedProvider = typeof value === 'string' ? (value.trim() ? value.trim() : null) : value
 }
 
+/** The plain sentence for a brand-new install with no provider chosen. The first-run screen is already asking for
+ *  exactly that, so it never shows this as a notice (only a provider that used to work and broke is worth one). */
+export const NO_PROVIDER_YET = 'No AI provider is connected yet. Open Settings > Providers (or sign in) to choose one.'
+
 // The engine's readiness text for a provider with no credential: "No usable credentials found for Claude."
 const NO_USABLE_CREDENTIALS_RE = /\bNo usable credentials found for ([^\n]+?)\.(?:\s|$)/i
 
@@ -47,7 +51,7 @@ export function noUsableCredentialsMessage(raw: null | string | undefined, saved
 
   return savedProvider?.trim()
     ? `Your saved provider ${provider} has no usable credentials. Open Settings > Providers to sign in again or choose another.`
-    : 'No AI provider is connected yet. Open Settings > Providers (or sign in) to choose one.'
+    : NO_PROVIDER_YET
 }
 
 const STATUS_PATTERNS: readonly RegExp[] = [
