@@ -174,7 +174,7 @@ export function ConfigField({
   if (schema.type === 'list') {
     return row(
       <Input
-        className={CONTROL_TEXT}
+        className={cn(CONTROL_TEXT, 'min-w-64')}
         onChange={e =>
           onChange(
             e.target.value
@@ -220,7 +220,7 @@ export function ConfigField({
       />
     ) : (
       <Input
-        className={CONTROL_TEXT}
+        className={cn(CONTROL_TEXT, 'min-w-64')}
         onChange={e => onChange(e.target.value)}
         placeholder={c.notSet}
         value={String(value ?? '')}
