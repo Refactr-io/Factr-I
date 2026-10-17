@@ -9,6 +9,7 @@
 import { execFile } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 
 /** The run contract with the image (computer/Dockerfile). Keep every adjustable name here. */
@@ -32,7 +33,14 @@ export const BOT_COMPUTER = {
   labelBot: 'factr.bot',
   labelVersion: 'factr.computer.v',
   version: '1',
-  enginePort: 8642,
+  /**
+   * The engine serves on $FACTR_ENGINE_PORT (image default 8642) and rejects a Host header whose port differs from
+   * the one it is bound to. So the app picks a free loopback port P at create time and publishes `127.0.0.1:P:P`
+   * with the engine told to bind P: the Host header `127.0.0.1:P` matches. P is fixed at create (it survives
+   * stop/start) and recorded in the `factr.port` label.
+   */
+  labelPort: 'factr.port',
+  envPort: 'FACTR_ENGINE_PORT',
   /** Container path of the bot's profile folder. */
   mountRoot: '/data/profiles',
   envBot: 'FACTR_BOT',
@@ -88,6 +96,8 @@ export interface BotComputerDeps {
   /** A computer stopped on its own (idle or cap): drop its pool entry so the renderer re-dials. */
   onStopped?: (profile: string) => void
   imageTag?: string
+  /** A free loopback port for a new container (default: listen on 127.0.0.1:0, read it, close). */
+  pickPort?: () => Promise<number>
   /** Host dir of the engine auth store to mount read-only (see BOT_COMPUTER.authStore). Omit to mount nothing. */
   authStoreHostDir?: string
   run?: DockerRun
@@ -131,6 +141,48 @@ export function validateBotProfile(profile: unknown): string {
   return profile
 }
 
+/**
+ * True when `<profile>/profile.yaml` carries `ui_meta: factr-bots: {...}`, the Bot Mode marker the bots plugin writes
+ * (the same test as backend/tools/bot_mode_probe.py `_is_bot_managed`). A line scan, since the app has no YAML parser.
+ */
+export function isBotProfile(configHome: string, profile: string): boolean {
+  let lines: string[]
+
+  try {
+    lines = fs.readFileSync(path.join(configHome, 'profiles', profile, 'profile.yaml'), 'utf8').split(/\r?\n/)
+  } catch {
+    return false
+  }
+
+  const code = lines.map(l => l.replace(/\s+#.*$/, '')).filter(l => l.trim() && !l.trim().startsWith('#'))
+  const start = code.findIndex(l => /^ui_meta\s*:\s*$/.test(l))
+
+  if (start < 0) {
+    return false
+  }
+
+  let indent = -1
+
+  for (let i = start + 1; i < code.length; i++) {
+    const cur = code[i].match(/^(\s*)/)![1].length
+
+    if (cur === 0) {
+      return false
+    }
+
+    indent = indent < 0 ? cur : indent
+
+    const m = cur === indent && code[i].trim().match(/^["']?factr-bots["']?\s*:\s*(.*)$/)
+
+    if (m) {
+      // A dict: inline `{...}`, or a nested block on the next line. `null`, `~` or a scalar is not.
+      return m[1].startsWith('{') || (!m[1] && (code[i + 1]?.match(/^(\s*)/)![1].length ?? 0) > cur)
+    }
+  }
+
+  return false
+}
+
 export interface BotRouteFacts {
   /** The packaged Rust engine is primary: one profile per process (ProfileRouteOptions.primarySingleProfile). */
   primarySingleProfile?: boolean
@@ -138,23 +190,25 @@ export interface BotRouteFacts {
   globalRemote?: boolean
   profileRemoteOverride?: boolean
   primaryRemoteActive?: boolean
+  /** The profile is a Bot Mode bot (isBotProfile). Only bots get a computer. */
+  isBot?: boolean
   /** FACTR_BOT_COMPUTERS=0 turns computers off (per-profile host engines instead). */
   disabled?: boolean
 }
 
 /**
  * Which backend a LOCAL non-primary profile gets once the router sent it to the pool (case 6 refuses to share a
- * single-profile primary): its own computer when Docker is up, else its own host engine. Never both.
- * `null`: not a bot-computer case (primary profile, remote, dev Python gateway), the caller keeps its normal path.
+ * single-profile primary): a Bot Mode bot gets its own computer when Docker is up; every other case (no Docker, not a
+ * bot, computers disabled) gets its own host engine. Never both.
+ * `null`: not this module's case (primary profile, remote, dev Python gateway), the caller keeps its normal path.
  */
 export function chooseBotBackend(
   profile: string,
   facts: BotRouteFacts,
   dockerUp: boolean
 ): 'container' | 'host-engine' | null {
-  const isBot =
+  const local =
     facts.primarySingleProfile &&
-    !facts.disabled &&
     !facts.globalRemote &&
     !facts.profileRemoteOverride &&
     !facts.primaryRemoteActive &&
@@ -162,12 +216,15 @@ export function chooseBotBackend(
     PROFILE_RE.test(profile) &&
     profile !== 'default'
 
-  if (!isBot) {
+  if (!local) {
     return null
   }
 
-  return dockerUp ? 'container' : 'host-engine'
+  return facts.isBot && !facts.disabled && dockerUp ? 'container' : 'host-engine'
 }
+
+/** A computer that is running (or being started) for this bot. Sync, for routing decisions. */
+export const computerActive = (profile: string) => tracked.has(profile) || starting.has(profile)
 
 export const computerName = (profile: string) => `${BOT_COMPUTER.namePrefix}${validateBotProfile(profile)}`
 
@@ -263,6 +320,8 @@ interface Inspect {
   image: string
   botLabel: string
   startedAt: string
+  /** The engine port from the `factr.port` label ('' on a container created without one). */
+  port: string
 }
 
 async function inspect(name: string): Promise<Inspect | null> {
@@ -270,13 +329,13 @@ async function inspect(name: string): Promise<Inspect | null> {
     const out = await docker([
       'inspect',
       '--format',
-      `{{.State.Status}}|{{.Config.Image}}|{{index .Config.Labels "${BOT_COMPUTER.labelBot}"}}|{{.State.StartedAt}}`,
+      `{{.State.Status}}|{{.Config.Image}}|{{index .Config.Labels "${BOT_COMPUTER.labelBot}"}}|{{.State.StartedAt}}|{{index .Config.Labels "${BOT_COMPUTER.labelPort}"}}`,
       name
     ])
 
-    const [status = '', image = '', botLabel = '', startedAt = ''] = out.trim().split('|')
+    const [status = '', image = '', botLabel = '', startedAt = '', port = ''] = out.trim().split('|')
 
-    return { status, image, botLabel, startedAt }
+    return { status, image, botLabel, startedAt, port }
   } catch (error: any) {
     if (/no such (object|container)/i.test(`${error?.stderr || ''}${error?.message || ''}`)) {
       return null
@@ -297,7 +356,13 @@ async function ensureNetwork() {
 }
 
 /** The exact `docker create` argv. Exported for tests. */
-export function createArgs(profile: string, image: string, hostDir: string, authStoreHostDir?: string): string[] {
+export function createArgs(
+  profile: string,
+  image: string,
+  hostDir: string,
+  port: number,
+  authStoreHostDir?: string
+): string[] {
   const name = computerName(profile)
   const L = BOT_COMPUTER.limits
 
@@ -306,6 +371,7 @@ export function createArgs(profile: string, image: string, hostDir: string, auth
     '--name', name,
     '--label', `${BOT_COMPUTER.labelBot}=${profile}`,
     '--label', `${BOT_COMPUTER.labelVersion}=${BOT_COMPUTER.version}`,
+    '--label', `${BOT_COMPUTER.labelPort}=${port}`,
     '--network', BOT_COMPUTER.network,
     // The bot reaches host services (a local model server) at host.docker.internal on every platform.
     '--add-host', 'host.docker.internal:host-gateway',
@@ -316,7 +382,8 @@ export function createArgs(profile: string, image: string, hostDir: string, auth
     '--cpus', L.cpus,
     '--shm-size', L.shm,
     // Loopback only: the bot's engine is reachable from this machine, never the LAN.
-    '-p', `127.0.0.1:0:${BOT_COMPUTER.enginePort}`,
+    '-p', `127.0.0.1:${port}:${port}`,
+    '-e', `${BOT_COMPUTER.envPort}=${port}`,
     '-v', `${hostDir}:${BOT_COMPUTER.mountRoot}/${profile}`,
     ...(authStoreHostDir
       ? [
@@ -340,16 +407,15 @@ function writeMarker(profile: string) {
   fs.writeFileSync(markerPath(profile), JSON.stringify({ container: computerName(profile), v: BOT_COMPUTER.version }))
 }
 
-function parseHostPort(out: string): number {
-  const lines = out.split('\n').map(l => l.trim()).filter(Boolean)
-  const line = lines.find(l => l.startsWith('127.0.0.1:')) || lines[0] || ''
-  const port = Number(line.match(/:(\d+)$/)?.[1])
-
-  if (!Number.isInteger(port) || port <= 0) {
-    throw new Error(`Could not read the published port for the bot computer (${JSON.stringify(out.trim())}).`)
-  }
-
-  return port
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer()
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as net.AddressInfo
+      server.close(() => resolve(port))
+    })
+  })
 }
 
 function track(profile: string) {
@@ -414,13 +480,14 @@ export async function ensureComputer(profile: string): Promise<ComputerHandle> {
     starting.add(profile)
 
     try {
-      const info = await inspect(name)
+      let info = await inspect(name)
 
       if (info && info.botLabel !== profile) {
         throw new Error(`A container named ${name} exists but does not belong to this bot; refusing to use it.`)
       }
 
-      if (!info) {
+      // The profile folder (the bot's state) outlives the container, so recreating one loses nothing.
+      const create = async () => {
         const hostDir = hostProfileDir(profile)
 
         // Never recreate a deleted profile folder: a missing folder means the bot is gone.
@@ -428,26 +495,49 @@ export async function ensureComputer(profile: string): Promise<ComputerHandle> {
           throw new Error(`Profile folder for "${profile}" does not exist.`)
         }
 
+        const port = await (deps?.pickPort || freePort)()
         await ensureNetwork()
-        await docker(createArgs(profile, image, hostDir, cfg().authStoreHostDir), {
+
+        await docker(createArgs(profile, image, hostDir, port, cfg().authStoreHostDir), {
           env: { [BOT_COMPUTER.envToken]: token }
         })
+
+        return String(port)
       }
+
+      // A container without a port label predates the fixed-port contract: recreate it.
+      if (info && !info.port) {
+        await docker(['rm', '-f', name])
+        info = null
+      }
+
+      let port = info ? info.port : await create()
 
       // The Python relay refuses host-side delivery into a bot whose container exists (second SQLite writer).
       writeMarker(profile)
 
       if (info?.status !== 'running') {
         await stopForCap(profile)
-        await docker(['start', name])
+
+        try {
+          await docker(['start', name])
+        } catch (error: any) {
+          // The published port was taken since create: pick a new one (the mapping is fixed at create).
+          if (!/port is already allocated|address already in use|ports are not available|bind for/i.test(`${error?.stderr || ''}${error?.message || ''}`)) {
+            throw error
+          }
+
+          await docker(['rm', '-f', name])
+          port = await create()
+          await docker(['start', name])
+        }
       }
 
-      const port = parseHostPort(await docker(['port', name, `${BOT_COMPUTER.enginePort}/tcp`]))
       const url = `http://127.0.0.1:${port}`
       await cfg().waitReady(url, token)
       track(profile)
 
-      return { url, token, port }
+      return { url, token, port: Number(port) }
     } finally {
       starting.delete(profile)
     }
