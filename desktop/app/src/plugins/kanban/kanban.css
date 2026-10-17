@@ -4,43 +4,17 @@
    The tone rides --kanban-tone, set inline from the column meta. Painted as an
    overlay ring (mask keeps only the border band) so the card stays flat. */
 
-@property --kanban-arc-angle {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
-}
-
 .kanban-arc {
   pointer-events: none;
   position: absolute;
   inset: -1px; /* sit on the card's own border line */
   border-radius: inherit;
-  padding: 1.5px; /* arc thickness */
-  background: conic-gradient(
-    from var(--kanban-arc-angle),
-    transparent 0deg,
-    var(--kanban-tone, var(--ui-stroke-primary)) 55deg,
-    transparent 110deg
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: kanban-arc-spin 2.2s linear infinite;
+  /* A flat tone line, no sweep. */
+  border: 1.5px solid var(--kanban-tone, var(--ui-stroke-primary));
 }
 
-/* Running but no heartbeat: amber crawl — still claimed, health unknown. */
+/* Running but no heartbeat: amber line, still claimed, health unknown. */
 .kanban-arc--stale {
   --kanban-tone: #fbbf24;
-  animation-duration: 6s;
 }
 
-@keyframes kanban-arc-spin {
-  to {
-    --kanban-arc-angle: 360deg;
-  }
-}
