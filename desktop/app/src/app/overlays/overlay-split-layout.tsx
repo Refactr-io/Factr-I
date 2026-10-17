@@ -146,6 +146,27 @@ export const OverlayNavItem = memo(function OverlayNavItem({
   )
 })
 
+/** A sub-section link under the selected group: text only, a thin rounded marker on its left edge, brighter and
+ *  weight 500 on the current one. The marker segments line up into one rail down the list. */
+function OverlayNavSubItem({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      aria-current={active ? 'location' : undefined}
+      className={cn(
+        'relative w-full rounded-md py-1.5 pr-2 pl-0 text-left text-[length:var(--conversation-text-font-size)] leading-[1.125rem] transition-colors',
+        "before:absolute before:top-1 before:bottom-1 before:-left-3 before:w-0.5 before:rounded-full before:content-['']",
+        active
+          ? 'font-medium text-foreground before:bg-(--ui-control-on)'
+          : 'text-(--ui-text-tertiary) before:bg-(--ui-stroke-tertiary) hover:text-foreground'
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  )
+}
+
 export interface OverlayNavLink {
   active: boolean
   icon: IconComponent
@@ -171,6 +192,7 @@ export interface OverlayNavGroup extends OverlayNavLink {
 // same way instead of stacking its whole sidebar. Drop it in as the first
 // child of an OverlaySplitLayout, before OverlayMain.
 export function OverlayNav({
+  activeOnlyDisclosure = false,
   childrenInRail = true,
   footer,
   groups,
@@ -178,6 +200,8 @@ export function OverlayNav({
 }: {
   /** False keeps sub-links out of the wide rail (the page shows them instead); the narrow dropdown still lists them. */
   childrenInRail?: boolean
+  /** Only the selected group shows its sub-items (a marker on the current one); there is no per-group toggle. */
+  activeOnlyDisclosure?: boolean
   footer?: ReactNode
   groups: OverlayNavGroup[]
   header?: ReactNode
@@ -215,7 +239,7 @@ export function OverlayNav({
         {groups.map((group, index) => {
           const hasChildren = childrenInRail && Boolean(group.children?.length)
           const sectionLabel = group.section && group.section !== groups[index - 1]?.section ? group.section : null
-          const expanded = disclosures[group.id] ?? group.active
+          const expanded = activeOnlyDisclosure ? group.active : (disclosures[group.id] ?? group.active)
           const childrenId = `${navId}-${group.id}`
 
           return (
@@ -250,9 +274,11 @@ export function OverlayNav({
 
                     group.onSelect()
                   }}
-                  trailing={hasChildren ? <span aria-hidden className="w-4 shrink-0" /> : undefined}
+                  trailing={
+                    hasChildren && !activeOnlyDisclosure ? <span aria-hidden className="w-4 shrink-0" /> : undefined
+                  }
                 />
-                {hasChildren && (
+                {hasChildren && !activeOnlyDisclosure && (
                   <Button
                     aria-controls={childrenId}
                     aria-expanded={expanded}
@@ -270,21 +296,33 @@ export function OverlayNav({
               </div>
               {hasChildren && (
                 <div
-                  className={cn('ml-4 flex flex-col gap-0.5 pl-2', !expanded && 'hidden')}
+                  className={cn(
+                    activeOnlyDisclosure ? 'mb-1 ml-[1.375rem] flex flex-col pl-3' : 'ml-4 flex flex-col gap-0.5 pl-2',
+                    !expanded && 'hidden'
+                  )}
                   hidden={!expanded}
                   id={childrenId}
                 >
-                  {group.children?.map(child => (
-                    <OverlayNavItem
-                      active={child.active}
-                      icon={child.icon}
-                      id={child.id}
-                      key={child.id}
-                      label={child.label}
-                      nested
-                      onClick={child.onSelect}
-                    />
-                  ))}
+                  {group.children?.map(child =>
+                    activeOnlyDisclosure ? (
+                      <OverlayNavSubItem
+                        active={child.active}
+                        key={child.id}
+                        label={child.label}
+                        onClick={child.onSelect}
+                      />
+                    ) : (
+                      <OverlayNavItem
+                        active={child.active}
+                        icon={child.icon}
+                        id={child.id}
+                        key={child.id}
+                        label={child.label}
+                        nested
+                        onClick={child.onSelect}
+                      />
+                    )
+                  )}
                 </div>
               )}
             </Fragment>

@@ -15,9 +15,20 @@ import { PAGE_INSET_X } from '../layout-constants'
 // The settings shell owns page titles; embedded callers retain their headings.
 export const SettingsBreadcrumbContext = createContext(false)
 
+// Set while a page is one section inside a stacked, continuously scrolling settings page. The shell then owns the
+// scroll container and the column, so SettingsContent only lays out its children, and page-wide extras that
+// belong at the very top (the profile scope note) show for the first section only.
+export const SettingsStackContext = createContext<{ index: number } | null>(null)
+
 // `bare` drops the page gutters + tall bottom pad for embedding in a tighter
 // surface (e.g. the boot-failure recovery card owns its own padding).
 export function SettingsContent({ children, bare = false }: { children: ReactNode; bare?: boolean }) {
+  const stack = useContext(SettingsStackContext)
+
+  if (stack) {
+    return <div className="min-w-0">{children}</div>
+  }
+
   return (
     <section className="min-h-0 overflow-hidden">
       <div className={cn('h-full min-h-0 overflow-y-auto', bare ? 'px-4 pb-6' : cn('pb-20', PAGE_INSET_X))}>

@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useEffect } from 'react'
+import { useContext, useEffect } from 'react'
 
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -11,6 +11,8 @@ import {
   setSettingsScope
 } from '@/store/settings-scope'
 import type { ProfileInfo } from '@/types/factr'
+
+import { SettingsStackContext } from './primitives'
 
 // Settings-chip label: the Bot Mode title the Bots roster shows when set
 // (ui_meta['factr-bots'].title), else the app-wide profileLabel
@@ -50,6 +52,7 @@ export function ScopeChip({ active, label, onSelect }: { active: boolean; label:
 export function SettingsProfileScope({ className }: { className?: string }) {
   const { t } = useI18n()
   const scope = t.settings.profileScope
+  const stack = useContext(SettingsStackContext)
   const override = useStore($settingsScopeOverride)
   const selected = useStore($settingsScopeProfile)
   const editingNonDefault = useStore($settingsScopeEditsNonDefault)
@@ -66,7 +69,7 @@ export function SettingsProfileScope({ className }: { className?: string }) {
     void refreshProfiles().catch(() => undefined)
   }, [])
 
-  if (profiles.length < 2) {
+  if (profiles.length < 2 || (stack && stack.index > 0)) {
     return null
   }
 

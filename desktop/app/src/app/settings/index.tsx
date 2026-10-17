@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router'
 
 import { codiconIcon } from '@/components/ui/codicon'
@@ -57,7 +57,7 @@ import { NotificationsSettings } from './notifications-settings'
 import { SettingsBreadcrumbContext } from './primitives'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
 import { SessionsSettings } from './sessions-settings'
-import { SettingsSubpageHeader } from './subpage-navigation'
+import { SettingsPageTitle, SettingsStack, type SettingsStackHandle } from './subpage-navigation'
 import { resolveSettingsSubpage, settingsSubpageIcon, settingsSubpages } from './subpages'
 import type { SettingsPageProps, SettingsView as SettingsViewId } from './types'
 import { vaultOwnerKey, VaultSettings } from './vault-settings'
@@ -213,6 +213,14 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const openKeysView = useCallback((view: KeysView) => openSubView('keys', 'kview', view, 'tools'), [openSubView])
 
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const stackRef = useRef<SettingsStackHandle>(null)
+  // The heading currently at the top of a stacked page (scroll-spy). Null until the page reports one.
+  const [stackActive, setStackActive] = useState<null | string>(null)
+
+  // Another section starts from its own first heading.
+  useEffect(() => {
+    setStackActive(null)
+  }, [activeView])
 
   const exportConfig = async () => {
     try {
@@ -397,16 +405,17 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             section: NAV_SECTION_KEY.has(group.id) ? t.settings.nav[NAV_SECTION_KEY.get(group.id)!] : undefined
           }
 
-          return children.length
+          // A group with several sub-sections is one stacked page: its sidebar children glide to the headings.
+          return children.length > 1
             ? {
                 ...placed,
                 ...group,
                 children: children.map(page => ({
-                  active: group.active && subpage === page.id,
+                  active: group.active && (stackActive ?? subpage) === page.id,
                   icon: settingsSubpageIcon(page, group.icon),
                   id: `${view}:${page.id}`,
                   label: t.settings.subpages[page.labelKey],
-                  onSelect: () => openSettingsPage(view, page.id)
+                  onSelect: () => stackRef.current?.scrollToSection(page.id)
                 }))
               }
             : { ...group, ...placed }
@@ -416,6 +425,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       activeView,
       keysView,
       providerView,
+      stackActive,
       subpage,
       t,
       setActiveView,
@@ -427,7 +437,15 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const activeGroup = navGroups.find(group => group.active)
-  const activeChild = activeGroup?.children?.find(child => child.active)
+
+  // The sub-sections of the active group, in order, when it is a stacked page.
+  const stackSections = useMemo(
+    () =>
+      (activeGroup?.children?.length ?? 0) > 1
+        ? settingsSubpages(activeView).map(page => ({ id: page.id, label: t.settings.subpages[page.labelKey] }))
+        : [],
+    [activeGroup?.children?.length, activeView, t]
+  )
 
   // Type-to-search: printable keystrokes on the Settings surface (outside any
   // field) open the settings-scoped palette, seeded with the character — same
@@ -469,7 +487,9 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       <Search className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-sm leading-none">{t.settings.search.pill}</span>
       {searchCombo && (
-        <span className="shrink-0 text-xs leading-none text-(--ui-text-tertiary)">{comboTokens(searchCombo).join('')}</span>
+        <span className="shrink-0 text-xs leading-none text-(--ui-text-tertiary)">
+          {comboTokens(searchCombo).join('')}
+        </span>
       )}
     </button>
   )
@@ -514,24 +534,24 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     </DropdownMenu>
   )
 
-  const activeSettingsContent =
+  const renderSettingsPage = (page: string | undefined) =>
     activeView === 'config:appearance' ? (
-      <AppearanceSettings subpage={subpage} />
+      <AppearanceSettings subpage={page} />
     ) : activeView === 'about' ? (
-      <AboutSettings subpage={subpage} />
+      <AboutSettings subpage={page} />
     ) : activeView === 'gateway' || activeView === 'connections' ? (
       // 'connections' renders the unified page too so the frame before
       // the alias redirect lands doesn't flash the fallback view.
-      <GatewaySettings subpage={subpage} />
+      <GatewaySettings subpage={page} />
     ) : activeView === 'keybinds' ? (
-      <KeybindSettings subpage={subpage} />
+      <KeybindSettings subpage={page} />
     ) : activeView.startsWith('config:') ? (
       <ConfigSettings
         activeSectionId={activeView.slice('config:'.length)}
         importInputRef={importInputRef}
         onConfigSaved={onConfigSaved}
         onMainModelChanged={onMainModelChanged}
-        subpage={subpage}
+        subpage={page}
       />
     ) : activeView === 'providers' ? (
       <ProvidersSettings
@@ -545,25 +565,36 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     ) : activeView === 'keys' ? (
       <KeysSettings view={keysView} />
     ) : activeView === 'notifications' ? (
-      <NotificationsSettings subpage={subpage} />
+      <NotificationsSettings subpage={page} />
     ) : activeView === 'vault' ? (
-      <VaultSettings key={vaultOwnerKey(activeConnectionId, scopeProfile)} subpage={subpage} />
+      <VaultSettings key={vaultOwnerKey(activeConnectionId, scopeProfile)} subpage={page} />
     ) : (
-      <SessionsSettings subpage={subpage} />
+      <SessionsSettings subpage={page} />
     )
 
   return (
     <OverlayView closeLabel={t.settings.closeSettings} onClose={onClose}>
       <OverlaySplitLayout>
-        <OverlayNav childrenInRail={false} footer={navFooter} groups={navGroups} header={searchField} />
+        <OverlayNav activeOnlyDisclosure footer={navFooter} groups={navGroups} header={searchField} />
 
         <OverlayMain className="px-0 pb-0">
           <SettingsBreadcrumbContext.Provider value>
-            {activeGroup && <SettingsSubpageHeader child={activeChild} group={activeGroup} />}
+            {activeGroup && <SettingsPageTitle title={activeGroup.label} />}
             {needsSubpageRedirect ? (
               <Navigate replace to={{ hash, pathname, search: `?${subpageSearch}` }} />
+            ) : stackSections.length > 1 ? (
+              <div className="min-h-0 flex-1">
+                <SettingsStack
+                  initialId={subpage}
+                  key={activeView}
+                  onActiveChange={setStackActive}
+                  ref={stackRef}
+                  renderSection={renderSettingsPage}
+                  sections={stackSections}
+                />
+              </div>
             ) : (
-              activeSettingsContent
+              renderSettingsPage(subpage)
             )}
           </SettingsBreadcrumbContext.Provider>
         </OverlayMain>
