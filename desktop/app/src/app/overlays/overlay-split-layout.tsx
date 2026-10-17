@@ -148,7 +148,8 @@ export const OverlayNavItem = memo(function OverlayNavItem({
 
 /** A sub-section link under the selected group: text only, brighter and weight 500 on the current one. The rail
  *  lives in OverlayNavSubList. */
-/** Vertical padding of a sub-item (py-1.5). The rail and marker span the text row, so they trim it from each end. */
+/** Inset of the marker inside a sub-item row (py-2 rows are 34px, so the marker is 22px, about 65% of the row). The
+ *  track runs from the first marker position to the last, so the marker never overhangs it. */
 const SUB_ITEM_PAD_Y = 6
 
 function OverlayNavSubItem({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
@@ -156,7 +157,7 @@ function OverlayNavSubItem({ active, label, onClick }: { active: boolean; label:
     <button
       aria-current={active ? 'location' : undefined}
       className={cn(
-        'w-full rounded-md py-1.5 pr-2 pl-0 text-left text-[length:var(--conversation-text-font-size)] leading-[1.125rem] transition-colors',
+        'w-full rounded-md py-2 pr-2 pl-0 text-left text-[length:var(--conversation-text-font-size)] leading-[1.125rem] transition-colors',
         active ? 'font-medium text-foreground' : 'text-(--ui-text-tertiary) hover:text-foreground'
       )}
       data-slot="overlay-nav-sub"
@@ -192,12 +193,12 @@ function OverlayNavSubList({ children, className, hidden, id }: { children: Reac
 
   return (
     <div className={cn('relative', className, hidden && 'hidden')} hidden={hidden} id={id} ref={listRef}>
-      <span aria-hidden className="pointer-events-none absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-[color-mix(in_srgb,var(--dt-foreground)_16%,transparent)]" />
+      <span aria-hidden className="pointer-events-none absolute top-1.5 bottom-1.5 left-px w-px rounded-full bg-[color-mix(in_srgb,var(--dt-foreground)_14%,transparent)]" />
       {mark && (
         <span
           aria-hidden
           className={cn(
-            'pointer-events-none absolute top-0 left-0 w-0.5 rounded-full bg-foreground motion-reduce:transition-none',
+            'pointer-events-none absolute top-0 left-0 w-[3px] rounded-full bg-foreground motion-reduce:transition-none',
             ready && 'transition-[transform,height] duration-[260ms] ease-[cubic-bezier(0.23,1,0.32,1)]'
           )}
           style={{ height: mark.h, transform: `translateY(${mark.y}px)` }}
@@ -337,7 +338,7 @@ export function OverlayNav({
               </div>
               {hasChildren && (
                 <OverlayNavSubList
-                  className={activeOnlyDisclosure ? 'mb-1 ml-[1.375rem] flex flex-col pl-3' : 'ml-4 flex flex-col gap-0.5 pl-2'}
+                  className={activeOnlyDisclosure ? 'mt-1 ml-[1.375rem] flex flex-col gap-0.5 pl-[1.125rem]' : 'ml-4 flex flex-col gap-0.5 pl-2'}
                   hidden={!expanded}
                   id={childrenId}
                 >
