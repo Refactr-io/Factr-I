@@ -3705,6 +3705,7 @@ export const en: Translations = {
     startingSignIn: provider => `Starting sign-in for ${provider}...`,
     verifyingCode: provider => `Verifying your code with ${provider}...`,
     connectedProvider: provider => `${provider} connected`,
+    keySavedNote: 'Key saved. Factr-I tries it with your first message.',
     connectedPicking: provider => `${provider} connected. Picking a default model...`,
     signInFailed: 'Sign-in failed. Try again.',
     signInExpired:

@@ -3090,6 +3090,7 @@ export interface Translations {
     startingSignIn: (provider: string) => string
     verifyingCode: (provider: string) => string
     connectedProvider: (provider: string) => string
+    keySavedNote: string
     connectedPicking: (provider: string) => string
     signInFailed: string
     signInExpired: string

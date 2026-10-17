@@ -276,6 +276,7 @@ function ConfirmingModelPanel({
   return (
     <div className="grid place-items-center gap-7 py-6 text-center">
       <DecodedLabel leaving={leaving} text={t.onboarding.connectedProvider(flow.label)} />
+      {flow.unverifiedKey ? <p className="-mt-4 text-xs text-muted-foreground">{t.onboarding.keySavedNote}</p> : null}
 
       <div
         className={cn(

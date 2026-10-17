@@ -59,6 +59,8 @@ export type OnboardingFlow =
       providerSlug: string
       saving: boolean
       status: 'confirming_model'
+      /** An API key is saved but was never tried against the provider, so the screen says so. */
+      unverifiedKey?: boolean
     }
   | { detail?: string; message: string; provider?: OAuthProvider; start?: OAuthStartResponse; status: 'error' }
 
@@ -462,7 +464,8 @@ async function completeWithModelConfirm(
     providerSlug: defaults.providerSlug,
     currentModel: defaults.defaultModel,
     label: providerLabel,
-    saving: false
+    saving: false,
+    ...(ignoreRuntimeGate ? { unverifiedKey: true } : {})
   })
 }
 

@@ -153,8 +153,8 @@ test('an error without an action clears itself; one with an action stays until a
   vi.useFakeTimers()
 
   try {
-    notify({ id: 'plain-error', kind: 'error', title: 'Could not do it' })
-    notify({ action: { label: 'Retry', onClick: () => {} }, id: 'actionable-error', kind: 'error', title: 'Offline' })
+    notify({ id: 'plain-error', kind: 'error', message: 'Try again later.', title: 'Could not do it' })
+    notify({ action: { label: 'Retry', onClick: () => {} }, id: 'actionable-error', kind: 'error', message: 'No connection.', title: 'Offline' })
     vi.advanceTimersByTime(12_001)
 
     const ids = $notifications.get().map(item => item.id)
