@@ -3318,6 +3318,7 @@ export interface Translations {
     remotePickerTitle: string
     remotePickerDescription: string
     remotePickerSelect: string
+    remotePickerParent: string
     folderTip: (cwd: string) => string
     openFolder: string
     refreshTree: string

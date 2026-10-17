@@ -2724,6 +2724,7 @@ export const ar = defineLocale({
     remotePickerTitle: 'اختر مجلدا بعيدا',
     remotePickerDescription: 'استعرض المجلدات على الخادم الخلفي المتصل.',
     remotePickerSelect: 'تحديد المجلد',
+    remotePickerParent: 'المجلد الأعلى',
     folderTip: cwd => cwd,
     openFolder: 'فتح مجلد',
     refreshTree: 'تحديث الشجرة',

@@ -3379,6 +3379,7 @@ export const ru = defineLocale({
     remotePickerTitle: 'Выбрать удалённую папку',
     remotePickerDescription: 'Просмотрите папки на подключённом бэкенде.',
     remotePickerSelect: 'Выбрать папку',
+    remotePickerParent: 'Родительская папка',
     folderTip: cwd => cwd,
     openFolder: 'Открыть папку',
     refreshTree: 'Обновить дерево',

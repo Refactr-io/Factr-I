@@ -8,6 +8,8 @@ export interface SegmentedControlOption<T extends string> {
   id: T
   label: string
   icon?: IconComponent
+  /** Greys this one option out and blocks selecting it. */
+  disabled?: boolean
 }
 
 interface SegmentedControlProps<T extends string> {
@@ -17,6 +19,8 @@ interface SegmentedControlProps<T extends string> {
   className?: string
   /** Dims the whole track and blocks selection (e.g. gated behind a prerequisite). */
   disabled?: boolean
+  /** Stretch to the container with equal-width segments. */
+  block?: boolean
 }
 
 interface Slot {
@@ -33,7 +37,8 @@ const RUBBER = 0.25
 const FLICK_PX_PER_MS = 0.5
 const THUMB_RADIUS_PX = 4
 
-const slotClass = 'flex items-center justify-center gap-1 px-3 py-0.5 text-[0.6875rem] font-medium'
+const slotClass =
+  'flex h-7 items-center justify-center gap-1.5 px-3 text-[length:var(--conversation-text-font-size)] leading-5 font-medium'
 
 /**
  * Grouped one-row toggle used for small mutually-exclusive choices
@@ -44,6 +49,7 @@ const slotClass = 'flex items-center justify-center gap-1 px-3 py-0.5 text-[0.68
  * RubberSegment.
  */
 export function SegmentedControl<T extends string>({
+  block = false,
   className,
   disabled = false,
   onChange,
@@ -193,7 +199,7 @@ export function SegmentedControl<T extends string>({
   }, [activeIndex, glideTo, jumpTo, reduceMotion, value])
 
   const select = (id: T) => {
-    if (disabled) {
+    if (disabled || options.find(o => o.id === id)?.disabled) {
       return
     }
 
@@ -331,7 +337,8 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       className={cn(
-        'inline-flex w-fit rounded-sm bg-[color-mix(in_srgb,var(--ui-text-primary)_7%,transparent)] p-0.5',
+        'rounded-md bg-[color-mix(in_srgb,var(--ui-text-primary)_7%,transparent)] p-0.5',
+        block ? 'flex w-full' : 'inline-flex w-fit',
         disabled && 'opacity-50',
         className
       )}
@@ -347,14 +354,14 @@ export function SegmentedControl<T extends string>({
         role="radiogroup"
       >
         <div className="grid auto-cols-fr grid-flow-col gap-0.5">
-          {options.map(({ id, label, icon: Icon }, index) => (
+          {options.map(({ disabled: optionDisabled, id, label, icon: Icon }, index) => (
             <button
               aria-checked={value === id}
               className={cn(
                 slotClass,
-                'rounded-sm text-(--ui-text-secondary) transition-colors hover:text-foreground disabled:cursor-default disabled:hover:text-(--ui-text-secondary)'
+                'rounded-[4px] text-(--ui-text-secondary) transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-45 disabled:hover:text-(--ui-text-secondary)'
               )}
-              disabled={disabled}
+              disabled={disabled || optionDisabled}
               key={id}
               onClick={() => select(id)}
               onKeyDown={event => onKeyDown(event, index)}
@@ -372,7 +379,7 @@ export function SegmentedControl<T extends string>({
         </div>
         <motion.div
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-(--dt-foreground) text-(--dt-background)"
+          className="pointer-events-none absolute inset-0 bg-(--ui-segment-thumb) text-foreground"
           style={{ clipPath, visibility: ready ? 'visible' : 'hidden' }}
         >
           <div className="grid auto-cols-fr grid-flow-col gap-0.5">

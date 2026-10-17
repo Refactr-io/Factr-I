@@ -4,6 +4,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
+import { SegmentedControl } from '@/components/ui/segmented-control'
 import type {
   DesktopConnectionKind,
   DesktopConnectionProbeResult,
@@ -780,25 +781,25 @@ export function ConnectionsRegistrySection() {
 
       {editor ? (
         <div className="mt-4 space-y-3 rounded-lg border border-border/60 p-4">
-          <div className="grid grid-cols-2 gap-2 @2xl:grid-cols-4">
-            {/* Kind is fixed once created (buttons disable on edit). On create
-                every kind is offered; Local is disabled while the managed
-                local entry exists (the registry holds at most one). */}
-            {(editor.id ? ([editor.kind] as const) : (['local', 'remote', 'ssh'] as const)).map(kind => (
-              <Button
-                disabled={Boolean(editor.id) || (kind === 'local' && hasLocal)}
-                key={kind}
-                onClick={() => {
-                  setDupeError(null)
-                  setEditor({ ...editor, kind })
-                }}
-                size="sm"
-                variant={editor.kind === kind ? 'default' : 'outline'}
-              >
-                {kindMeta[kind].label}
-              </Button>
-            ))}
-          </div>
+          {editor.id ? (
+            <div className="text-[length:var(--conversation-text-font-size)] font-medium">{kindMeta[editor.kind].label}</div>
+          ) : (
+            // Kind is fixed once created. On create every kind is offered; Local is greyed while the managed
+            // local entry exists (the registry holds at most one), with the reason as a short caption below.
+            <SegmentedControl
+              block
+              onChange={kind => {
+                setDupeError(null)
+                setEditor({ ...editor, kind })
+              }}
+              options={(['local', 'remote', 'ssh'] as const).map(kind => ({
+                disabled: kind === 'local' && hasLocal,
+                id: kind,
+                label: kindMeta[kind].label
+              }))}
+              value={editor.kind}
+            />
+          )}
           <p className="text-xs text-muted-foreground">{kindMeta[editor.kind].desc}</p>
           {!editor.id && hasLocal ? <p className="text-xs text-muted-foreground">{s.localAddHint}</p> : null}
 
@@ -834,18 +835,14 @@ export function ConnectionsRegistrySection() {
             <>
               <ListRow
                 action={
-                  <div className="flex gap-2">
-                    {(['token', 'oauth'] as const).map(mode => (
-                      <Button
-                        key={mode}
-                        onClick={() => setEditor({ ...editor, authMode: mode })}
-                        size="sm"
-                        variant={editor.authMode === mode ? 'default' : 'outline'}
-                      >
-                        {mode === 'token' ? t.settings.gateway.tokenTitle : 'OAuth'}
-                      </Button>
-                    ))}
-                  </div>
+                  <SegmentedControl
+                    onChange={mode => setEditor({ ...editor, authMode: mode })}
+                    options={[
+                      { id: 'token', label: t.settings.gateway.tokenTitle },
+                      { id: 'oauth', label: 'OAuth' }
+                    ]}
+                    value={editor.authMode === 'oauth' ? 'oauth' : 'token'}
+                  />
                 }
                 title={t.settings.gateway.authTitle}
               />

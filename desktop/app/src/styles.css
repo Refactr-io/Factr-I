@@ -452,6 +452,8 @@
        against Rose Alloy; the dark value is set under :root.dark. The thumb or check on it is Rose Alloy. */
     --ui-control-on: #007aff;
     --ui-control-on-foreground: #fffdfc;
+    /* Selected segment of a segmented control: a raised surface chip over the tinted track. */
+    --ui-segment-thumb: var(--ui-bg-editor);
     /* Fixed white/black boot-paint defaults, overridden by the active mode. */
     --dt-primary-solid: var(--theme-primary);
     --dt-primary-solid-foreground: #ffffff;
@@ -3977,4 +3979,5 @@ input[type='range'].ui-range:focus-visible::-webkit-slider-thumb {
 
 :root.dark {
   --ui-control-on: #0a84ff;
+  --ui-segment-thumb: color-mix(in srgb, var(--dt-foreground) 16%, var(--ui-bg-editor));
 }
