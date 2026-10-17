@@ -25,7 +25,7 @@ import { ProfileSwitcher } from './profile-dropdown-switcher'
 import { UpdateIndicator } from './update-indicator'
 
 const RAIL_BUTTON =
-  'grid size-8 place-items-center rounded-md text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] active:scale-[0.97] hover:bg-(--ui-control-hover-background) hover:text-foreground'
+  'grid size-9 place-items-center rounded-md text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] active:scale-[0.97] hover:bg-(--ui-control-hover-background) hover:text-foreground'
 
 const RAIL_ACTIVE = 'bg-(--ui-control-active-background) text-foreground'
 
@@ -114,7 +114,7 @@ export function SidebarRail() {
   return (
     <nav
       aria-label={t.sidebar.sessions}
-      className="flex shrink-0 flex-col items-center gap-1 pb-1.5"
+      className="flex shrink-0 flex-col items-center gap-2 pb-1.5"
       data-sidebar-rail=""
       style={{ paddingTop: TITLEBAR_HEIGHT + 6, width: SIDEBAR_RAIL_WIDTH }}
     >
@@ -125,7 +125,7 @@ export function SidebarRail() {
           onClick={openSessions}
           tour="rail-nav-sessions"
         >
-          {activeId === 'sessions' && !pageActive ? <HomeFilled className="size-4" /> : <Home className="size-4" />}
+          {activeId === 'sessions' && !pageActive ? <HomeFilled className="size-[1.125rem]" /> : <Home className="size-[1.125rem]" />}
         </RailButton>
       )}
       {items.map(item => {
@@ -145,9 +145,9 @@ export function SidebarRail() {
             tour={`rail-nav-${item.id}`}
           >
             {isNavItemActive(item, view, pathname) && item.filledIcon ? (
-              <item.filledIcon className="size-4" />
+              <item.filledIcon className="size-[1.125rem]" />
             ) : (
-              <item.icon className="size-4" />
+              <item.icon className="size-[1.125rem]" />
             )}
           </RailButton>
         )
@@ -163,7 +163,7 @@ export function SidebarRail() {
           <Codicon name="robot" size="1rem" />
         </RailButton>
       ))}
-      <div className="mt-auto flex flex-col items-center gap-1 pb-2">
+      <div className="mt-auto flex flex-col items-center gap-2 pb-2">
         <UpdateIndicator />
         {/* The way into every other surface (was the status bar's ⌘). */}
         <RailButton
@@ -173,7 +173,7 @@ export function SidebarRail() {
           tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterOpen ? commandCenterLabel : t.commandCenter.railTip} />}
           tour="rail-command-center"
         >
-          <Command className="size-4" />
+          <Command className="size-[1.125rem]" />
         </RailButton>
         <ProfileSwitcher
           contentAlign="end"

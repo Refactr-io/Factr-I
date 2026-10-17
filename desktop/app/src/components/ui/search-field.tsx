@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 /** One surface for every search field and the Settings search button: 32px, 6px squircle, a tonal fill one step off
  *  the surface (no stroke), one step darker on hover and focus. */
 export const searchFieldSurface =
-  'h-8 gap-2 rounded-md bg-[color-mix(in_srgb,var(--dt-foreground)_7%,transparent)] px-2.5 transition-colors hover:bg-[color-mix(in_srgb,var(--dt-foreground)_10%,transparent)] focus-within:bg-[color-mix(in_srgb,var(--dt-foreground)_12%,transparent)]'
+  'h-9 gap-2 rounded-md bg-[color-mix(in_srgb,var(--dt-foreground)_7%,transparent)] px-2.5 transition-colors hover:bg-[color-mix(in_srgb,var(--dt-foreground)_10%,transparent)] focus-within:bg-[color-mix(in_srgb,var(--dt-foreground)_12%,transparent)]'
 
 interface SearchFieldProps {
   placeholder: string
@@ -77,7 +77,7 @@ export function SearchField({
           // text; min-w-0 lets it shrink back below content size when the
           // context is narrower — long queries scroll inside the field.
           // text-xs matches the form controls (Input/Select via controlVariants).
-          'h-8 min-w-0 max-w-full bg-transparent text-[length:var(--conversation-text-font-size)] text-foreground [field-sizing:content] placeholder:text-(--ui-text-secondary) focus:outline-none',
+          'h-9 min-w-0 max-w-full bg-transparent text-[length:var(--conversation-text-font-size)] text-foreground [field-sizing:content] placeholder:text-(--ui-text-secondary) focus:outline-none',
           inputClassName
         )}
         onChange={event => onChange(event.target.value)}
