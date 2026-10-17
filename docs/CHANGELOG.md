@@ -24,6 +24,12 @@
   data from the Snipping Tool, a copied image file), "Files..." attaches images as images, and a failed paste shows a message.
 - The app icon is redone: a Mist Green squircle with Apple-style depth and a larger solid helmet; inside the app the helmet
   is drawn bare, with no tile.
+- Updates are quieter. A small indicator in the sidebar shows when a new version is out. With "Download updates in the
+  background" on (the default) the update is downloaded and checked (size and sha256) while you work, and the indicator
+  turns into "Restart to update". Click it, or just quit and reopen: the new version is swapped in and starts, and if it
+  does not come up healthy the old one is put back. With auto-update off, click the indicator to download and then
+  restart. An update screen with the mascot (gray outline filling to black, a blink) shows while the swap happens.
+  macOS only for now; Windows and Linux keep the existing updater.
 - The engine's agent loop, tools and prompts are unchanged; the only engine edits are the version string and the image
   support check for the OpenAI provider.
 
