@@ -114,7 +114,7 @@ describe('ConnectionsRegistrySection', () => {
 
     await waitFor(() => expect(screen.getByText('Work server')).toBeTruthy())
     fireEvent.click(screen.getByText('Add connection'))
-    fireEvent.click(screen.getByRole('button', { name: 'SSH' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'SSH' }))
     fireEvent.change(screen.getByPlaceholderText('Work server'), { target: { value: 'Build host' } })
     fireEvent.change(screen.getByPlaceholderText('user@host:22'), { target: { value: 'dev@build.test:2222' } })
     fireEvent.change(screen.getByPlaceholderText('auto-detect'), {
@@ -169,7 +169,7 @@ describe('ConnectionsRegistrySection', () => {
     await waitFor(() => expect(screen.getByText('Work server')).toBeTruthy())
     fireEvent.click(screen.getByText('Add connection'))
 
-    const localKind = screen.getByRole('button', { name: 'Local' }) as HTMLButtonElement
+    const localKind = screen.getByRole('radio', { name: 'Local' }) as HTMLButtonElement
     expect(localKind.disabled).toBe(true)
   })
 
