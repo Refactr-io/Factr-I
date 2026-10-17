@@ -11,6 +11,7 @@ import {
   preflightLaunch,
   readPostUpdate,
   resolveAppBundle,
+  stageUpdate,
   stagingDirFor,
   type SwapDeps,
   unsupportedLocation
@@ -350,5 +351,18 @@ exit 0
         // already gone
       }
     }
+  })
+})
+
+describe('stageUpdate', () => {
+  it('shares one run between concurrent callers for the same version', async () => {
+    const { deps } = baseDeps({ platform: 'linux' })
+    const ready = { file: '/tmp/none/x.zip', kind: 'zip' as const, version: '0.0.9' }
+    const first = stageUpdate(ready, deps)
+    const second = stageUpdate(ready, deps)
+
+    expect(second).toBe(first)
+    await first
+    expect(stageUpdate(ready, deps)).not.toBe(first)
   })
 })

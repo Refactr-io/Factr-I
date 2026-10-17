@@ -223,7 +223,23 @@ function precheck(ready: ReadyUpdate, deps: SwapDeps): null | string {
  * in the background right after the download finishes (it never touches the installed app) and idempotent: a
  * staging folder that was already verified is reused.
  */
-export async function stageUpdate(ready: ReadyUpdate, deps: SwapDeps): Promise<StageResult> {
+const stagingInFlight = new Map<string, Promise<StageResult>>()
+
+/** Concurrent callers for the same version (launch apply and the background stage) share one run: two unzips into one folder delete each other's files. */
+export function stageUpdate(ready: ReadyUpdate, deps: SwapDeps): Promise<StageResult> {
+  const key = `${deps.execPath}\0${ready.version}`
+  const running = stagingInFlight.get(key)
+
+  if (running) {return running}
+
+  const run = stageUpdateOnce(ready, deps).finally(() => stagingInFlight.delete(key))
+
+  stagingInFlight.set(key, run)
+
+  return run
+}
+
+async function stageUpdateOnce(ready: ReadyUpdate, deps: SwapDeps): Promise<StageResult> {
   const log = deps.log ?? (() => {})
   const bad = precheck(ready, deps)
   const fail = (reason: string): StageResult => {
