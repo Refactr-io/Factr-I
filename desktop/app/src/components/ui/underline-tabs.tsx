@@ -107,7 +107,7 @@ export function UnderlineTabs({ ariaLabel, className, onSelect, tabs, value }: U
       {bar ? (
         <span
           aria-hidden
-          className="pointer-events-none absolute bottom-0 left-0 h-0.5 origin-left rounded-full bg-foreground transition-[transform,width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+          className="pointer-events-none absolute bottom-0 left-0 h-0.5 origin-left rounded-full bg-(--ui-control-on) transition-[transform,width] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
           style={{ transform: `translateX(${bar.left}px)`, width: bar.width }}
         />
       ) : null}
