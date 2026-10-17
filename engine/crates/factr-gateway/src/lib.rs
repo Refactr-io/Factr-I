@@ -31,6 +31,7 @@ pub use rpc::{any_provider_configured, runtime_provider_id, runtime_saved_provid
 /// The auto chain's local-Ollama step, for the binary that probes the server.
 pub use factr_provider_core::selection::{PREFERRED_LOCAL_OLLAMA_MODEL, auto_local_ollama_model, pick_local_ollama_model};
 mod sessions_rest;
+mod ui_rest;
 mod surface_sessions;
 mod skill_slash;
 mod slash_forward;
@@ -1499,6 +1500,12 @@ async fn handle(
             .await
         }
         (_, path) if path.starts_with("/api/") && config.features.is_some() => {
+            // Read-only pages the files can answer (Settings, Scheduled jobs): no Python start.
+            if token_ok && req.method == "GET" {
+                if let Some(body) = ui_rest::answer(path, req.query.as_deref().unwrap_or_default(), &bundled_defaults()) {
+                    return respond(&mut stream, "200 OK", &body).await;
+                }
+            }
             // Without feature=1, refuse to start Python for unknown probes so a
             // chat-only first paint on Windows/macOS stays Python-free.
             if bundled_startup_request(&req) && !capabilities_request(&req) {

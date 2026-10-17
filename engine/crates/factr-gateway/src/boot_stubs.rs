@@ -79,7 +79,7 @@ fn profile_row(name: &str, path: &str, is_default: bool) -> Value {
 }
 
 /// The config root: a profile engine's home is `<root>/profiles/<name>`.
-fn root_home(home: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn root_home(home: &std::path::Path) -> std::path::PathBuf {
     match home.parent() {
         Some(parent) if parent.file_name().is_some_and(|n| n == "profiles") => {
             parent.parent().map(std::path::Path::to_path_buf).unwrap_or_else(|| home.to_path_buf())
