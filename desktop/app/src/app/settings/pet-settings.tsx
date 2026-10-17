@@ -269,7 +269,7 @@ export function PetSettings() {
               <div className="flex items-center gap-3">
                 <input
                   aria-label={copy.scaleTitle}
-                  className="h-1 w-40 cursor-pointer appearance-none rounded-sm bg-(--ui-stroke-tertiary)"
+                  className="ui-range w-40"
                   max={PET_SCALE_MAX}
                   min={PET_SCALE_MIN}
                   onChange={event => {
@@ -277,7 +277,7 @@ export function PetSettings() {
                     setPetScale(requestGateway, Number(event.target.value))
                   }}
                   step={0.05}
-                  style={{ accentColor: 'var(--dt-primary)' }}
+                  style={{ '--ui-range-pct': `${((scale - PET_SCALE_MIN) / (PET_SCALE_MAX - PET_SCALE_MIN)) * 100}%` } as React.CSSProperties}
                   type="range"
                   value={scale}
                 />

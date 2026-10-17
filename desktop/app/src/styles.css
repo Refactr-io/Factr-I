@@ -3947,3 +3947,31 @@ svg.tabler-icon {
     animation: none;
   }
 }
+
+/* Range input: muted green fill up to the thumb, tonal track, flat thumb. No glow or shadow. */
+input[type='range'].ui-range {
+  --ui-range-pct: 50%;
+  appearance: none;
+  height: 1rem;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range'].ui-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--ui-control-on) var(--ui-range-pct), var(--ui-stroke-tertiary) var(--ui-range-pct));
+}
+input[type='range'].ui-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--ui-control-on-foreground);
+  outline: 2px solid var(--ui-control-on);
+  outline-offset: -2px;
+}
+input[type='range'].ui-range:focus-visible::-webkit-slider-thumb {
+  outline-width: 4px;
+}

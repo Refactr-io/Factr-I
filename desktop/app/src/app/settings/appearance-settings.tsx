@@ -160,11 +160,12 @@ interface TranslucencySliderProps {
  * any residual hold.
  */
 function TranslucencySlider({ label, onChange, value }: TranslucencySliderProps) {
+  const rangePct = ((value - TRANSLUCENCY_MIN) / (TRANSLUCENCY_MAX - TRANSLUCENCY_MIN)) * 100
   return (
     <>
       <input
         aria-label={label}
-        className="h-1 w-40 cursor-pointer appearance-none rounded-sm bg-(--ui-stroke-tertiary)"
+        className="ui-range w-40"
         max={TRANSLUCENCY_MAX}
         min={TRANSLUCENCY_MIN}
         onBlur={endTranslucencyPeek}
@@ -181,7 +182,7 @@ function TranslucencySlider({ label, onChange, value }: TranslucencySliderProps)
         onPointerDown={beginTranslucencyPeek}
         onPointerUp={endTranslucencyPeek}
         step={TRANSLUCENCY_STEP}
-        style={{ accentColor: 'var(--dt-primary)' }}
+        style={{ '--ui-range-pct': `${rangePct}%` } as React.CSSProperties}
         type="range"
         value={value}
       />
