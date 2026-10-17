@@ -98,3 +98,30 @@ test('a single-profile primary (Rust engine) never shares: a bot profile gets it
   assert.doesNotThrow(() => assertNoSecondLocalBackend('scout', { singleProfilePrimary: true }))
   assert.equal(sharesHostBackend({ singleProfilePrimary: true }), false)
 })
+
+// A running bot computer is the only safe writer of that profile's SQLite; a host-side read through the primary
+// (case 5 REST scoping) would share the WAL -shm across the VM boundary.
+test('requests for a bot with a running computer go to its own engine, not the primary', () => {
+  const OFF = { ...LOCAL, primarySingleProfile: true }
+  const ON = { ...OFF, botComputerRunning: true }
+  const sessions = { requestMethod: 'GET', requestPath: '/api/sessions?profile=scout' }
+  const sessionWrite = { requestMethod: 'PATCH', requestPath: '/api/sessions/abc' }
+  const config = { requestMethod: 'PUT', requestPath: '/api/config' }
+  const pool = { backend: 'pool', descriptorProfile: null, scopePath: false }
+
+  // Computer off: host read through the primary is fine (case 5).
+  assert.equal(resolveProfileBackendRoute('scout', { ...LOCAL, ...sessions }).backend, 'primary')
+
+  // Computer running: sessions reads, session writes and scoped config all ride the bot's own engine.
+  for (const request of [sessions, sessionWrite, config, {}]) {
+    assert.deepEqual(resolveProfileBackendRoute('scout', { ...ON, ...request }), pool)
+  }
+
+  // The /api/profiles family aggregates across profiles or touches profile.yaml: stays on the primary.
+  assert.equal(resolveProfileBackendRoute('scout', { ...ON, requestMethod: 'GET', requestPath: '/api/profiles' }).backend, 'primary')
+  assert.equal(resolveProfileBackendRoute('scout', { ...ON, requestMethod: 'DELETE', requestPath: '/api/profiles/scout' }).backend, 'primary')
+  // The primary profile and remote routes are never captured by the flag.
+  assert.equal(resolveProfileBackendRoute('default', { ...ON, ...sessions }).backend, 'primary')
+  assert.equal(resolveProfileBackendRoute('scout', { ...ON, ...sessions, profileRemoteOverride: true }).backend, 'pool')
+  assert.equal(resolveProfileBackendRoute('scout', { ...ON, ...sessions, globalRemote: true }).backend, 'primary')
+})

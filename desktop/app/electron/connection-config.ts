@@ -566,6 +566,8 @@ export interface ProfileRouteOptions {
   isolatedBackend?: boolean
   /** The primary backend is the packaged single-profile Rust engine (cannot multiplex profiles). */
   primarySingleProfile?: boolean
+  /** This profile has a running (or starting) bot computer: it owns the profile's state.db. */
+  botComputerRunning?: boolean
   requestMethod?: null | string
   requestPath?: null | string
 }
@@ -631,6 +633,16 @@ const LOCAL_PRIMARY_SCOPED_ROUTES = new Set([
   'PUT /api/dashboard/font',
   'GET /api/dashboard/plugins'
 ])
+
+function isProfilesPath(rawPath: null | string | undefined): boolean {
+  try {
+    const pathname = new URL(String(rawPath || ''), 'https://example.invalid').pathname
+
+    return pathname === '/api/profiles' || pathname.startsWith('/api/profiles/')
+  } catch {
+    return false
+  }
+}
 
 function localPrimaryRequestScope(opts: ProfileRouteOptions): boolean | null {
   const rawPath = String(opts.requestPath || '')
@@ -820,6 +832,14 @@ function resolveProfileBackendRoute(profile, opts: ProfileRouteOptions = {}): Pr
 
     // A stored local profile must not be redirected into the remote primary,
     // even when its REST endpoint supports profile scoping.
+    return { backend: 'pool', descriptorProfile: null, scopePath: false }
+  }
+
+  // A running bot computer is the only writer of that profile's SQLite, and a host-side read of the same files is
+  // not safe (the WAL -shm is shared memory, not coherent across the VM boundary; readers can write it). Every
+  // request for the bot goes to its own engine. Only the `/api/profiles` family stays on the primary: those
+  // handlers aggregate across profiles or touch profile.yaml/config, never state.db.
+  if (opts.botComputerRunning && !isProfilesPath(opts.requestPath)) {
     return { backend: 'pool', descriptorProfile: null, scopePath: false }
   }
 

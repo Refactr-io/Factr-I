@@ -92,10 +92,12 @@ import { runBootstrap } from './bootstrap-runner'
 import {
   computerStatus as botComputerStatus,
   chooseBotBackend,
+  computerActive,
   configureBotComputers,
   destroyComputer,
   dockerAvailable,
   ensureComputer,
+  isBotProfile,
   reconcileComputers,
   setComputerHold,
   stopComputer,
@@ -10317,6 +10319,9 @@ function profileRouteOptions(profile, request?) {
     // Only the packaged build runs the Rust engine (resolveFactrBackend kind 'factr'): one profile per process.
     // FACTR_BOT_COMPUTERS=1 forces it on (dev runs, where primary is the Python gateway), =0 turns computers off.
     primarySingleProfile: IS_PACKAGED || process.env.FACTR_BOT_COMPUTERS === '1',
+    // A running bot computer owns its state.db (WAL shared memory is not coherent across the VM boundary), so
+    // requests for it go to its own engine, never a host-side read.
+    botComputerRunning: computerActive(key),
     requestMethod: request?.method,
     requestPath: request?.path
   }
@@ -11847,7 +11852,11 @@ configureBotComputers({
 // The remote-entry descriptor for a bot's container, or null when this profile is not a bot-computer case
 // (primary profile, remote, Docker down: the host-engine path below then serves it).
 async function botComputerRemote(profile: string) {
-  const facts = { ...profileRouteOptions(profile), disabled: process.env.FACTR_BOT_COMPUTERS === '0' }
+  const facts = {
+    ...profileRouteOptions(profile),
+    isBot: isBotProfile(FACTR_CONFIG_HOME, profile),
+    disabled: process.env.FACTR_BOT_COMPUTERS === '0'
+  }
 
   if (!chooseBotBackend(profile, facts, true) || chooseBotBackend(profile, facts, await dockerAvailable()) !== 'container') {
     return null
