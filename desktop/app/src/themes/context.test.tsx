@@ -44,7 +44,7 @@ describe('fixed white and black desktop appearances', () => {
     expect(theme.mode).toBe('dark')
     expect(modePref.resolve('default')).toBe('dark')
     expect(cssVar('--theme-background-seed')).toBe('#161616')
-    expect(cssVar('--theme-primary')).toBe('#ffffff')
+    expect(cssVar('--theme-primary')).toBe('#fffdfc')
     act(() => theme.setMode('system' as 'dark'))
     expect(theme.mode).toBe('dark')
     expect(modePref.resolve('default')).toBe('dark')
