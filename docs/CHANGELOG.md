@@ -47,6 +47,9 @@
   hidden), "Add a folder to continue" on New project, error toasts clear themselves, a narrow window collapses the side
   panes, a rejected key names the provider, the approval card shows the working directory, "Retry" instead of "Refresh",
   and Tools & Keys labels use proper brand names.
+- Messaging platforms and providers use their full-colour logos (Slack, Teams, Discord, Telegram and others; also in Settings
+  and the model picker); a few platforms without an official mark keep a neutral glyph. The preview console button has its own
+  bottom-panel icon, and built-in pages show a quiet loader instead of a blank flash on first open.
 - The engine's agent loop, tools and prompts are unchanged; the only engine edits are the version string and the image
   support check for the OpenAI provider.
 
