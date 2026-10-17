@@ -448,10 +448,10 @@
     --dt-popover-foreground: var(--ui-text-primary);
     --dt-primary: var(--theme-primary);
     --dt-primary-foreground: #ffffff;
-    /* The "on" colour of controls (switch, checkbox, selected tab line): a muted green, Spring Verdant 45% into
-       Forest Black. 4.4:1 against the light surface and 4.1:1 against the dark one; a Rose Alloy thumb or check on
-       it is 4.0:1. Not the loud accent, which stays reserved for one primary action. */
-    --ui-control-on: #3e845c;
+    /* The "on" colour of controls (switch, checkbox, selected tab line): a grayish sage, Field Green (#3E845C) 50%
+       into Pewter Silver (#818581), both from the design file. About 4:1 against the light surface and the dark
+       one; a Rose Alloy thumb or check on it is about 3.9:1. Not the loud accent, which stays reserved for one primary action. */
+    --ui-control-on: #5f846e;
     --ui-control-on-foreground: #fffdfc;
     /* Fixed white/black boot-paint defaults, overridden by the active mode. */
     --dt-primary-solid: var(--theme-primary);

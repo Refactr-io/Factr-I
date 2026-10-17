@@ -20,7 +20,7 @@ export function SettingsPageTitle({ title }: { title: string }) {
   return (
     <header className={cn('shrink-0 pb-3', PAGE_INSET_X)}>
       <div className="mx-auto w-full max-w-[46rem]">
-        <h1 className="text-xl font-semibold leading-7 tracking-[-0.01em] text-foreground">{title}</h1>
+        <h1 className="text-[20.5px] font-[550] leading-[25px] tracking-[-0.0083em] text-foreground">{title}</h1>
       </div>
     </header>
   )
@@ -185,7 +185,7 @@ export const SettingsStack = forwardRef<
               style={index === sections.length - 1 && viewportHeight ? { minHeight: viewportHeight - 24 } : undefined}
             >
               {index > 0 && <div aria-hidden className="mb-10 h-px w-full rounded-full bg-(--ui-stroke-tertiary)" />}
-              <h2 className="mb-5 text-[1.5rem] leading-8 font-semibold tracking-[-0.015em] text-foreground">
+              <h2 className="mb-5 text-[25px] leading-[30px] font-[550] tracking-[-0.0113em] text-foreground">
                 {section.label}
               </h2>
               <SettingsStackContext.Provider value={{ index }}>

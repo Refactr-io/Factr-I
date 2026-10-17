@@ -1,4 +1,4 @@
-import { Fragment, memo, type ReactNode, useEffect, useId, useState } from 'react'
+import { Fragment, memo, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
@@ -146,25 +146,66 @@ export const OverlayNavItem = memo(function OverlayNavItem({
   )
 })
 
-/** A sub-section link under the selected group: text only, a thin rounded marker on its left edge, brighter and
- *  weight 500 on the current one. The marker segments line up into one rail down the list. */
+/** A sub-section link under the selected group: text only, brighter and weight 500 on the current one. The rail
+ *  lives in OverlayNavSubList. */
 function OverlayNavSubItem({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
       aria-current={active ? 'location' : undefined}
-      data-slot="overlay-nav-sub"
       className={cn(
-        'relative w-full rounded-md py-1.5 pr-2 pl-0 text-left text-[length:var(--conversation-text-font-size)] leading-[1.125rem] transition-colors',
-        "before:absolute before:top-1 before:bottom-1 before:-left-3 before:w-0.5 before:rounded-full before:content-['']",
-        active
-          ? 'font-medium text-foreground before:bg-(--ui-control-on)'
-          : 'text-(--ui-text-tertiary) before:bg-(--ui-stroke-tertiary) hover:text-foreground'
+        'w-full rounded-md py-1.5 pr-2 pl-0 text-left text-[length:var(--conversation-text-font-size)] leading-[1.125rem] transition-colors',
+        active ? 'font-medium text-foreground' : 'text-(--ui-text-tertiary) hover:text-foreground'
       )}
+      data-slot="overlay-nav-sub"
       onClick={onClick}
       type="button"
     >
       {label}
     </button>
+  )
+}
+
+/** One continuous rail down the left of the sub-links with a single marker that slides to the current one
+ *  (transform + height only; instant under reduced motion). */
+function OverlayNavSubList({ children, className, hidden, id }: { children: ReactNode; className?: string; hidden: boolean; id: string }) {
+  const listRef = useRef<HTMLDivElement>(null)
+  const [mark, setMark] = useState<{ h: number; y: number } | null>(null)
+  const [ready, setReady] = useState(false)
+
+  useLayoutEffect(() => {
+    const list = listRef.current
+    const el = list?.querySelector<HTMLElement>('[aria-current="location"]')
+
+    if (!el) {
+      setMark(null)
+
+      return
+    }
+
+    setMark({ h: el.offsetHeight - 8, y: el.offsetTop + 4 })
+  })
+
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setReady(true))
+
+    return () => cancelAnimationFrame(t)
+  }, [])
+
+  return (
+    <div className={cn('relative', className, hidden && 'hidden')} hidden={hidden} id={id} ref={listRef}>
+      <span aria-hidden className="pointer-events-none absolute top-1 bottom-1 left-0 w-0.5 rounded-full bg-(--ui-stroke-tertiary)" />
+      {mark && (
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute top-0 left-0 w-0.5 rounded-full bg-(--ui-control-on) motion-reduce:transition-none',
+            ready && 'transition-[transform,height] duration-[260ms] ease-[cubic-bezier(0.23,1,0.32,1)]'
+          )}
+          style={{ height: mark.h, transform: `translateY(${mark.y}px)` }}
+        />
+      )}
+      {children}
+    </div>
   )
 }
 
@@ -296,11 +337,8 @@ export function OverlayNav({
                 )}
               </div>
               {hasChildren && (
-                <div
-                  className={cn(
-                    activeOnlyDisclosure ? 'mb-1 ml-[1.375rem] flex flex-col pl-3' : 'ml-4 flex flex-col gap-0.5 pl-2',
-                    !expanded && 'hidden'
-                  )}
+                <OverlayNavSubList
+                  className={activeOnlyDisclosure ? 'mb-1 ml-[1.375rem] flex flex-col pl-3' : 'ml-4 flex flex-col gap-0.5 pl-2'}
                   hidden={!expanded}
                   id={childrenId}
                 >
@@ -324,7 +362,7 @@ export function OverlayNav({
                       />
                     )
                   )}
-                </div>
+                </OverlayNavSubList>
               )}
             </Fragment>
           )
