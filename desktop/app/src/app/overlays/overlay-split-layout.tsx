@@ -118,14 +118,14 @@ export const OverlayNavItem = memo(function OverlayNavItem({
     <button
       aria-current={current ? 'page' : undefined}
       className={cn(
-        'flex h-8 w-full items-center justify-start gap-2 rounded-lg border px-3 text-left text-[length:var(--conversation-text-font-size)] font-normal transition-colors',
+        'flex h-8 w-full items-center justify-start gap-2.5 rounded-md px-3 text-left text-[length:var(--conversation-text-font-size)] font-normal leading-[1.125rem] transition-colors',
         nested
           ? active
-            ? 'border-transparent bg-(--chrome-action-hover) font-medium text-foreground'
-            : 'border-transparent bg-transparent text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
+            ? 'bg-(--chrome-action-hover) font-medium text-foreground'
+            : 'bg-transparent text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
           : active
-            ? 'border-(--ui-stroke-tertiary) bg-(--ui-bg-tertiary) text-foreground'
-            : 'border-transparent bg-transparent text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-foreground'
+            ? 'bg-(--ui-bg-tertiary) font-medium text-foreground'
+            : 'bg-transparent text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-foreground'
       )}
       // Names the row by its own id, so a tour can address one link
       // (`[data-tour="nav-models"]`) instead of guessing at nth-child.
@@ -221,7 +221,7 @@ export function OverlayNav({
           return (
             <Fragment key={group.id}>
               {sectionLabel ? (
-                <div className="px-2 pb-1 pt-4 text-[0.6875rem] font-medium text-(--ui-text-tertiary) first:pt-1">
+                <div className="px-3 pb-1.5 pt-5 text-[length:var(--conversation-caption-font-size)] font-medium leading-4 text-(--ui-text-secondary) first:pt-1">
                   {sectionLabel}
                 </div>
               ) : (
