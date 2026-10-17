@@ -320,7 +320,7 @@ export function BootFailureOverlay() {
   if (view === 'connect') {
     return (
       <BootFailureModal title={copy.gatewaySettings}>
-        <div className="flex max-h-[86vh] w-full max-w-[46rem] flex-col overflow-hidden rounded-xl border border-(--stroke-float) bg-(--ui-chat-bubble-background) shadow-float">
+        <div className="flex max-h-[86vh] w-full max-w-[46rem] flex-col overflow-hidden rounded-xl bg-(--ui-chat-bubble-background)">
           {/* Subtle back affordance (projects/overlay idiom): muted → foreground
               on hover, no divider. */}
           <button
@@ -343,7 +343,7 @@ export function BootFailureOverlay() {
 
   return (
     <BootFailureModal>
-      <div className="w-full max-w-[40rem] overflow-hidden rounded-xl border border-(--stroke-float) bg-(--ui-chat-bubble-background) shadow-float">
+      <div className="w-full max-w-[40rem] overflow-hidden rounded-xl bg-(--ui-chat-bubble-background)">
         <div className="flex items-start gap-3 px-5 py-4">
           <ErrorIcon className="mt-0.5" size="1.25rem" />
           <div>

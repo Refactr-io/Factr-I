@@ -224,7 +224,7 @@ export function FirstRunRemoteForm({ onBack }: FirstRunRemoteFormProps) {
 
   return (
     <div className="fixed inset-0 z-(--z-setup) flex items-center justify-center bg-background/90 p-4 backdrop-blur-md">
-      <div className="flex w-full max-w-xl flex-col rounded-xl border border-(--stroke-float) bg-card p-8 shadow-float">
+      <div className="flex w-full max-w-xl flex-col rounded-xl bg-card p-8">
         <div className="flex items-start gap-4">
           <BrandMark className="size-11 shrink-0" />
           <div className="min-w-0">
