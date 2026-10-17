@@ -6,7 +6,6 @@
   (authorization code with PKCE and a local callback on `localhost:1455`). No code to copy or type. If port 1455 is
   busy (a Codex CLI sign-in in progress) the old device-code flow is used instead. The page you land on after approving
   is now a clear confirmation with the helmet mark.
-- New app icon: the helmet mascot in Forest Black on a Mist Grey squircle (macOS, Windows, Linux and the web favicons).
 - Sidebar rail icons fill in when selected, and Scheduled jobs and Run history have different icons. The globe on a stand
   is gone: the Browser pane uses a browser window icon and web links use a plain world icon.
 - The glowing travelling border around working items is gone; working state is a quiet pulse (reduced-motion safe).
