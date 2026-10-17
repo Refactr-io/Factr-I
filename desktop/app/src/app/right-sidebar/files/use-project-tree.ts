@@ -3,6 +3,7 @@ import { atom } from 'nanostores'
 import { useCallback, useEffect, useMemo } from 'react'
 
 import { desktopFsCacheKey } from '@/lib/desktop-fs'
+import { readableError } from '@/store/notifications'
 import { $connection } from '@/store/session'
 import { $workspaceChangeTick, consumeWorkspaceChange } from '@/store/workspace-events'
 
@@ -91,7 +92,7 @@ function errorChild(parentId: string, error: string | undefined): TreeNode {
 }
 
 function readError(cause: unknown): string {
-  return cause instanceof Error && cause.message ? cause.message : 'read-error'
+  return cause ? readableError(cause, 'read-error').message : 'read-error'
 }
 
 export interface UseProjectTreeResult {

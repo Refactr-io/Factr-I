@@ -27,7 +27,7 @@ const registry: DesktopConnectionsRegistry = {
       authMode: 'token',
       id: 'homelab',
       kind: 'remote',
-      label: 'Homelab',
+      label: 'Work server',
       tokenPreview: '...abc123',
       tokenSet: true,
       url: 'http://homelab.lan:9119'
@@ -77,7 +77,7 @@ describe('ConnectionsRegistrySection', () => {
     try {
       await refreshFleetRoster()
       render(<ConnectionsRegistrySection />)
-      await screen.findByText('Homelab')
+      await screen.findByText('Work server')
       fireEvent.click(screen.getAllByRole('button', { name: /^test$/i })[0])
       await waitFor(() => expect(getAgentRoster).toHaveBeenCalledTimes(2))
     } finally {
@@ -87,15 +87,15 @@ describe('ConnectionsRegistrySection', () => {
   it('opens the add-connection editor and saves with a required label', async () => {
     render(<ConnectionsRegistrySection />)
 
-    await waitFor(() => expect(screen.getByText('Homelab')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Work server')).toBeTruthy())
     fireEvent.click(screen.getByText('Add connection'))
 
     // Save is disabled until a label is present.
     const saveButton = screen.getByText('Save connection').closest('button')!
     expect(saveButton.disabled).toBe(true)
 
-    fireEvent.change(screen.getByPlaceholderText('Homelab'), { target: { value: 'Spark box' } })
-    fireEvent.change(screen.getByPlaceholderText('http://homelab.lan:9119'), {
+    fireEvent.change(screen.getByPlaceholderText('Work server'), { target: { value: 'Spark box' } })
+    fireEvent.change(screen.getByPlaceholderText('http://127.0.0.1:PORT'), {
       target: { value: 'http://spark.lan:9119' }
     })
     expect(saveButton.disabled).toBe(false)
@@ -112,10 +112,10 @@ describe('ConnectionsRegistrySection', () => {
   it('saves a custom remote Factr path for SSH connections', async () => {
     render(<ConnectionsRegistrySection />)
 
-    await waitFor(() => expect(screen.getByText('Homelab')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Work server')).toBeTruthy())
     fireEvent.click(screen.getByText('Add connection'))
     fireEvent.click(screen.getByRole('button', { name: 'SSH' }))
-    fireEvent.change(screen.getByPlaceholderText('Homelab'), { target: { value: 'Build host' } })
+    fireEvent.change(screen.getByPlaceholderText('Work server'), { target: { value: 'Build host' } })
     fireEvent.change(screen.getByPlaceholderText('user@host:22'), { target: { value: 'dev@build.test:2222' } })
     fireEvent.change(screen.getByPlaceholderText('auto-detect'), {
       target: { value: '/opt/factr/bin/factr' }
@@ -166,7 +166,7 @@ describe('ConnectionsRegistrySection', () => {
   it('disables Local on create while the managed entry exists', async () => {
     render(<ConnectionsRegistrySection />)
 
-    await waitFor(() => expect(screen.getByText('Homelab')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Work server')).toBeTruthy())
     fireEvent.click(screen.getByText('Add connection'))
 
     const localKind = screen.getByRole('button', { name: 'Local' }) as HTMLButtonElement
@@ -176,18 +176,18 @@ describe('ConnectionsRegistrySection', () => {
   it('rejects a duplicate gateway URL in the save path with an inline error', async () => {
     render(<ConnectionsRegistrySection />)
 
-    await waitFor(() => expect(screen.getByText('Homelab')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Work server')).toBeTruthy())
     fireEvent.click(screen.getByText('Add connection'))
 
-    fireEvent.change(screen.getByPlaceholderText('Homelab'), { target: { value: 'Homelab twin' } })
+    fireEvent.change(screen.getByPlaceholderText('Work server'), { target: { value: 'Work server twin' } })
     // Same URL modulo case + trailing slash: normalized-dupe of the existing entry.
-    fireEvent.change(screen.getByPlaceholderText('http://homelab.lan:9119'), {
+    fireEvent.change(screen.getByPlaceholderText('http://127.0.0.1:PORT'), {
       target: { value: 'HTTP://HOMELAB.LAN:9119/' }
     })
     fireEvent.click(screen.getByText('Save connection').closest('button')!)
 
     await waitFor(() =>
-      expect(screen.getByText('A connection to this gateway URL already exists (“Homelab”).')).toBeTruthy()
+      expect(screen.getByText('A connection to this gateway URL already exists (“Work server”).')).toBeTruthy()
     )
     expect(save).not.toHaveBeenCalled()
   })
@@ -196,7 +196,7 @@ describe('ConnectionsRegistrySection', () => {
     list.mockResolvedValueOnce({ ...registry, launchMode: 'last-used' })
     render(<ConnectionsRegistrySection />)
 
-    await waitFor(() => expect(screen.getByText('Homelab')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Work server')).toBeTruthy())
     const makePrimary = screen.getByText('Make primary').closest('button')!
 
     expect(makePrimary.disabled).toBe(false)

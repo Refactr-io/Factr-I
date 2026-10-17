@@ -1105,6 +1105,7 @@ export interface Translations {
       testConnection: string
       testOk: string
       testFailed: string
+      savedUnreachable: string
       saveFailed: string
       removeFailed: string
       updateAll: string

@@ -462,6 +462,22 @@ export function ConnectionsRegistrySection() {
         publishRegistry(result.registry)
         setEditor(null)
         setPlainTextConfirm(false)
+
+        // Saving never blocks on reachability, but a wrong token must not pass
+        // silently: check the saved remote and warn if it is rejected.
+        if (editor.kind === 'remote') {
+          const check = await bridge.test(result.connection.id).catch(() => null)
+
+          if (check && check.ok !== true && check.reachable !== true) {
+            notify({
+              kind: 'warning',
+              title: result.connection.label,
+              message: s.savedUnreachable,
+              detail: check.error ?? undefined,
+              durationMs: 12_000
+            })
+          }
+        }
       } catch (err) {
         // Keyring-less machine and the user hasn't consented to plain-text
         // storage yet: raise the same opt-in dialog the connection-mode form
@@ -768,7 +784,7 @@ export function ConnectionsRegistrySection() {
             {/* Kind is fixed once created (buttons disable on edit). On create
                 every kind is offered; Local is disabled while the managed
                 local entry exists (the registry holds at most one). */}
-            {(editor.id ? ([editor.kind] as const) : (['local', 'cloud', 'remote', 'ssh'] as const)).map(kind => (
+            {(editor.id ? ([editor.kind] as const) : (['local', 'remote', 'ssh'] as const)).map(kind => (
               <Button
                 disabled={Boolean(editor.id) || (kind === 'local' && hasLocal)}
                 key={kind}
@@ -785,9 +801,6 @@ export function ConnectionsRegistrySection() {
           </div>
           <p className="text-xs text-muted-foreground">{kindMeta[editor.kind].desc}</p>
           {!editor.id && hasLocal ? <p className="text-xs text-muted-foreground">{s.localAddHint}</p> : null}
-          {!editor.id && editor.kind === 'cloud' ? (
-            <p className="text-xs text-muted-foreground">{s.cloudAddHint}</p>
-          ) : null}
 
           <ListRow
             action={
@@ -809,7 +822,7 @@ export function ConnectionsRegistrySection() {
                     setDupeError(null)
                     setEditor({ ...editor, url: e.target.value })
                   }}
-                  placeholder="http://homelab.lan:9119"
+                  placeholder="http://127.0.0.1:PORT"
                   value={editor.url}
                 />
               }

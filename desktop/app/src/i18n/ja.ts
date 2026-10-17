@@ -1917,7 +1917,7 @@ export const ja = defineLocale({
       title: (profile: string) => `${profile} をリモートホストに接続`,
       description: 'このプロファイルのセッションは、このパソコンではなく指定したリモートの Factr-I で実行されます。',
       urlLabel: 'リモートアドレス',
-      urlPlaceholder: 'https://factr.example.com',
+      urlPlaceholder: 'http://127.0.0.1:PORT',
       urlInvalid: 'http:// または https:// で始まる完全なアドレスを入力してください',
       tokenLabel: 'アクセストークン',
       tokenPlaceholder: 'リモートのセッショントークンを貼り付け',
@@ -2873,7 +2873,7 @@ export const ja = defineLocale({
     retryAfterRun: '実行しました — 再試行',
     localStartUnavailable:
       'ローカルインストールを開始できません。Factr-I を再起動して、もう一度お試しください。',
-    remoteUrlPlaceholder: 'https://gateway.example.com/factr',
+    remoteUrlPlaceholder: 'http://127.0.0.1:PORT',
     identityProvider: 'ID プロバイダー',
     authTitle: '認証',
     authSignedIn: 'ブラウザーサインインが完了しました。',

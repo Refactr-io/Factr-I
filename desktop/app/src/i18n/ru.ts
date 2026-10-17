@@ -3098,7 +3098,7 @@ export const ru = defineLocale({
     incompleteTokenTest: 'Введите сессионный токен, чтобы проверить этот шлюз.',
     retryAfterRun: 'Я выполнил — попробовать снова',
     localStartUnavailable: 'Не удалось начать локальную установку. Перезапустите Factr-I и попробуйте снова.',
-    remoteUrlPlaceholder: 'https://gateway.example.com/factr',
+    remoteUrlPlaceholder: 'http://127.0.0.1:PORT',
     identityProvider: 'ваш провайдер аутентификации',
     authTitle: 'Аутентификация',
     authSignedIn: 'Вход через браузер завершён.',

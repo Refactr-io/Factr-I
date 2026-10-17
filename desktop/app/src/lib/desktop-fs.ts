@@ -1,6 +1,7 @@
 import { factrApi } from '@/api/client'
 import type { FactrConnection, FactrReadDirResult, FactrReadFileTextResult, FactrSelectPathsOptions } from '@/global'
 import { translateNow } from '@/i18n'
+import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $connection } from '@/store/session'
 
 export interface DesktopFsRemotePicker {
@@ -37,8 +38,23 @@ export function desktopFsCacheKey(connection: FactrConnection | null = $connecti
   return connectionCacheKey(connection)
 }
 
+// True for every non-local source: a URL gateway, an SSH host, or a registry
+// connection that is not "This device". Anything else would read this Mac's
+// files while chat runs on another machine.
 export function isDesktopFsRemoteMode() {
-  return $connection.get()?.mode === 'remote'
+  const connection = $connection.get()
+
+  if (!connection) {
+    return false
+  }
+
+  if (connection.mode === 'remote' || connection.remoteKind === 'ssh') {
+    return true
+  }
+
+  const kind = $connectionsRegistry.get()?.connections.find(c => c.id === connection.connectionId)?.kind
+
+  return Boolean(kind) && kind !== 'local'
 }
 
 // Active profile for FS/git REST calls. Without it the Electron api bridge
@@ -61,7 +77,11 @@ function bridge() {
   return desktop
 }
 
+// The packaged engine answers /api/fs/* with 404 feature_not_requested unless
+// the request carries feature=1, and factrApi only adds it while a feature page is open.
 function remoteFsApi<T>(path: string, body?: Record<string, unknown>): Promise<T> {
+  path = `${path}${path.includes('?') ? '&' : '?'}feature=1`
+
   return factrApi<T>(
     body ? { body, method: 'POST', path, profile: desktopFsProfile() } : { path, profile: desktopFsProfile() }
   )
