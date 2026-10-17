@@ -460,7 +460,7 @@ import { cleanupUpdateLeftovers, clearPostUpdate, findReadyZip, readPostUpdateSy
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
 import { closeUpdateSplash, showUpdateSplash } from './update-splash'
-import { installAndRestart, preflightLaunch, resolveAppBundle, stageUpdate, type SwapDeps } from './update-swap'
+import { installAndRestart, preflightLaunch, resolveAppBundle, stageUpdate, stagingDirFor, type SwapDeps } from './update-swap'
 import {
   observeUpdaterHandoff,
   resolveStagedUpdaterBinary,
@@ -17197,9 +17197,26 @@ async function applyUpdateAtLaunch(): Promise<boolean> {
     return true
   }
 
-  rememberLog(`[update] launch update skipped: ${(result as { reason: string }).reason}`)
+  const reason = (result as { reason: string }).reason
+
+  rememberLog(`[update] launch update skipped: ${reason}`)
 
   closeUpdateSplash()
+
+  // A bad download (failed signature or unzip) must not be retried, and slow, on every launch. A busy agent is only a delay.
+  if (!/agent turn|busy/i.test(reason)) {
+    try {
+      fs.writeFileSync(path.join(UPDATES_DIR, ready.version, 'skipped'), reason)
+
+      const appPath = resolveAppBundle(process.execPath)
+
+      if (appPath) {
+        fs.rmSync(stagingDirFor(appPath, ready.version), { force: true, recursive: true })
+      }
+    } catch {
+      // best effort
+    }
+  }
 
   return false
 }
