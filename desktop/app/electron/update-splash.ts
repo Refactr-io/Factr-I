@@ -9,18 +9,18 @@
  * Under prefers-reduced-motion it is the still, fully black mascot.
  */
 
-export const UPDATE_SPLASH_SIZE = { width: 360, height: 260 } as const
+export const UPDATE_SPLASH_SIZE = { width: 320, height: 200 } as const
 // One screen for light and dark: the app icon's Mist Green ground and Blackthorn Ink line art. Flat, so the window's
 // own backgroundColor matches it exactly and nothing flashes.
 export const UPDATE_SPLASH_BACKGROUND = '#D5E6DC'
 
 const CSS = `html,body{margin:0;height:100%;overflow:hidden;background:#D5E6DC}
-body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;font:15px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#151313;text-align:center}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font:14px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#151313;text-align:center}
 .t{font-weight:600}.s{margin-top:6px;color:#44524A}
 svg{display:block;overflow:visible}
 .o{transform-box:view-box}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
-svg{width:136px;height:150px}
+svg{width:54px;height:60px}
 .sweep{animation:sweepB 3600ms infinite}
 .eye{animation:blinkB 3600ms infinite}
 .eL{transform-origin:501px 620px}.eR{transform-origin:731px 658px}

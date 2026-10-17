@@ -89,14 +89,14 @@ describe('splash window helpers', () => {
     expect(win.close).toHaveBeenCalledTimes(1)
   })
 
-  it('opens a frameless 360x260 window on the matching Mist Green background', () => {
+  it('opens a frameless 320x200 window on the matching Mist Green background', () => {
     const win = fake()
     const make = vi.fn(() => win)
 
     showUpdateSplash(make)
 
     expect(make).toHaveBeenCalledWith(
-      expect.objectContaining({ backgroundColor: '#D5E6DC', frame: false, height: 260, width: 360, resizable: false })
+      expect.objectContaining({ backgroundColor: '#D5E6DC', frame: false, height: 200, width: 320, resizable: false })
     )
   })
 })
