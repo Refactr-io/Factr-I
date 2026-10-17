@@ -13,6 +13,8 @@ docker build -f computer/Dockerfile -t bots-factr-bot-computer:dev .
 # optional: --build-arg FACTR_BUILD_GIT_HASH=$(git rev-parse --short HEAD)
 ```
 
+The app looks for bots-factr-bot-computer:dev.
+
 The first build compiles the Rust engine (minutes). Cargo registry and `target/` live in BuildKit cache mounts, so they never land in an image layer and later builds only recompile what changed. Stages: `engine` (cargo release build of the `factr` bin), `backend` (Python 3.12 via uv, `pyproject.toml` `--extra bundled`, laid out like the packaged app's `backend-python/`), `runtime` (Bot Desktop packages from `backend/tools/bot_desktop/runtime.py`, Chromium, fonts, tini, socat, git, curl; no compilers).
 
 ## Run contract (what the app relies on)
