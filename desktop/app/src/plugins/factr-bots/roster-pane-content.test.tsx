@@ -55,6 +55,19 @@ describe('Bots list load states', () => {
     expect(refetch).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps showing the failure with Retry while a retry is in flight, never the bare loader', () => {
+    render(<>{content({ error: new Error('Factr-I gateway is not connected'), isLoading: true })}</>)
+
+    expect(screen.getByRole('button', { name: roster.retryNow })).toBeTruthy()
+  })
+
+  it('shows the loader only while nothing has failed yet', () => {
+    const { container } = render(<>{content({ isLoading: true })}</>)
+
+    expect(screen.queryByRole('button', { name: roster.retryNow })).toBeNull()
+    expect(container.querySelector('.flex-1')).toBeTruthy()
+  })
+
   it('says the gateway is not up, with Retry, when it is down', () => {
     render(<>{content({ error: new Error('x'), gatewayUp: false })}</>)
 
