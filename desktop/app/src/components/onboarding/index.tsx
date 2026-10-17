@@ -41,6 +41,7 @@ import { DocsLink, FlowPanel, Status } from './flow'
 import {
   FeaturedProviderRow,
   FireworksProviderRow,
+  KeyProviderRow,
   LocalModelsProviderRow,
   OpenRouterProviderRow,
   ProviderRow,
@@ -689,6 +690,11 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
             behind the --local launch flag. (Fireworks moved into the
             expanded list on main.) */}
         {$localModelsEnabled.get() ? <LocalModelsProviderRow onClick={openLocalModels} /> : null}
+        <KeyProviderRow
+          onClick={() => openKeyForm()}
+          pitch={t.onboarding.apiKeyPitch}
+          title={t.onboarding.haveApiKey}
+        />
         {showRest ? (
           <>
             {/* Fireworks leads the expanded list, matching CANONICAL_PROVIDERS,
@@ -703,7 +709,7 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
       </div>
       {collapsible ? (
         <Button
-          className="mt-1 self-center font-medium"
+          className="mt-1 -ml-2 justify-self-start font-medium"
           onClick={() => setShowAll(persistShowAll(!showAll))}
           size="xs"
           type="button"
@@ -713,15 +719,14 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
           <ChevronDown className={cn('size-3.5 transition', showAll && 'rotate-180')} />
         </Button>
       ) : null}
-      <div className="flex items-center justify-between gap-3 pt-1">
-        {/* First run only: let the user defer the choice and land in the app.
-            In manual mode the overlay already has a close affordance, so the
-            "choose later" escape would be redundant — hide it. */}
-        {manual ? <span /> : <ChooseLaterLink />}
-        <Button className="-mr-2 font-medium" onClick={() => openKeyForm()} size="xs" type="button" variant="text">
-          {t.onboarding.haveApiKey}
-        </Button>
-      </div>
+      {/* First run only: let the user defer the choice and land in the app.
+          In manual mode the overlay already has a close affordance, so the
+          "choose later" escape would be redundant — hide it. */}
+      {manual ? null : (
+        <div className="flex pt-1">
+          <ChooseLaterLink />
+        </div>
+      )}
     </div>
   )
 }

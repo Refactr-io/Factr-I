@@ -3663,6 +3663,7 @@ export const en: Translations = {
     collapse: 'Collapse',
     otherProviders: 'Other providers',
     haveApiKey: 'Use an API key',
+    apiKeyPitch: 'Paste a key from OpenAI, Anthropic, OpenRouter or another provider',
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',
