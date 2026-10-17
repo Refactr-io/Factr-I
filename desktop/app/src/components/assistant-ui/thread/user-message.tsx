@@ -407,7 +407,9 @@ export const UserMessage: FC<{
   const bubbleClassName = cn(
     USER_BUBBLE_BASE_CLASS,
     'cursor-pointer text-[length:var(--conversation-text-font-size)] leading-(--dt-line-height) text-foreground/95 transition-colors',
-    'border-transparent'
+    'border-transparent',
+    // An image-only message has no text to hold: the thumbnails above stand alone, not an empty pill under them.
+    !hasBody && attachmentRefs.length > 0 && 'hidden'
   )
 
   const bubbleContent = hasBody && (
