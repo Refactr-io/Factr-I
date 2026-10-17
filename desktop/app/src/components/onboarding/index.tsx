@@ -155,7 +155,7 @@ function useApiKeyCatalog(): { detectedOpenCode: ModelOptionProvider | null; opt
   }, [])
 
   return useMemo(() => {
-    const detectedOpenCode = rows.find(r => r.detected && r.slug === 'opencode-zen') ?? null
+    const detectedOpenCode = rows.find(r => r.detected && r.slug === 'opencode') ?? null
     const curatedByEnv = new Map(API_KEY_OPTIONS.map(o => [o.envKey, o]))
     const derived: ApiKeyOption[] = []
     const seenEnv = new Set<string>(API_KEY_OPTIONS.map(o => o.envKey))

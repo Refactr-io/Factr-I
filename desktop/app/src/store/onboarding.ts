@@ -1091,13 +1091,13 @@ export async function connectOpenCode(ctx: OnboardingContext) {
   flowProfile = ctx.profile
 
   try {
-    await ctx.requestGateway('model.save_key', { slug: 'opencode-zen', source: 'opencode', profile: ctx.profile })
+    await ctx.requestGateway('model.save_key', { slug: 'opencode', source: 'opencode', profile: ctx.profile })
 
     let failure: null | string = null
     await completeWithModelConfirm(
       ctx,
       'OpenCode Zen',
-      ['opencode-zen'],
+      ['opencode'],
       reason => {
         failure = reason?.trim() || 'Factr-I could not finish setting up OpenCode Zen.'
       },

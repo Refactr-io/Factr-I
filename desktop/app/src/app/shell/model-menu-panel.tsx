@@ -28,13 +28,13 @@ export function ModelMenuPanel(props: ModelMenuHostProps) {
   const [connecting, setConnecting] = useState(false)
 
   // Passive read of the catalog the menu itself loads: an installed-but-unconnected OpenCode shows up as a
-  // model-less `opencode-zen` row, which becomes a one-click connect at the foot of the menu.
+  // model-less `opencode` row, which becomes a one-click connect at the foot of the menu.
   const catalog = useQuery<ModelOptionsResult>({
     enabled: false,
     queryKey: modelOptionsQueryKey(profile, activeSessionId, ownerConnectionId)
   })
 
-  const detectedOpenCode = catalog.data?.providers.find(p => p.detected && p.slug === 'opencode-zen')
+  const detectedOpenCode = catalog.data?.providers.find(p => p.detected && p.slug === 'opencode')
 
   const connectOpenCode = async () => {
     if (connecting || !detectedOpenCode) {
@@ -50,7 +50,7 @@ export function ModelMenuPanel(props: ModelMenuHostProps) {
     setConnecting(true)
 
     try {
-      await requestGateway('model.save_key', { slug: 'opencode-zen', source: 'opencode', profile })
+      await requestGateway('model.save_key', { slug: 'opencode', source: 'opencode', profile })
       await refreshModels()
     } catch {
       window.location.hash = '#/settings?tab=providers'

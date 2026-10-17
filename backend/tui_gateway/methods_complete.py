@@ -351,17 +351,10 @@ def _(rid, params: dict) -> dict:
     from factr_backend.auth import PROVIDER_REGISTRY
     from factr_backend.config import is_managed
     slug, api_key = (params.get("slug") or "").strip(), (params.get("api_key") or "").strip()
-    adopt = params.get("source") == "opencode"
-    if not slug or not (api_key or adopt):
+    if not slug or not api_key:
         return _err(rid, 4001, "slug and api_key are required")
     if is_managed():
         return _err(rid, 4006, "managed install — credentials are read-only")
-    if adopt:
-        # One-click "use my OpenCode sign-in": the key goes from OpenCode's own store to ours, never through the wire.
-        from factr_backend.opencode_detect import adopt as adopt_opencode
-        if slug not in (res := adopt_opencode())["adopted"]:
-            return _err(rid, 4007, f"No {slug} key found in OpenCode ({res['reason']}). Paste a key instead.")
-        api_key = "adopted"
     if not (pconfig := PROVIDER_REGISTRY.get(slug)):
         return _err(rid, 4002, f"unknown provider: {slug}")
     if pconfig.auth_type != "api_key":
@@ -371,10 +364,9 @@ def _(rid, params: dict) -> dict:
     # Save the key to ~/.factr/.env via the unified credential lifecycle so any stale config.yaml mirror of
     # the previous key (model.api_key, custom_providers[*].api_key) is rotated in the same action (#62269).
     env_var = pconfig.api_key_env_vars[0]
-    if not adopt:  # adopt() already saved the key and exported the env var
-        from factr_backend.credential_lifecycle import save_provider_env_credential  # also rotates stale config.yaml mirrors
-        save_provider_env_credential(env_var, api_key)
-        os.environ[env_var] = api_key  # so the refreshed inventory sees it
+    from factr_backend.credential_lifecycle import save_provider_env_credential  # also rotates stale config.yaml mirrors
+    save_provider_env_credential(env_var, api_key)
+    os.environ[env_var] = api_key  # so the refreshed inventory sees it
     # The launch profile's boot record may still say "nothing configured"; the gated picker's
     # own chat waits on setup.status, so the fresh key must move the record (+ setup.ready).
     if not params.get("profile"):

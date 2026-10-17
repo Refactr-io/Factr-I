@@ -327,7 +327,10 @@ pub(super) fn model_options(provider: &str, model: &str, current_models: Vec<Str
                 if is_current && !current_models.is_empty() {
                     only_own_family(*d, current_models.clone(), model)
                 } else {
-                    let mut listed = catalog_models(*d);
+                    let mut listed = if d.id == "opencode" && auth { super::opencode::public_models() } else { Vec::new() };
+                    if listed.is_empty() {
+                        listed = catalog_models(*d);
+                    }
                     if is_current && !listed.iter().any(|m| m == model) {
                         listed.insert(0, model.to_string());
                     }
@@ -343,6 +346,15 @@ pub(super) fn model_options(provider: &str, model: &str, current_models: Vec<Str
             Some(row)
         })
         .collect();
+    // An installed OpenCode with no approved sign-in: a model-less row the desktop turns into a one-click connect.
+    if !rows.iter().any(|r| r["slug"] == "opencode" && r["authenticated"] == true)
+        && let Some(detected) = super::opencode::detected_row()
+    {
+        rows.retain(|r| r["slug"] != "opencode" || r["is_current"] == true);
+        if !rows.iter().any(|r| r["slug"] == "opencode") {
+            rows.push(detected);
+        }
+    }
     if current_id.is_none() {
         // Named profile or runtime the catalog has no row for: it is what the engine serves.
         let models = dedupe_models(if current_models.is_empty() { vec![model.to_string()] } else { current_models }, model);

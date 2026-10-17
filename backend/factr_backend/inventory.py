@@ -134,7 +134,6 @@ def build_models_payload(
     # the aggregator row silently breaks the call — aggregators only list models no specific provider has.
     _strip_aggregator_overlaps(rows)
 
-    rows = _with_opencode_detected_row(rows)
     if include_unconfigured:
         rows = list(rows) + _without_slug(_append_unconfigured_rows(rows, ctx), "moa")
     if picker_hints:
@@ -440,25 +439,6 @@ def _canonical_row(entry, cur: str, **extra: Any) -> dict:
     from factr_backend.models import _PROVIDER_LABELS
 
     return _row(entry.slug, _PROVIDER_LABELS.get(entry.slug, entry.label), entry.slug.lower() == cur, **extra)
-
-
-def _with_opencode_detected_row(rows: list[dict]) -> list[dict]:
-    """An installed OpenCode with no Zen key yet: a model-less ``opencode-zen`` row the UI turns into a
-    one-click connect. Empty ``models`` keeps it out of the model menu until a key makes it real."""
-    if any(_slug(r).lower() == "opencode-zen" for r in rows):
-        return rows
-    try:
-        from factr_backend.opencode_detect import status
-        st = status()
-    except Exception:
-        return rows
-    if not st["installed"] or st["zen_connected"]:
-        return rows
-    return list(rows) + [_row(
-        "opencode-zen", "OpenCode Zen", False, models=[], total_models=len(st["models"]), source="opencode-detected",
-        detected=True, adoptable=st["auth_present"], authenticated=False, auth_type="api_key",
-        key_env="OPENCODE_ZEN_API_KEY", free_models=st["free_models"],
-        warning="OpenCode is installed here. Connect it to use Zen models.")]
 
 
 def _append_unconfigured_rows(
