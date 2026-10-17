@@ -4395,6 +4395,7 @@ export const en: Translations = {
       attachingFile: 'Attaching…'
     },
     approval: {
+      workingIn: dir => `Runs in ${dir}`,
       gatewayDisconnected:
         'Factr-I is offline right now. The command is still waiting for your answer (until the approval timeout). Reconnect, then send it again.',
       sendFailed: 'Could not send your answer',

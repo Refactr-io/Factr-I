@@ -3642,6 +3642,7 @@ export interface Translations {
       attachingFile: string
     }
     approval: {
+      workingIn: (dir: string) => string
       gatewayDisconnected: string
       sendFailed: string
       reconnect: string

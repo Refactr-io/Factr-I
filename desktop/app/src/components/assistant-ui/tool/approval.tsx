@@ -231,6 +231,7 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
   const { t } = useI18n()
   const copy = t.assistant.approval
   const gateway = useStore($gateway)
+  const cwd = useStore(useSessionView().$cwd)
   const [submitting, setSubmitting] = useState<ApprovalChoice | null>(null)
   const submittingRef = useRef(false)
   // "Always allow" persists the pattern to ~/.factr/config.yaml permanently, so
@@ -329,6 +330,11 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
         <pre className="m-0 max-h-40 overflow-auto whitespace-pre-wrap break-words px-2.5 py-2 font-mono text-xs leading-relaxed text-(--ui-text-primary)">
           {request.command}
         </pre>
+      )}
+      {cwd.trim() && (
+        <p className="m-0 truncate px-2.5 pb-1 text-[0.6875rem] text-(--ui-text-tertiary)" dir="ltr" title={cwd}>
+          {copy.workingIn(cwd)}
+        </p>
       )}
       <div className="flex items-center justify-end gap-1.5 px-2 pb-2 pt-1" data-slot="tool-approval-actions">
         <Button data-approval-deny="" disabled={busy} onClick={() => void respond('deny')} size="sm" variant="text">
