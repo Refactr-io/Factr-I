@@ -23,15 +23,14 @@ describe('updateSplashHtml', () => {
     expect(html).not.toMatch(/updating|version|one moment|v?\d+\.\d+\.\d+/i)
   })
 
-  it('has the reduced-motion rule that stops every animation and shows a still helmet', () => {
-    const rule = /@media \(prefers-reduced-motion:reduce\)\{([\s\S]*)\}$/.exec(style)?.[1] ?? ''
+  it('has the reduced-motion rule that stops every animation, leaving the still full mascot', () => {
+    const rule = /@media \(prefers-reduced-motion:reduce\)\{([\s\S]*?)\}(?=\s*(?:svg|\.|@|$))/.exec(style)?.[1] ?? ''
 
     expect(rule).toContain('animation:none!important')
-    expect(rule).toContain('stroke-dashoffset:0')
   })
 
-  it('animates only transform, opacity and stroke-dashoffset', () => {
-    const frames = [...style.matchAll(/@keyframes [\w-]+\{([\s\S]*?)\}(?=\s*@keyframes|\s*@media)/g)].map(m => m[1] ?? '')
+  it('animates only transform', () => {
+    const frames = [...style.matchAll(/@keyframes [\w-]+\{([\s\S]*?)\}(?=\s*@keyframes|\s*@media|$)/g)].map(m => m[1] ?? '')
     const props = new Set<string>()
 
     for (const body of frames) {
@@ -40,38 +39,27 @@ describe('updateSplashHtml', () => {
       }
     }
 
-    expect(frames.length).toBeGreaterThan(5)
+    expect(frames.length).toBe(2)
 
     for (const prop of props) {
-      expect(['animation-timing-function', 'opacity', 'stroke-dashoffset', 'transform']).toContain(prop)
-    }
-  })
-
-  it('gives every path pathLength 1000 so one dash scale draws them all', () => {
-    const paths = html.match(/<path\b[^>]*>/g) ?? []
-
-    expect(paths.length).toBeGreaterThan(10)
-
-    for (const tag of paths) {
-      expect(tag).toContain('pathLength="1000"')
+      expect(['animation-timing-function', 'transform']).toContain(prop)
     }
   })
 
   it('is self-contained: no script, no external request, no filters or gradients', () => {
-    expect(html).not.toMatch(/<script|https?:|url\(|@import|<image|<img|filter|gradient|box-shadow|drop-shadow/i)
+    expect(html).not.toMatch(/<script|https?:|@import|<image|<img|filter|gradient|box-shadow|drop-shadow/i)
+    expect([...html.matchAll(/url\(([^)]*)\)/g)].every(m => m[1]?.startsWith('#'))).toBe(true)
   })
 
-  it('is Blackthorn Ink line art on Mist Green, with a Forest Black pen tip and no other hue', () => {
+  it('is Blackthorn Ink on Mist Green and no other hue', () => {
     expect(style).toContain(UPDATE_SPLASH_BACKGROUND)
     expect(UPDATE_SPLASH_BACKGROUND).toBe('#D5E6DC')
-    expect(style).toMatch(/\.a\{stroke:#151313;opacity:\.28\}/)
-    expect(style).toMatch(/\.b\{stroke:#151313\}/)
-    expect(style).toMatch(/\.tip\{stroke:#1D3023;stroke-width:12;/)
-    expect(html).not.toMatch(/#67EAA2|#FFFDFC|#1E1E1D|#000000|#ffffff|#fff\b|#000\b/i)
+    expect(html).toContain('fill="#151313"')
+    expect(html).not.toMatch(/#67EAA2|#FFFDFC|#1E1E1D|#1D3023|#000000|#ffffff|#fff\b|#000\b/i)
   })
 
-  it('loops in 2400ms', () => {
-    expect(style).toContain('2400ms infinite')
+  it('loops in 3600ms', () => {
+    expect(style).toContain('3600ms infinite')
   })
 })
 
