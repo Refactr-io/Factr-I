@@ -176,7 +176,7 @@ const ERROR_SUMMARIES: ErrorSummaryRule[] = [
     action: () => RECOVERY_ACTIONS.openMaintenance()
   },
   {
-    test: msg => /['"]code['"]\s*:\s*['"]gateway_auth_failed['"]/i.test(msg),
+    test: msg => /['"]code['"]\s*:\s*['"]gateway_auth_failed['"]|^unauthorized$|\b4401\b/i.test(msg),
     summarize: () => translateNow('notifications.errors.gatewayAuthFailed'),
     action: () => RECOVERY_ACTIONS.openGateways()
   },

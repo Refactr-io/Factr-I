@@ -20,7 +20,7 @@ import {
   type RuntimeReadinessResult
 } from '@/lib/runtime-readiness'
 import { setMainModelAssignment } from '@/store/model-assignment'
-import { notify, notifyError, readableError } from '@/store/notifications'
+import { notify, notifyError, readableError, RECOVERY_ACTIONS } from '@/store/notifications'
 import { guidedOnboardingActive } from '@/store/onboarding-gate'
 import type { OAuthProvider, OAuthStartResponse } from '@/types/factr'
 
@@ -728,9 +728,24 @@ export async function refreshOnboarding(ctx: OnboardingContext, stillWanted?: ()
     // downgrade to the blocking onboarding overlay. Surface a non-blocking
     // notification with a stable id so repeated calls during an outage dedup
     // instead of stacking toasts.
+    // A rotated or expired gateway token is the one cause the user can fix here.
+    if (/\b4?401\b|unauthori[sz]ed/i.test(runtime.reason ?? '')) {
+      notify({
+        id: 'runtime-not-ready',
+        kind: 'error',
+        title: 'Gateway sign-in',
+        message: translateNow('notifications.errors.gatewayAuthFailed'),
+        action: RECOVERY_ACTIONS.openGateways(),
+        durationMs: 12_000
+      })
+
+      return false
+    }
+
     notify({
       id: 'runtime-not-ready',
       kind: 'error',
+      durationMs: 12_000,
       title: 'Runtime not ready',
       message:
         'Factr-I could not verify the running backend on startup. Some features may be unavailable until the gateway is reachable.'

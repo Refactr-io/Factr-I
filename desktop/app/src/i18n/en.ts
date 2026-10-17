@@ -421,8 +421,7 @@ export const en: Translations = {
       elevenLabsRejectedKey: "ElevenLabs didn't accept your API key. Update it in Settings → Keys, then try again.",
       diskFull: 'Disk full — free some space, then try again.',
       storageFailure: "Factr-I couldn't save to its data folder. Open Maintenance to check and repair it.",
-      gatewayAuthFailed:
-        'This Factr-I no longer accepts your saved sign-in. Open Gateways and sign in again (or paste a new access token), then retry.',
+      gatewayAuthFailed: 'This gateway rejected the saved token. Paste the new one in Settings > Gateways.',
       methodNotAllowed:
         "Factr-I's background service is out of step with the app, probably after an update. Restart it to fix this.",
       microphonePermission: 'Microphone permission was denied.',

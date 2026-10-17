@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n'
 import { readDesktopDir, setDesktopFsRemotePicker } from '@/lib/desktop-fs'
 import { displayPath, pathLeaf } from '@/lib/display-path'
 import { cn } from '@/lib/utils'
+import { readableError } from '@/store/notifications'
 
 function clean(path: string) {
   return path.replace(/\/+$/, '') || '/'
@@ -84,7 +85,7 @@ export function RemoteFolderPicker() {
       })
       .catch(err => {
         if (active) {
-          setError(err instanceof Error ? err.message : String(err))
+          setError(readableError(err, 'read-error').message)
           setEntries([])
         }
       })
