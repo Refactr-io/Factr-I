@@ -228,7 +228,7 @@ export function ProjectDialog() {
           <div className="flex flex-col gap-1.5">
             <span className="text-[0.6875rem] font-medium text-(--ui-text-tertiary)">{p.foldersLabel}</span>
             {folders.length === 0 ? (
-              <span className="text-[0.75rem] text-(--ui-text-quaternary)">{p.noFolders}</span>
+              <span className="text-[0.75rem] text-(--ui-text-secondary)">{p.noFolders}</span>
             ) : (
               <ul className="flex flex-col gap-1">
                 {folders.map((folder, index) => (
