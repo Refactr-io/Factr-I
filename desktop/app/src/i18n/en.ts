@@ -2821,7 +2821,7 @@ export const en: Translations = {
     tabFiles: 'Files',
     tabLinks: 'Links',
     noArtifactsTitle: 'No artifacts yet',
-    noArtifactsDesc: 'Images, files and links Factr-I makes while you chat will show up here.',
+    noArtifactsDesc: 'Images, files and links from your chats will show up here.',
     failedLoad: 'Artifacts failed to load',
     openFailed: 'Open failed',
     itemsImage: 'images',

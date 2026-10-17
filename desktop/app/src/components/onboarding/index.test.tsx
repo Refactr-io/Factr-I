@@ -63,7 +63,7 @@ describe('onboarding Picker', () => {
 
     expect(screen.getByText('Fireworks AI')).toBeTruthy()
     expect(screen.getByText('Anthropic API Key')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Collapse' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Other providers' }).getAttribute('aria-expanded')).toBe('true')
   })
 
   it('puts ChatGPT first with no Fireworks preselected when only the fallback list is known', () => {

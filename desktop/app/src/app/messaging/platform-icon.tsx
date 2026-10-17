@@ -2,7 +2,7 @@ import type { ComponentPropsWithoutRef } from 'react'
 import { forwardRef, memo } from 'react'
 
 import { BrandLogo } from '@/components/ui/brand-logo'
-import { Globe, Link as LinkIcon, MessageSquareText } from '@/lib/icons'
+import { Globe, Link as LinkIcon, Mail, MessageSquareText } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 
 // Bare marks, no tile and no tint (see BrandLogo). Where no real mark exists (Slack, DingTalk, Feishu / Lark,
@@ -11,7 +11,6 @@ import { cn } from '@/lib/utils'
 const PLATFORM_MARKS: Record<string, string> = {
   bluebubbles: 'imessage',
   discord: 'discord',
-  email: 'gmail',
   google_chat: 'googlechat',
   homeassistant: 'homeassistant',
   line: 'line',
@@ -30,6 +29,7 @@ const PLATFORM_MARKS: Record<string, string> = {
 
 const GENERIC_GLYPH: Record<string, typeof Globe> = {
   api_server: Globe,
+  email: Mail,
   webhook: LinkIcon
 }
 
@@ -59,7 +59,11 @@ export const PlatformAvatar = memo(
         ref={ref}
         {...rest}
       >
-        {mark ? <BrandLogo className="size-[68%]" id={mark} /> : <Glyph className="size-[68%]" />}
+        {mark ? (
+          <BrandLogo className="size-[68%]" id={mark} />
+        ) : (
+          <Glyph className="size-[68%] text-(--ui-text-tertiary)" />
+        )}
       </span>
     )
   })

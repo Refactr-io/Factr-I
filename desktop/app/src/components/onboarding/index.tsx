@@ -709,13 +709,14 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
       </div>
       {collapsible ? (
         <Button
+          aria-expanded={showAll}
           className="mt-1 -ml-2 justify-self-start font-medium"
           onClick={() => setShowAll(persistShowAll(!showAll))}
           size="xs"
           type="button"
           variant="text"
         >
-          {showAll ? t.onboarding.collapse : t.onboarding.otherProviders}
+          {t.onboarding.otherProviders}
           <ChevronDown className={cn('size-3.5 transition', showAll && 'rotate-180')} />
         </Button>
       ) : null}

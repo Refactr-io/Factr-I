@@ -61,7 +61,7 @@ export function FeaturedProviderRow({
               {t.onboarding.connected}
             </span>
           ) : (
-            <span className="text-xs text-[#151313]/70">{t.onboarding.recommended}</span>
+            <span className="text-xs text-[#151313]/80">{t.onboarding.recommended}</span>
           )}
         </div>
         <p className="mt-0.5 text-xs leading-5 text-[#151313]/72">{t.onboarding.featuredPitch}</p>
