@@ -274,6 +274,9 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
           <div className="flex min-w-0 items-center gap-1.5">
             {/* The session row's own lead cell, so a bot's name sits on the
                 same left edge as every session name above it in the rail. */}
+            {/* The dot is core's SESSION dot (the bot's canonical chat), not the computer's: it never means
+                "computer on". The computer shows only as the status word below, which is read from
+                the same `computer.status` as the Screen pane, so the roster and the pane cannot disagree. */}
             <SidebarRowLead>
               <SessionStatusDot storedSessionId={canonicalSessionId} />
             </SidebarRowLead>

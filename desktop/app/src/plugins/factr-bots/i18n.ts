@@ -324,6 +324,7 @@ type BotsMessages = {
     start: string
     stop: string
     starting: string
+    startingBody: string
     offTitle: string
     offBody: string
     onLine: (uptime: string, used: null | string, limit: null | string) => string
@@ -650,6 +651,7 @@ const en: BotsMessages = {
     start: 'Start computer',
     stop: 'Stop computer',
     starting: 'Starting your bot\u2019s computer',
+    startingBody: 'Ready in a moment.',
     offTitle: 'Computer is off',
     offBody: 'Start it to give this bot its own desktop.',
     onLine: (uptime, used, limit) => `On for ${uptime}${used && limit ? `, using ${used} of ${limit}` : ''}`,

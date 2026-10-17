@@ -14,7 +14,7 @@
 
 import { Button, Codicon, EmptyState, GlyphSpinner, host, Tip, useValue } from '@factr/plugin-sdk'
 import type { RpcEvent } from '@factr/plugin-sdk'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 import { type BotComputer, formatMemory, formatUptime, useBotComputer, useComputerViewHold } from './computer'
 import { useBots } from './i18n'
@@ -406,19 +406,26 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
   }
 
   if (status && !status.running) {
+    const on = computer?.state === 'on'
+
+    // With the computer on, the line under the title is its uptime and memory, and Stop sits left of Start screen.
     return (
-      <div className="grid min-h-48 place-items-center p-6 text-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-sm font-medium">{t.screen.stoppedTitle}</div>
-          <div className="text-xs text-muted-foreground">{status.blocker ?? t.screen.stoppedBody}</div>
-          {computer ? <ComputerLine computer={computer} onStart={() => void startComputer()} /> : null}
-          <Button disabled={busy || Boolean(status.blocker)} onClick={() => void start()} size="sm">
-            {busy ? <GlyphSpinner /> : <Codicon name="play" />}
-            {t.screen.start}
-          </Button>
-          {error ? <div className="text-xs text-red-500">{error}</div> : null}
-        </div>
-      </div>
+      <PaneGate
+        actions={
+          <>
+            {on && computer ? <StopButton computer={computer} /> : null}
+            <Button disabled={busy || Boolean(status.blocker)} onClick={() => void start()} size="sm">
+              {busy ? <GlyphSpinner /> : <Codicon name="player-play-filled" size="0.875rem" />}
+              {t.screen.start}
+            </Button>
+          </>
+        }
+        line={on && computer ? <OnText computer={computer} /> : (status.blocker ?? t.screen.stoppedBody)}
+        title={t.screen.stoppedTitle}
+      >
+        {computer && !on ? <ComputerLine computer={computer} onStart={() => void startComputer()} /> : null}
+        {error ? <div className="text-xs text-red-500">{error}</div> : null}
+      </PaneGate>
     )
   }
 
@@ -515,10 +522,23 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
   )
 }
 
-/** One quiet line about the computer with its Start or Stop action. */
-function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
-  const t = useBots().computer
+/** "On for 12 min, 640 MB of 2 GB". */
+function OnText({ computer }: { computer: BotComputer }) {
   const { memLimitBytes, memUsedBytes, startedAt } = computer.status
+
+  return (
+    <>
+      {useBots().computer.onLine(
+        formatUptime(startedAt),
+        memUsedBytes ? formatMemory(memUsedBytes) : null,
+        memLimitBytes ? formatMemory(memLimitBytes) : null
+      )}
+    </>
+  )
+}
+
+function StopButton({ computer }: { computer: BotComputer }) {
+  const t = useBots().computer
   const [busy, setBusy] = useState(false)
 
   const stop = async () => {
@@ -531,20 +551,25 @@ function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: (
     }
   }
 
+  return (
+    <Button disabled={busy} onClick={() => void stop()} size="sm" variant="ghost">
+      {busy ? <GlyphSpinner /> : <Codicon name="player-stop-filled" size="0.875rem" />}
+      {t.stop}
+    </Button>
+  )
+}
+
+/** One quiet line about the computer with its Start or Stop action (the live header). */
+function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
+  const t = useBots().computer
+
   if (computer.state === 'on') {
     return (
       <>
         <span className="whitespace-nowrap text-(--ui-text-secondary)">
-          {t.onLine(
-            formatUptime(startedAt),
-            memUsedBytes ? formatMemory(memUsedBytes) : null,
-            memLimitBytes ? formatMemory(memLimitBytes) : null
-          )}
+          <OnText computer={computer} />
         </span>
-        <Button disabled={busy} onClick={() => void stop()} size="sm" variant="ghost">
-          {busy ? <GlyphSpinner /> : <Codicon name="debug-stop" />}
-          {t.stop}
-        </Button>
+        <StopButton computer={computer} />
       </>
     )
   }
@@ -565,7 +590,7 @@ function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: (
     <>
       <span className="text-(--ui-text-secondary)">{computer.state === 'error' ? t.failedTitle : t.offTitle}</span>
       <Button onClick={onStart} size="sm" variant="ghost">
-        <Codicon name="play" />
+        <Codicon name="player-play-filled" size="0.875rem" />
         {t.start}
       </Button>
     </>
@@ -584,7 +609,7 @@ function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: (
 
   const view = (() => {
     if (computer.state === 'starting') {
-      return { body: null, title: t.starting }
+      return { body: t.startingBody, title: t.starting }
     }
 
     if (computer.state === 'no-docker') {
@@ -607,20 +632,47 @@ function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: (
   })()
 
   return (
-    <div className="grid min-h-48 place-items-center p-6 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <div className="inline-flex items-center gap-2 text-[length:var(--conversation-text-font-size)] leading-5 font-medium">
-          {computer.state === 'starting' ? <GlyphSpinner /> : null}
-          {view.title}
-        </div>
-        {view.body ? (
-          <div className="max-w-72 text-[0.8125rem] leading-[1.125rem] text-(--ui-text-secondary)">{view.body}</div>
-        ) : null}
-        {'action' in view && view.action ? (
+    <PaneGate
+      actions={
+        'action' in view && view.action ? (
           <Button onClick={view.action.run} size="sm">
             {view.action.label}
           </Button>
+        ) : null
+      }
+      line={view.body}
+      spinner={computer.state === 'starting'}
+      title={view.title}
+    />
+  )
+}
+
+/** The one centred block every "nothing to show yet" state uses: title, a quiet line, then the actions in one row. */
+function PaneGate({
+  actions,
+  children,
+  line,
+  spinner,
+  title
+}: {
+  actions?: ReactNode
+  children?: ReactNode
+  line?: ReactNode
+  spinner?: boolean
+  title: ReactNode
+}) {
+  return (
+    <div className="grid min-h-48 place-items-center p-6 text-center">
+      <div className="flex flex-col items-center gap-2">
+        <div className="inline-flex items-center gap-2 text-[length:var(--conversation-text-font-size)] leading-5 font-medium">
+          {spinner ? <GlyphSpinner className="text-[0.875rem]" /> : null}
+          {title}
+        </div>
+        {line ? (
+          <div className="max-w-80 text-[0.8125rem] leading-[1.125rem] text-(--ui-text-secondary)">{line}</div>
         ) : null}
+        {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+        {children}
       </div>
     </div>
   )

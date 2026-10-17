@@ -140,6 +140,30 @@ describe('Screen pane', () => {
     expect(await screen.findByRole('button', { name: t('computer.start') })).toBeTruthy()
   })
 
+  it('stacks title, uptime line, then Stop left of Start screen in one row', async () => {
+    displayRequest.mockResolvedValue(stopped)
+    answer({ memLimitBytes: 2048 * MIB, memUsedBytes: 640 * MIB, startedAt: new Date().toISOString(), state: 'on' })
+    const { container } = render(<BotScreenPane bot={newBot()} />)
+
+    const line = await screen.findByText('On for 0 min, using 640 MB of 2 GB')
+    const stack = line.parentElement as HTMLElement
+    const kids = [...stack.children]
+    const row = screen.getByRole('button', { name: t('computer.stop') }).parentElement as HTMLElement
+
+    expect(kids.map(el => el.textContent)).toEqual([t('screen.stoppedTitle'), line.textContent, row.textContent])
+    expect([...row.children].map(el => el.textContent)).toEqual([t('computer.stop'), t('screen.start')])
+    expect(container.querySelector('.min-h-48.grid')).toBeTruthy()
+  })
+
+  it('uses the same centred gate while starting', async () => {
+    answer({ state: 'starting' })
+    const { container } = render(<BotScreenPane bot={newBot()} />)
+
+    expect(await screen.findByText(t('computer.starting'))).toBeTruthy()
+    expect(screen.getByText(t('computer.startingBody'))).toBeTruthy()
+    expect(container.querySelector('.min-h-48.grid')).toBeTruthy()
+  })
+
   it('says Docker is not running and opens Docker on a Mac', async () => {
     Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' })
     answer({ reason: 'not-running', state: 'no-docker' })
