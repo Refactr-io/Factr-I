@@ -148,6 +148,9 @@ export const OverlayNavItem = memo(function OverlayNavItem({
 
 /** A sub-section link under the selected group: text only, brighter and weight 500 on the current one. The rail
  *  lives in OverlayNavSubList. */
+/** Vertical padding of a sub-item (py-1.5). The rail and marker span the text row, so they trim it from each end. */
+const SUB_ITEM_PAD_Y = 6
+
 function OverlayNavSubItem({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
@@ -176,7 +179,7 @@ function OverlayNavSubList({ children, className, hidden, id }: { children: Reac
     const list = listRef.current
     const el = list?.querySelector<HTMLElement>('[aria-current="location"]')
 
-    const next = el ? { h: el.offsetHeight - 8, y: el.offsetTop + 4 } : null
+    const next = el ? { h: el.offsetHeight - 2 * SUB_ITEM_PAD_Y, y: el.offsetTop + SUB_ITEM_PAD_Y } : null
 
     setMark(prev => (prev?.h === next?.h && prev?.y === next?.y ? prev : next))
   })
@@ -189,7 +192,7 @@ function OverlayNavSubList({ children, className, hidden, id }: { children: Reac
 
   return (
     <div className={cn('relative', className, hidden && 'hidden')} hidden={hidden} id={id} ref={listRef}>
-      <span aria-hidden className="pointer-events-none absolute top-0 bottom-0 left-0 w-0.5 rounded-full bg-[color-mix(in_srgb,var(--dt-foreground)_16%,transparent)]" />
+      <span aria-hidden className="pointer-events-none absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-full bg-[color-mix(in_srgb,var(--dt-foreground)_16%,transparent)]" />
       {mark && (
         <span
           aria-hidden
