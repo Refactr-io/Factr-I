@@ -1157,11 +1157,11 @@ export {
   resolveProfileBackendRoute,
   resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
-  wsProbeFailureMessage,
   RT_COOKIE_VARIANTS,
   sanitizeRemoteHeaderValue,
   savedProfileSsh,
   tokenPreview,
   translateSelfProfileQuery,
-  withTransientRetries
+  withTransientRetries,
+  wsProbeFailureMessage
 }

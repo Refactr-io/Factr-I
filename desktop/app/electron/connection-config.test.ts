@@ -44,12 +44,12 @@ import {
   resolveProfileBackendRoute,
   resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
-  wsProbeFailureMessage,
   sanitizeRemoteHeaderValue,
   savedProfileSsh,
   tokenPreview,
   translateSelfProfileQuery,
-  withTransientRetries
+  withTransientRetries,
+  wsProbeFailureMessage
 } from './connection-config'
 
 // --- connectionScopeKey / normAuthMode ---
@@ -1486,6 +1486,7 @@ test('wsProbeFailureMessage: a 401 on a protected REST route means the saved tok
   const msg = await wsProbeFailureMessage('token', 'closed', async () => {
     throw new Error('401: {"detail":"unauthorized"}')
   })
+
   assert.equal(msg, 'This gateway rejected the saved token. Paste the new one in Settings > Gateways.')
 })
 
@@ -1493,5 +1494,6 @@ test('wsProbeFailureMessage: keeps the transport explanation when REST works or 
   for (const fetchProtected of [async () => ({}), async () => { throw new Error('ECONNRESET') }]) {
     assert.match(await wsProbeFailureMessage('token', 'blocked', fetchProtected), /live WebSocket \(\/api\/ws\) connection failed: blocked/)
   }
+
   assert.match(await wsProbeFailureMessage('oauth', 'x', async () => { throw new Error('401') }), /live WebSocket/)
 })

@@ -138,12 +138,12 @@ import {
   resolveProfileBackendRoute,
   resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
-  wsProbeFailureMessage,
   sanitizeRemoteHeaderValue,
   savedProfileSsh,
   tokenPreview,
   unscopableMutatingRequest,
-  withTransientRetries
+  withTransientRetries,
+  wsProbeFailureMessage
 } from './connection-config'
 import { applyConnectionConfigAtomically } from './connection-config-apply'
 import {
