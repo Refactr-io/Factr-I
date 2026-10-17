@@ -93,7 +93,7 @@ describe('vision_analyze activity image', () => {
     await waitFor(() => expect(img.getAttribute('src')).toBe(DATA_URL))
     expect(api).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: `/api/fs/read-data-url?path=${encodeURIComponent(IMAGE_PATH)}`,
+        path: `/api/fs/read-data-url?path=${encodeURIComponent(IMAGE_PATH)}&feature=1`,
         profile: 'wsl-work'
       })
     )

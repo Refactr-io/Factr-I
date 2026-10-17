@@ -274,7 +274,7 @@ describe('attachmentPreviewDataUrl', () => {
     await expect(attachmentPreviewDataUrl('/home/gateway/shot.png')).resolves.toBe(REMOTE_PREVIEW)
 
     expect(api).toHaveBeenCalledWith({
-      path: '/api/fs/read-data-url?path=%2Fhome%2Fgateway%2Fshot.png'
+      path: '/api/fs/read-data-url?path=%2Fhome%2Fgateway%2Fshot.png&feature=1'
     })
   })
 

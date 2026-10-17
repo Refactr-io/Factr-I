@@ -230,7 +230,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     render(<DesktopInstallOverlay />)
 
     fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
-    fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
+    fireEvent.change(await screen.findByPlaceholderText('http://127.0.0.1:PORT'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
 
@@ -289,7 +289,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     render(<DesktopInstallOverlay />)
 
     fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
-    const urlInput = await screen.findByPlaceholderText('https://gateway.example.com/factr')
+    const urlInput = await screen.findByPlaceholderText('http://127.0.0.1:PORT')
     fireEvent.change(urlInput, { target: { value: 'https://gateway.example.com/factr' } })
 
     await act(async () => {
@@ -342,7 +342,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     render(<DesktopInstallOverlay />)
 
     fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
-    fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
+    fireEvent.change(await screen.findByPlaceholderText('http://127.0.0.1:PORT'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
 
@@ -393,7 +393,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     render(<DesktopInstallOverlay />)
 
     fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
-    fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
+    fireEvent.change(await screen.findByPlaceholderText('http://127.0.0.1:PORT'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
 
@@ -445,7 +445,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
     render(<DesktopInstallOverlay />)
 
     fireEvent.click(await screen.findByText('Connect to Factr-I on another machine instead'))
-    fireEvent.change(await screen.findByPlaceholderText('https://gateway.example.com/factr'), {
+    fireEvent.change(await screen.findByPlaceholderText('http://127.0.0.1:PORT'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
 
@@ -525,7 +525,7 @@ describe('DesktopInstallOverlay first-run setup', () => {
       return { mode: 'remote' }
     })
 
-    fireEvent.change(screen.getByPlaceholderText('https://gateway.example.com/factr'), {
+    fireEvent.change(screen.getByPlaceholderText('http://127.0.0.1:PORT'), {
       target: { value: 'https://gateway.example.com/factr' }
     })
 

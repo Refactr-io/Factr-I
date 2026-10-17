@@ -391,7 +391,7 @@ ${payload}
     await expect(artifactImageSrc(path)).resolves.toBe('data:image/jpeg;base64,cmVtb3Rl')
 
     expect(api).toHaveBeenCalledWith({
-      path: '/api/fs/read-data-url?path=%2FUsers%2Fme%2F.factr%2Fskills%2Fwork-esab%2Freferences%2Fimages%2Fmanual-step03.jpeg'
+      path: '/api/fs/read-data-url?path=%2FUsers%2Fme%2F.factr%2Fskills%2Fwork-esab%2Freferences%2Fimages%2Fmanual-step03.jpeg&feature=1'
     })
   })
 })

@@ -45,7 +45,7 @@ describe('MarkdownTextContent remote images', () => {
 
     expect(image.getAttribute('src')).toBe(REMOTE_IMAGE_DATA_URL)
     expect(api).toHaveBeenCalledWith({
-      path: '/api/fs/read-data-url?path=%2Fhome%2Fuser%2Fproject%2Fimages%2Fremote-preview.png',
+      path: '/api/fs/read-data-url?path=%2Fhome%2Fuser%2Fproject%2Fimages%2Fremote-preview.png&feature=1',
       profile: 'remote-work'
     })
   })

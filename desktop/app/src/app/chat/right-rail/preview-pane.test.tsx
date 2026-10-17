@@ -694,7 +694,7 @@ describe('PreviewPane console state', () => {
       container: rendered.container
     })
     expect(api).toHaveBeenCalledWith({
-      path: `/api/fs/read-data-url?path=${encodeURIComponent(filePath)}`,
+      path: `/api/fs/read-data-url?path=${encodeURIComponent(filePath)}&feature=1`,
       profile: 'macmini'
     })
   })
