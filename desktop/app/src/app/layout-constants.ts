@@ -18,15 +18,14 @@ export const PAGE_INSET_NEG_X = '-mx-[clamp(1.25rem,4vw,4rem)]'
 // for Tailwind's scanner (see PAGE_INSET_X note).
 export const PAGE_MAX_W = 'max-w-[75rem]'
 
-// Narrowest window that still docks a rail in the grid; under it both rails
+// Narrowest window that still docks the rails in the grid; under it both rails
 // leave the grid and become the hover-reveal overlay. Single source of truth for
 // the responsive collapse point.
 //
-// A rail costs 237px (SIDEBAR_DEFAULT_WIDTH) and the chat beside it wants roughly
-// what a popped-out session window enforces on itself (420px), so docking stops
-// paying for itself around here — while still leaving an overlay band down to the
-// window's own 400px minimum. Expressed as a dock floor rather than a collapse
-// ceiling so half-screen splits stay docked on common laptop widths (1280 → 640).
-export const SIDEBAR_DOCK_MIN_WIDTH_PX = 640
-// `max-width` is inclusive: shave a hair so an exactly-640px window docks.
+// Two docked panes cost 237px each (SIDEBAR_DEFAULT_WIDTH) and the chat beside
+// them wants at least ~420px (what a popped-out session window enforces on
+// itself). At 640px the grid left the chat about 140px wide, one word per line,
+// so the floor sits where the chat still gets a readable column: 900px.
+export const SIDEBAR_DOCK_MIN_WIDTH_PX = 900
+// `max-width` is inclusive: shave a hair so an exactly-900px window docks.
 export const SIDEBAR_COLLAPSE_MEDIA_QUERY = `(max-width: ${SIDEBAR_DOCK_MIN_WIDTH_PX - 0.02}px)`

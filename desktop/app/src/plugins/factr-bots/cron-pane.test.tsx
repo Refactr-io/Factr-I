@@ -111,7 +111,7 @@ describe('the pane follows the roster hydrating after mount', () => {
     expect(await screen.findByText('No scheduled jobs yet')).toBeTruthy()
 
     // Both doors: the header action and the empty state's own call to action.
-    const create = screen.getAllByRole('button', { name: 'New cron' })
+    const create = screen.getAllByRole('button', { name: 'New job' })
 
     expect(create).toHaveLength(2)
 
