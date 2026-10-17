@@ -1,6 +1,6 @@
 /**
  * The screen shown while the app swaps itself for a downloaded update, and again on the first start after one.
- * A mascot animation, no text and no numbers: the helmet starts as a faint gray silhouette, a sweep fills it to
+ * A mascot animation over two short lines (never a version number): the helmet starts as a faint gray silhouette, a sweep fills it to
  * Blackthorn Ink from the bottom up, the eyes blink twice, and it drains back to gray. Blackthorn Ink on Mist Green.
  * Pure inline SVG and CSS: no script, no library, no file or network request, so it paints at once and costs nothing.
  * Only transform animates.
@@ -15,8 +15,9 @@ export const UPDATE_SPLASH_SIZE = { width: 360, height: 260 } as const
 export const UPDATE_SPLASH_BACKGROUND = '#D5E6DC'
 
 const CSS = `html,body{margin:0;height:100%;overflow:hidden;background:#D5E6DC}
-body{display:grid;place-items:center}
-svg{display:block;overflow:visible;transform:translate(1px,-3px)}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;font:15px -apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#151313;text-align:center}
+.t{font-weight:600}.s{margin-top:6px;color:#44524A}
+svg{display:block;overflow:visible}
 .o{transform-box:view-box}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 svg{width:136px;height:150px}
@@ -30,7 +31,7 @@ const SVG = `<svg viewBox="117 81 781 860" aria-hidden="true"><defs><clipPath id
 
 /** The splash document: a string, no parameters (it must never carry a version or any text). */
 export function updateSplashHtml(): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title><style>${CSS}</style></head><body>${SVG}</body></html>`
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title></title><style>${CSS}</style></head><body>${SVG}<div><div class="t">Updating Factr-I</div><div class="s">One moment...</div></div></body></html>`
 }
 
 export interface SplashWindowLike {
