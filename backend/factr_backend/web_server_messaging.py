@@ -23,33 +23,33 @@ _log = logging.getLogger("factr_backend.web_server")
 # and pulls required_env from a plugin's PlatformEntry when available.
 _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     "telegram": {
-        "name": "Telegram", "description": "Run Factr from Telegram DMs, groups, and topics.",
+        "name": "Telegram", "description": "Run Factr-I from Telegram DMs, groups, and topics.",
         "docs_url": "https://core.telegram.org/bots/features#botfather",
         "env_vars": ("TELEGRAM_BOT_TOKEN", "TELEGRAM_ALLOWED_USERS", "TELEGRAM_PROXY"),
         "required_env": ("TELEGRAM_BOT_TOKEN",),
     },
     "discord": {
-        "name": "Discord", "description": "Connect Factr to Discord DMs, channels, and threads.",
+        "name": "Discord", "description": "Connect Factr-I to Discord DMs, channels, and threads.",
         "docs_url": "https://discord.com/developers/applications",
         "env_vars": ("DISCORD_BOT_TOKEN", "DISCORD_ALLOWED_USERS"),
         "required_env": ("DISCORD_BOT_TOKEN",),
     },
     "slack": {
         "name": "Slack",
-        "description": "Use Factr from Slack via Socket Mode. Add allowed Slack member IDs so connected bots can respond.",
+        "description": "Use Factr-I from Slack via Socket Mode. Add allowed Slack member IDs so connected bots can respond.",
         "docs_url": "https://api.slack.com/apps",
         "env_vars": ("SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_ALLOWED_USERS"),
         "required_env": ("SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"),
     },
     "mattermost": {
         "name": "Mattermost",
-        "description": "Connect Factr to Mattermost channels and direct messages.",
+        "description": "Connect Factr-I to Mattermost channels and direct messages.",
         "docs_url": "https://mattermost.com/deploy/",
         "env_vars": ("MATTERMOST_URL", "MATTERMOST_TOKEN", "MATTERMOST_ALLOWED_USERS"),
         "required_env": ("MATTERMOST_URL", "MATTERMOST_TOKEN"),
     },
     "matrix": {
-        "name": "Matrix", "description": "Use Factr in Matrix rooms and direct messages.",
+        "name": "Matrix", "description": "Use Factr-I in Matrix rooms and direct messages.",
         "docs_url": "https://matrix.org/ecosystem/servers/",
         "env_vars": (
             "MATRIX_HOMESERVER", "MATRIX_ACCESS_TOKEN", "MATRIX_USER_ID", "MATRIX_ALLOWED_USERS",
@@ -64,7 +64,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "whatsapp": {
         "name": "WhatsApp",
-        "description": "Use Factr through the bundled WhatsApp bridge with QR-based auth.",
+        "description": "Use Factr-I through the bundled WhatsApp bridge with QR-based auth.",
         "docs_url": "https://github.com/tulir/whatsmeow",
         "env_vars": (
             "WHATSAPP_ENABLED", "WHATSAPP_MODE", "WHATSAPP_DM_POLICY", "WHATSAPP_ALLOWED_USERS",
@@ -73,12 +73,12 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "homeassistant": {
         "name": "Home Assistant",
-        "description": "Control your smart home from Factr via Home Assistant.",
+        "description": "Control your smart home from Factr-I via Home Assistant.",
         "docs_url": "https://www.home-assistant.io/docs/authentication/",
         "env_vars": ("HASS_URL", "HASS_TOKEN"), "required_env": ("HASS_URL", "HASS_TOKEN"),
     },
     "email": {
-        "name": "Email", "description": "Talk to Factr through an IMAP/SMTP mailbox.",
+        "name": "Email", "description": "Talk to Factr-I through an IMAP/SMTP mailbox.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
         "env_vars": ("EMAIL_ADDRESS", "EMAIL_PASSWORD", "EMAIL_IMAP_HOST", "EMAIL_SMTP_HOST"),
         "required_env": ("EMAIL_ADDRESS", "EMAIL_PASSWORD", "EMAIL_IMAP_HOST", "EMAIL_SMTP_HOST"),
@@ -90,13 +90,13 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
         "required_env": ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"),
     },
     "dingtalk": {
-        "name": "DingTalk", "description": "Connect Factr to DingTalk groups (钉钉).",
+        "name": "DingTalk", "description": "Connect Factr-I to DingTalk groups (钉钉).",
         "docs_url": "https://open.dingtalk.com/document/orgapp/the-robot-development-process",
         "env_vars": ("DINGTALK_CLIENT_ID", "DINGTALK_CLIENT_SECRET"),
         "required_env": ("DINGTALK_CLIENT_ID", "DINGTALK_CLIENT_SECRET"),
     },
     "feishu": {
-        "name": "Feishu / Lark", "description": "Use Factr inside Feishu / Lark.",
+        "name": "Feishu / Lark", "description": "Use Factr-I inside Feishu / Lark.",
         "docs_url": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/intro",
         "env_vars": (
             "FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_ENCRYPT_KEY", "FEISHU_VERIFICATION_TOKEN",
@@ -104,7 +104,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
         "required_env": ("FEISHU_APP_ID", "FEISHU_APP_SECRET"),
     },
     "google_chat": {
-        "name": "Google Chat", "description": "Connect Factr to Google Chat via Cloud Pub/Sub.",
+        "name": "Google Chat", "description": "Connect Factr-I to Google Chat via Cloud Pub/Sub.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "wecom": {
@@ -132,7 +132,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "bluebubbles": {
         "name": "BlueBubbles (iMessage)",
-        "description": "Use Factr through iMessage via a BlueBubbles server.",
+        "description": "Use Factr-I through iMessage via a BlueBubbles server.",
         "docs_url": "https://bluebubbles.app/",
         "env_vars": (
             "BLUEBUBBLES_SERVER_URL", "BLUEBUBBLES_PASSWORD", "BLUEBUBBLES_ALLOWED_USERS",
@@ -140,7 +140,7 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
         "required_env": ("BLUEBUBBLES_SERVER_URL", "BLUEBUBBLES_PASSWORD"),
     },
     "qqbot": {
-        "name": "QQ Bot", "description": "Connect Factr to a QQ Bot from the QQ Open Platform.",
+        "name": "QQ Bot", "description": "Connect Factr-I to a QQ Bot from the QQ Open Platform.",
         "docs_url": "https://q.qq.com",
         "env_vars": ("QQ_APP_ID", "QQ_CLIENT_SECRET", "QQ_ALLOWED_USERS"),
         "required_env": ("QQ_APP_ID", "QQ_CLIENT_SECRET"),
@@ -149,26 +149,26 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     # plugin registry. Only the docs link needs an override here so the
     # Channels page can point at the Microsoft Teams setup guide.
     "teams": {
-        "description": "Connect Factr to Microsoft Teams chats via the Bot Framework.",
+        "description": "Connect Factr-I to Microsoft Teams chats via the Bot Framework.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     # Bundled platform plugins: name comes from the plugin registry label;
     # give each a human description (the registry's install_hint is a
     # dependency note, not a description) and a docs link.
     "irc": {
-        "description": "Relay messages between an IRC channel (or DMs) and Factr.",
+        "description": "Relay messages between an IRC channel (or DMs) and Factr-I.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "line": {
-        "description": "Use Factr from LINE via the LINE Messaging API webhook.",
+        "description": "Use Factr-I from LINE via the LINE Messaging API webhook.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "ntfy": {
-        "description": "Chat with Factr over ntfy push topics (ntfy.sh or self-hosted).",
+        "description": "Chat with Factr-I over ntfy push topics (ntfy.sh or self-hosted).",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "photon": {
-        "description": "Use Factr through iMessage via Photon's managed Spectrum platform.",
+        "description": "Use Factr-I through iMessage via Photon's managed Spectrum platform.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "raft": {
@@ -176,16 +176,16 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "simplex": {
-        "description": "Talk to Factr over SimpleX Chat via a local simplex-chat daemon.",
+        "description": "Talk to Factr-I over SimpleX Chat via a local simplex-chat daemon.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "yuanbao": {
-        "name": "Yuanbao (元宝)", "description": "Connect Factr to Tencent Yuanbao.", "docs_url": "",
+        "name": "Yuanbao (元宝)", "description": "Connect Factr-I to Tencent Yuanbao.", "docs_url": "",
         "required_env": (),
     },
     "api_server": {
         "name": "API server",
-        "description": "Expose Factr as an OpenAI-compatible HTTP API for tools like Open WebUI.",
+        "description": "Expose Factr-I as an OpenAI-compatible HTTP API for tools like Open WebUI.",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
         "env_vars": (
             "API_SERVER_ENABLED", "API_SERVER_KEY", "API_SERVER_PORT", "API_SERVER_HOST",
@@ -207,12 +207,12 @@ _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "whatsapp_cloud": {
         "name": "WhatsApp Cloud API",
-        "description": "Use Factr via Meta's hosted WhatsApp Cloud API (no local bridge).",
+        "description": "Use Factr-I via Meta's hosted WhatsApp Cloud API (no local bridge).",
         "docs_url": "https://github.com/Refactr-io/Factr-I",
     },
     "relay": {
         "name": "Relay (experimental)",
-        "description": "Generic relay adapter fronted by the Factr Relay connector.",
+        "description": "Generic relay adapter fronted by the Factr-I Relay connector.",
         "docs_url": "", "required_env": (),
     },
 }

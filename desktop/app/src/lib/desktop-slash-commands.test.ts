@@ -192,11 +192,11 @@ describe('desktop slash command curation', () => {
     })
 
     expect(filtered.categories).toEqual([
-      { name: 'Session', pairs: [['/new', 'Start a new desktop chat']] },
+      { name: 'Session', pairs: [['/new', 'Start a new chat']] },
       { name: 'User commands', pairs: [['/ship-it', 'Run release checklist']] }
     ])
     expect(filtered.pairs).toEqual([
-      ['/new', 'Start a new desktop chat'],
+      ['/new', 'Start a new chat'],
       ['/ship-it', 'Run release checklist']
     ])
     // skill_count is recomputed from the filtered output (only /ship-it is an

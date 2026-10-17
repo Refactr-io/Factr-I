@@ -389,7 +389,7 @@ describe('scheduled retry at the usage-limit reset (#98852)', () => {
     vi.useFakeTimers()
     fireEvent.click(arm)
 
-    expect(screen.getByTestId('error-retry-scheduled').textContent).toMatch(/Retrying at \d\d:\d\d — in \d+m \d\ds/)
+    expect(screen.getByTestId('error-retry-scheduled').textContent).toMatch(/Retrying at \d\d:\d\d \(in \d+m \d\ds\)/)
     expect(screen.queryByRole('button', { name: /^Retry when the limit resets/ })).toBeNull()
 
     await act(async () => vi.advanceTimersByTime(resetsAt * 1000 - Date.now() - 1_000))

@@ -299,10 +299,10 @@ export const en: Translations = {
     renameTitle: 'Rename',
     renameLabel: 'New name',
     deleteTitle: name => `Delete ${name}?`,
-    deleteBody: 'It will be moved to the Trash — you can restore it from there.',
+    deleteBody: 'It will be moved to the Trash. You can restore it from there.',
     pathCopied: 'Path copied',
     revealMissing: 'That folder is not on this computer',
-    revealUnavailable: 'That path is not on this computer — it lives on the backend machine. Use “Reveal in filetree”.'
+    revealUnavailable: 'That path is not on this computer. It lives on the backend machine. Use “Reveal in filetree”.'
   },
 
   boot: {
@@ -318,7 +318,7 @@ export const en: Translations = {
     },
     errors: {
       backgroundExited:
-        'The service that runs your chats closed unexpectedly. Restart it to keep going — your chats and settings are safe.',
+        'The service that runs your chats closed unexpectedly. Restart it to keep going. Your chats and settings are safe.',
       backgroundExitedDuringStartup: 'Factr-I stopped right after it started.',
       backendStopped: 'Factr-I stopped working in the background',
       restartFactr: 'Restart Factr-I',
@@ -419,7 +419,7 @@ export const en: Translations = {
       elevenLabsNeedsKey: 'Voice input needs an ElevenLabs key. Add one in Settings → Keys.',
       sttNoProvider: 'Voice input needs a speech-to-text key, which a ChatGPT sign-in does not include. Add a free Groq key (or OpenAI, Mistral, ElevenLabs or xAI) in Settings → Keys, then try again.',
       elevenLabsRejectedKey: "ElevenLabs didn't accept your API key. Update it in Settings → Keys, then try again.",
-      diskFull: 'Disk full — free some space, then try again.',
+      diskFull: 'Disk full. Free some space, then try again.',
       storageFailure: "Factr-I couldn't save to its data folder. Open Maintenance to check and repair it.",
       gatewayAuthFailed:
         'This Factr-I no longer accepts your saved sign-in. Open Gateways and sign in again (or paste a new access token), then retry.',
@@ -467,11 +467,11 @@ export const en: Translations = {
     },
     native: {
       approvalTitle: 'Approval needed',
-      approvalTitleNamed: session => `Approval needed — ${session}`,
+      approvalTitleNamed: session => `Approval needed: ${session}`,
       approveAction: 'Approve',
       rejectAction: 'Reject',
       inputTitle: 'Input needed',
-      inputTitleNamed: session => `Input needed — ${session}`,
+      inputTitleNamed: session => `Input needed: ${session}`,
       inputBody: 'Factr-I is waiting for your response.',
       turnDoneTitle: 'Factr-I finished',
       turnDoneBody: '',
@@ -484,11 +484,11 @@ export const en: Translations = {
 
   remoteDisplayBanner: {
     message: reason =>
-      `Software rendering active — remote display detected (${reason}). GPU acceleration is disabled to prevent flickering.`
+      `Software rendering active. Remote display detected (${reason}). GPU acceleration is disabled to prevent flickering.`
   },
 
   billingBlock: {
-    titleProvider: provider => `Out of credits — ${provider}`,
+    titleProvider: provider => `Out of credits: ${provider}`,
     fallbackMessage: 'Your account is out of credits. Add credits to keep going.',
     openProviders: 'Switch provider',
     addCredits: 'Add credits',
@@ -514,7 +514,7 @@ export const en: Translations = {
     exitHud: 'Exit HUD mode',
     resetHudLayout: 'Reset HUD size and position',
     layoutEditor: 'Layout editor',
-    layoutEditorTitle: mod => `Layout editor — ${mod}-click resets the layout`
+    layoutEditorTitle: mod => `Layout editor: ${mod}-click resets the layout`
   },
 
   keybinds: {
@@ -637,7 +637,7 @@ export const en: Translations = {
 
   language: {
     label: 'Language',
-    description: 'Choose the language for the desktop interface.',
+    description: 'Choose the language for the app.',
     saving: 'Saving language…',
     saveError: 'Language update failed',
     switchTo: 'Switch language',
@@ -677,7 +677,7 @@ export const en: Translations = {
       advancedTerminal: 'Terminal backend',
       advancedOutput: 'Output limits',
       advancedDelegation: 'Subagents',
-      advancedDesktop: 'Desktop & startup',
+      advancedDesktop: 'App & startup',
       gatewayConnection: 'This window',
       gatewayDevices: 'Saved connections',
       gatewayManagedUpdates: 'Remote updates',
@@ -686,7 +686,7 @@ export const en: Translations = {
       keyboardShortcuts: 'Key bindings',
       hudGesture: 'HUD gesture',
       screenCapture: 'Screen capture',
-      notificationAlerts: 'Desktop alerts',
+      notificationAlerts: 'Alerts',
       notificationSounds: 'Sounds',
       archivedSessions: 'Archive & retention',
       defaultDirectory: 'Default project folder',
@@ -730,7 +730,7 @@ export const en: Translations = {
     plugins: {
       title: 'Desktop plugins',
       blurb:
-        'Extend this app, not an agent — installed once for the whole app, whichever profile, gateway, or machine you connect to. Bundled or dropped into the desktop-plugins folder; toggles apply live.',
+        'Extend this app, not an agent. Installed once for the whole app, whichever profile, gateway, or machine you connect to. Bundled or dropped into the desktop-plugins folder; toggles apply live.',
       count: n => `${n} installed`,
       openFolder: 'Open Desktop plugins folder',
       rescan: 'Rescan',
@@ -757,7 +757,7 @@ export const en: Translations = {
         agentTargetLocal: (profile, dir) => `Installs into the ${profile} backend (${dir})`,
         agentTargetRemote: profile => `Installs into the connected ${profile} backend`,
         catalogPinned: (name, sha) =>
-          `Factr-I catalog entry "${name}" — the agent component installs at the reviewed pin${sha ? ` ${sha}` : ''}, not the branch tip.`,
+          `Factr-I catalog entry "${name}". The agent component installs at the reviewed pin${sha ? ` ${sha}` : ''}, not the branch tip.`,
         reviewedHeading: 'Reviewed catalog entry',
         reviewedIntro:
           'This entry was human-reviewed at its pinned commit. You can still inspect the exact code below.',
@@ -768,12 +768,12 @@ export const en: Translations = {
         missingEnvAction: 'Set it up',
         alreadyInstalled: (name: string) => `${name} is already installed.`,
         desktopTarget: "Installs into this app's local desktop-plugins folder",
-        desktopTargetFromPackage: 'Loaded into this app from the package above — same for every profile',
+        desktopTargetFromPackage: 'Loaded into this app from the package above. Same for every profile',
         desktopOnlyNote: 'Desktop-only packages do not install a backend agent plugin.',
         insecureWarning: 'This URL uses an insecure or local scheme. Prefer https:// or git@ for production installs.',
         securityHeading: 'Before you install',
         securityIntro:
-          'Install only from sources you trust — review the repository below if you want to see what will be added.',
+          'Install only from sources you trust. Review the repository below if you want to see what will be added.',
         sourceHeading: 'Source code',
         viewRepository: 'View repository',
         viewPluginFiles: 'View plugin files',
@@ -802,7 +802,7 @@ export const en: Translations = {
     vault: {
       title: 'Passwords & Logins',
       blurb:
-        'Say "log into GitHub" and the agent signs in for you. The first time it meets a sign-in page it asks you for the login right there; after that it just works. Passwords are encrypted on this machine and filled straight into the page — the model never sees them.',
+        'Say "log into GitHub" and the agent signs in for you. The first time it meets a sign-in page it asks you for the login right there; after that it just works. Passwords are encrypted on this machine and filled straight into the page. The model never sees them.',
       count: n => `${n} saved`,
       loadFailed: 'Could not load vault items',
       empty: 'Nothing saved yet',
@@ -870,7 +870,7 @@ export const en: Translations = {
         unlocked: name => `${name} unlocked for this session.`,
         unlockTitle: name => `Unlock ${name}`,
         unlockDescription:
-          'Enter your master password. It is handed to the password manager on this machine and discarded — it is never stored, logged, or shown to the agent.',
+          'Enter your master password. It is handed to the password manager on this machine and discarded. It is never stored, logged, or shown to the agent.',
         masterPasswordPlaceholder: 'Master password'
       }
     },
@@ -938,12 +938,12 @@ export const en: Translations = {
       sessions: 'Search archived sessions...'
     },
     modeOptions: {
-      light: { label: 'White', description: 'Bright desktop surfaces' },
+      light: { label: 'White', description: 'Bright surfaces' },
       dark: { label: 'Black', description: 'Low-glare workspace' }
     },
     appearance: {
       title: 'Appearance',
-      intro: 'Desktop appearance uses one palette in white or black.',
+      intro: 'Appearance uses one palette in white or black.',
       colorMode: 'Color Mode',
       colorModeDesc: 'Choose white or black appearance.',
       toolViewTitle: 'Tool Call Display',
@@ -974,7 +974,7 @@ export const en: Translations = {
       appActionsRight: 'Right',
       terminalFontTitle: 'Terminal Font',
       terminalFontDesc:
-        'Choose an installed font for Desktop terminals. Nerd Fonts render Powerlevel10k and shell icons; leave blank to use bundled JetBrains Mono.',
+        'Choose an installed font for terminals. Nerd Fonts render Powerlevel10k and shell icons; leave blank to use bundled JetBrains Mono.',
       terminalFontPlaceholder: 'MesloLGS NF or a CSS font stack',
       terminalFontPreview: 'Glyph preview',
       terminalFontReset: 'Use default',
@@ -1010,7 +1010,7 @@ export const en: Translations = {
       introSplashTitle: 'Intro Splash',
       introSplashDesc: 'The wordmark and prompt shown on an empty chat.',
       reactionsTitle: 'Message Reactions',
-      reactionsDesc: 'iMessage-style emoji tapbacks — react to messages, and Factr-I can react to yours.',
+      reactionsDesc: 'iMessage-style emoji tapbacks. React to messages, and Factr-I can react to yours.',
       tipsTitle: 'In-App Tips',
       tipsDesc:
         'Occasional hints from the app and Factr-I. Each tip appears once. Turns off automatically after your first 30 days; you can turn it back on.',
@@ -1044,9 +1044,9 @@ export const en: Translations = {
       pet: {
         title: 'Pet',
         intro:
-          'Adopt an animated petdex mascot that floats over the app and reacts to what Factr-I is doing — running while tools execute, celebrating on success, sulking on errors.',
+          'Adopt an animated petdex mascot that floats over the app and reacts to what Factr-I is doing. Running while tools execute, celebrating on success, sulking on errors.',
         restartHint:
-          'Pets need a quick restart — the running app started before this feature was added. Quit and reopen Factr-I, then come back here.',
+          'Pets need a quick restart. The running app started before this feature was added. Quit and reopen Factr-I, then come back here.',
         on: 'On',
         off: 'Off',
         scaleTitle: 'Size',
@@ -1060,12 +1060,12 @@ export const en: Translations = {
         noMatch: query => `No pets match "${query}".`,
         installedTag: 'installed',
         generatedTag: 'Generated',
-        countCapped: (cap, total) => `Showing ${cap} of ${total} — type to narrow it down.`,
+        countCapped: (cap, total) => `Showing ${cap} of ${total}. Type to narrow it down.`,
         count: n => `${n} pet${n === 1 ? '' : 's'}.`,
         uninstall: name => `Uninstall ${name}`,
         delete: name => `Delete ${name}`,
         deleteTitle: name => `Delete ${name}?`,
-        deleteBody: "This permanently deletes the pet — it can't be reinstalled.",
+        deleteBody: "This permanently deletes the pet. It can't be reinstalled.",
         deleteConfirm: 'Delete',
         rename: name => `Rename ${name}`,
         renameTitle: 'Rename pet',
@@ -1146,11 +1146,11 @@ export const en: Translations = {
       versionUnavailable: 'Version unavailable',
       bundleOutOfSync: 'App build out of date',
       bundleOutOfSyncDesc:
-        'The Factr-I runtime was updated, but the desktop app itself is still an older build — new interface features (like Bot Mode) will be missing until it updates. Run the update below to rebuild the app. If that doesn\u2019t clear this warning, reinstall from the latest desktop installer.',
+        'The Factr-I runtime was updated, but the desktop app itself is still an older build. New interface features (like Bot Mode) will be missing until it updates. Run the update below to rebuild the app. If that doesn\u2019t clear this warning, reinstall from the latest desktop installer.',
       bundleOutOfSyncAction: 'Get the installer',
       bundleSwapPending: 'Restart to finish the update',
       bundleSwapPendingDesc:
-        'The updated app is already installed — Factr-I only needs to restart to load it. Chats and settings are untouched.',
+        'The updated app is already installed. Factr-I only needs to restart to load it. Chats and settings are untouched.',
       bundleSwapPendingAction: 'Restart Factr-I',
       updates: 'Updates',
       checkNow: 'Check now',
@@ -1243,7 +1243,7 @@ export const en: Translations = {
     screenshot: {
       enabledTitle: 'Screenshot shortcut',
       enabledDesc:
-        'Press both Command keys together from any app to capture its frontmost window and attach it to your current Factr-I draft. Never sends automatically. Off by default; applies only to this Mac. Window contents may be sensitive — review the attachment before sending.',
+        'Press both Command keys together from any app to capture its frontmost window and attach it to your current Factr-I draft. Never sends automatically. Off by default; applies only to this Mac. Window contents may be sensitive. Review the attachment before sending.',
       statusTitle: 'Screenshot shortcut status',
       checking: 'Checking screenshot shortcut…',
       disabled: 'Screenshot shortcut is off.',
@@ -1270,7 +1270,7 @@ export const en: Translations = {
       shortcutTitle: 'Quick Entry shortcut',
       shortcutDesc: 'Needs at least one modifier, e.g. CommandOrControl+Shift+Space.',
       active: 'Shortcut is active.',
-      takenBy: 'Another app already uses this shortcut — pick a different one.',
+      takenBy: 'Another app already uses this shortcut. Pick a different one.',
       invalidShortcut: 'Not a valid shortcut. Include at least one modifier key.'
     },
     credentials: {
@@ -1312,7 +1312,7 @@ export const en: Translations = {
       removeConnection: 'Remove',
       removeConfirmTitle: 'Remove this connection?',
       removeConfirmDesc: (label: string) =>
-        `“${label}” will be removed from this app. The instance itself is not touched — you can add it again any time.`,
+        `“${label}” will be removed from this app. The instance itself is not touched. You can add it again any time.`,
       makePrimary: 'Make primary',
       testConnection: 'Test',
       testOk: 'Reachable',
@@ -1329,7 +1329,7 @@ export const en: Translations = {
       kindCloud: 'Factr-I Cloud',
       kindSsh: 'SSH',
       kindLocalDesc: 'The Factr-I runtime managed by this app.',
-      kindRemoteDesc: 'A Factr-I gateway reachable over HTTP(S) — LAN, Tailscale, or the internet.',
+      kindRemoteDesc: 'A Factr-I gateway reachable over HTTP(S). LAN, Tailscale, or the internet.',
       kindCloudDesc: 'A hosted instance discovered through your Factr-I Cloud account.',
       kindSshDesc: 'A Factr-I install reached over SSH.',
       labelTitle: 'Name',
@@ -1339,18 +1339,18 @@ export const en: Translations = {
       sshHostTitle: 'SSH host',
       headersTitle: 'Extra gateway headers',
       headersDesc:
-        'Sent with every HTTP and WebSocket request to this gateway — for access proxies such as Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret). Values are stored encrypted. Headers Factr-I manages (Authorization, Cookie, Host…) are ignored.',
+        'Sent with every HTTP and WebSocket request to this gateway. For access proxies such as Cloudflare Access (CF-Access-Client-Id / CF-Access-Client-Secret). Values are stored encrypted. Headers Factr-I manages (Authorization, Cookie, Host…) are ignored.',
       headerValuePlaceholder: 'Value',
-      headerValueSaved: 'Saved — leave blank to keep',
+      headerValueSaved: 'Saved. Leave blank to keep',
       headerAdd: 'Add header',
       headerRemove: 'Remove',
-      duplicateLocal: 'This app already manages a local connection — there can only be one.',
+      duplicateLocal: 'This app already manages a local connection. There can only be one.',
       duplicateUrl: (label: string) => `A connection to this gateway URL already exists (“${label}”).`,
       duplicateSsh: (label: string) => `A connection to this SSH host already exists (“${label}”).`,
       sameBackendHint: (label: string) => `Same backend as “${label}”`,
       localAddHint: 'Local is unavailable: the managed local connection already exists (there is only ever one).',
       cloudAddHint:
-        'Tip: signing in under Factr-I Cloud above discovers your agents automatically — use this form only to register a known instance URL by hand.',
+        'Tip: signing in under Factr-I Cloud above discovers your agents automatically. Use this form only to register a known instance URL by hand.',
       save: 'Save connection',
       saving: 'Saving…',
       cancel: 'Cancel',
@@ -1365,7 +1365,7 @@ export const en: Translations = {
       updating: 'Updating…',
       progress: 'Draining sessions, updating the remote install, and restoring profiles…',
       updated: 'Updated',
-      partial: 'Updated — restore failed',
+      partial: 'Updated, restore failed',
       refused: 'Refused',
       failed: 'Update failed',
       alreadyRunning: 'Update already in progress',
@@ -1385,7 +1385,7 @@ export const en: Translations = {
         'Local by default. Use remote when this app should drive a Factr-I backend elsewhere. Gateway connections are machine-level; profiles are discovered from the gateways you connect.',
       envOverrideTitle: 'This connection was fixed by the way Factr-I was launched.',
       envOverrideDesc:
-        'A startup setting outside the app chose this connection, so the options below are read-only. Restart Factr-I without that setting — or ask whoever set it up — to change it here.',
+        'A startup setting outside the app chose this connection, so the options below are read-only. Restart Factr-I without that setting. Or ask whoever set it up. To change it here.',
       modeTitle: 'Connection mode',
       localTitle: 'Local gateway',
       localDesc: 'Start a private Factr-I backend on localhost. This is the default and works offline.',
@@ -1421,13 +1421,13 @@ export const en: Translations = {
         'Secure storage is unavailable, so the saved token is stored unencrypted in the app’s connection settings file on this machine. Install or enable your system keychain (GNOME Keyring or KWallet on Linux) to encrypt it.',
       keychainEncryptionTitle: 'Encrypt saved secrets with the OS keychain',
       keychainEncryptionDesc:
-        'Off by default. When on, gateway tokens and sign-in credentials are encrypted with your system keychain (Keychain Access, GNOME Keyring, or Windows DPAPI) — your system may ask for permission or a password. When off, they are stored as plain files readable only by your user account.',
+        'Off by default. When on, gateway tokens and sign-in credentials are encrypted with your system keychain (Keychain Access, GNOME Keyring, or Windows DPAPI). Your system may ask for permission or a password. When off, they are stored as plain files readable only by your user account.',
       keychainEncryptionFailed: 'Could not change secret encryption',
       testRemote: 'Test remote',
       saveForRestart: 'Save for next restart',
       saveAndReconnect: 'Save and reconnect',
       diagnostics: 'Diagnostics',
-      diagnosticsDesc: 'Reveal desktop.log in your file manager — useful when the gateway fails to start.',
+      diagnosticsDesc: 'Reveal desktop.log in your file manager. Useful when the gateway fails to start.',
       openLogs: 'Open logs',
       incompleteTitle: 'Remote gateway incomplete',
       incompleteSignIn: 'Enter a remote URL and sign in before switching to remote.',
@@ -1437,7 +1437,7 @@ export const en: Translations = {
       enterUrlFirst: 'Enter a remote URL first.',
       restartingTitle: 'Gateway connection restarting',
       savedTitle: 'Gateway settings saved',
-      restartingMessage: 'Factr-I will reconnect using the saved settings — the shell stays open.',
+      restartingMessage: 'Factr-I will reconnect using the saved settings. The shell stays open.',
       savedMessage: 'Saved for the next restart.',
       connectedTo: (baseUrl, version) => `Connected to ${baseUrl}${version ? ` · Factr-I ${version}` : ''}`,
       reachableTitle: 'Remote gateway reachable',
@@ -1451,7 +1451,7 @@ export const en: Translations = {
       saveFailed: 'Could not save gateway settings',
       sshTitle: 'Connect via SSH',
       sshDesc:
-        'Factr-I is launched on the remote over SSH and tunneled to this app — nothing to start or expose yourself. Requires working key-based SSH access to the host.',
+        'Factr-I is launched on the remote over SSH and tunneled to this app. Nothing to start or expose yourself. Requires working key-based SSH access to the host.',
       sshTrustHint: 'The first presented host key is trusted and pinned; later changes fail closed.',
       sshHostTitle: 'Host',
       sshHostDesc: 'user@host, or a Host alias from ~/.ssh/config.',
@@ -1472,11 +1472,11 @@ export const en: Translations = {
       sshTestConnection: 'Test SSH',
       sshConnect: 'Connect',
       sshButtonsHint: 'Save applies on the next launch. Connect reconnects now.',
-      sshReachable: (host, platform) => `Reachable: ${host} (${platform}) — Factr-I found`,
+      sshReachable: (host, platform) => `Reachable: ${host} (${platform}), Factr-I found`,
       sshIncompleteHost: 'Enter an SSH host before connecting.',
       sshErrUnreachable: 'Could not reach that host over SSH. Check the host, port, and your network.',
       sshErrAuth:
-        'SSH authentication failed. Load your key into the ssh-agent (ssh-add) or set an IdentityFile in ~/.ssh/config — Factr-I runs ssh non-interactively.',
+        'SSH authentication failed. Load your key into the ssh-agent (ssh-add) or set an IdentityFile in ~/.ssh/config. Factr-I runs ssh non-interactively.',
       sshErrHostKey:
         'The host key has CHANGED since you last connected. Verify this is expected, then run ssh-keygen -R <host> and reconnect.',
       sshErrNotInstalled:
@@ -1531,12 +1531,12 @@ export const en: Translations = {
       noOutput: 'No output yet.',
       deepLinkTitle: 'Add MCP server?',
       deepLinkDescription:
-        'A link asked to add this MCP server to Factr-I. Review the exact configuration below — it comes from the link, not from Factr-I.',
+        'A link asked to add this MCP server to Factr-I. Review the exact configuration below. It comes from the link, not from Factr-I.',
       deepLinkStdioWarning:
         'This server runs a local process on your machine with the command shown below. Only continue if you trust its source.',
       deepLinkConfirm: 'Add server',
       deepLinkNameInvalid: 'Names use 1-64 letters, digits, dots, dashes, or underscores.',
-      deepLinkNameConflict: name => `A server named ${name} already exists — choose a different name or cancel.`,
+      deepLinkNameConflict: name => `A server named ${name} already exists. Choose a different name or cancel.`,
       deepLinkErrorTitle: 'MCP install link rejected',
       deepLinkErrorName: 'The link\u2019s server name is missing or invalid.',
       deepLinkErrorConfig: 'The link\u2019s config is not valid base64-encoded JSON.',
@@ -1585,12 +1585,12 @@ export const en: Translations = {
       inheritMainEffort: 'inherit · main model effort',
       providerDefault: '(provider default)',
       fallbackAdd: 'Add fallback',
-      fallbackEmpty: 'No fallback models — the default model is used unless it fails.',
-      notInCatalog: "isn't in this provider's model list — calls may fall back to a backup.",
+      fallbackEmpty: 'No fallback models. The default model is used unless it fails.',
+      notInCatalog: "isn't in this provider's model list. Calls may fall back to a backup.",
       moaTitle: 'Mixture of Agents',
       moaPreset: 'Preset',
       moaDescription:
-        'Configure named presets that appear as models under the Mixture of Agents provider. The aggregator is the acting model — it runs every step of the tool loop, and almost all of the run’s cost is billed to its provider. References only advise once per user turn by default.',
+        'Configure named presets that appear as models under the Mixture of Agents provider. The aggregator is the acting model. It runs every step of the tool loop, and almost all of the run’s cost is billed to its provider. References only advise once per user turn by default.',
       moaAggregator: 'Aggregator',
       moaAggregatorBilled: 'acting model · billed for the run',
       moaReferenceHint: 'advises once per turn by default',
@@ -1616,7 +1616,7 @@ export const en: Translations = {
         `Build ${tag}, ${backend} backend. Factr-I starts and manages the server for you.`,
       installTitle: 'Install the local runtime',
       installDetail:
-        'Downloads the llama.cpp inference engine (a few hundred MB). Models you download run entirely on this machine — no account, nothing leaves your computer.',
+        'Downloads the llama.cpp inference engine (a few hundred MB). Models you download run entirely on this machine. No account, nothing leaves your computer.',
       installAction: 'Install runtime',
       installing: 'Installing runtime…',
       installFailed: 'Runtime install failed',
@@ -1634,7 +1634,7 @@ export const en: Translations = {
         'best-quality-resident':
           'The highest-quality model that runs entirely on your GPU at full speed. Picks weigh quality against predicted speed on this hardware.',
         'speed-gated-quality':
-          'A higher-quality model fits this machine but would respond too slowly on its memory bandwidth — this is the best model that stays fast.',
+          'A higher-quality model fits this machine but would respond too slowly on its memory bandwidth. This is the best model that stays fast.',
         'fastest-resident':
           'No model reaches full speed on this hardware; this one comes closest while running entirely in GPU memory.'
       } as Record<string, string>,
@@ -1654,7 +1654,7 @@ export const en: Translations = {
         `One click makes ${model} your default for new chats. Everything runs on this machine.`,
       quickstartAction: 'Set up for me',
       quickstartConfigure: 'Let me choose',
-      quickstartDoneToast: model => `${model} is set up — new chats run on this machine.`,
+      quickstartDoneToast: model => `${model} is set up. New chats run on this machine.`,
       quickstartFailed: 'Local model setup failed',
       quickstartStageEngine: 'Engine',
       quickstartStageModel: 'Model',
@@ -1663,28 +1663,28 @@ export const en: Translations = {
       activePill: 'Default',
       updateTitle: 'Engine update available',
       updateDetail: (next, current) =>
-        `A newer llama.cpp build (${next}) is ready to install — you're on ${current}. Models keep working during the download.`,
+        `A newer llama.cpp build (${next}) is ready to install. You're on ${current}. Models keep working during the download.`,
       updateAction: 'Update engine',
       updating: 'Updating engine…',
       upToDateTitle: 'Engine up to date',
-      upToDateDetail: (tag, backend) => `Running llama.cpp ${tag} (${backend}) — the configured build.`,
-      activeDetail: 'New chats use this model — it loads when you send your first message',
+      upToDateDetail: (tag, backend) => `Running llama.cpp ${tag} (${backend}), the configured build.`,
+      activeDetail: 'New chats use this model. It loads when you send your first message',
       activeNotLoaded: 'Loads on your first message',
       loadedPill: 'In memory',
       placementResident: 'all on GPU',
       placementSpilled: 'partly in RAM',
-      placementResidentTip: 'Running entirely in GPU memory at this context window — full speed.',
+      placementResidentTip: 'Running entirely in GPU memory at this context window. Full speed.',
       placementSpilledTip:
-        'Part of this model runs from system RAM — it works, but slower. A more compact build or a smaller context would fit fully.',
+        'Part of this model runs from system RAM. It works, but slower. A more compact build or a smaller context would fit fully.',
       loadingPill: 'Loading…',
       ejectTip: 'Free GPU memory (loads again on the next message)',
-      ejected: 'Model unloaded — GPU memory freed.',
+      ejected: 'Model unloaded. GPU memory freed.',
       ejectFailed: 'Could not unload the model',
       stopServer: 'Turn off',
       startServer: 'Turn on',
       runtimeRunningDetail:
         'The local server is running. Turning it off frees all GPU memory and stops new chats from using local models until you turn it back on.',
-      serverStopped: 'Local server stopped — GPU memory freed.',
+      serverStopped: 'Local server stopped. GPU memory freed.',
       serverStarted: 'Local server running.',
       serverStopFailed: 'Could not stop the local server',
       serverStartFailed: 'Could not start the local server',
@@ -1730,7 +1730,7 @@ export const en: Translations = {
       connectAccount: 'Connect an account',
       haveApiKey: 'Have an API key instead?',
       intro:
-        'Sign in with a subscription — no API key to copy. Factr-I runs the browser sign-in for you, right here in the app.',
+        'Sign in with a subscription. No API key to copy. Factr-I runs the browser sign-in for you, right here in the app.',
       connected: 'Connected',
       collapse: 'Collapse',
       connectAnother: 'Connect another provider',
@@ -1738,7 +1738,7 @@ export const en: Translations = {
       disconnect: 'Disconnect',
       disconnectInTerminal: 'Disconnect (runs the removal command in the terminal)',
       removeConfirm: provider => `Remove ${provider}?`,
-      removeExternalGeneric: provider => `${provider} is managed by its own CLI — remove it there.`,
+      removeExternalGeneric: provider => `${provider} is managed by its own CLI. Remove it there.`,
       removeKeyManaged: provider => `${provider} is configured from an API key. Remove it from API Keys.`,
       removeTerminalConfirm: (provider, command) =>
         `Disconnect ${provider}? This runs "${command}" in the terminal to clear the credential.`,
@@ -1769,14 +1769,14 @@ export const en: Translations = {
       deleteConfirm: title => `Permanently delete "${title}"? This cannot be undone.`,
       autoArchiveTitle: 'Auto-archive stale chats',
       autoArchiveDesc:
-        "Automatically archive chats you haven't touched in a while. Pinned chats are never archived, and nothing is deleted — archived chats just move here.",
+        "Automatically archive chats you haven't touched in a while. Pinned chats are never archived, and nothing is deleted. Archived chats just move here.",
       autoArchiveDaysLabel: 'Archive after',
       autoArchiveDaysUnit: 'days of inactivity',
       autoArchiveFailed: 'Could not update auto-archive',
       defaultDirTitle: 'Default project directory',
       defaultDirDesc:
         'New sessions start in this folder unless you pick another. Leave it unset to use your home directory.',
-      defaultDirUpdated: 'Default project directory updated — start a new chat (Ctrl/⌘+N) for it to take effect',
+      defaultDirUpdated: 'Default project directory updated. Start a new chat (Ctrl/⌘+N) for it to take effect',
       defaultsTo: label => `Defaults to ${label}.`,
       change: 'Change',
       choose: 'Choose',
@@ -1804,7 +1804,7 @@ export const en: Translations = {
       selectedMessage: provider => `${provider} is now active.`,
       failedSelect: provider => `Failed to select ${provider}`,
       failedLoad: 'Tool configuration failed to load',
-      noProviderOptions: 'This toolset has no provider options — enable it and it works with your current setup.',
+      noProviderOptions: 'This toolset has no provider options. Enable it and it works with your current setup.',
       noProviders: 'No providers are available for this toolset right now.',
       ready: 'Ready',
       needsSignIn: 'Needs sign-in',
@@ -1814,7 +1814,7 @@ export const en: Translations = {
       useBackend: 'Use this backend',
       noApiKeyRequired: 'No API key required.',
       postSetupHint: step =>
-        `This backend needs a one-time install (${step}). Runs on this machine — may take a few minutes.`,
+        `This backend needs a one-time install (${step}). Runs on this machine. May take a few minutes.`,
       postSetupInstalledHint: 'Installed. Re-run setup only if something is broken.',
       postSetupRun: 'Run setup',
       postSetupRerun: 'Re-run setup',
@@ -1859,7 +1859,7 @@ export const en: Translations = {
         selectedMessage: backend => `Terminal commands now run via ${backend}. Applies to new sessions.`,
         failedSelect: backend => `Failed to select ${backend}`,
         needsSetupHint:
-          'This backend is currently selected without full setup — commands will fail until setup is complete.',
+          'This backend is currently selected without full setup. Commands will fail until setup is complete.',
         needsSetupConfirmTitle: backend => `Select ${backend} anyway?`,
         needsSetupConfirmDescription: detail =>
           `${detail} Sessions that start after this change will have no terminal or file tools until setup is finished.`,
@@ -1914,7 +1914,7 @@ export const en: Translations = {
     configured: 'Configured',
     needsKeys: 'Needs keys',
     visionModelHint:
-      'Vision uses your auxiliary model configuration — the image-capable model is picked there, not per-provider here.',
+      'Vision uses your auxiliary model configuration. The image-capable model is picked there, not per-provider here.',
     visionModelLink: 'Choose vision model in Settings → Models',
     toolsetsEnabled: (enabled, total) => `${enabled}/${total} toolsets enabled`,
     configureToolset: label => `Configure ${label}`,
@@ -1970,8 +1970,8 @@ export const en: Translations = {
     plugins: {
       agentTitle: 'Agent plugins',
       agentBlurb:
-        'Extend the agent for the selected profile — tools, hooks, providers. Take effect after a gateway restart.',
-      pageBlurb: 'A plugin can extend this app, the agent, or both — each half has its own switch.',
+        'Extend the agent for the selected profile. Tools, hooks, providers. Take effect after a gateway restart.',
+      pageBlurb: 'A plugin can extend this app, the agent, or both. Each half has its own switch.',
       halfDesktop: 'Desktop',
       halfDesktopHint: 'this app, same for every profile',
       halfAgent: 'Agent',
@@ -1990,13 +1990,13 @@ export const en: Translations = {
         'This package ships a desktop half that has not been copied into the app yet. Use Rescan, or restart the app.',
       desktopHalfRemote: 'unavailable (remote backend)',
       desktopHalfRemoteTip:
-        "This package's desktop half is on the remote backend's disk, which this app cannot read. To use it here, run Install from Git with the package's repo URL and the Desktop target checked — that clones the desktop half onto this machine.",
+        "This package's desktop half is on the remote backend's disk, which this app cannot read. To use it here, run Install from Git with the package's repo URL and the Desktop target checked. That clones the desktop half onto this machine.",
       emptyAll: 'No plugins yet.',
       empty: 'No agent plugins installed for this profile.',
       emptyHint: 'Browse the catalog below and install a reviewed plugin with one click.',
       loadFailed: 'Could not load agent plugins',
       toggleFailed: (name: string) => `Could not toggle ${name}`,
-      legacyBackend: 'This backend predates key-addressed plugin toggles — update Factr-I to manage it here.',
+      legacyBackend: 'This backend predates key-addressed plugin toggles. Update Factr-I to manage it here.',
       portableBadge: 'portable',
       serverStates: {
         connected: 'connected',
@@ -2011,7 +2011,7 @@ export const en: Translations = {
       catalogBrowse: 'Browse',
       catalogHide: 'Hide the catalog browser',
       catalogHint:
-        'Hit "+ Add to this Agent" on any plugin — reviewed entries install at their pinned commit into the selected profile. Bundled agent+desktop plugins offer both halves.',
+        'Hit "+ Add to this Agent" on any plugin. Reviewed entries install at their pinned commit into the selected profile. Bundled agent+desktop plugins offer both halves.',
       alreadyInstalled: (name: string) => `${name} is already installed in this profile.`,
       catalogProvenance: (sha: string) => `Installed from the Factr-I catalog${sha ? ` at pin ${sha}` : ''}.`,
       pinnedProvenance: (sha: string) =>
@@ -2137,7 +2137,7 @@ export const en: Translations = {
     branches: 'Branches',
     projects: 'Projects',
     openFolder: 'Open folder as project…',
-    openFolderAt: path => `Open folder as project — ${path}`,
+    openFolderAt: path => `Open folder as project: ${path}`,
     newSessionInProject: project => `New session in ${project}`,
     commands: 'Commands',
     startInBranch: branch => `New conversation in ${branch}`,
@@ -2150,7 +2150,7 @@ export const en: Translations = {
       placeholder: 'Search pets…',
       loading: 'Loading petdex gallery…',
       error: 'Could not reach the petdex gallery.',
-      staleBackend: 'Restart Factr-I to use pets — the backend predates this feature.',
+      staleBackend: 'Restart Factr-I to use pets. The backend predates this feature.',
       empty: 'No matching pets.',
       turnOff: 'Turn off',
       turnOn: 'Turn on',
@@ -2158,7 +2158,7 @@ export const en: Translations = {
       generatedTag: 'Generated',
       adoptFailed: 'Could not adopt that pet.',
       toggleFailed: enabled => `Could not turn the pet ${enabled ? 'on' : 'off'}.`,
-      noneAvailable: 'No pets available — pick one below to install.'
+      noneAvailable: 'No pets available. Pick one below to install.'
     },
     generatePet: {
       title: 'Generate a pet',
@@ -2178,13 +2178,13 @@ export const en: Translations = {
       hatchSaving: 'Almost there…',
       namePlaceholder: 'Name your pet',
       staleBackend: 'Update Factr-I to generate pets.',
-      backgroundHint: 'You can close this — Factr-I will notify you when it’s done.',
+      backgroundHint: 'You can close this. Factr-I will notify you when it’s done.',
       slowProviderHint: 'This can take several minutes',
       remix: 'Remix',
       remixConfirmTitle: 'Remix this look?',
       remixConfirmBody:
         'This generates a fresh set of drafts using this one as the starting point. It can take several minutes.',
-      genericError: 'Generation failed — try again or pick a suggestion.',
+      genericError: 'Generation failed. Try again or pick a suggestion.',
       referenceImageTooLarge: 'Reference image is too large. Use one under 16 MB.',
       referenceImageInvalid: 'Could not read that reference image. Try a PNG, JPG, WebP, or GIF.',
       adopt: 'Adopt',
@@ -2202,7 +2202,7 @@ export const en: Translations = {
     },
     nav: {
       newChat: { title: 'New session', detail: 'Start a fresh session' },
-      settings: { title: 'Settings', detail: 'Configure Factr-I desktop' },
+      settings: { title: 'Settings', detail: 'Configure Factr-I' },
       capabilities: { title: 'Capabilities', detail: 'Skills, tools, MCP servers, and plugins' },
       messaging: { title: 'Messaging', detail: 'Set up Telegram, Slack, Discord, and more' },
       artifacts: { title: 'Artifacts', detail: 'Browse generated outputs' }
@@ -2296,7 +2296,7 @@ export const en: Translations = {
       resetConfirm: target => `Delete ${target}? This cannot be undone.`,
       resetDone: files => `Deleted ${files}.`,
       resetFailed: 'Memory reset failed',
-      actionStarted: name => `${name} started — tailing log...`,
+      actionStarted: name => `${name} started. Tailing log...`,
       actionFailed: name => `${name} failed to start`,
       running: 'Running...',
       viewLog: 'Action log'
@@ -2369,7 +2369,7 @@ export const en: Translations = {
     revokedUser: name => `${name} revoked`,
     failedApprove: name => `Failed to approve ${name}`,
     failedRevoke: name => `Failed to revoke ${name}`,
-    pairingLockedOut: 'Too many failed approvals — this platform is locked out. Try again later.',
+    pairingLockedOut: 'Too many failed approvals. This platform is locked out. Try again later.',
     waitingSince: minutes => (minutes < 1 ? 'just now' : `${minutes}m ago`),
     restartNeeded: 'Saved. Restart the messaging gateway so the new settings take effect.',
     restartNow: 'Restart now',
@@ -2494,7 +2494,7 @@ export const en: Translations = {
     all: '(all)',
     deliverOnly: 'deliver only',
     createdTitle: 'Subscription created',
-    createdSecretHint: 'Copy the secret now — it is only shown once.',
+    createdSecretHint: 'Copy the secret now. It is only shown once.',
     webhookUrl: 'Webhook URL',
     secretOnce: 'Secret (shown once)',
     done: 'Done',
@@ -2622,7 +2622,7 @@ export const en: Translations = {
     soulPlaceholderEmpty: 'empty',
     unsavedChanges: 'Unsaved changes',
     loadingSoul: 'Loading SOUL.md...',
-    emptySoul: 'Empty SOUL.md — start writing the persona...',
+    emptySoul: 'Empty SOUL.md. Start writing the persona...',
     saving: 'Saving...',
     saveSoul: 'Save SOUL.md',
     deleteTitle: 'Delete profile?',
@@ -2668,7 +2668,7 @@ export const en: Translations = {
     confirmTitle: 'Model Selection Warning',
     confirmDetail: 'Confirm only if you accept this trade-off.',
     confirmAction: 'Confirm',
-    declined: 'Model change cancelled — you declined the data-training tier warning.'
+    declined: 'Model change cancelled. You declined the data-training tier warning.'
   },
 
   cron: {
@@ -2690,7 +2690,7 @@ export const en: Translations = {
     editJob: 'Edit job',
     runAgain: 'Run again',
     deliveryLabels: {
-      local: 'This desktop',
+      local: 'This computer',
       telegram: 'Telegram',
       discord: 'Discord',
       slack: 'Slack',
@@ -2959,7 +2959,7 @@ export const en: Translations = {
       removeFromSidebar: 'Hide from sidebar',
       createFailed: 'Could not create project',
       staleBackend:
-        'Update the Factr-I backend to create projects — your backend is older than this desktop app (Settings → Updates → Backend).',
+        'Update the Factr-I backend to create projects. Your backend is older than this desktop app (Settings → Updates → Backend).',
       deleteConfirm: 'This removes the saved project from Factr-I. Files, git repos, and worktrees stay untouched.',
       startWork: 'New worktree',
       newWorktreeTitle: 'New worktree',
@@ -2970,7 +2970,7 @@ export const en: Translations = {
       baseBranchNone: 'No branches found',
       startWorkFailed: 'Could not create worktree',
       worktreeStaleBackend:
-        'Update the Factr-I backend to create worktrees over this remote connection — it predates the git worktree API.',
+        'Update the Factr-I backend to create worktrees over this remote connection. It predates the git worktree API.',
       worktreeProjectLabel: 'Project',
       worktreeProjectPlaceholder: 'Search projects…',
       worktreeProjectNone: 'No projects with a folder',
@@ -3026,9 +3026,9 @@ export const en: Translations = {
       sessionRunning: 'Session running',
       needsInput: 'Needs your input',
       waitingForAnswer: 'Waiting for your answer',
-      finishedUnread: 'Finished — unread',
+      finishedUnread: 'Finished, unread',
       backgroundRunning: 'Background task running',
-      draftSession: 'Draft — nothing sent yet',
+      draftSession: 'Draft, nothing sent yet',
       handoffOrigin: platform => `Handed off from ${platform}`,
       ownedByProfile: profile => `Profile: ${profile}`,
       renamed: 'Renamed',
@@ -3118,9 +3118,9 @@ export const en: Translations = {
     speakReplies: 'Read replies aloud',
     stopSpeakingReplies: 'Stop reading replies aloud',
     wakeWord: phrase => `Wake word "${phrase}"`,
-    wakeWordListening: phrase => `Wake word: "${phrase}" — listening`,
-    wakeWordOff: phrase => `Wake word: "${phrase}" — off`,
-    wakeWordPausedVoice: phrase => `Wake word: "${phrase}" — paused during voice chat`,
+    wakeWordListening: phrase => `Wake word: "${phrase}", listening`,
+    wakeWordOff: phrase => `Wake word: "${phrase}", off`,
+    wakeWordPausedVoice: phrase => `Wake word: "${phrase}", paused during voice chat`,
     lookupLoading: 'Looking up…',
     lookupNoMatches: 'No matches.',
     lookupTry: 'Try',
@@ -3129,14 +3129,14 @@ export const en: Translations = {
     hotkeys: 'Hotkeys',
     helpFooter: 'opens the full panel · backspace dismisses',
     commandDescs: {
-      '/help': 'Show desktop slash commands',
+      '/help': 'Show slash commands',
       '/clear': 'start a new session',
       '/resume': 'Resume a saved session',
       '/details': 'control transcript detail level',
       '/copy': 'copy selection or last assistant message',
       '/quit': 'exit factr',
       '/start': 'Acknowledge platform start pings without a reply',
-      '/new': 'Start a new desktop chat',
+      '/new': 'Start a new chat',
       '/topic': 'Enable or inspect Telegram DM topic sessions',
       '/save': 'Save the current transcript to JSON',
       '/retry': 'Retry the last message (resend to agent)',
@@ -3155,7 +3155,7 @@ export const en: Translations = {
       '/bg': 'Run a prompt in a separate background session',
       '/btw': 'Ask a side question about this conversation without interrupting it',
       '/agents': 'Show active agents and running tasks',
-      '/journey': 'Open the memory graph — skills + memories over time',
+      '/journey': 'Open the memory graph of skills and memories over time',
       '/queue': 'Queue a prompt for the next turn, or list/edit/rm/move/clear queued prompts',
       '/steer': 'Inject a message after the next tool call without interrupting',
       '/goal': 'Set a standing goal Factr-I works on across turns until achieved',
@@ -3176,12 +3176,12 @@ export const en: Translations = {
       '/battery': 'Toggle a color-coded battery indicator in the status bar',
       '/timestamps': 'Toggle [HH:MM] timestamps on messages and /history',
       '/diff': 'Show git changes in the working directory',
-      '/focus': 'Toggle focus view — show only your prompt and the final response',
-      '/yolo': 'Toggle YOLO — auto-approve dangerous commands',
+      '/focus': 'Toggle focus view: only your prompt and the final response',
+      '/yolo': 'Toggle YOLO: auto-approve dangerous commands',
       '/approvals': 'Show or set the persistent dangerous-command approval mode',
       '/reasoning': 'Reasoning effort or display [<level> [--global]|show|hide|full|clamp]',
-      '/skin': 'Switch desktop theme or cycle to the next one',
-      '/wake': 'Control the desktop wake-word listener [on|off|status]',
+      '/skin': 'Switch theme or cycle to the next one',
+      '/wake': 'Control the wake-word listener [on|off|status]',
       '/tools': 'Manage tools: /tools [list|disable|enable] [name...]',
       '/memory': 'Review pending memory writes / toggle the approval gate',
       '/bundles': 'List skill bundles (aliases /<name> for multiple skills)',
@@ -3214,7 +3214,7 @@ export const en: Translations = {
     urlHintPre: 'Include the full URL, e.g. ',
     attach: 'Attach',
     queued: count => `${count} Queued`,
-    queuedPaused: count => `${count} Queued — paused`,
+    queuedPaused: count => `${count} Queued, paused`,
     attachmentOnly: 'Attachment-only turn',
     emptyTurn: 'Empty turn',
     hiddenQueued: 'Setup note',
@@ -3225,13 +3225,13 @@ export const en: Translations = {
     restoredDraftUndo: 'Undo',
     queueEdit: 'Edit',
     queueSendNext: 'Next',
-    queueSteer: 'Steer — redirect the live turn now',
+    queueSteer: 'Steer: redirect the live turn now',
     queueSend: 'Send',
     queueDelete: 'Delete',
     queueResume: 'Resume',
-    queueResumeTip: 'Paused by Stop — resume sending the queued turns',
+    queueResumeTip: 'Paused by Stop. Resume sending the queued turns',
     queueStuckTitle: 'Queued message not sent',
-    queueStuckBody: 'A queued turn kept failing to send. It is still in the queue — try sending it again.',
+    queueStuckBody: 'A queued turn kept failing to send. It is still in the queue. Try sending it again.',
     previewUnavailable: 'Preview unavailable',
     previewLabel: label => `Preview ${label}`,
     couldNotPreview: label => `Could not preview ${label}`,
@@ -3240,7 +3240,7 @@ export const en: Translations = {
     preparingAudio: 'Preparing audio',
     speakingResponse: 'Speaking response',
     readingAloud: 'Reading aloud',
-    themeSuggestions: 'Desktop theme suggestions',
+    themeSuggestions: 'Theme suggestions',
     noMatchingThemes: 'No matching themes.',
     themeTryPre: 'Try ',
     themeTryPost: '.',
@@ -3259,22 +3259,22 @@ export const en: Translations = {
     dropSession: 'Drop to link this chat',
     mcpSuggestions: {
       label: server => `Add ${server}`,
-      tip: keyword => `Suggested because you mentioned “${keyword}” — click to connect`,
+      tip: keyword => `Suggested because you mentioned “${keyword}”. Click to connect`,
       connecting: server => `Connecting ${server}…`,
       cancelTip: 'Click to cancel',
       added: server => `Added ${server}`,
-      addedTip: 'Connected — its tools are ready in this chat',
+      addedTip: 'Connected. Its tools are ready in this chat',
       connectFailed: server => `Could not connect ${server}`
     },
     skillSuggestions: {
       label: skill => `Use skill: ${skill}`,
-      tip: skill => `You mentioned “${skill}” — click to lead with that skill`,
+      tip: skill => `You mentioned “${skill}”. Click to lead with that skill`,
       done: skill => `Added /${skill}`,
       doneTip: 'The skill loads when you send'
     },
     githubSuggestions: {
       label: 'Set up GitHub',
-      tip: 'GitHub works through the gh CLI skills here — click to connect your account',
+      tip: 'GitHub works through the gh CLI skills here. Click to connect your account',
       done: 'Added /github-auth',
       doneTip: 'Send the message and the agent walks you through GitHub sign-in'
     },
@@ -3289,7 +3289,7 @@ export const en: Translations = {
     },
     cronSuggestions: {
       label: 'Schedule this',
-      tip: phrase => `“${phrase}” sounds recurring — run it on a schedule instead`,
+      tip: phrase => `“${phrase}” sounds recurring. Run it on a schedule instead`,
       prefix: 'Set this up as a scheduled job:',
       done: 'Marked for scheduling',
       doneTip: 'Send it and the agent creates the job'
@@ -3400,7 +3400,7 @@ export const en: Translations = {
       heartbeatEveryHours: hours => `every ${hours}h`,
       heartbeatEverySeconds: seconds => `every ${seconds}s`,
       heartbeatNext: time => `next ${time}`,
-      heartbeatDueWaitingForIdle: 'due — waiting for idle',
+      heartbeatDueWaitingForIdle: 'due, waiting for idle',
       heartbeatActions: 'Heartbeat actions',
       pauseHeartbeat: 'Pause heartbeat',
       resumeHeartbeat: 'Resume heartbeat',
@@ -3413,8 +3413,8 @@ export const en: Translations = {
       copySuccess: 'Criterion copied to clipboard',
       copyFailure: 'Failed to copy criterion to clipboard',
       continuationFailed: 'Failed to submit goal continuation',
-      continuationQueued: 'Goal resumed — continuation queued until the current turn finishes',
-      continuationBusy: 'Goal resumed — session busy, /interrupt the current turn to continue',
+      continuationQueued: 'Goal resumed. Continuation queued until the current turn finishes',
+      continuationBusy: 'Goal resumed. Session busy, /interrupt the current turn to continue',
       controlUnavailable: msg => `Session controls unavailable: ${msg}`,
       dismissError: 'Dismiss error',
       add: 'Add'
@@ -3518,7 +3518,7 @@ export const en: Translations = {
       'The remote backend is applying the update and will restart. Factr-I reconnects automatically when it’s back.',
     applyingClose: 'This window will close while the update runs, then Factr-I reopens on its own.',
     errorTitle: 'Update didn’t finish',
-    errorBody: 'No worries — nothing was lost. You can try again now.',
+    errorBody: 'No worries. Nothing was lost. You can try again now.',
     blockerTitle: 'Close local previews to update Factr-I?',
     blockerBody:
       'Factr-I needs to stop these local previews before updating. This will not modify or delete your files.',
@@ -3865,7 +3865,7 @@ export const en: Translations = {
       toggleTokensPerSecond: 'Tokens per second',
       toggleVersion: 'Version & updates',
       toggleWorkspace: 'Workspace',
-      cacheHitRateTitle: 'Prompt cache hit rate this session — cached tokens cost less, so higher is cheaper',
+      cacheHitRateTitle: 'Prompt cache hit rate this session. Cached tokens cost less, so higher is cheaper',
       tokensPerSecondTitle: 'Output tokens per second, averaged over the last 10 model calls',
       agents: 'Agents',
       closeAgents: 'Close agents',
@@ -3887,7 +3887,7 @@ export const en: Translations = {
         gpuUtilization: 'GPU utilization',
         gpuMemory: 'GPU memory',
         ram: 'RAM',
-        unifiedNote: 'Unified memory — the GPU and system share this pool.',
+        unifiedNote: 'Unified memory. The GPU and system share this pool.',
         toggle: 'System resources'
       },
       contextUsagePanel: {
@@ -3908,7 +3908,7 @@ export const en: Translations = {
         tokenSummary: (used, max) => `${used} / ${max} Tokens`
       },
       session: 'Session',
-      yoloOn: 'YOLO on — auto-approving dangerous commands. Shift+click toggles globally.',
+      yoloOn: 'YOLO on. Auto-approving dangerous commands. Shift+click toggles globally.',
       yoloOff: 'YOLO off. Shift+click toggles globally.',
       modelNone: 'none',
       noModel: 'no model',
@@ -4096,7 +4096,7 @@ export const en: Translations = {
     restore: 'Restore',
     closeRunningTitle: 'Close running tab?',
     closeRunningBody:
-      'This chat is still working (or waiting on your input). Closing the tab hides it — the session keeps its progress and can be reopened from the sidebar.',
+      'This chat is still working (or waiting on your input). Closing the tab hides it. The session keeps its progress and can be reopened from the sidebar.',
     closeRunningConfirm: 'Close tab',
     reload: 'Reload',
     closeOthers: 'Close others',
@@ -4128,7 +4128,7 @@ export const en: Translations = {
     customZoneName: count => `Custom ${count}-zone`,
     layoutNamePlaceholder: fallback => `Layout name (${fallback})`,
     saveApply: 'Save & apply',
-    notExpressible: 'this arrangement interlocks (pinwheel) — not expressible as nested splits yet',
+    notExpressible: 'this arrangement interlocks (pinwheel). Not expressible as nested splits yet',
     zoneCount: count => `${count} zones`,
     tabCount: count => `${count} tabs`
   },
@@ -4277,7 +4277,7 @@ export const en: Translations = {
         upstream_blocked: {
           title: 'A firewall blocked the request',
           body: provider =>
-            `A firewall or CDN in front of ${provider} blocked the request before it reached the model — your key is probably fine. Set a User-Agent header via the provider's extra_headers in Settings, or switch provider, then send your message again.`
+            `A firewall or CDN in front of ${provider} blocked the request before it reached the model. Your key is probably fine. Set a User-Agent header via the provider's extra_headers in Settings, or switch provider, then send your message again.`
         },
         ssl_cert_verification: {
           title: 'Secure connection failed',
@@ -4356,7 +4356,7 @@ export const en: Translations = {
       errorRetry: 'Retry',
       errorLimitResets: time => `Limit resets at ${time}`,
       errorRetryAtReset: time => `Retry when the limit resets (${time})`,
-      errorRetryScheduled: (time, wait) => `Retrying at ${time} — in ${wait}`,
+      errorRetryScheduled: (time, wait) => `Retrying at ${time} (in ${wait})`,
       errorRetryScheduledCancel: 'Cancel',
       errorStartNewSession: 'Start new session',
       errorSwitchProvider: 'Switch provider',
@@ -4372,7 +4372,7 @@ export const en: Translations = {
         `Your ${provider} sign-in has expired or was revoked. Sign in again to keep chatting.`,
       errorOpenLogs: 'Open logs',
       errorOpenLogsFailed: 'Could not open the logs folder',
-      errorOpenDesktopLogs: 'Open Desktop logs',
+      errorOpenDesktopLogs: 'Open logs',
       errorCopyDiagnostics: 'Copy error details',
       filesChanged: count => (count === 1 ? '1 file changed' : `${count} files changed`),
       reviewChanges: 'Review',
@@ -4386,7 +4386,7 @@ export const en: Translations = {
       stop: 'Stop',
       restorePrevious: 'Restore previous checkpoint',
       restoreCheckpoint: 'Restore checkpoint',
-      restoreFromHere: 'Restore checkpoint — rerun from this prompt',
+      restoreFromHere: 'Restore checkpoint and rerun from this prompt',
       scheduledRunPrompt: 'Scheduled run prompt',
       restoreTitle: 'Restore to this checkpoint?',
       restoreBody:
@@ -4404,7 +4404,7 @@ export const en: Translations = {
       sendFailed: 'Could not send your answer',
       reconnect: 'Reconnect',
       timedOutSystemLine:
-        'Approval timed out — the command was not run. Ask Factr-I to try again, or raise the limit in Settings → Safety → Approval timeout.',
+        'Approval timed out. The command was not run. Ask Factr-I to try again, or raise the limit in Settings → Safety → Approval timeout.',
       openSafetySettings: 'Open Safety settings',
       run: 'Run',
       command: 'Command',
@@ -4431,7 +4431,7 @@ export const en: Translations = {
       confirmAndContinueLabel: 'Confirm and continue',
       answeredBadge: 'Answered',
       questionProgress: (answered, total) => `${answered} of ${total} answered`,
-      lateAnswer: (question, choice) => `Re: "${question}" — my answer: ${choice}`,
+      lateAnswer: (question, choice) => `Re: "${question}". My answer: ${choice}`,
       lateAnswerTip: 'Draft this answer as a follow-up message',
       lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.'
     },
@@ -4471,7 +4471,7 @@ export const en: Translations = {
       toolCount: count => (count === 1 ? '1 tool' : `${count} tools`),
       envRequired: 'Fill in the required credentials first',
       sendFailed: 'Could not send MCP setup response',
-      reloadFailed: 'Server saved, but reloading MCP tools failed — they load next session',
+      reloadFailed: 'Server saved, but reloading MCP tools failed. They load next session',
       gatewayDisconnected: 'Factr-I is offline right now. Reconnect, then send it again.'
     },
     tool: {
@@ -4597,7 +4597,7 @@ export const en: Translations = {
     vaultUnlockSendFailed: 'Could not send master password',
     vaultUnlockTitle: name => `Unlock ${name}`,
     vaultUnlockDesc: name =>
-      `The agent wants to sign into a site with a login saved in ${name}. Enter your master password to unlock it for this session — it goes straight to ${name} on this machine and is never stored or shown to the agent.`,
+      `The agent wants to sign into a site with a login saved in ${name}. Enter your master password to unlock it for this session. It goes straight to ${name} on this machine and is never stored or shown to the agent.`,
     vaultUnlockPlaceholder: 'Master password',
     vaultUnlockKeepLocked: 'Keep locked',
     vaultUnlockConfirm: 'Unlock',
@@ -4652,7 +4652,7 @@ export const en: Translations = {
     readOnlyTranscriptTitle: 'Opened read-only',
     readOnlyTranscriptBody:
       'No connected backend claims this older chat yet, so it opened as a read-only transcript. Its history is intact; sending is disabled until a backend claims it.',
-    readOnlyTranscriptSendBlocked: 'This chat is open as a read-only transcript — sending is disabled.',
+    readOnlyTranscriptSendBlocked: 'This chat is open as a read-only transcript. Sending is disabled.',
     resumeStrandedTitle: "Couldn't load this session",
     resumeStrandedBody:
       'The connection to this session failed and automatic retries gave up. Check that the gateway is running, then try again.',
@@ -4674,14 +4674,14 @@ export const en: Translations = {
     archiveFailed: 'Archive failed',
     cwdChangeFailed: 'Working directory change failed',
     cwdStagedTitle: 'Working directory staged',
-    cwdStagedMessage: 'Restart the desktop backend to apply cwd changes to this active session.',
+    cwdStagedMessage: 'Restart the Factr-I backend to apply working directory changes to this active session.',
     modelSwitchConfirmBody: 'This model switch needs confirmation.',
     modelSwitchConfirmLabel: 'Switch anyway',
     modelSwitchConfirmTitle: (model: string) => `Switch to ${model}?`,
     modelSwitchConfirmTitleFallback: 'Switch models?',
     modelSwitchFailed: 'Model switch failed',
     modelSwitchKeepLabel: 'Keep current model',
-    modelSwitchStaleNotice: 'Selection changed — the model switch was not applied.',
+    modelSwitchStaleNotice: 'Selection changed. The model switch was not applied.',
     hydrationSyncing: (profile: string) => `Syncing ${profile}\u2026`,
     sessionExported: 'Session exported',
     sessionExportFailed: 'Could not export session',
@@ -4707,7 +4707,7 @@ export const en: Translations = {
     handoff: {
       pickPlatform: 'Choose a destination',
       success: platform => `Handed off to ${platform}. Resume here anytime.`,
-      systemNote: platform => `↻ Handed off to ${platform} — resume here anytime.`,
+      systemNote: platform => `↻ Handed off to ${platform}. Resume here anytime.`,
       failed: error => `Handoff failed: ${error}`,
       notConfigured: platform =>
         `No messaging platform is configured for handoff. Connect ${platform} in Settings → Messaging, then try again.`,
@@ -4730,7 +4730,7 @@ export const en: Translations = {
       },
       messaging: {
         title: 'Factr-I away from your desk',
-        text: 'Connect Telegram, Discord, Slack and more — same agent, same memory.'
+        text: 'Connect Telegram, Discord, Slack and more. Same agent, same memory.'
       },
       artifacts: {
         title: 'Everything Factr-I made',
@@ -4746,7 +4746,7 @@ export const en: Translations = {
       },
       profiles: {
         title: 'Profiles are separate',
-        text: 'Each one is its own Factr-I — own keys, own memory, own sessions.'
+        text: 'Each one is its own Factr-I. Own keys, own memory, own sessions.'
       },
       'composer-mentions': {
         title: 'Attach and command',

@@ -215,7 +215,7 @@ describe('wake-word ear visibility', () => {
       }
     })
 
-    const ear = screen.getByLabelText('Wake word: "hey factr" — paused during voice chat')
+    const ear = screen.getByLabelText('Wake word: "hey factr", paused during voice chat')
     expect((ear as HTMLButtonElement).disabled).toBe(true)
   })
 })

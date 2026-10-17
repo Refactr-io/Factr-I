@@ -254,7 +254,7 @@ describe('ComposerStatusStack session-control UI', () => {
         vi.advanceTimersByTime(60_000)
       })
 
-      expect(screen.getByText(/Heartbeat active · every 90s · due — waiting for idle/)).toBeTruthy()
+      expect(screen.getByText(/Heartbeat active · every 90s · due, waiting for idle/)).toBeTruthy()
     } finally {
       vi.useRealTimers()
     }
