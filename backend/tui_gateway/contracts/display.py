@@ -32,6 +32,7 @@ class DisplayLease(Result):
     since: float
     epoch: int
     reason: str = ""
+    request: str = ""  # the agent's pending takeover ask (request_takeover); "" when none
 
 
 class DisplayStatus(Result):

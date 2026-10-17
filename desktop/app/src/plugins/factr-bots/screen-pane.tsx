@@ -428,13 +428,13 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
         ) : null}
         {computer ? <ComputerLine computer={computer} onStart={() => void startComputer()} /> : null}
         <span className="grow" />
-        {lease?.holder === 'human' && lease.reason ? (
-          // Why control was taken stays readable while the human acts.
+        {(lease?.holder === 'human' ? lease.reason : lease?.request) ? (
+          // The bot's ask (request_takeover) while it waits, and why control was taken once the human acts.
           <span
             className="max-w-[40%] truncate rounded bg-amber-500/15 px-2 py-0.5 text-amber-600 dark:text-amber-400"
-            title={lease.reason}
+            title={lease?.holder === 'human' ? lease.reason : lease?.request}
           >
-            <Codicon name="bell" /> {lease.reason}
+            <Codicon name="bell" /> {lease?.holder === 'human' ? lease.reason : lease?.request}
           </span>
         ) : null}
         {iHold ? (

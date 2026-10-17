@@ -668,6 +668,7 @@ export interface DisplayLease {
   since: number
   epoch: number
   reason?: string
+  request?: string
 }
 export type LeaseHolder = 'agent' | 'human'
 /** ``data_url`` is null while the screen is stopped or while a human holds the lease (``suppressed``): the frame may show what they are typing. */

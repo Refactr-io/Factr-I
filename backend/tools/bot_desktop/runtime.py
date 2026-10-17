@@ -356,6 +356,9 @@ def _should_auto_start(env: Dict[str, str]) -> bool:
     if missing_binaries():
         return False
     from factr_backend.config import load_config_readonly
+    # A bot computer (the Docker image sets FACTR_BOT_COMPUTER=1) is a machine with a screen: it always starts one.
+    if env.get("FACTR_BOT_COMPUTER") == "1":
+        return True
     cfg = load_config_readonly().get("bot_desktop") or {}
     return bool(cfg.get("auto_start", False))
 
