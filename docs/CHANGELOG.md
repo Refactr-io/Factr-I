@@ -55,6 +55,10 @@
   switch motion, text fields are wider and have a visible edge, and the nav no longer shows a scrollbar rail. The search
   field is rebuilt (32 px, small squircle, ⌘ and K as small keys) and is the same everywhere. Corners top out at 8 px, the + and
   slash menus open clear of the composer, and the preview console button has a new icon.
+- Sizes follow a measured scale: rail icons, row heights, the search field and switches were resized, Settings selectors are a
+  single-row segmented control, dialogs have an opaque surface so stacked dialogs never show through, the remote folder picker
+  fits its content with a proper breadcrumb, and the model menu opens clear of the composer with a "Connect another provider"
+  entry. The Settings sub-menu marker now sits on a thin track, sized like Discord's.
 - The engine's agent loop, tools and prompts are unchanged; the only engine edits are the version string and the image
   support check for the OpenAI provider.
 
