@@ -65,18 +65,22 @@ const mathPlugin = createMemoizedMathPlugin({ singleDollarTextMath: true })
 
 // `@streamdown/code` statically imports ALL of shiki (every grammar + theme —
 // the single largest chunk in the renderer), so it must never sit on the
-// entry graph. Load it on first markdown mount and swap it into the plugin
+// entry graph. Load it when a message first carries a fence and swap it into the plugin
 // table when it lands; until then fenced code renders through the
 // `SyntaxHighlighter` override's plain path (same output Shiki's own
 // `delay` fallback shows), so nothing flashes or reflows unexpectedly.
 type CodePlugin = typeof streamdownCode
 let codePluginCache: CodePlugin | null = null
 
-function useCodePlugin(): CodePlugin | null {
+// Only a message that carries a fenced block asks for it: the bundle is ~18 MB of JS (~150 MB of renderer RSS
+// once parsed), which a plain-text reply never needs. Once loaded it is shared by every message.
+const hasFence = (text: string) => text.includes('```') || text.includes('~~~')
+
+function useCodePlugin(needed: boolean): CodePlugin | null {
   const [plugin, setPlugin] = useState(codePluginCache)
 
   useEffect(() => {
-    if (plugin) {
+    if (plugin || !needed) {
       return
     }
 
@@ -93,7 +97,7 @@ function useCodePlugin(): CodePlugin | null {
     return () => {
       cancelled = true
     }
-  }, [plugin])
+  }, [plugin, needed])
 
   return plugin
 }
@@ -596,7 +600,7 @@ function MarkdownTextSurface({
   // render as code cards. The expensive Shiki pass is deferred by
   // `SyntaxHighlighter` below when `isStreaming` is true, and the code plugin
   // itself arrives async (useCodePlugin) so shiki never blocks cold start.
-  const code = useCodePlugin()
+  const code = useCodePlugin(hasFence(text))
   const plugins = useMemo(() => (code ? { math: mathPlugin, code } : { math: mathPlugin }), [code])
 
   const components = useMemo(
