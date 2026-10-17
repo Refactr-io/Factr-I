@@ -34,6 +34,40 @@ pub(crate) fn answer(method: &str, _params: &Value) -> Option<Value> {
     })
 }
 
+/// True when `method` is a pet poll and the profile's config.yaml says the pet is off (the default),
+/// so the answer is the same `{"enabled": false}` Python gives and the poll need not wake or keep
+/// alive the Python backend. Anything unclear (unreadable file, odd value, session-bound call) is false.
+pub(crate) fn pet_disabled(method: &str, params: &Value) -> bool {
+    if !matches!(method, "pet.info" | "pet.info.meta") || params["session_id"].as_str().is_some_and(|s| !s.is_empty()) {
+        return false;
+    }
+    let Some(home) = factr_base::factr_config::home() else { return false };
+    pet_disabled_in(&home, params["profile"].as_str().unwrap_or(""))
+}
+
+fn pet_disabled_in(home: &std::path::Path, profile: &str) -> bool {
+    let profile = profile.trim();
+    let dir = if profile.is_empty() {
+        home.to_path_buf()
+    } else if profile == "default" {
+        root_home(home)
+    } else if profile.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        root_home(home).join("profiles").join(profile)
+    } else {
+        return false;
+    };
+    let raw = match std::fs::read_to_string(dir.join("config.yaml")) {
+        Ok(raw) => raw,
+        Err(e) => return e.kind() == std::io::ErrorKind::NotFound,
+    };
+    let Ok(doc) = serde_yaml::from_str::<serde_yaml::Value>(&raw) else { return false };
+    match doc.get("display").and_then(|d| d.get("pet")).and_then(|p| p.get("enabled")) {
+        None | Some(serde_yaml::Value::Null) | Some(serde_yaml::Value::Bool(false)) => true,
+        Some(serde_yaml::Value::String(s)) => matches!(s.trim().to_ascii_lowercase().as_str(), "" | "false" | "0" | "no" | "off"),
+        _ => false,
+    }
+}
+
 fn profile_row(name: &str, path: &str, is_default: bool) -> Value {
     json!({
         "name": name, "path": path, "is_default": is_default, "model": null, "provider": null,
@@ -69,6 +103,25 @@ fn profile_dirs(root: &std::path::Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pet_polls_are_local_only_when_the_config_says_off() {
+        let dir = std::env::temp_dir().join(format!("factr-pet-stub-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("profiles/scribe")).unwrap();
+        assert!(pet_disabled_in(&dir, ""), "no config.yaml is the default: off");
+        std::fs::write(dir.join("config.yaml"), "display:\n  pet:\n    enabled: false\n").unwrap();
+        assert!(pet_disabled_in(&dir, "") && pet_disabled_in(&dir, "default"));
+        std::fs::write(dir.join("config.yaml"), "display:\n  pet:\n    enabled: true\n").unwrap();
+        assert!(!pet_disabled_in(&dir, ""), "an enabled pet is forwarded");
+        std::fs::write(dir.join("config.yaml"), "display:\n  pet:\n    enabled: 'yes'\n").unwrap();
+        assert!(!pet_disabled_in(&dir, ""));
+        std::fs::write(dir.join("config.yaml"), ": : not yaml [").unwrap();
+        assert!(!pet_disabled_in(&dir, ""), "unreadable config is forwarded");
+        std::fs::write(dir.join("profiles/scribe/config.yaml"), "display:\n  pet:\n    enabled: true\n").unwrap();
+        assert!(!pet_disabled_in(&dir, "scribe") && !pet_disabled_in(&dir, "../x"));
+        assert!(!pet_disabled("pet.select", &json!({})) && !pet_disabled("pet.info", &json!({ "session_id": "s1" })));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn lists_profile_folders_and_finds_the_root_from_a_profile_home() {

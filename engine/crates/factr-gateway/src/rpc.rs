@@ -2923,7 +2923,7 @@ impl Conn {
             // Launch-time reads of Python-owned state: stubbed until Python is up for something else.
             _ => {
                 if let Some(stub) = crate::boot_stubs::answer(method, p) {
-                    if !self.backend_running().await {
+                    if !self.backend_running().await || crate::boot_stubs::pet_disabled(method, p) {
                         return Ok(stub);
                     }
                 }
