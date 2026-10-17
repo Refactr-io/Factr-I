@@ -46,9 +46,10 @@ export function StickyHumanMessageContainer({
   return (
     // Fragment, not a wrapper: a wrapping element becomes the sticky's
     // containing block (it'd stick within its own height = never). The bubble
-    // and attachments are flow siblings so the bubble pins against the scroller
-    // while attachments below it scroll away.
+    // and attachments are flow siblings: the attachments sit above the bubble
+    // and scroll away while the bubble pins against the scroller.
     <>
+      {attachments}
       <div
         className="group/user-message sticky z-40 -mx-4 flex w-[calc(100%+2rem)] min-w-0 max-w-none flex-col items-end gap-0 self-end overflow-visible px-4 pb-(--conversation-turn-gap) pt-1 mb-9"
         data-message-id={messageId}
@@ -57,7 +58,6 @@ export function StickyHumanMessageContainer({
       >
         {children}
       </div>
-      {attachments}
     </>
   )
 }
@@ -431,11 +431,14 @@ export const UserMessage: FC<{
     <MessagePrimitive.Root asChild>
       <StickyHumanMessageContainer
         attachments={
-          // Attachments live BELOW the sticky bubble in normal flow, so they
-          // scroll away behind the pinned bubble instead of riding along with
-          // it. Image refs render as thumbnails, file refs as chips; no border.
+          // Attachments sit ABOVE the user's bubble, right-aligned to its edge (the
+          // way Claude Code and Claude.ai show what you sent), on the user's side.
+          // Image refs render as thumbnails, file refs as chips.
           attachmentRefs.length > 0 ? (
-            <div className="flex flex-wrap gap-1 -mt-3 mb-2">
+            <div
+              className="mb-1 flex max-w-full flex-wrap justify-end gap-1.5 self-end [&_[data-slot=aui_embedded-images]]:mt-0 [&_[data-slot=aui_embedded-images]]:justify-end [&_img]:max-h-40"
+              data-slot="aui_user-attachments"
+            >
               <DirectiveContent text={attachmentRefs.join(' ')} />
             </div>
           ) : null
