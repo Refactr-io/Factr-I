@@ -190,7 +190,7 @@ export function ListRow({
         className={cn(
           'grid min-h-[3.25rem] gap-3 px-4 py-4',
           inline && 'grid-cols-[minmax(0,1fr)_auto] items-center gap-6',
-          !wide && !inline && '@2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:items-center'
+          !wide && !inline && '@2xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] @2xl:items-center'
         )}
         data-row-grid=""
       >
@@ -269,7 +269,7 @@ export function ListRowSkeleton({ wide = false }: { wide?: boolean }) {
       <div
         className={cn(
           'grid gap-3 py-3',
-          !wide && '@2xl:grid-cols-[minmax(0,1fr)_minmax(15rem,22rem)] @2xl:items-center'
+          !wide && '@2xl:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] @2xl:items-center'
         )}
       >
         <div className="min-w-0 space-y-2">

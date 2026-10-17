@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { composerPanelCard } from '@/components/chat/composer-dock'
 import { Button } from '@/components/ui/button'
@@ -40,13 +40,26 @@ export function ContextMenu({
   // window (composer "+" anchor), so we promoted it to a real Dialog —
   // easier to grow with search / descriptions, and no positioning math.
   const [snippetsOpen, setSnippetsOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [menuOffset, setMenuOffset] = useState(8)
   // `composer.attachments` contributions — plugin/core-registered rows that
   // extend this menu through the same registry as every other surface.
   const attachmentProviders = useComposerAttachmentProviders()
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu
+        onOpenChange={open => {
+          // The + button lives in the toolbar under the input, so a fixed offset opens the menu over the field.
+          // Clear the whole composer box plus an 8px gap instead.
+          const btn = triggerRef.current
+          const field = document.querySelector<HTMLElement>('[contenteditable="true"]')?.closest<HTMLElement>('form') ?? null
+
+          if (open && btn && field) {
+            setMenuOffset(Math.max(8, btn.getBoundingClientRect().top - field.getBoundingClientRect().top + 8))
+          }
+        }}
+      >
         <Tip label={state.tools.label} placement="control">
           <DropdownMenuTrigger asChild>
             <Button
@@ -56,6 +69,7 @@ export function ContextMenu({
                 'data-[state=open]:bg-(--chrome-action-hover) data-[state=open]:text-foreground'
               )}
               disabled={!state.tools.enabled}
+              ref={triggerRef}
               size="icon"
               type="button"
               variant="ghost"
@@ -64,7 +78,7 @@ export function ContextMenu({
             </Button>
           </DropdownMenuTrigger>
         </Tip>
-        <DropdownMenuContent align="start" className={cn('w-60', composerPanelCard)} side="top" sideOffset={6}>
+        <DropdownMenuContent align="start" className={cn('w-60', composerPanelCard)} side="top" sideOffset={menuOffset}>
           <DropdownMenuLabel className="px-2 pb-0.5 pt-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
             {c.attachLabel}
           </DropdownMenuLabel>
