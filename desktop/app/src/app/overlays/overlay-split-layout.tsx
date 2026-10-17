@@ -176,13 +176,9 @@ function OverlayNavSubList({ children, className, hidden, id }: { children: Reac
     const list = listRef.current
     const el = list?.querySelector<HTMLElement>('[aria-current="location"]')
 
-    if (!el) {
-      setMark(null)
+    const next = el ? { h: el.offsetHeight - 8, y: el.offsetTop + 4 } : null
 
-      return
-    }
-
-    setMark({ h: el.offsetHeight - 8, y: el.offsetTop + 4 })
+    setMark(prev => (prev?.h === next?.h && prev?.y === next?.y ? prev : next))
   })
 
   useEffect(() => {
@@ -193,12 +189,12 @@ function OverlayNavSubList({ children, className, hidden, id }: { children: Reac
 
   return (
     <div className={cn('relative', className, hidden && 'hidden')} hidden={hidden} id={id} ref={listRef}>
-      <span aria-hidden className="pointer-events-none absolute top-1 bottom-1 left-0 w-0.5 rounded-full bg-(--ui-stroke-tertiary)" />
+      <span aria-hidden className="pointer-events-none absolute top-0 bottom-0 left-0 w-0.5 rounded-full bg-[color-mix(in_srgb,var(--dt-foreground)_16%,transparent)]" />
       {mark && (
         <span
           aria-hidden
           className={cn(
-            'pointer-events-none absolute top-0 left-0 w-0.5 rounded-full bg-(--ui-control-on) motion-reduce:transition-none',
+            'pointer-events-none absolute top-0 left-0 w-0.5 rounded-full bg-foreground motion-reduce:transition-none',
             ready && 'transition-[transform,height] duration-[260ms] ease-[cubic-bezier(0.23,1,0.32,1)]'
           )}
           style={{ height: mark.h, transform: `translateY(${mark.y}px)` }}
