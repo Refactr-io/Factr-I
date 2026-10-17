@@ -152,6 +152,7 @@ function OverlayNavSubItem({ active, label, onClick }: { active: boolean; label:
   return (
     <button
       aria-current={active ? 'location' : undefined}
+      data-slot="overlay-nav-sub"
       className={cn(
         'relative w-full rounded-md py-1.5 pr-2 pl-0 text-left text-[length:var(--conversation-text-font-size)] leading-[1.125rem] transition-colors',
         "before:absolute before:top-1 before:bottom-1 before:-left-3 before:w-0.5 before:rounded-full before:content-['']",

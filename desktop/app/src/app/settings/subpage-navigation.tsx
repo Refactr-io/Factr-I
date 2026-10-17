@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode, useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, type ReactNode, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -27,7 +27,7 @@ export function SettingsPageTitle({ title }: { title: string }) {
 }
 
 // How far below the top of the scroller a section heading counts as "current".
-const SPY_OFFSET_PX = 96
+const SPY_OFFSET_PX = 72
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -51,6 +51,7 @@ export const SettingsStack = forwardRef<
   const nodes = useRef(new Map<string, HTMLElement>())
   const lockUntil = useRef(0)
   const lastReported = useRef<string | null>(null)
+  const [viewportHeight, setViewportHeight] = useState(0)
 
   const report = useCallback(
     (id: string) => {
@@ -62,10 +63,19 @@ export const SettingsStack = forwardRef<
     [onActiveChange]
   )
 
+  // Where the scroller must be for this section's heading to sit a little below its top edge.
   const targetTop = (id: string) => {
-    const node = nodes.current.get(id)
+    const scroller = scrollerRef.current
+    const heading = nodes.current.get(id)?.querySelector('h2')
 
-    return node ? Math.max(0, node.offsetTop - 8) : 0
+    if (!scroller || !heading) {
+      return 0
+    }
+
+    return Math.max(
+      0,
+      scroller.scrollTop + heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 16
+    )
   }
 
   const scrollToSection = useCallback(
@@ -85,6 +95,21 @@ export const SettingsStack = forwardRef<
   )
 
   useImperativeHandle(ref, () => ({ scrollToSection }), [scrollToSection])
+
+  // The last section is at least one screen tall, so even the last heading can be scrolled up to the top.
+  useEffect(() => {
+    const scroller = scrollerRef.current
+
+    if (!scroller || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    const observer = new ResizeObserver(() => setViewportHeight(scroller.clientHeight))
+    observer.observe(scroller)
+    setViewportHeight(scroller.clientHeight)
+
+    return () => observer.disconnect()
+  }, [])
 
   // Deep link (?page=): jump straight to that heading, then again once late content has settled the layout.
   // eslint-disable-next-line no-restricted-syntax -- scroll-spy lock timestamp, not an atom mirror
@@ -118,18 +143,15 @@ export const SettingsStack = forwardRef<
       return
     }
 
-    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
+    const top = scroller.getBoundingClientRect().top
     let current: string | undefined = sections[0]?.id
 
-    if (atBottom && scroller.scrollTop > 0) {
-      current = sections.at(-1)?.id
-    } else {
-      for (const section of sections) {
-        const node = nodes.current.get(section.id)
+    // The current section is the last one whose heading has reached the upper part of the scroller.
+    for (const section of sections) {
+      const heading = nodes.current.get(section.id)?.querySelector('h2')
 
-        if (node && node.offsetTop - scroller.scrollTop <= SPY_OFFSET_PX) {
-          current = section.id
-        }
+      if (heading && heading.getBoundingClientRect().top - top <= SPY_OFFSET_PX) {
+        current = section.id
       }
     }
 
@@ -140,33 +162,38 @@ export const SettingsStack = forwardRef<
 
   return (
     <div
-      className="relative h-full min-h-0 overflow-y-auto pb-[40vh]"
+      className="relative h-full min-h-0 overflow-y-auto pb-6"
       data-settings-stack=""
       onScroll={spy}
       ref={scrollerRef}
     >
-      <div className={cn('mx-auto w-full max-w-[46rem]', PAGE_INSET_X)}>
-        {sections.map((section, index) => (
-          <section
-            className={cn('scroll-mt-4', index === 0 ? 'pt-4' : 'pt-12')}
-            data-settings-section={section.id}
-            id={`settings-section-${section.id}`}
-            key={section.id}
-            ref={node => {
-              if (node) {
-                nodes.current.set(section.id, node)
-              } else {
-                nodes.current.delete(section.id)
-              }
-            }}
-          >
-            {index > 0 && <div aria-hidden className="mb-10 h-px w-full rounded-full bg-(--ui-stroke-tertiary)" />}
-            <h2 className="mb-5 text-[1.5rem] leading-8 font-semibold tracking-[-0.015em] text-foreground">
-              {section.label}
-            </h2>
-            <SettingsStackContext.Provider value={{ index }}>{renderSection(section.id)}</SettingsStackContext.Provider>
-          </section>
-        ))}
+      <div className={PAGE_INSET_X}>
+        <div className="mx-auto w-full max-w-[46rem]">
+          {sections.map((section, index) => (
+            <section
+              className={cn('scroll-mt-4', index === 0 ? 'pt-4' : 'pt-12')}
+              data-settings-section={section.id}
+              id={`settings-section-${section.id}`}
+              key={section.id}
+              ref={node => {
+                if (node) {
+                  nodes.current.set(section.id, node)
+                } else {
+                  nodes.current.delete(section.id)
+                }
+              }}
+              style={index === sections.length - 1 && viewportHeight ? { minHeight: viewportHeight - 24 } : undefined}
+            >
+              {index > 0 && <div aria-hidden className="mb-10 h-px w-full rounded-full bg-(--ui-stroke-tertiary)" />}
+              <h2 className="mb-5 text-[1.5rem] leading-8 font-semibold tracking-[-0.015em] text-foreground">
+                {section.label}
+              </h2>
+              <SettingsStackContext.Provider value={{ index }}>
+                {renderSection(section.id)}
+              </SettingsStackContext.Provider>
+            </section>
+          ))}
+        </div>
       </div>
     </div>
   )
