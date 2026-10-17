@@ -1860,10 +1860,8 @@ body.guest-pointer-lock :is(webview, iframe) {
   padding: 5px;
 }
 
-/* Dock glow intensity scale — dimmer in light mode (the primary glow reads
-   much stronger over a light backdrop), full strength in dark mode. */
+/* Unfocused chat surface and the like. */
 :root {
-  --dock-glow-scale: 0.55;
   /* Unfocused chat surface (multi-pane): a pane the user isn't in recedes so
      the focused conversation reads as the one being worked in. Light needs a
      deeper cut — a dim over a bright surface loses contrast far more slowly
@@ -1873,7 +1871,6 @@ body.guest-pointer-lock :is(webview, iframe) {
 }
 
 .dark {
-  --dock-glow-scale: 1;
   --chat-unfocused-opacity: 0.72;
 }
 
@@ -2542,6 +2539,7 @@ button[data-slot='aui_msg-reactions'] svg {
   background: radial-gradient(circle, color-mix(in srgb, var(--ui-accent) 55%, transparent) 0%, transparent 62%);
   animation: pet-egg-glow 2.4s ease-in-out infinite;
   pointer-events: none;
+  display: none;
 }
 
 .pet-egg-shadow {
