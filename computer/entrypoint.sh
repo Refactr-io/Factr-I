@@ -77,6 +77,17 @@ rm -f "$bd"/launcher.pid "$bd"/env "$bd"/rfb.sock "$bd"/lease.json "$bd"/lease.l
       "$bd"/browser-profile/Singleton* "$bd"/browser-profile/DevToolsActivePort
 rm -f /tmp/.X*-lock /tmp/.X11-unix/X* 2>/dev/null || true
 
+# The host's IANA time zone, passed by the app as TZ (-e TZ=Europe/Paris), so `date`, cron and Chromium agree with
+# the user. An unknown zone would silently mean UTC; say so and drop it instead.
+if [ -n "${TZ:-}" ]; then
+  if [[ "$TZ" =~ ^[A-Za-z0-9_+/.-]{1,64}$ ]] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
+    export TZ
+  else
+    echo "factr-bot-computer: unknown TZ '$TZ', using UTC" >&2
+    unset TZ
+  fi
+fi
+
 # Same environment the desktop app gives its bundled engine (desktop/app/electron/main.ts resolveFactrBackend).
 py=/opt/factr/backend-python
 export FACTR_REPL_PYTHON="$py/runtime/bin/python3.12"
@@ -92,5 +103,17 @@ export FACTR_RUNTIME_DIR="${FACTR_RUNTIME_DIR:-/tmp/factr-rt}"
 export FACTR_DESKTOP=1
 mkdir -p -m 700 "$FACTR_RUNTIME_DIR"
 cd "$home"
+
+# The bot's Screen should never be empty: bring the desktop up once the engine answers, with no RPC needed.
+# (backend/tools/bot_desktop/runtime.py auto-restarts it on the next screen use because FACTR_BOT_COMPUTER=1.)
+(
+  for _ in $(seq 1 120); do
+    curl -fsS -m 2 "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  FACTR_CONFIG_HOME="$home" PYTHONPATH="$py/source:$py/packages" \
+    "$py/runtime/bin/python3.12" -c 'from tools.bot_desktop import runtime; runtime.start()' \
+    >"$FACTR_RUNTIME_DIR/desktop-autostart.log" 2>&1
+) &
 
 exec factr --profile "$bot" serve --host 0.0.0.0 --port "$port" --allow-remote --token-stdin <<<"$token"

@@ -57,7 +57,7 @@ RUN apt-get update \
       tigervnc-standalone-server xfce4-panel xfwm4 xfdesktop4 xfce4-settings xfce4-terminal \
       dbus-x11 x11-xserver-utils x11-utils x11-xkb-utils xauth fonts-dejavu-core \
       chromium fonts-noto-cjk fonts-noto-color-emoji \
-      tini git curl ca-certificates procps libssl3 socat \
+      tini git curl ca-certificates procps libssl3 socat tzdata \
  && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 1000 --create-home --shell /bin/bash bot \
  && mkdir -p /data/profiles /tmp/.X11-unix \

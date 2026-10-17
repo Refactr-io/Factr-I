@@ -70,11 +70,33 @@ wait_health() { # wait_health <port>
 # Bot A gets the optional engine-home mount with FAKE auth (never the real ~/.factr); bot B uses the default.
 PORT_A="$(freeport)"; PORT_B="$(freeport)"; PORT_C="$(freeport)"; PORT_D="$(freeport)"
 mkdir -p "$SCRATCH/home-a"; echo '{"anthropic_accounts":[]}' > "$SCRATCH/home-a/auth.json"
-run_bot "$A" "$BOT_A" "$TOKEN_A" "$SCRATCH/$BOT_A" "$PORT_A" -v "$SCRATCH/home-a:/data/engine-home" \
+run_bot "$A" "$BOT_A" "$TOKEN_A" "$SCRATCH/$BOT_A" "$PORT_A" -v "$SCRATCH/home-a:/data/engine-home" -e TZ=Asia/Karachi \
   && run_bot "$B" "$BOT_B" "$TOKEN_B" "$SCRATCH/$BOT_B" "$PORT_B" \
   || { echo "FAIL: docker run"; exit 1; }
 echo "bot A on 127.0.0.1:$PORT_A, bot B on 127.0.0.1:$PORT_B"
 check "engines come up (health 200)" bash -c "$(declare -f api wait_health); wait_health $PORT_A && wait_health $PORT_B"
+
+echo "(e0) the Screen is never empty: the desktop starts on its own, no RPC call"
+waitfor() { for _ in $(seq 1 90); do "$@" >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
+check "A: Xvnc is up with no display.start call" waitfor docker exec "$A" pgrep -x Xvnc
+check "A: RFB unix socket exists with no display.start call" waitfor docker exec "$A" test -S "/data/profiles/$BOT_A/bot-desktop/rfb.sock"
+check "B: Xvnc and RFB socket come up on their own too" bash -c "$(declare -f waitfor); waitfor docker exec $B pgrep -x Xvnc && waitfor docker exec $B test -S /data/profiles/$BOT_B/bot-desktop/rfb.sock"
+check "auto-start did not rewrite the profile (no config.yaml created)" bash -c "! test -e $SCRATCH/$BOT_A/config.yaml"
+
+echo "(tz) host time zone"
+check "A: TZ=Asia/Karachi gives +0500" bash -c "[ \"\$(docker exec $A date +%z)\" = +0500 ]"
+check "B: no TZ stays UTC" bash -c "[ \"\$(docker exec $B date +%z)\" = +0000 ]"
+check "an unknown TZ is dropped, not trusted" bash -c "docker run --rm --entrypoint sh $IMAGE -c 'test -f /usr/share/zoneinfo/Europe/Paris && ! test -f /usr/share/zoneinfo/Nowhere/Land'"
+
+echo "(tools) computer_use and request_takeover as the model's tool list sees them"
+TOOLS="$(docker exec -e FACTR_CONFIG_HOME=/data/profiles/$BOT_A -e FACTR_INTERACTIVE=1 -e PYTHONPATH=/opt/factr/backend-python/source:/opt/factr/backend-python/packages "$A" \
+  /opt/factr/backend-python/runtime/bin/python3.12 -c "
+import model_tools
+from tools.registry import registry
+names = [d['function']['name'] for d in model_tools.get_tool_definitions(enabled_toolsets=list(registry.get_registered_toolset_names()), quiet_mode=True, skip_tool_search_assembly=True)]
+print('request_takeover' in names, 'computer_use' in names)" 2>/dev/null | tail -1)"
+echo "  request_takeover offered, computer_use offered: $TOOLS"
+check "request_takeover is offered, computer_use is not (no cua-driver in the image)" test "$TOOLS" = "True False"
 
 echo "(a) health route and token"
 check "A: /api/health 200" test "$(api "$PORT_A" - /api/health)" = 200
@@ -164,7 +186,11 @@ check "Xvnc process is up" docker exec "$A" pgrep -x Xvnc
 check "RFB unix socket exists" docker exec "$A" test -S "/data/profiles/$BOT_A/bot-desktop/rfb.sock"
 check "RFB socket is 0600" bash -c "[ \"\$(docker exec $A stat -c %a /data/profiles/$BOT_A/bot-desktop/rfb.sock)\" = 600 ]"
 check "Xfce window manager is up" docker exec "$A" pgrep -x xfwm4
-check "B has no desktop (isolated)" bash -c "! docker exec $B pgrep -x Xvnc"
+check "request_takeover marks the lease and the Screen sees it" bash -c "docker exec -e FACTR_CONFIG_HOME=/data/profiles/$BOT_A -e PYTHONPATH=/opt/factr/backend-python/source:/opt/factr/backend-python/packages $A /opt/factr/backend-python/runtime/bin/python3.12 -c \"
+import json
+from tools import bot_desktop_takeover_tool as t
+from tools.bot_desktop import lease
+print(json.loads(t.handle_request_takeover({'site':'example.com','why':'log in'}))['status'], lease.get().request)\" | grep -q 'requested example.com: log in'"
 
 echo "(f) one real model turn through the engine and the socat forward (local Ollama, no cost)"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.8:27b}"
