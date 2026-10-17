@@ -25,11 +25,15 @@ export const BOT_COMPUTER = {
   /** Marker file in the profile folder while the container exists; the Python relay refuses local delivery to it. */
   marker: '.computer',
   /**
-   * Optional engine auth store (OAuth credentials live in the engine's $FACTR_HOME, not the profile folder).
-   * ponytail: the image's contract for this is not published yet (computer/README.md); adjust here. Off unless
-   * configureBotComputers({authStoreHostDir}) is given. Mounted read-only, so token refresh cannot write back.
+   * The bot's engine home (sessions, factr.db, memory, skills AND the auth store) is `/data/profiles/<bot>/engine`
+   * inside the profile mount, so it persists with no extra mount. Credentials are seeded into it once from the host
+   * engine home (seedBotAuth). Never mount the real engine home: it holds every session, and a read-only mount stops
+   * the engine at start.
    */
-  authStore: { containerPath: '/data/engine-home', env: 'FACTR_HOME' },
+  engineDir: 'engine',
+  authFiles: ['auth.json', 'openai-auth.json', 'google_oauth.json', 'google_credentials.json'],
+  /** How long an image-present check is trusted before asking docker again. */
+  imageCheckMs: 30_000,
   labelBot: 'factr.bot',
   labelVersion: 'factr.computer.v',
   version: '1',
@@ -98,8 +102,8 @@ export interface BotComputerDeps {
   imageTag?: string
   /** A free loopback port for a new container (default: listen on 127.0.0.1:0, read it, close). */
   pickPort?: () => Promise<number>
-  /** Host dir of the engine auth store to mount read-only (see BOT_COMPUTER.authStore). Omit to mount nothing. */
-  authStoreHostDir?: string
+  /** The host engine home (FACTR_HOME, default ~/.factr/engine): where credentials are seeded from. */
+  hostEngineHome?: string
   run?: DockerRun
   now?: () => number
 }
@@ -355,13 +359,77 @@ async function ensureNetwork() {
   }
 }
 
+/**
+ * One-time credential seed: copy the host engine home's auth files into the bot's own engine dir
+ * (`<profile>/engine`), mode 0600. Only when the bot has none of them yet; never overwrites, never mounts the real
+ * dir. Returns the files copied.
+ * ponytail: if a provider rotates single-use refresh tokens, a bot's refresh can sign the host out (and the reverse).
+ * API keys through the profile `.env` avoid that. Upgrade path: per-bot OAuth sign-in inside the computer.
+ */
+export function seedBotAuth(hostEngineHome: string, profileDir: string): string[] {
+  const botEngine = path.join(profileDir, BOT_COMPUTER.engineDir)
+  const has = (dir: string, f: string) => fs.existsSync(path.join(dir, f))
+
+  if (BOT_COMPUTER.authFiles.some(f => has(botEngine, f))) {
+    return []
+  }
+
+  const copied: string[] = []
+
+  for (const f of BOT_COMPUTER.authFiles.filter(f => has(hostEngineHome, f))) {
+    try {
+      fs.mkdirSync(botEngine, { recursive: true })
+      fs.copyFileSync(path.join(hostEngineHome, f), path.join(botEngine, f), fs.constants.COPYFILE_EXCL)
+      fs.chmodSync(path.join(botEngine, f), 0o600)
+      copied.push(f)
+    } catch {
+      // Best effort: a bot without seeded credentials still starts (API keys come through its .env).
+    }
+  }
+
+  return copied
+}
+
+let imageCheck: { at: number; ok: boolean } | null = null
+
+/** Is the bot computer image present? Cached briefly (routing asks on every dial); `fresh` skips the cache. */
+export async function computerImageReady(fresh = false): Promise<boolean> {
+  if (!fresh && imageCheck && now() - imageCheck.at < BOT_COMPUTER.imageCheckMs) {
+    return imageCheck.ok
+  }
+
+  let ok = true
+
+  try {
+    await docker(['image', 'inspect', '--format', '{{.Id}}', computerImage()])
+  } catch {
+    ok = false
+  }
+
+  imageCheck = { at: now(), ok }
+
+  return ok
+}
+
+/**
+ * The routing answer for one profile, with Docker or the image missing treated alike: no computer, so the bot falls
+ * back to its own host engine and still chats. Docker and the image are only asked about for a would-be bot. A
+ * computer already running keeps the container route even if its image tag vanished (never host engine + container).
+ */
+export async function botBackendFor(profile: string, facts: BotRouteFacts) {
+  if (chooseBotBackend(profile, facts, true) !== 'container') {
+    return chooseBotBackend(profile, facts, false)
+  }
+
+  return chooseBotBackend(profile, facts, (await dockerAvailable()) && (computerActive(profile) || (await computerImageReady())))
+}
+
 /** The exact `docker create` argv. Exported for tests. */
 export function createArgs(
   profile: string,
   image: string,
   hostDir: string,
-  port: number,
-  authStoreHostDir?: string
+  port: number
 ): string[] {
   const name = computerName(profile)
   const L = BOT_COMPUTER.limits
@@ -385,17 +453,11 @@ export function createArgs(
     '-p', `127.0.0.1:${port}:${port}`,
     '-e', `${BOT_COMPUTER.envPort}=${port}`,
     '-v', `${hostDir}:${BOT_COMPUTER.mountRoot}/${profile}`,
-    ...(authStoreHostDir
-      ? [
-          '-v', `${authStoreHostDir}:${BOT_COMPUTER.authStore.containerPath}:ro`,
-          '-e', `${BOT_COMPUTER.authStore.env}=${BOT_COMPUTER.authStore.containerPath}`
-        ]
-      : []),
     '-e', `${BOT_COMPUTER.envBot}=${profile}`,
     // Name only: the value rides the docker client's env, so it is not in argv (`ps`).
     '-e', BOT_COMPUTER.envToken,
-    // ponytail: a model provider on localhost (Ollama, LM Studio) must still be rewritten to host.docker.internal
-    // in the bot's config (the --add-host above only makes the name resolve). Not done in the MVP.
+    // A localhost model provider (Ollama :11434, LM Studio :1234) works unchanged: the image's entrypoint forwards
+    // those ports to host.docker.internal.
     // ponytail: Linux hosts need --user <host uid> for the bind mount; Docker Desktop (Mac/Windows) maps ownership.
     image
   ]
@@ -495,10 +557,19 @@ export async function ensureComputer(profile: string): Promise<ComputerHandle> {
           throw new Error(`Profile folder for "${profile}" does not exist.`)
         }
 
+        // No image, no create: the caller falls back to a host engine (routing) or shows the error (start).
+        if (!(await computerImageReady(true))) {
+          throw new Error('image-missing')
+        }
+
         const port = await (deps?.pickPort || freePort)()
         await ensureNetwork()
 
-        await docker(createArgs(profile, image, hostDir, port, cfg().authStoreHostDir), {
+        if (deps?.hostEngineHome) {
+          seedBotAuth(deps.hostEngineHome, hostDir)
+        }
+
+        await docker(createArgs(profile, image, hostDir, port), {
           env: { [BOT_COMPUTER.envToken]: token }
         })
 
@@ -608,7 +679,13 @@ export async function computerStatus(profile: string): Promise<ComputerStatus> {
     const info = await inspect(computerName(profile))
 
     if (!info || info.status !== 'running') {
-      return { state: starting.has(profile) ? 'starting' : 'off', busy }
+      if (starting.has(profile)) {
+        return { state: 'starting', busy }
+      }
+
+      return (await computerImageReady())
+        ? { state: 'off', busy }
+        : { state: 'error', busy, error: 'image-missing' }
     }
 
     if (starting.has(profile)) {
@@ -708,6 +785,7 @@ export function resetBotComputersForTest() {
   deps = null
   dockerBin = undefined
   availability = null
+  imageCheck = null
   tracked.clear()
   starting.clear()
   locks.clear()

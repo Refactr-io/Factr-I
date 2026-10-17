@@ -90,12 +90,11 @@ import {
 import { decideBootstrapRepair } from './bootstrap-repair-guard'
 import { runBootstrap } from './bootstrap-runner'
 import {
+  botBackendFor,
   computerStatus as botComputerStatus,
-  chooseBotBackend,
   computerActive,
   configureBotComputers,
   destroyComputer,
-  dockerAvailable,
   ensureComputer,
   isBotProfile,
   reconcileComputers,
@@ -11836,8 +11835,8 @@ configureBotComputers({
   masterSecret: botComputersMasterSecret,
   waitReady: (baseUrl, token) => waitForFactr(baseUrl, token),
   maxRunning: () => poolMaxBackends(),
-  // Opt-in until the image publishes its auth-store contract: FACTR_BOT_AUTH_STORE=<engine home dir>.
-  authStoreHostDir: process.env.FACTR_BOT_AUTH_STORE || undefined,
+  // Where a new bot's credentials are seeded from (one-time copy): the engine home, as the engine resolves it.
+  hostEngineHome: process.env.FACTR_HOME || path.join(app.getPath('home'), '.factr', 'engine'),
   // Idle or cap stop: drop the pool entry so the renderer parks and re-dials (which wakes it) instead of a dead socket.
   onStopped: profile => {
     for (const key of localProfilePoolKeys(profile)) {
@@ -11858,7 +11857,8 @@ async function botComputerRemote(profile: string) {
     disabled: process.env.FACTR_BOT_COMPUTERS === '0'
   }
 
-  if (!chooseBotBackend(profile, facts, true) || chooseBotBackend(profile, facts, await dockerAvailable()) !== 'container') {
+  // Docker down or the image missing: no computer, the per-profile host engine path below serves the bot.
+  if ((await botBackendFor(profile, facts)) !== 'container') {
     return null
   }
 

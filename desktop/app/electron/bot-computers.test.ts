@@ -10,7 +10,9 @@ vi.mock('node:child_process', () => ({ execFile: execFileMock }))
 
 import {
   BOT_COMPUTER,
+  botBackendFor,
   chooseBotBackend,
+  computerImageReady,
   computerStatus,
   configureBotComputers,
   createArgs,
@@ -21,6 +23,7 @@ import {
   isBotProfile,
   reconcileComputers,
   resetBotComputersForTest,
+  seedBotAuth,
   setComputerHold,
   stopComputer,
   sweepIdleComputers,
@@ -37,6 +40,7 @@ let stopped: string[]
 let existing: Record<string, { status: string; label: string; port: string }>
 let nextPort: number
 let startError: Error | null
+let imageMissing: boolean
 let ps: string
 
 function fakeRun(args: string[], opts?: { env?: Record<string, string> }): Promise<string> {
@@ -45,6 +49,10 @@ function fakeRun(args: string[], opts?: { env?: Record<string, string> }): Promi
 
   if (cmd === 'version') {
     return Promise.resolve('29.8.0')
+  }
+
+  if (cmd === 'image') {
+    return imageMissing ? Promise.reject(NO_SUCH) : Promise.resolve('sha256:abc')
   }
 
   if (cmd === 'inspect') {
@@ -131,6 +139,7 @@ beforeEach(() => {
   existing = {}
   nextPort = 41000
   startError = null
+  imageMissing = false
   ps = ''
   waitReady.mockClear()
 })
@@ -198,13 +207,6 @@ describe('docker create args', () => {
       IMAGE
     ])
     expect(args.join(' ')).not.toContain(deriveBotToken('scout'))
-  })
-
-  it('mounts the auth store read-only only when configured', () => {
-    const args = createArgs('scout', IMAGE, '/h/p', 41234, '/auth')
-
-    expect(args).toContain('/auth:/data/engine-home:ro')
-    expect(args).toContain('FACTR_HOME=/data/engine-home')
   })
 })
 
@@ -307,6 +309,130 @@ describe('ensureComputer', () => {
     // scout is older but watched: writer goes.
     expect(dockerCalls('stop').map(c => c.args.at(-1))).toEqual(['bots-factr-bot-writer'])
     expect(stopped).toEqual(['writer'])
+  })
+})
+
+describe('credential seed', () => {
+  let host: string
+  let profileDir: string
+
+  beforeEach(() => {
+    host = fs.mkdtempSync(path.join(os.tmpdir(), 'host-engine-'))
+    profileDir = path.join(home, 'profiles', 'scout')
+  })
+
+  afterEach(() => fs.rmSync(host, { recursive: true, force: true }))
+
+  it('copies whichever auth files exist into <profile>/engine with mode 0600, and nothing else', () => {
+    fs.writeFileSync(path.join(host, 'auth.json'), '{"a":1}', { mode: 0o644 })
+    fs.writeFileSync(path.join(host, 'google_oauth.json'), '{"g":1}')
+    fs.writeFileSync(path.join(host, 'factr.db'), 'sessions')
+
+    expect(seedBotAuth(host, profileDir).sort()).toEqual(['auth.json', 'google_oauth.json'])
+    expect(fs.readdirSync(path.join(profileDir, 'engine')).sort()).toEqual(['auth.json', 'google_oauth.json'])
+    expect(fs.readFileSync(path.join(profileDir, 'engine', 'auth.json'), 'utf8')).toBe('{"a":1}')
+    expect(fs.statSync(path.join(profileDir, 'engine', 'auth.json')).mode & 0o777).toBe(0o600)
+  })
+
+  it('never overwrites: a bot that already has any auth file is left alone', () => {
+    fs.mkdirSync(path.join(profileDir, 'engine'), { recursive: true })
+    fs.writeFileSync(path.join(profileDir, 'engine', 'openai-auth.json'), 'mine')
+    fs.writeFileSync(path.join(host, 'auth.json'), 'host')
+    fs.writeFileSync(path.join(host, 'openai-auth.json'), 'host')
+
+    expect(seedBotAuth(host, profileDir)).toEqual([])
+    expect(fs.readFileSync(path.join(profileDir, 'engine', 'openai-auth.json'), 'utf8')).toBe('mine')
+    expect(fs.existsSync(path.join(profileDir, 'engine', 'auth.json'))).toBe(false)
+  })
+
+  it('creates nothing when the host has no credentials', () => {
+    expect(seedBotAuth(host, profileDir)).toEqual([])
+    expect(fs.existsSync(path.join(profileDir, 'engine'))).toBe(false)
+  })
+
+  it('seeds on first create only, and never mounts an engine home', async () => {
+    fs.writeFileSync(path.join(host, 'auth.json'), 'host-v1')
+    configure({ hostEngineHome: host })
+    await ensureComputer('scout')
+
+    expect(fs.readFileSync(path.join(profileDir, 'engine', 'auth.json'), 'utf8')).toBe('host-v1')
+    expect(dockerCalls('create')[0].args.join(' ')).not.toMatch(/engine-home|:ro/)
+
+    // The bot refreshed its own copy; a later recreate must not clobber it.
+    fs.writeFileSync(path.join(profileDir, 'engine', 'auth.json'), 'bot-refreshed')
+    fs.writeFileSync(path.join(host, 'auth.json'), 'host-v2')
+    await destroyComputer('scout')
+    await ensureComputer('scout')
+    expect(fs.readFileSync(path.join(profileDir, 'engine', 'auth.json'), 'utf8')).toBe('bot-refreshed')
+  })
+})
+
+describe('image missing', () => {
+  it('start refuses with image-missing and never tries docker create', async () => {
+    configure()
+    imageMissing = true
+    await expect(ensureComputer('scout')).rejects.toThrow('image-missing')
+    expect(dockerCalls('create')).toEqual([])
+    expect(dockerCalls('start')).toEqual([])
+    expect(fs.existsSync(path.join(home, 'profiles', 'scout', '.computer'))).toBe(false)
+  })
+
+  it('status is an image-missing error, but a running computer stays on', async () => {
+    configure()
+    imageMissing = true
+    expect(await computerStatus('scout')).toMatchObject({ state: 'error', error: 'image-missing' })
+
+    existing['bots-factr-bot-scout'] = { status: 'running', label: 'scout', port: '41000' }
+    expect((await computerStatus('scout')).state).toBe('on')
+  })
+
+  it('caches the image check for 30 seconds, and start always re-checks', async () => {
+    configure()
+    imageMissing = true
+    expect(await computerImageReady()).toBe(false)
+    imageMissing = false
+    expect(await computerImageReady()).toBe(false) // cached
+    expect(dockerCalls('image')).toHaveLength(1)
+
+    clock += 31_000
+    expect(await computerImageReady()).toBe(true)
+
+    imageMissing = true
+    expect(await computerImageReady()).toBe(true) // cached ok
+    await expect(ensureComputer('scout')).rejects.toThrow('image-missing') // fresh
+  })
+
+  it('routing falls back to the per-bot host engine, like no Docker', async () => {
+    const facts = { primarySingleProfile: true, primaryProfile: 'default', isBot: true }
+    configure()
+    expect(await botBackendFor('scout', facts)).toBe('container')
+
+    resetBotComputersForTest()
+    configure()
+    imageMissing = true
+    expect(await botBackendFor('scout', facts)).toBe('host-engine')
+
+    resetBotComputersForTest()
+    configure({ run: () => Promise.reject(Object.assign(new Error('nope'), { code: 'ENOENT' })) })
+    expect(await botBackendFor('scout', facts)).toBe('host-engine')
+  })
+
+  it('does not ask docker about a non-bot profile or the primary', async () => {
+    configure()
+    imageMissing = true
+    expect(await botBackendFor('work', { primarySingleProfile: true, primaryProfile: 'default' })).toBe('host-engine')
+    expect(await botBackendFor('default', { primarySingleProfile: true, isBot: true })).toBeNull()
+    expect(calls).toEqual([])
+  })
+
+  it('a computer already running keeps the container route even if its image tag vanished', async () => {
+    configure()
+    await ensureComputer('scout')
+    imageMissing = true
+    clock += 31_000
+    expect(await botBackendFor('scout', { primarySingleProfile: true, primaryProfile: 'default', isBot: true })).toBe(
+      'container'
+    )
   })
 })
 
