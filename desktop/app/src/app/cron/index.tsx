@@ -45,6 +45,7 @@ import {
   updateCronJob
 } from '@/factr'
 import { type Translations, useI18n } from '@/i18n'
+import { botsHidden } from '@/lib/hidden-features'
 import { AlertTriangle } from '@/lib/icons'
 import { requestModelOptions } from '@/lib/model-options'
 import { asText } from '@/lib/text'
@@ -985,13 +986,15 @@ function CronJobRuns({
   )
 }
 
+const isBotChatTarget = (id: string) => id === 'bot-chat' || id.startsWith('bot-chat:')
+
 // Label a cron delivery target: 'local' → localized "This desktop", known
 // platforms → their delivery label, anything else → the backend name. Configured
 // platforms without a cron home channel get a "set a home channel first" hint.
 function deliverTargetLabel(target: CronDeliveryTarget, c: Translations['cron']): string {
   const base = target.id === 'local' ? c.deliveryLabels.local : (c.deliveryLabels[target.id] ?? target.name)
 
-  return target.id !== 'local' && !target.home_target_set ? `${base} — ${c.deliverNeedsHomeChannel}` : base
+  return target.id !== 'local' && !target.home_target_set ? `${base}: ${c.deliverNeedsHomeChannel}` : base
 }
 
 // The delivery-target checkbox group, shared by the manual cron editor and the
@@ -1012,10 +1015,12 @@ export function DeliverCheckboxes({
   value: string
 }) {
   const selected = parseCronDeliveryTargets(value)
+  // Bot Chat targets stay out of the list while bots are hidden (a saved route to one is still kept below).
+  const visibleTargets = botsHidden ? targets.filter(target => !isBotChatTarget(target.id)) : targets
   const knownIds = new Set(targets.map(target => target.id))
 
   const options = [
-    ...targets,
+    ...visibleTargets,
     ...selected
       .filter(target => !knownIds.has(target))
       .map(target => ({ home_env_var: null, home_target_set: true, id: target, name: target }))

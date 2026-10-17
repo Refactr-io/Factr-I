@@ -29,3 +29,22 @@ describe('DeliverCheckboxes accessible name', () => {
     expect(screen.getByRole('group', { name: en.cron.deliverLabel })).toBeTruthy()
   })
 })
+
+describe('DeliverCheckboxes bot targets', () => {
+  it('does not offer Bot Chat targets while bots are hidden', () => {
+    render(
+      <DeliverCheckboxes
+        c={en.cron}
+        id="cron-deliver"
+        onChange={() => {}}
+        targets={[
+          { home_env_var: null, home_target_set: true, id: 'local', name: 'This computer' },
+          { home_env_var: null, home_target_set: true, id: 'bot-chat:default', name: 'Bot Chat (default)' }
+        ]}
+        value="local"
+      />
+    )
+
+    expect(screen.queryByText(/Bot Chat/)).toBeNull()
+  })
+})
