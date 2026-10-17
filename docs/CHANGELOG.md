@@ -41,7 +41,7 @@
   and the preview console has its own icon.
 - Remote: connecting to a Factr-I on another computer over SSH or an SSH tunnel works end to end (tested against a Linux
   container). Fixed: the Files pane and folder picker on a remote or SSH connection, a clear message when a saved token is
-  rejected, and the wording (no "Factr-I Cloud", no made-up example addresses). Reaching a gateway by its LAN address or
+  rejected, attached text files now reach the server's model over SSH, saved SSH connections accept a key file, and the wording (no "Factr-I Cloud", no made-up example addresses). Reaching a gateway by its LAN address or
   hostname is not supported yet; use an SSH tunnel or SSH mode.
 - Smaller fixes: scheduled jobs and messaging screens in plain wording (no "cron", no "Bot Chat" target while bots are
   hidden), "Add a folder to continue" on New project, error toasts clear themselves, a narrow window collapses the side
