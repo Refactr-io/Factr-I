@@ -1123,8 +1123,25 @@
     --shape-radius-lg: 0.625rem;
   }
 
-  :where([class~='rounded'], [class*='rounded-']):not([class*='rounded-full']):not([class*='rounded-none']) {
+  /* One shared mechanism: every box, pseudo-element included, takes the squircle corner. corner-shape only paints
+     where a radius exists, so a plain element is unaffected. Circles (dots, avatars, `rounded-full`, 50% radii)
+     stay true circles below; nothing sets corner-shape by hand anywhere else. */
+  :where(*, *::before, *::after):where(:not([class*='rounded-full']):not([class*='rounded-none'])) {
     corner-shape: superellipse(1.3);
+  }
+
+  :where(
+    .effort-bar__dot,
+    .pet-egg,
+    .pet-egg__shine,
+    .pet-egg__spot,
+    .pet-egg__glow,
+    .pet-egg-shadow,
+    [style*='border-radius: 999'],
+    [style*='border-radius:999'],
+    [style*='border-radius: 50%']
+  ) {
+    corner-shape: round;
   }
 
   .squircle-surface {

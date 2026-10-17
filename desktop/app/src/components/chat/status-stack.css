@@ -50,7 +50,7 @@
 }
 
 .status-dismiss-button > .codicon {
-  transform: translateY(-0.03125rem);
+  transform: none;
 }
 
 [data-slot='composer-status-stack'] .status-row-actions {

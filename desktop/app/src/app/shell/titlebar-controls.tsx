@@ -581,7 +581,7 @@ function TitlebarChatTitle() {
       }}
     >
       <span
-        className="min-w-0 translate-y-[0.5px] truncate pl-4 text-[0.8125rem] font-medium text-foreground"
+        className="min-w-0 truncate pl-4 text-[0.8125rem] font-medium text-foreground"
         data-titlebar-chat-title-text=""
       >
         {title}
