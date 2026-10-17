@@ -21,7 +21,7 @@ import { CopyButton } from '@/components/ui/copy-button'
 import { Input } from '@/components/ui/input'
 import { PaneStripGlyph } from '@/components/ui/pane-tab'
 import { useI18n } from '@/i18n'
-import { iconSize, Logs } from '@/lib/icons'
+import { iconSize, MessageCode } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
 import { ANNOTATE_BLUE } from '@/lib/preview-annotate'
 import { cn } from '@/lib/utils'
@@ -265,7 +265,7 @@ export function PreviewBrowserBar({
       ) : null}
       <PaneStripGlyph
         active={consoleOpen}
-        icon={<Logs className={iconSize.sm} />}
+        icon={<MessageCode className={iconSize.sm} />}
         label={consoleOpen ? copy.hideConsole : copy.showConsole}
         onSelect={onToggleConsole}
       />
