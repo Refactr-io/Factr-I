@@ -3704,7 +3704,7 @@ export const en: Translations = {
     },
     startingSignIn: provider => `Starting sign-in for ${provider}...`,
     verifyingCode: provider => `Verifying your code with ${provider}...`,
-    connectedProvider: provider => `${provider} connected`,
+    connectedProvider: provider => `${provider} is connected`,
     connectedPicking: provider => `${provider} connected. Picking a default model...`,
     signInFailed: 'Sign-in failed. Try again.',
     signInExpired:
@@ -3735,7 +3735,7 @@ export const en: Translations = {
     free: 'Free',
     price: (input, output) => `${input} in / ${output} out per Mtok`,
     change: 'Change',
-    startChatting: 'Begin',
+    startChatting: 'Start chatting',
     docs: provider => `${provider} docs`
   },
 

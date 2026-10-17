@@ -8,7 +8,7 @@ import { ErrorIcon } from '@/components/ui/error-state'
 import { Input } from '@/components/ui/input'
 import { getGlobalModelOptions } from '@/factr'
 import { useI18n } from '@/i18n'
-import { ExternalLink, Loader2 } from '@/lib/icons'
+import { Check, ChevronDown, ExternalLink, Loader2 } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import {
   cancelOnboardingFlow,
@@ -25,7 +25,6 @@ import {
   submitOnboardingCode
 } from '@/store/onboarding'
 
-import { DecodedLabel, GlyphText, HackeryButton, useScramble } from './glyph'
 import { providerTitle } from './providers'
 
 export function FlowPanel({
@@ -51,7 +50,7 @@ export function FlowPanel({
   }
 
   if (flow.status === 'success') {
-    return <DecodedLabel text={t.onboarding.connectedPicking(title)} />
+    return <Status>{t.onboarding.connectedPicking(title)}</Status>
   }
 
   if (flow.status === 'confirming_model') {
@@ -250,8 +249,6 @@ function ConfirmingModelPanel({
   profile?: string
 }) {
   const { t } = useI18n()
-  const scrambledModel = useScramble(flow.currentModel, leaving)
-  const scrambledBegin = useScramble(t.onboarding.startChatting, leaving)
   // Local state controls whether the model picker dialog is open.
   // We reuse the existing ModelPickerDialog component (the same picker
   // available from the chat shell) rather than building an inline
@@ -274,52 +271,53 @@ function ConfirmingModelPanel({
   const price = providerRow?.pricing?.[flow.currentModel]
 
   return (
-    <div className="grid place-items-center gap-7 py-6 text-center">
-      <DecodedLabel leaving={leaving} text={t.onboarding.connectedProvider(flow.label)} />
+    <div className="mx-auto grid w-full max-w-xs justify-items-center gap-6 py-8 text-center">
+      <div
+        className={cn(
+          'grid justify-items-center gap-2 transition duration-[360ms] ease-out',
+          leaving ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'
+        )}
+      >
+        <Check aria-hidden className="size-5 text-(--ui-text-secondary)" />
+        <h2 className="text-xl font-medium leading-7 tracking-tight text-foreground">
+          {t.onboarding.connectedProvider(flow.label)}
+        </h2>
+      </div>
 
       <div
         className={cn(
-          'grid justify-items-center gap-1.5 transition duration-[360ms] ease-out',
-          leaving ? 'opacity-0 saturate-0' : 'opacity-100 saturate-100'
+          'grid w-full gap-1.5 text-left transition duration-[360ms] ease-out',
+          leaving ? 'opacity-0' : 'opacity-100'
         )}
       >
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[0.625rem] uppercase tracking-[0.2em] text-muted-foreground">
-            {t.onboarding.defaultModel}
-          </span>
-        </div>
-        <p className="font-mono text-base">
-          <GlyphText text={scrambledModel} />
-        </p>
-        {price && (price.input || price.output) && (
-          <p className="font-mono text-xs text-muted-foreground">
-            {price.free ? t.onboarding.free : t.onboarding.price(price.input || '?', price.output || '?')}
-          </p>
-        )}
-        <Button
-          className="mt-0.5 text-xs"
+        <span className="px-0.5 text-xs font-medium text-(--ui-text-secondary)">{t.onboarding.defaultModel}</span>
+        <button
+          className="flex h-10 w-full items-center gap-2 rounded-md bg-(--ui-bg-tertiary) px-3 text-left text-sm text-foreground transition-colors hover:bg-(--chrome-action-hover) focus-visible:bg-(--chrome-action-hover) disabled:pointer-events-none disabled:opacity-60"
           disabled={flow.saving}
           onClick={() => setPickerOpen(true)}
-          size="inline"
-          variant="text"
+          type="button"
         >
-          {t.onboarding.change}
-        </Button>
+          <span className="min-w-0 flex-1 truncate">{flow.currentModel}</span>
+          {price && (price.input || price.output) ? (
+            <span className="shrink-0 text-xs text-(--ui-text-tertiary)">
+              {price.free ? t.onboarding.free : t.onboarding.price(price.input || '?', price.output || '?')}
+            </span>
+          ) : null}
+          <ChevronDown aria-hidden className="size-4 shrink-0 text-(--ui-text-tertiary)" />
+        </button>
       </div>
 
-      <div
+      <Button
         className={cn(
-          'transition duration-[360ms] ease-out',
-          leaving ? 'opacity-0 saturate-0' : 'opacity-100 saturate-100'
+          'h-10 w-full text-sm transition duration-[360ms] ease-out',
+          leaving ? 'opacity-0' : 'opacity-100'
         )}
+        disabled={flow.saving}
+        onClick={onBegin}
       >
-        <HackeryButton
-          disabled={flow.saving}
-          label={<GlyphText text={scrambledBegin} />}
-          loading={flow.saving}
-          onClick={onBegin}
-        />
-      </div>
+        {flow.saving ? <Loader2 className="size-4 animate-spin" /> : null}
+        {t.onboarding.startChatting}
+      </Button>
 
       {/*
         ModelPickerDialog's content sits on the modal rung, which is below the

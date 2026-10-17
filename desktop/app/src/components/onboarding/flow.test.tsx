@@ -107,7 +107,7 @@ describe('ConfirmingModelPanel model pick', () => {
     // only OpenRouter serves.
     // Let the provider-catalog query settle so the relabel can read the picked provider's name.
     await new Promise(resolve => setTimeout(resolve, 200))
-    fireEvent.click(screen.getByRole('button', { name: 'Change' }))
+    fireEvent.click(screen.getByRole('button', { name: /gpt-5.6-terra/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'pick-openrouter-model' }))
 
     await waitFor(() => expect(calls.some(c => c.path === '/api/model/set')).toBe(true))
