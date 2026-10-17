@@ -447,7 +447,8 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   browser: {
     allowPrivateUrls: 'Browser Private URLs',
     autoLocalForPrivateUrls: 'Local Browser For Private URLs',
-    useRealProfile: 'Use My Real Browser Profile'
+    useRealProfile:
+      "Browse with your own logins. Factr-I copies your default browser's profile (cookies, logins, preferences) into a managed snapshot and drives that copy with its packaged Chromium. Your live profile is never opened, and the copy refreshes on each run. The agent can also open this session when another browser backend is set up. Chromium browsers only (Chrome, Edge, Brave, Chromium). Off by default."
   },
   checkpoints: {
     enabled: 'File Checkpoints',
