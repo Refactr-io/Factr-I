@@ -3651,7 +3651,7 @@ export const en: Translations = {
 
   onboarding: {
     headerTitle: 'Connect a model',
-    headerDesc: 'Factr-I needs a model to answer. Sign in with a plan you already have, use an API key, or run one on this computer.',
+    headerDesc: 'Connect an account, add an API key, or use a local model.',
     configOpenFolder: 'Open the folder',
     configBackUpAndReset: 'Back up and start fresh',
     configBackedUp: backupPath => `Saved a copy as ${backupPath}. Set up a provider to start fresh.`,
@@ -3662,7 +3662,7 @@ export const en: Translations = {
     lookingUpProviders: 'Looking up providers...',
     collapse: 'Collapse',
     otherProviders: 'Other providers',
-    haveApiKey: 'I have an API key',
+    haveApiKey: 'Use an API key',
     chooseLater: "I'll choose a provider later",
     recommended: 'Recommended',
     connected: 'Connected',

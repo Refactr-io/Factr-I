@@ -271,14 +271,14 @@ function ConfirmingModelPanel({
   const price = providerRow?.pricing?.[flow.currentModel]
 
   return (
-    <div className="mx-auto grid w-full max-w-xs justify-items-center gap-6 py-8 text-center">
+    <div className="mx-auto grid w-full max-w-xs justify-items-center gap-8 py-8 text-center">
       <div
         className={cn(
-          'grid justify-items-center gap-2 transition duration-[360ms] ease-out',
+          'flex items-center justify-center gap-2 transition duration-[360ms] ease-out',
           leaving ? 'translate-y-1 opacity-0' : 'translate-y-0 opacity-100'
         )}
       >
-        <Check aria-hidden className="size-5 text-(--ui-text-secondary)" />
+        <Check aria-hidden className="size-5 shrink-0 text-(--ui-text-secondary)" />
         <h2 className="text-xl font-medium leading-7 tracking-tight text-foreground">
           {t.onboarding.connectedProvider(flow.label)}
         </h2>
@@ -286,7 +286,7 @@ function ConfirmingModelPanel({
 
       <div
         className={cn(
-          'grid w-full gap-1.5 text-left transition duration-[360ms] ease-out',
+          '-mb-3 grid w-full gap-2 text-left transition duration-[360ms] ease-out',
           leaving ? 'opacity-0' : 'opacity-100'
         )}
       >
@@ -309,7 +309,7 @@ function ConfirmingModelPanel({
 
       <Button
         className={cn(
-          'h-10 w-full text-sm transition duration-[360ms] ease-out',
+          'h-10 w-full text-sm font-medium transition duration-[360ms] ease-out',
           leaving ? 'opacity-0' : 'opacity-100'
         )}
         disabled={flow.saving}

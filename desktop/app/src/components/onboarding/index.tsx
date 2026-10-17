@@ -389,7 +389,7 @@ export function DesktopOnboardingOverlay({
     >
       <div
         className={cn(
-          'relative w-full max-w-[45rem] transition-all duration-500 ease-out',
+          'relative w-full max-w-[37.5rem] transition-all duration-500 ease-out',
           bare
             ? ''
             : 'overflow-hidden rounded-lg bg-(--ui-chat-bubble-background)',
