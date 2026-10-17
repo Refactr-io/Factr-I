@@ -62,3 +62,8 @@ computer/tests/test_computer_image.sh        # builds the image if missing; BUIL
 ```
 
 Starts bots on throwaway profile folders under `/Users/rameelmalik/factri-bots-scratch/img/` (override with `SCRATCH=`), as containers `bots-test-a` to `bots-test-d` on `bots-factr-net`. Checks health and token enforcement on `127.0.0.1:P`, separate filesystems, separate PID and network namespaces with no cross-bot reach, the engine-home and local-model forwards, a read-only engine home, persistence across stop/start, the Bot Desktop starting inside the container, and (when Ollama with `qwen3.8:27b` runs on the host, `OLLAMA_MODEL=` to change) one real model turn through the engine. Skips when Docker is not reachable. Removes only what it created, by exact name; the network is removed only if the test created it.
+
+## Known limitation: dev server origin (dev builds only)
+
+The engine refuses a WebSocket whose `Origin` is `http(s)://` with a port other than its own listen port (`origin_mismatch`, close code 4403; `engine/crates/factr-gateway/src/auth.rs`). It has no option to allow an extra origin. A packaged app loads from `file://` or `app://`, which the engine accepts, but the desktop dev server (`http://127.0.0.1:5174`) is refused, so in `npm run dev` the renderer cannot open a bot's container engine and the window sits on "Reconnecting" after a bot becomes the active profile. Developers testing bot computers should run the built renderer (`npm run build`, then `electron .` without `FACTR_DESKTOP_DEV_SERVER`), as the e2e fixtures do.
+

@@ -668,7 +668,8 @@ function parseBytes(text: string): number {
 
 export async function computerStatus(profile: string): Promise<ComputerStatus> {
   validateBotProfile(profile)
-  const busy = (tracked.get(profile)?.holds.size ?? 0) > 0
+  // "Working" means a turn is running; a watched screen ('view') keeps the computer awake but is not work.
+  const busy = tracked.get(profile)?.holds.has('turn') ?? false
   const probe = await probeDocker()
 
   if (!probe.value) {
@@ -732,7 +733,7 @@ export async function reconcileComputers(existingProfiles: Iterable<string>): Pr
     '--filter',
     `name=${BOT_COMPUTER.namePrefix}`,
     '--format',
-    `{{.Names}}|{{.State}}|{{index .Labels "${BOT_COMPUTER.labelBot}"}}`
+    `{{.Names}}|{{.State}}|{{.Label "${BOT_COMPUTER.labelBot}"}}`
   ])
 
   const lines = out.split('\n').filter(Boolean)

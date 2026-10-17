@@ -43,7 +43,7 @@ import { isBackfilledFacePng } from './avatar-image'
 import { AvatarPicker } from './avatar-picker'
 import { $selectedBot } from './bot-state'
 import { createCanonicalChat } from './canonical-chat'
-import { $botMeta, botHandle, botRosterKey, filterBots, ROSTER_KEY, saveBotMeta } from './data'
+import { $botMeta, botHandle, botRosterKey, filterBots, ROSTER_KEY, saveBotMeta, withTimeout } from './data'
 import { labeled, ResizableFrame } from './dialog-parts'
 import { GROUP_CHAT_MAX_MEMBERS, mintGroupRoomId, uniqueGroupChatName, updateGroupChat } from './group-chat'
 import type { GroupChatRoom } from './group-chat'
@@ -303,12 +303,16 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
       return
     }
 
-    Promise.all([
-      requestForTarget<ProfileDescribeResponse>('profiles.describe', {
-        name: capSource
-      }),
-      requestForTarget<McpCatalogResponse>('mcp.catalog', {}).catch(() => null)
-    ])
+    withTimeout(
+      Promise.all([
+        requestForTarget<ProfileDescribeResponse>('profiles.describe', {
+          name: capSource
+        }),
+        requestForTarget<McpCatalogResponse>('mcp.catalog', {}).catch(() => null)
+      ]),
+      15_000,
+      'The gateway did not answer in time'
+    )
       .then(([res, cat]) => {
         // Full MCP menu = the profile's configured servers + the bundled
         // catalog (installable). Configured entries win on name clash.

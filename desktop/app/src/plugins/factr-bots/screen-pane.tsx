@@ -381,7 +381,15 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
   )
 
   // A bot whose computer is not up has no desktop to show: say why, with the one action.
-  if (computer && computer.state !== 'on' && (computer.state === 'starting' || state?.unavailable || (status && !status.supported))) {
+  // Also when the display reads "not running" while the computer itself is off or failed: that is one problem
+  // (Start computer), not two buttons and a stale "backend retired" error from a bot engine that is gone.
+  if (
+    computer &&
+    computer.state !== 'on' &&
+    (computer.state === 'starting' ||
+      state?.unavailable ||
+      (status && (!status.supported || (!status.running && computer.state !== 'no-docker'))))
+  ) {
     return <ComputerGate computer={computer} onStart={() => void startComputer()} />
   }
 
@@ -418,7 +426,7 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1.5 text-xs">
         <Codicon name="device-desktop" />
         <span className="font-medium">{t.screen.title}</span>
         {status?.display ? (
@@ -526,7 +534,7 @@ function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: (
   if (computer.state === 'on') {
     return (
       <>
-        <span className="text-muted-foreground">
+        <span className="whitespace-nowrap text-(--ui-text-secondary)">
           {t.onLine(
             formatUptime(startedAt),
             memUsedBytes ? formatMemory(memUsedBytes) : null,
@@ -543,7 +551,7 @@ function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: (
 
   if (computer.state === 'starting') {
     return (
-      <span className="text-muted-foreground">
+      <span className="inline-flex items-center gap-2 text-(--ui-text-secondary)">
         <GlyphSpinner /> {t.starting}
       </span>
     )
@@ -555,7 +563,7 @@ function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: (
 
   return (
     <>
-      <span className="text-muted-foreground">{computer.state === 'error' ? t.failedTitle : t.offTitle}</span>
+      <span className="text-(--ui-text-secondary)">{computer.state === 'error' ? t.failedTitle : t.offTitle}</span>
       <Button onClick={onStart} size="sm" variant="ghost">
         <Codicon name="play" />
         {t.start}
@@ -572,6 +580,7 @@ function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: (
   const { error, reason } = computer.status
   const mac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
   const open = (url: string) => void window.factrDesktop?.openExternal?.(url)
+  const openDocker = () => void window.factrDesktop?.botComputer?.openDocker?.()
 
   const view = (() => {
     if (computer.state === 'starting') {
@@ -583,7 +592,7 @@ function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: (
         ? { action: { label: t.getDocker, run: () => open(DOCKER_URL) }, body: t.dockerNotInstalledBody, title: t.dockerNotInstalled }
         : {
             action: mac
-              ? { label: t.openDocker, run: () => open('file:///Applications/Docker.app') }
+              ? { label: t.openDocker, run: openDocker }
               : { label: t.getDocker, run: () => open(DOCKER_URL) },
             body: t.dockerNotRunningBody,
             title: t.dockerNotRunning
@@ -600,10 +609,13 @@ function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: (
   return (
     <div className="grid min-h-48 place-items-center p-6 text-center">
       <div className="flex flex-col items-center gap-2">
-        <div className="text-sm font-medium">
-          {computer.state === 'starting' ? <GlyphSpinner /> : null} {view.title}
+        <div className="inline-flex items-center gap-2 text-[length:var(--conversation-text-font-size)] leading-5 font-medium">
+          {computer.state === 'starting' ? <GlyphSpinner /> : null}
+          {view.title}
         </div>
-        {view.body ? <div className="text-xs text-muted-foreground">{view.body}</div> : null}
+        {view.body ? (
+          <div className="max-w-72 text-[0.8125rem] leading-[1.125rem] text-(--ui-text-secondary)">{view.body}</div>
+        ) : null}
         {'action' in view && view.action ? (
           <Button onClick={view.action.run} size="sm">
             {view.action.label}

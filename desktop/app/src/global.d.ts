@@ -71,6 +71,8 @@ declare global {
         stop: (profile: string) => Promise<BotComputerResult>
         // Keep the computer awake while its screen is open ('view') or a turn runs ('turn').
         hold: (profile: string, reason: 'turn' | 'view', on: boolean) => Promise<{ ok: boolean; error?: string }>
+        // Opens Docker Desktop (macOS only, only /Applications/Docker.app); openExternal refuses a bare app path.
+        openDocker: () => Promise<{ ok: boolean; error?: string }>
       }
       getPoolLimits: () => Promise<PoolLimits>
       setPoolLimits: (limits: { maxBackends?: number; idleMs?: number }) => Promise<{

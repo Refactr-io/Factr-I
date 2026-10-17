@@ -25,7 +25,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { $lastRoster, useRoster } from './data'
+import { $lastRoster, ROSTER_FETCH_TIMEOUT_MS, useRoster, withTimeout } from './data'
 import type { RosterRow } from './types'
 
 const { hostMock } = vi.hoisted(() => ({
@@ -631,5 +631,42 @@ describe('a stalled profiles.list cannot pin the spinner forever', () => {
 
     expect(result.current.isLoading).toBe(false)
     expect(hostMock.request.mock.calls.length).toBeGreaterThan(1)
+  })
+})
+
+describe('a roster fetch that never settles', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('withTimeout rejects after the budget and passes a fast answer through', async () => {
+    vi.useFakeTimers()
+    await expect(withTimeout(Promise.resolve(7), 1000, 'late')).resolves.toBe(7)
+
+    const hung = withTimeout(new Promise<number>(() => {}), 1000, 'late')
+    const settled = expect(hung).rejects.toThrow('late')
+
+    await vi.advanceTimersByTimeAsync(1000)
+    await settled
+  })
+
+  it('turns into an error the pane can show, not an endless loading state', async () => {
+    vi.useFakeTimers()
+    hostMock.state.connectionId.get.mockReturnValue('local')
+    // The gateway socket is closed: the request never answers.
+    hostMock.request.mockReturnValue(new Promise(() => {}))
+    hostMock.agents.mockResolvedValue({ agents: [] })
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+
+    const { result } = renderHook(() => useRoster(), { wrapper })
+
+    expect(result.current.isLoading).toBe(true)
+    await vi.advanceTimersByTimeAsync(ROSTER_FETCH_TIMEOUT_MS + 10)
+
+    expect(result.current.isLoading).toBe(false)
+    expect((result.current.error as Error).message).toMatch(/did not answer in time/)
   })
 })

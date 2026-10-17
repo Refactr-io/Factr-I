@@ -459,6 +459,15 @@ describe('status', () => {
       startedAt: '2026-10-18T10:00:00Z'
     })
   })
+
+  it('busy means a turn is running, not a watched screen', async () => {
+    configure()
+    await ensureComputer('scout')
+    setComputerHold('scout', 'view', true)
+    expect(await computerStatus('scout')).toMatchObject({ state: 'on', busy: false })
+    setComputerHold('scout', 'turn', true)
+    expect(await computerStatus('scout')).toMatchObject({ state: 'on', busy: true })
+  })
 })
 
 describe('stop, destroy, idle', () => {
@@ -517,7 +526,7 @@ describe('reconcile', () => {
       'ps', '-a',
       '--filter', 'label=factr.bot',
       '--filter', 'name=bots-factr-bot-',
-      '--format', '{{.Names}}|{{.State}}|{{index .Labels "factr.bot"}}'
+      '--format', '{{.Names}}|{{.State}}|{{.Label "factr.bot"}}'
     ])
     expect(dockerCalls('rm').map(c => c.args)).toEqual([['rm', '-f', 'bots-factr-bot-gone']])
     expect(calls.some(c => c.args.includes('prune'))).toBe(false)
