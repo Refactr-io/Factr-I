@@ -316,8 +316,7 @@ function ConfirmingModelPanel({
 
       <Button
         className={cn(
-          // The one action that moves the user forward on this screen: Spring Verdant with ink text (12.2:1).
-          'h-10 w-full bg-[#67EAA2] text-sm font-medium text-[#151313] transition duration-[360ms] ease-out hover:bg-[#5CDB96] active:scale-[0.97]',
+          'h-10 w-full text-sm font-medium transition duration-[360ms] ease-out active:scale-[0.97]',
           leaving ? 'opacity-0' : 'opacity-100'
         )}
         disabled={flow.saving}
