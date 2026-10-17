@@ -647,12 +647,17 @@ function PlatformDetail({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="min-w-0 truncate text-[0.875rem] font-semibold tracking-tight">{platform.name}</h3>
             <StatePill tone={stateTone(platform)}>{stateLabel(platform.state, m)}</StatePill>
-            {/* Resting states earn no pill — only actionable ones. */}
-            {!platform.configured && <SetupPill active={false}>{m.needsSetup}</SetupPill>}
-            {/* The state pill already reads "gateway stopped" when that is the
-                platform's whole story; only add the hint when it is not. */}
-            {!platform.gateway_running && platform.state !== 'gateway_stopped' && (
-              <SetupPill active={false}>{m.gatewayStopped}</SetupPill>
+            {/* A platform nobody set up yet is a normal resting state: one quiet word, no chip, no alarm. */}
+            {!platform.configured && (
+              <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+                {m.needsSetup}
+              </span>
+            )}
+            {/* The gateway being stopped only matters for a platform that is set up. */}
+            {platform.configured && !platform.gateway_running && platform.state !== 'gateway_stopped' && (
+              <span className="text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+                {m.gatewayStopped}
+              </span>
             )}
           </div>
           <p className="mt-1 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
@@ -799,7 +804,7 @@ function PlatformDetail({
       {hiddenCount > 0 && (
         <section>
           <button
-            className="flex w-full items-center justify-between gap-2 py-0.5 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:text-foreground"
+            className="flex w-full items-center justify-between gap-2 py-0.5 text-left text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary) transition-colors hover:text-foreground"
             onClick={() => setShowAdvanced(value => !value)}
             type="button"
           >
@@ -970,7 +975,7 @@ function MessagingField({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h4 className="text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{children}</h4>
+    <h4 className="text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary)">{children}</h4>
   )
 }
 
@@ -1013,19 +1018,6 @@ function StatePill({ children, tone }: { children: string; tone: StatusTone }) {
       )}
     >
       <StatusDot tone={tone} />
-      {children}
-    </span>
-  )
-}
-
-function SetupPill({ active, children }: { active: boolean; children: string }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-sm px-2 py-0.5 text-[0.625rem] font-medium',
-        PILL_TONE[active ? 'good' : 'muted']
-      )}
-    >
       {children}
     </span>
   )

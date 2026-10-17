@@ -2323,7 +2323,7 @@ export const en: Translations = {
     sharedListenerUrl: 'Served on the shared gateway listener at',
     hintGatewayStopped: 'Start the gateway from the status bar to connect.',
     credentialsSet: 'Credentials set',
-    needsSetup: 'Needs setup',
+    needsSetup: 'Not set up',
     gatewayStopped: 'Messaging gateway stopped',
     getCredentials: 'Get your credentials',
     openSetupGuide: 'Open setup guide',
