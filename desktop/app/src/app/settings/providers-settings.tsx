@@ -13,6 +13,7 @@ import {
   providerTitle,
   sortProviders
 } from '@/components/onboarding'
+import { BrandLogo, providerMarkId } from '@/components/ui/brand-logo'
 import { Button } from '@/components/ui/button'
 import { RowButton } from '@/components/ui/row-button'
 import { SearchField } from '@/components/ui/search-field'
@@ -260,6 +261,7 @@ function ConnectedProviderRow({
     <div className="group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md transition-colors hover:bg-(--ui-control-hover-background)">
       <RowButton className="min-w-0 px-3 py-3 text-left" onClick={() => onSelect(provider)}>
         <div className="flex min-w-0 items-center gap-2">
+          <BrandLogo className="size-4" id={providerMarkId(provider.id)} />
           <span className="truncate text-[length:var(--conversation-text-font-size)] font-semibold">{title}</span>
           <span className="inline-flex shrink-0 items-center gap-1 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             <Check className="size-3" />

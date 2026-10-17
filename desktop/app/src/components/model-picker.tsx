@@ -23,6 +23,7 @@ import { cn } from '../lib/utils'
 import { startManualOnboarding } from '../store/onboarding'
 
 import { InlineNotice } from './notifications'
+import { BrandLogo, providerMarkId } from './ui/brand-logo'
 import { Button } from './ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog'
@@ -472,6 +473,7 @@ function LoadingResults() {
 function ProviderHeading({ provider }: { provider: ModelOptionProvider }) {
   return (
     <span className="flex min-w-0 items-center gap-2">
+      <BrandLogo className="size-3.5" id={providerMarkId(provider.slug)} />
       <span className="truncate">{provider.name}</span>
       <span className="font-mono text-xs font-normal normal-case tracking-normal text-muted-foreground">
         {provider.slug} · {provider.total_models ?? provider.models?.length ?? 0}
