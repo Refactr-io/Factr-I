@@ -120,11 +120,13 @@ describe('ConnectionsRegistrySection', () => {
     fireEvent.change(screen.getByPlaceholderText('auto-detect'), {
       target: { value: '/opt/factr/bin/factr' }
     })
+    fireEvent.change(screen.getByPlaceholderText('~/.ssh/id_ed25519'), { target: { value: '/keys/build' } })
     fireEvent.click(screen.getByText('Save connection').closest('button')!)
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
     expect(save.mock.calls[0][0]).toMatchObject({
       host: 'dev@build.test:2222',
+      keyPath: '/keys/build',
       kind: 'ssh',
       label: 'Build host',
       remoteFactrPath: '/opt/factr/bin/factr'

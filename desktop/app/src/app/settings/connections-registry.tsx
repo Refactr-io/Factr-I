@@ -963,6 +963,17 @@ export function ConnectionsRegistrySection() {
               <ListRow
                 action={
                   <Input
+                    onChange={e => setEditor({ ...editor, keyPath: e.target.value })}
+                    placeholder="~/.ssh/id_ed25519"
+                    value={editor.keyPath}
+                  />
+                }
+                description={t.settings.gateway.sshKeyDesc}
+                title={t.settings.gateway.sshKeyTitle}
+              />
+              <ListRow
+                action={
+                  <Input
                     onChange={e => setEditor({ ...editor, remoteFactrPath: e.target.value })}
                     placeholder={t.settings.gateway.sshFactrPathPlaceholder}
                     value={editor.remoteFactrPath}
