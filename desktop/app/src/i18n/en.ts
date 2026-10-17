@@ -3668,6 +3668,9 @@ export const en: Translations = {
     connected: 'Connected',
     featuredPitch: 'Sign in with your ChatGPT account. No API key needed.',
     fireworksPitch: 'Models hosted by Fireworks, through their API',
+    openCodeTitle: 'OpenCode Zen (detected)',
+    openCodePitch: 'OpenCode is installed on this computer. Use its sign-in to get Zen models, free ones included.',
+    openCodePitchNoLogin: 'OpenCode is installed here. Paste a Zen key to use its models.',
     localModelsTitle: 'Run models locally',
     localModelsPitch: 'Download a model and run it on this computer. No account needed.',
     openRouterPitch: 'One key for hundreds of models',
@@ -3772,6 +3775,7 @@ export const en: Translations = {
       noModels: 'No models found',
       editModels: 'Edit models…',
       refreshModels: 'Refresh models',
+      connectOpenCode: 'Connect OpenCode Zen',
       fast: 'Fast'
     },
     modelOptions: {
