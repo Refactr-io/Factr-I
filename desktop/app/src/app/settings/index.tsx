@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { KbdCombo } from '@/components/ui/kbd'
+import { comboTokens } from '@/components/ui/kbd'
 import { getFactrConfigDefaults, getFactrConfigRecord, saveFactrConfig } from '@/factr'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
@@ -459,7 +459,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
 
   const searchField = (
     <button
-      className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg border border-transparent bg-(--ui-bg-tertiary) pl-3 pr-2 text-left text-(--ui-text-secondary) transition-colors hover:text-foreground"
+      className="mb-3 flex h-9 w-full items-center gap-2.5 rounded-md bg-(--ui-bg-tertiary) px-3 text-left text-(--ui-text-secondary) transition-colors hover:text-foreground"
       onClick={() => {
         triggerHaptic('open')
         openCommandPalettePage('settings')
@@ -467,10 +467,10 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       type="button"
     >
       <Search className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-[length:var(--conversation-text-font-size)]">
-        {t.settings.search.pill}
-      </span>
-      {searchCombo && <KbdCombo combo={searchCombo} size="sm" variant="flat" />}
+      <span className="min-w-0 flex-1 truncate text-sm leading-none">{t.settings.search.pill}</span>
+      {searchCombo && (
+        <span className="shrink-0 text-xs leading-none text-(--ui-text-tertiary)">{comboTokens(searchCombo).join('')}</span>
+      )}
     </button>
   )
 

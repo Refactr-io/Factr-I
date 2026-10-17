@@ -113,4 +113,4 @@ function KbdCombo({ combo, ...props }: KbdComboProps) {
   return <KbdGroup keys={comboTokens(combo)} {...props} />
 }
 
-export { Kbd, KbdCombo, KbdGroup, kbdVariants }
+export { comboTokens, Kbd, KbdCombo, KbdGroup, kbdVariants }
