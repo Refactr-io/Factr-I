@@ -39,7 +39,7 @@ const api = vi.fn(async ({ path }: { path: string }) => {
     return { root: '/remote' }
   }
 
-  if (path === '/api/fs/default-cwd') {
+  if (path === '/api/fs/default-cwd?feature=1') {
     return { cwd: '/backend/project', branch: 'main' }
   }
 
@@ -106,15 +106,24 @@ describe('desktop filesystem facade', () => {
     await expect(desktopGitRoot('/home/user/project')).resolves.toBe('/remote')
     await expect(desktopDefaultCwd()).resolves.toEqual({ cwd: '/backend/project', branch: 'main' })
 
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/list?path=%2Fhome%2Fuser%2Fproject' })
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/read-text?path=%2Fhome%2Fuser%2Fproject%2Fa%20b.txt' })
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/read-data-url?path=%2Fhome%2Fuser%2Fproject%2Fa%20b.txt' })
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/git-root?path=%2Fhome%2Fuser%2Fproject' })
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/default-cwd' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/list?path=%2Fhome%2Fuser%2Fproject&feature=1' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/read-text?path=%2Fhome%2Fuser%2Fproject%2Fa%20b.txt&feature=1' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/read-data-url?path=%2Fhome%2Fuser%2Fproject%2Fa%20b.txt&feature=1' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/git-root?path=%2Fhome%2Fuser%2Fproject&feature=1' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/default-cwd?feature=1' })
     expect(readDir).not.toHaveBeenCalled()
     expect(readFileText).not.toHaveBeenCalled()
     expect(readFileDataUrl).not.toHaveBeenCalled()
     expect(gitRoot).not.toHaveBeenCalled()
+  })
+
+  it('treats an SSH connection as remote and never opens the local picker for a folder', async () => {
+    $connection.set({ mode: 'local', remoteKind: 'ssh' } as never)
+
+    await expect(readDesktopDir('/home/tester')).resolves.toMatchObject({ entries: [{ name: 'remote' }] })
+    await expect(selectDesktopPaths({ directories: true })).resolves.toEqual([])
+    expect(readDir).not.toHaveBeenCalled()
+    expect(selectPaths).not.toHaveBeenCalled()
   })
 
   it('does not retry the same unreadable path through the local facade', async () => {
@@ -134,7 +143,7 @@ describe('desktop filesystem facade', () => {
 
     await expect(readDesktopFileDataUrlLocalFirst('/remote/image.png')).resolves.toBe('data:text/plain;base64,cmVtb3Rl')
     expect(readFileDataUrl).toHaveBeenCalledOnce()
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/read-data-url?path=%2Fremote%2Fimage.png' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/read-data-url?path=%2Fremote%2Fimage.png&feature=1' })
   })
 
   it('targets the active profile backend so a remote profile never reads local disk', async () => {
@@ -143,8 +152,8 @@ describe('desktop filesystem facade', () => {
     await readDesktopDir('/srv/project')
     await desktopDefaultCwd()
 
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/list?path=%2Fsrv%2Fproject', profile: 'remote-docker' })
-    expect(api).toHaveBeenCalledWith({ path: '/api/fs/default-cwd', profile: 'remote-docker' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/list?path=%2Fsrv%2Fproject&feature=1', profile: 'remote-docker' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/fs/default-cwd?feature=1', profile: 'remote-docker' })
   })
 
   it('pins SSH filesystem reads to the active registry connection', async () => {
@@ -160,7 +169,7 @@ describe('desktop filesystem facade', () => {
 
     expect(api).toHaveBeenCalledWith({
       connectionId: 'work-ssh',
-      path: '/api/fs/read-data-url?path=%2Fsrv%2Fproject%2Fimage.png',
+      path: '/api/fs/read-data-url?path=%2Fsrv%2Fproject%2Fimage.png&feature=1',
       profile: 'default'
     })
   })
@@ -281,7 +290,7 @@ describe('desktop filesystem facade', () => {
     $connection.set({ mode: 'remote' } as never)
 
     await expect(desktopFileDiff('/repo', 'src/a b.ts')).resolves.toBe('remote diff')
-    expect(api).toHaveBeenCalledWith({ path: '/api/git/file-diff?path=%2Frepo&file=src%2Fa%20b.ts' })
+    expect(api).toHaveBeenCalledWith({ path: '/api/git/file-diff?path=%2Frepo&file=src%2Fa%20b.ts&feature=1' })
   })
 
   it('uses the registered in-app directory picker in remote mode', async () => {
