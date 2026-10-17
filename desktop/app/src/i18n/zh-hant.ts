@@ -3012,6 +3012,7 @@ export const zhHant = defineLocale({
       search: '搜尋模型',
       noModels: '找不到模型',
       editModels: '編輯模型…',
+      connectProvider: 'Connect another provider',
       refreshModels: '重新整理模型',
       fast: '快速'
     },

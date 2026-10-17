@@ -4,6 +4,7 @@ import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
+import { BrandLogo, providerMarkId } from '@/components/ui/brand-logo'
 import { Codicon } from '@/components/ui/codicon'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import {
@@ -43,6 +44,7 @@ import {
   setModelVisibilityOpen
 } from '@/store/model-visibility'
 import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
+import { requestRoute } from '@/store/recovery-requests'
 import { $defaultReasoningEffort, $engineReasoningEffort } from '@/store/session'
 import type { LocalModelLoadProgress } from '@/types/factr'
 
@@ -474,13 +476,14 @@ export function ModelCatalogMenu({
             return (
               <DropdownMenuGroup className="py-0.5" key={slug}>
                 <DropdownMenuItem
-                  className="group/label flex w-full items-center gap-1 px-2 pb-0.5 pt-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary) cursor-pointer !bg-transparent focus:!bg-transparent"
+                  className="group/label flex w-full items-center gap-1.5 px-2 pb-1 pt-1 text-[length:var(--conversation-caption-font-size)] font-medium text-(--ui-text-secondary) cursor-pointer !bg-transparent focus:!bg-transparent"
                   onSelect={event => {
                     event.preventDefault()
                     toggleCollapsedProvider(slug)
                   }}
                   textValue=""
                 >
+                  <BrandLogo className="size-3.5" id={providerMarkId(slug)} />
                   <span className="truncate">
                     <HighlightMatches foldSeparators query={search} text={group.provider.name} />
                   </span>
@@ -665,6 +668,13 @@ export function ModelCatalogMenu({
           trailing block it has always rendered. */}
       <DropdownMenuSeparator className="mx-0" />
       {footer}
+      <DropdownMenuItem
+        className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
+        onSelect={() => requestRoute('/settings?tab=providers')}
+      >
+        <Codicon name="add" size="0.75rem" />
+        {copy.connectProvider}
+      </DropdownMenuItem>
       <DropdownMenuItem
         className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
         onSelect={() => setModelVisibilityOpen(true)}

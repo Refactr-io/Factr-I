@@ -3771,6 +3771,7 @@ export const en: Translations = {
       search: 'Search models',
       noModels: 'No models found',
       editModels: 'Edit models…',
+      connectProvider: 'Connect another provider',
       refreshModels: 'Refresh models',
       fast: 'Fast'
     },

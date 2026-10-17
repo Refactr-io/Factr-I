@@ -2633,6 +2633,7 @@ export const ar = defineLocale({
       search: 'البحث عن نموذج...',
       noModels: 'لا توجد نماذج',
       editModels: 'تحرير النماذج',
+      connectProvider: 'Connect another provider',
       refreshModels: 'تحديث النماذج',
       fast: 'سريع'
     },

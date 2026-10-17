@@ -3154,6 +3154,7 @@ export interface Translations {
       search: string
       noModels: string
       editModels: string
+      connectProvider: string
       refreshModels: string
       fast: string
     }

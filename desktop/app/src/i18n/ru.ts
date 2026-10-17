@@ -3236,6 +3236,7 @@ export const ru = defineLocale({
       search: 'Поиск моделей',
       noModels: 'Модели не найдены',
       editModels: 'Изменить модели…',
+      connectProvider: 'Connect another provider',
       refreshModels: 'Обновить модели',
       fast: 'Быстрая'
     },

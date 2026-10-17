@@ -61,6 +61,8 @@ export function ModelPill({
   const runtimeId = useStore(view.$runtimeId)
   const [open, setOpen] = useState(false)
   const restoreSelection = useRef<(() => void) | null>(null)
+  const pillRef = useRef<HTMLButtonElement>(null)
+  const [menuOffset, setMenuOffset] = useState(8)
   const scope = useComposerScope()
   const hasLiveMenu = Boolean(model.modelMenuContent)
 
@@ -180,7 +182,18 @@ export function ModelPill({
   // Closing the menu ends its claim on the keyboard: Radix restores focus to
   // this pill (a toolbar button), so without the release the Enter that
   // committed a model also swallows whatever you type next.
+
   const setMenuOpen = (next: boolean) => {
+    if (next) {
+      // The pill sits in the toolbar under the input: clear the whole composer box plus 8px, never cover the field.
+      const field = document.querySelector<HTMLElement>('[contenteditable="true"]')?.closest<HTMLElement>('form')
+      const pill = pillRef.current
+
+      if (field && pill) {
+        setMenuOffset(Math.max(8, pill.getBoundingClientRect().top - field.getBoundingClientRect().top + 8))
+      }
+    }
+
     setOpen(next)
 
     if (!next) {
@@ -197,6 +210,7 @@ export function ModelPill({
             className={pillClass}
             data-tour={tourMarker}
             disabled={disabled}
+            ref={pillRef}
             type="button"
             variant="ghost"
           >
@@ -218,7 +232,7 @@ export function ModelPill({
           restoreSelection.current = null
         }}
         side="top"
-        sideOffset={8}
+        sideOffset={menuOffset}
       >
         <ModelMenuCloseContext.Provider value={() => setMenuOpen(false)}>
           {model.modelMenuContent}
