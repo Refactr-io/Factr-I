@@ -8848,6 +8848,11 @@
             "default": "",
             "title": "Reason",
             "type": "string"
+          },
+          "request": {
+            "default": "",
+            "title": "Request",
+            "type": "string"
           }
         },
         "required": [
