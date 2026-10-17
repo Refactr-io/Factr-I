@@ -28,7 +28,9 @@ function RowLead({ children }: { children: React.ReactNode }) {
   return <span className="grid size-5 shrink-0 place-items-center text-(--ui-text-secondary)">{children}</span>
 }
 
-// The suggested option is marked by being first and by its tonal fill, not by a tag.
+// The suggested option is the one filled row on the screen: Spring Verdant with Blackthorn Ink text (12.2:1;
+// white on this green would be 1.5:1 and fail). Everything else stays a neutral tone. First position and the
+// fill carry the recommendation; the word "Recommended" is plain text, not a tag.
 export function FeaturedProviderRow({
   onSelect,
   provider
@@ -41,23 +43,30 @@ export function FeaturedProviderRow({
 
   return (
     <button
-      className="group relative flex w-full items-center gap-3 rounded-lg bg-(--ui-control-hover-background) px-3 py-2.5 text-left transition-colors hover:bg-(--ui-control-active-background)"
+      className="group relative flex w-full items-center gap-3 rounded-lg bg-[#67EAA2] px-3 py-2.5 text-left text-[#151313] transition-colors hover:bg-[#5CDB96]"
       onClick={() => onSelect(provider)}
       type="button"
     >
-      <RowLead>
+      <span className="grid size-5 shrink-0 place-items-center">
         <BrandLogo id={providerMarkId(provider.id)} />
-      </RowLead>
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-[length:var(--conversation-text-font-size)] font-medium">
             {providerTitle(provider)}
           </span>
-          {loggedIn ? <ConnectedTag /> : null}
+          {loggedIn ? (
+            <span className="inline-flex items-center gap-1 text-xs text-[#151313]/70">
+              <Check className="size-3" />
+              {t.onboarding.connected}
+            </span>
+          ) : (
+            <span className="text-xs text-[#151313]/70">{t.onboarding.recommended}</span>
+          )}
         </div>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t.onboarding.featuredPitch}</p>
+        <p className="mt-0.5 text-xs leading-5 text-[#151313]/72">{t.onboarding.featuredPitch}</p>
       </div>
-      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition group-hover:text-foreground" />
+      <ChevronRight className="size-4 shrink-0 text-[#151313]/70 transition group-hover:text-[#151313]" />
     </button>
   )
 }
