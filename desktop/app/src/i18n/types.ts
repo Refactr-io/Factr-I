@@ -3063,6 +3063,8 @@ export interface Translations {
     configBackedUp: (backupPath: string) => string
     preparingInstall: string
     starting: string
+    slowStart: string
+    viewLog: string
     lookingUpProviders: string
     collapse: string
     otherProviders: string

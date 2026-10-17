@@ -3657,6 +3657,8 @@ export const en: Translations = {
     configBackedUp: backupPath => `Saved a copy as ${backupPath}. Set up a provider to start fresh.`,
     preparingInstall: 'Factr-I is finishing install. This usually takes under a minute on first run.',
     starting: 'Starting Factr-I…',
+    slowStart: 'This is taking longer than usual.',
+    viewLog: 'View log',
     lookingUpProviders: 'Looking up providers...',
     collapse: 'Collapse',
     otherProviders: 'Other providers',

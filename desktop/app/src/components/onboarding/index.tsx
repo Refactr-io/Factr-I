@@ -528,11 +528,21 @@ export function BootErrorNotice({ error }: { error: string }) {
   )
 }
 
+const SLOW_START_MS = 15_000
+
 function Preparing({ boot }: { boot: DesktopBootState }) {
   const { t } = useI18n()
   const progress = Math.max(2, Math.min(100, Math.round(boot.progress)))
   const hasError = Boolean(boot.error)
   const installing = boot.phase.startsWith('runtime.')
+  const [slow, setSlow] = useState(false)
+
+  // A start that drags on says so, and offers the log, instead of sitting on a bar with no way forward.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSlow(true), SLOW_START_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [])
 
   return (
     <div className="grid gap-3" role="status">
@@ -551,6 +561,20 @@ function Preparing({ boot }: { boot: DesktopBootState }) {
         <span>{progress}%</span>
       </div>
       {hasError ? <BootErrorNotice error={boot.error ?? ''} /> : null}
+      {slow && !hasError ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>{t.onboarding.slowStart}</span>
+          {window.factrDesktop?.revealLogs ? (
+            <Button
+              onClick={() => void window.factrDesktop?.revealLogs?.().catch(() => undefined)}
+              size="sm"
+              variant="text"
+            >
+              {t.onboarding.viewLog}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
