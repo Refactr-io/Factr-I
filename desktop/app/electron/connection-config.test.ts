@@ -44,6 +44,7 @@ import {
   resolveProfileBackendRoute,
   resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
+  wsProbeFailureMessage,
   sanitizeRemoteHeaderValue,
   savedProfileSsh,
   tokenPreview,
@@ -1479,4 +1480,18 @@ test('FIX #95701: transport and server failures at the ticket mint stay retryabl
     assert.equal(wrapped.needsOauthLogin, undefined)
     assert.equal(wrapped.isReauthRequired, undefined)
   }
+})
+
+test('wsProbeFailureMessage: a 401 on a protected REST route means the saved token is stale', async () => {
+  const msg = await wsProbeFailureMessage('token', 'closed', async () => {
+    throw new Error('401: {"detail":"unauthorized"}')
+  })
+  assert.equal(msg, 'This gateway rejected the saved token. Paste the new one in Settings > Gateways.')
+})
+
+test('wsProbeFailureMessage: keeps the transport explanation when REST works or fails otherwise', async () => {
+  for (const fetchProtected of [async () => ({}), async () => { throw new Error('ECONNRESET') }]) {
+    assert.match(await wsProbeFailureMessage('token', 'blocked', fetchProtected), /live WebSocket \(\/api\/ws\) connection failed: blocked/)
+  }
+  assert.match(await wsProbeFailureMessage('oauth', 'x', async () => { throw new Error('401') }), /live WebSocket/)
 })

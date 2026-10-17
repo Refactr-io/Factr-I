@@ -138,6 +138,7 @@ import {
   resolveProfileBackendRoute,
   resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
+  wsProbeFailureMessage,
   sanitizeRemoteHeaderValue,
   savedProfileSsh,
   tokenPreview,
@@ -10138,8 +10139,11 @@ async function testDesktopConnectionConfig(input: any = {}) {
 
     if (!probe.ok) {
       throw new Error(
-        `Reached the gateway over HTTP, but the live WebSocket (/api/ws) connection failed: ${probe.reason} ` +
-          'The HTTP check can pass while the WebSocket is blocked by a proxy, firewall, or gateway auth/origin guard.'
+        await wsProbeFailureMessage(authMode, probe.reason, () =>
+          fetchJsonForBackend({ baseUrl, authMode, token, headers: testHeaders }, '/api/sessions?limit=1', {
+            timeoutMs: 8_000
+          })
+        )
       )
     }
   }
@@ -15021,8 +15025,11 @@ ipcMain.handle('factr:connections:test', async (_event, id) => {
 
     if (!probe.ok) {
       throw new Error(
-        `Reached the gateway over HTTP, but the live WebSocket (/api/ws) connection failed: ${probe.reason} ` +
-          'The HTTP check can pass while the WebSocket is blocked by a proxy, firewall, or gateway auth/origin guard.'
+        await wsProbeFailureMessage(authMode, probe.reason, () =>
+          fetchJsonForBackend({ baseUrl, authMode, token, headers: testHeaders }, '/api/sessions?limit=1', {
+            timeoutMs: 8_000
+          })
+        )
       )
     }
   }

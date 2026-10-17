@@ -192,6 +192,31 @@ async function gatewayWsUrlIpcResult(resolveWsUrl: () => Promise<string>) {
 }
 
 /**
+ * Message for a failed live-WebSocket leg of a connection test. The Python
+ * backend closes a rejected-token socket without a close code, so token mode
+ * asks one authenticated REST route: a 401 there means the saved token is stale.
+ * @param {string} authMode
+ * @param {string} reason
+ * @param {() => Promise<unknown>} fetchProtected
+ */
+async function wsProbeFailureMessage(authMode, reason, fetchProtected) {
+  if (authMode === 'token') {
+    try {
+      await fetchProtected()
+    } catch (error) {
+      if (/\b401\b/.test(String(error?.message ?? error))) {
+        return 'This gateway rejected the saved token. Paste the new one in Settings > Gateways.'
+      }
+    }
+  }
+
+  return (
+    `Reached the gateway over HTTP, but the live WebSocket (/api/ws) connection failed: ${reason} ` +
+    'The HTTP check can pass while the WebSocket is blocked by a proxy, firewall, or gateway auth/origin guard.'
+  )
+}
+
+/**
  * Build the WS URL the renderer would connect with, so the connection test can
  * exercise the same transport the app actually uses.
  *
@@ -1132,6 +1157,7 @@ export {
   resolveProfileBackendRoute,
   resolveRemoteSshDashboardProfile,
   resolveTestWsUrl,
+  wsProbeFailureMessage,
   RT_COOKIE_VARIANTS,
   sanitizeRemoteHeaderValue,
   savedProfileSsh,
