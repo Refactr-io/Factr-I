@@ -9,6 +9,7 @@
 
 import { lazy, type ReactNode, Suspense } from 'react'
 
+import { PageLoader } from '@/components/page-loader'
 import { ContribBoundary, ContribRender } from '@/contrib/react/boundary'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { $routeTiles, closeRouteTile, type RouteTile } from '@/store/route-tiles'
@@ -66,7 +67,7 @@ export function RouteTilePane({ path }: { path: string }) {
   if (builtin) {
     return (
       <ContribBoundary id={path}>
-        <Suspense fallback={null}>
+        <Suspense fallback={<PageLoader className="page-loader-delayed" />}>
           <ContribRender render={builtin.render} />
         </Suspense>
       </ContribBoundary>
