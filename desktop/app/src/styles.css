@@ -3908,3 +3908,20 @@ svg.tabler-icon {
     animation: none;
   }
 }
+
+/* Empty states: the mark rises 4px into place once (ease-out, 220ms). Transform only, off under reduced motion. */
+@keyframes panel-empty-settle {
+  from {
+    transform: translateY(4px);
+  }
+}
+
+.panel-empty-mark {
+  animation: panel-empty-settle 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-empty-mark {
+    animation: none;
+  }
+}

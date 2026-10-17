@@ -6,6 +6,7 @@ import { TitlebarIcon } from '@/app/shell/titlebar-icon'
 import { ZoomableImage } from '@/components/chat/zoomable-image'
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
+import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import {
   Pagination,
@@ -350,9 +351,10 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
         <PageLoader label={a.indexing} />
       ) : visibleArtifacts.length === 0 ? (
         <div className="grid h-full place-items-center px-6 text-center">
-          <div>
-            <div className="text-sm font-medium">{a.noArtifactsTitle}</div>
-            <div className="mt-1 text-xs text-muted-foreground">{a.noArtifactsDesc}</div>
+          <div className="flex flex-col items-center gap-2">
+            <Codicon className="panel-empty-mark mb-1 text-(--ui-text-tertiary)" name="inbox" size="1.5rem" />
+            <div className="text-sm font-medium text-foreground">{a.noArtifactsTitle}</div>
+            <div className="max-w-xs text-[0.8125rem] leading-5 text-(--ui-text-secondary)">{a.noArtifactsDesc}</div>
           </div>
         </div>
       ) : (

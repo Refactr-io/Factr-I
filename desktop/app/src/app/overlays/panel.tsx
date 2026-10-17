@@ -298,12 +298,17 @@ export function PanelEmpty({ action, description, icon = 'inbox', title }: Panel
   return (
     <div className="grid flex-1 place-items-center px-6 py-10 text-center">
       <div className="flex flex-col items-center gap-2">
-        <Codicon className="text-muted-foreground/90" name={icon} size="1.25rem" />
-        {title ? <p className="text-sm font-medium text-foreground/90">{title}</p> : null}
+        {/* The mark settles into place on a 4px rise (transform only, so nothing is ever hidden). */}
+        <Codicon
+          className="panel-empty-mark mb-1 text-(--ui-text-tertiary)"
+          name={icon}
+          size="1.5rem"
+        />
+        {title ? <p className="text-sm font-medium text-foreground">{title}</p> : null}
         {description ? (
-          <p className="max-w-sm text-xs leading-relaxed text-muted-foreground/90">{description}</p>
+          <p className="max-w-xs text-[0.8125rem] leading-5 text-(--ui-text-secondary)">{description}</p>
         ) : null}
-        {action ? <div className="mt-2">{action}</div> : null}
+        {action ? <div className="mt-3">{action}</div> : null}
       </div>
     </div>
   )
@@ -311,7 +316,7 @@ export function PanelEmpty({ action, description, icon = 'inbox', title }: Panel
 
 export function PanelSectionLabel({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn('text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground/90', className)}>
+    <div className={cn('text-xs font-medium text-(--ui-text-secondary)', className)}>
       {children}
     </div>
   )
