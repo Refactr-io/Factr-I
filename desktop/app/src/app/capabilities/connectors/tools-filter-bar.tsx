@@ -107,7 +107,7 @@ export function ToolsFilterBar({
                   key={action.id}
                   onClick={() => onApplyQuickAction(action.id)}
                   size="xs"
-                  variant={currentAction?.id === action.id ? 'secondary' : 'outline'}
+                  variant={currentAction?.id === action.id ? 'secondary' : 'ghost'}
                 >
                   {quickActionLabel(copy, action.id)}
                 </Button>
