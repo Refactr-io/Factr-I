@@ -19,7 +19,7 @@ export function TitleMenuTrigger({
   return (
     <Button
       className={cn(
-        'pointer-events-auto flex h-6 min-w-0 max-w-full gap-1 overflow-hidden border border-transparent bg-transparent px-2 py-0 text-(--ui-text-secondary) hover:border-(--ui-stroke-tertiary) hover:bg-(--ui-control-hover-background) hover:text-foreground data-[state=open]:border-(--ui-stroke-tertiary) data-[state=open]:bg-(--ui-control-active-background) [-webkit-app-region:no-drag]',
+        'pointer-events-auto flex h-6 min-w-0 max-w-full gap-1 overflow-hidden border border-transparent bg-transparent px-2 py-0 text-(--ui-text-secondary) hover:bg-(--ui-control-hover-background) hover:text-foreground data-[state=open]:bg-(--ui-control-active-background) [-webkit-app-region:no-drag]',
         className
       )}
       type="button"

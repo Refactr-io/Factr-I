@@ -88,8 +88,8 @@ export function ComposerControls({
   const voicePair = (
     <span
       className={cn(
-        'flex items-center rounded-md border border-transparent transition-colors duration-150',
-        'hover:border-foreground/15 has-[[data-state=open]]:border-foreground/15',
+        'flex items-center rounded-md transition-colors duration-150',
+        'hover:bg-(--chrome-action-hover) has-[[data-state=open]]:bg-(--chrome-action-hover)',
         '[&>*:first-child]:rounded-r-none [&>*:last-child]:rounded-l-none',
         '[&>*:last-child[data-state=open]]:bg-(--chrome-action-hover)'
       )}

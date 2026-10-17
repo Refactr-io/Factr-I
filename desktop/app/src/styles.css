@@ -1664,16 +1664,67 @@ body.guest-pointer-lock :is(webview, iframe) {
    prompt doesn't dominate the viewport. The clamp lifts only in the edit
    composer; expanding on read-only :focus-within ran on mousedown (before the
    swap) and fought stick-to-bottom when parked at the bottom. */
-/* Keyboard focus: every control that does not draw its own ring (a Tailwind focus-visible:ring/outline
-   class) gets one, so Tab order is always visible. Pointer clicks never trigger :focus-visible. */
+/* Keyboard focus: every standalone control that does not draw its own ring (a Tailwind focus-visible:ring/outline
+   class) gets one, so Tab order is always visible. Pointer clicks never trigger :focus-visible. Rows are different:
+   menu, list, tab and option rows show keyboard focus as a plain fill (the rule below), never a stroke. */
 :is(button, a[href], summary, [role='button'], [role='tab'], [role='menuitem'], [role='switch'], [role='checkbox'], [role='radio'], [role='option'], [tabindex]:not([tabindex='-1'])):focus-visible:not(
     [class*='focus-visible:ring'],
     [class*='focus-visible:outline'],
     [contenteditable='true'],
-    [data-slot='composer-rich-input']
+    [data-slot='composer-rich-input'],
+    [role^='menuitem'],
+    [role='option'],
+    [role='tab'],
+    [role='treeitem'],
+    [cmdk-item],
+    [data-slot='row-button'],
+    :is(
+        [role='menu'],
+        [role='listbox'],
+        [role='tablist'],
+        [role='tree'],
+        [role='list'],
+        [cmdk-list],
+        [data-slot='popover-content'],
+        [data-slot='dropdown-menu-content'],
+        [data-slot='select-content'],
+        [data-sidebar-rail],
+        [data-sidebar],
+        nav
+      )
+      *
   ) {
   outline: 2px solid color-mix(in srgb, var(--dt-ring) 85%, transparent);
   outline-offset: 2px;
+}
+
+/* Row focus is a plain fill. Menu rows that sit on the gliding pill keep it (the glide rule hands their fill to the
+   pill and wins on specificity); everything else paints the same control fill the hover state uses. */
+:is(
+    [role^='menuitem'],
+    [role='option'],
+    [role='tab'],
+    [role='treeitem'],
+    [cmdk-item],
+    [data-slot='row-button'],
+    :is(
+        [role='menu'],
+        [role='listbox'],
+        [role='tablist'],
+        [role='tree'],
+        [role='list'],
+        [cmdk-list],
+        [data-slot='popover-content'],
+        [data-slot='dropdown-menu-content'],
+        [data-slot='select-content'],
+        [data-sidebar-rail],
+        [data-sidebar],
+        nav
+      )
+      :is(button, a[href], summary, [role='button'])
+  ):focus-visible:not([class*='focus-visible:bg'], [data-variant='destructive']) {
+  outline: none;
+  background-color: var(--ui-control-active-background);
 }
 
 /* The pinned prompt sits on an opaque band that fades out at its lower edge: lines scrolling beneath

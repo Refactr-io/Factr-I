@@ -1525,7 +1525,7 @@ export function ChatSidebar({
                         // thread.tsx.
                         'flex h-8 w-full justify-start gap-2 rounded-md border border-transparent bg-(--ui-control-active-background) px-2 text-left text-[0.8125rem] font-medium text-foreground transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-bg-tertiary) active:scale-[0.99]',
                         active &&
-                          'border-(--ui-stroke-tertiary) bg-(--ui-control-active-background) text-foreground shadow-none hover:border-(--ui-stroke-tertiary)!',
+                          'bg-(--ui-control-active-background) text-foreground shadow-none',
                         !isInteractive &&
                           'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
                       )}

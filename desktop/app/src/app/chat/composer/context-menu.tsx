@@ -139,7 +139,7 @@ function PromptSnippetsDialog({ onInsertText, onOpenChange, open }: PromptSnippe
             return (
               <li key={key}>
                 <button
-                  className="group/snippet flex w-full cursor-pointer items-start gap-3 rounded-md border border-transparent px-3 py-2 text-left transition-colors hover:border-(--ui-stroke-tertiary) hover:bg-(--ui-control-hover-background) focus-visible:border-(--ui-stroke-tertiary) focus-visible:bg-(--ui-control-hover-background) focus-visible:outline-none"
+                  className="group/snippet flex w-full cursor-pointer items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-(--ui-control-hover-background) focus-visible:bg-(--ui-control-hover-background) focus-visible:outline-none"
                   onClick={() => {
                     onInsertText(snippet.text)
                     onOpenChange(false)
