@@ -23,10 +23,11 @@ async fn http(port: u16, method: &str, path: &str, body: &str) -> (u16, serde_js
 }
 
 
-const ROUTES: [(&str, &str); 7] = [
+const ROUTES: [(&str, &str); 8] = [
     ("schema", "/api/config/schema"), ("model_auxiliary", "/api/model/auxiliary"), ("model_moa", "/api/model/moa"),
     ("elevenlabs_voices", "/api/audio/elevenlabs/voices"), ("pairing", "/api/pairing"), ("cron_jobs", "/api/cron/jobs"),
     ("cron_blueprints", "/api/cron/blueprints"),
+    ("cron_delivery_targets", "/api/cron/delivery-targets"),
 ];
 
 fn fixture(name: &str) -> serde_json::Value {

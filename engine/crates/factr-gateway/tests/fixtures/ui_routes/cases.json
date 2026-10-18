@@ -20,10 +20,12 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "profile_current": {
@@ -38,11 +40,13 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "profile_default": {
@@ -57,10 +61,12 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "profile_named": {
@@ -75,7 +81,8 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
       "schema",
@@ -83,7 +90,8 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "profile_missing": {
@@ -98,7 +106,8 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
       "schema",
@@ -106,7 +115,8 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "profile_invalid": {
@@ -121,7 +131,8 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
       "schema",
@@ -129,7 +140,8 @@
       "model_moa",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "named_engine_default": {
@@ -141,11 +153,13 @@
     "query": "profile=default",
     "routes": [
       "model_auxiliary",
-      "pairing"
+      "pairing",
+      "cron_delivery_targets"
     ],
     "fallback": [
       "model_auxiliary",
-      "pairing"
+      "pairing",
+      "cron_delivery_targets"
     ]
   },
   "jobs_all": {
@@ -166,7 +180,8 @@
       "elevenlabs_voices",
       "pairing",
       "cron_jobs",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "plugins": {
@@ -175,11 +190,13 @@
     },
     "routes": [
       "schema",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
       "schema",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "root_plugins_named_engine": {
@@ -191,11 +208,13 @@
     },
     "routes": [
       "schema",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
       "schema",
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "command_voice_top": {
@@ -284,10 +303,12 @@
       "config.yaml": "platforms:\n  telegram:\n    enabled: true\n    token: fixture-only\n"
     },
     "routes": [
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ],
     "fallback": [
-      "cron_blueprints"
+      "cron_blueprints",
+      "cron_delivery_targets"
     ]
   },
   "aux_alias": {

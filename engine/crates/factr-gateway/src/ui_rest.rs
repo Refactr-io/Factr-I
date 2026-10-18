@@ -39,7 +39,7 @@ pub(crate) fn answer(path: &str, query: &str, defaults: &Value) -> Option<Value>
     if !matches!(
         path,
         "/api/config/schema" | "/api/model/auxiliary" | "/api/model/moa" | "/api/audio/elevenlabs/voices"
-            | "/api/pairing" | "/api/cron/jobs" | "/api/cron/blueprints"
+            | "/api/pairing" | "/api/cron/jobs" | "/api/cron/blueprints" | "/api/cron/delivery-targets"
     ) {
         return None;
     }
@@ -59,6 +59,10 @@ pub(crate) fn answer(path: &str, query: &str, defaults: &Value) -> Option<Value>
     match path {
         "/api/config/schema" => schema_applies(&cfg, &home, defaults).then(|| golden(&SCHEMA_V, SCHEMA)),
         "/api/cron/blueprints" => cron_blueprints_apply(&cfg, &home).then(|| golden(&BLUEPRINTS_V, BLUEPRINTS)),
+        "/api/cron/delivery-targets" => cron_blueprints_apply(&cfg, &home).then(|| json!({"targets": [
+            {"id": "local", "name": "Local (save only)", "home_target_set": true, "home_env_var": null},
+            {"id": "bot-chat:default", "name": "Bot Chat (default)", "home_target_set": true, "home_env_var": null},
+        ]})),
         "/api/model/moa" => cfg.yaml.get("moa").is_none().then(|| golden(&MOA_V, MOA)),
         "/api/model/auxiliary" => auxiliary(&cfg, defaults),
         "/api/audio/elevenlabs/voices" => no_elevenlabs_key(&cfg, &home).then(|| json!({ "available": false, "voices": [] })),

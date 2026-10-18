@@ -23,6 +23,7 @@ ROUTES = {
     "pairing": "/api/pairing",
     "cron_jobs": "/api/cron/jobs",
     "cron_blueprints": "/api/cron/blueprints",
+    "cron_delivery_targets": "/api/cron/delivery-targets",
 }
 
 FIXTURES = json.loads((Path(__file__).resolve().parents[2] / "engine/crates/factr-gateway/tests/fixtures/ui_routes/cases.json").read_text())

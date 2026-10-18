@@ -1026,6 +1026,19 @@
   },
   "status": 200
  },
+ "cron_delivery_targets": {
+  "body": {
+   "targets": [
+    {
+     "home_env_var": null,
+     "home_target_set": true,
+     "id": "local",
+     "name": "Local (save only)"
+    }
+   ]
+  },
+  "status": 200
+ },
  "cron_jobs": {
   "body": {
    "detail": "'../bad' is not a valid profile name. Use lowercase letters, numbers, '-' or '_', starting with a letter or number, up to 64 characters (for example: bad). Then run `factr profile create bad`."

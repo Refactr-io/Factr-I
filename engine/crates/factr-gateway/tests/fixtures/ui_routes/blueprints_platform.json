@@ -1009,5 +1009,30 @@
    ]
   },
   "status": 200
+ },
+ "cron_delivery_targets": {
+  "body": {
+   "targets": [
+    {
+     "home_env_var": null,
+     "home_target_set": true,
+     "id": "local",
+     "name": "Local (save only)"
+    },
+    {
+     "home_env_var": "TELEGRAM_HOME_CHANNEL",
+     "home_target_set": false,
+     "id": "telegram",
+     "name": "Telegram"
+    },
+    {
+     "home_env_var": null,
+     "home_target_set": true,
+     "id": "bot-chat:default",
+     "name": "Bot Chat (default)"
+    }
+   ]
+  },
+  "status": 200
  }
 }
