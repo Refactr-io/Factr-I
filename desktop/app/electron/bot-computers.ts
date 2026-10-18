@@ -337,7 +337,7 @@ const defaultRun: DockerRun = (args, opts = {}) =>
     )
   })
 
-const docker: DockerRun = (args, opts) => (deps?.run || defaultRun)(args, opts)
+export const docker: DockerRun = (args, opts) => (deps?.run || defaultRun)(args, opts)
 
 async function probeDocker() {
   if (availability && now() - availability.at < 5_000) {

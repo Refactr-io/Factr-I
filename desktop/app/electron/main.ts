@@ -32,6 +32,7 @@ import {
 } from 'electron'
 
 import { classifyActiveRuntime } from './active-runtime-state'
+import { createDockerSetup } from './bot-docker-setup'
 import {
   destroyKeepaliveAgents,
   downloadAgentFor,
@@ -105,6 +106,7 @@ import {
   touchComputer,
   validateBotProfile
 } from './bot-computers'
+import { docker as runBotDocker } from './bot-computers'
 import {
   BROWSER_WINDOW_HEIGHT,
   BROWSER_WINDOW_MIN_HEIGHT,
@@ -14695,6 +14697,31 @@ ipcMain.handle('factr:bot-relay:tick', () => {
     return { ok: false, pending: 0 }
   }
 })
+function botSetupExecutable(name: string): string | undefined {
+  if (name === 'Docker.app') return fs.existsSync('/Applications/Docker.app') ? '/Applications/Docker.app' : undefined
+  const candidates = [
+    ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, name)),
+    ...(process.platform === 'darwin' ? ['/opt/homebrew/bin', '/usr/local/bin'].map(dir => path.join(dir, name)) : [])
+  ]
+  return candidates.find(candidate => fs.existsSync(candidate))
+}
+const botDockerSetup = createDockerSetup({
+  platform: process.platform,
+  available: name => Boolean(botSetupExecutable(name)),
+  probe: () => runBotDocker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 5000 }),
+  run: (program, args, timeout) => new Promise((resolve, reject) => {
+    execFile(botSetupExecutable(program) || program, args, { timeout, maxBuffer: 4 << 20, windowsHide: false },
+      (error, stdout, stderr) => error ? reject(Object.assign(error, { stderr: String(stderr || '') })) : resolve(String(stdout)))
+  }),
+  confirm: async plan => (await dialog.showMessageBox({
+    type: 'question', title: plan.title, message: plan.title,
+    detail: [plan.detail, ...plan.commands.map(command => [command.program, ...command.args].join(' '))].join('\n\n'),
+    buttons: [plan.title, 'Cancel'], defaultId: 0, cancelId: 1
+  })).response === 0,
+  openExternal: url => shell.openExternal(url)
+})
+ipcMain.handle('factr:bot-computer:runtime-status', () => botDockerSetup.status())
+ipcMain.handle('factr:bot-computer:setup', () => botDockerSetup.setup())
 ipcMain.handle('factr:bot-computer:list', async () => {
   try {
     return { ok: true, computers: listComputers() }

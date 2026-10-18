@@ -67,6 +67,8 @@ declare global {
       // The bot relay's local door: stamps the heartbeat the Python tools read and counts mail waiting in the outbox.
       botRelay?: { tick: () => Promise<{ ok: boolean; pending: number }> }
       botComputer?: {
+        runtimeStatus?: () => Promise<{ state: 'not-installed' | 'installed-not-running' | 'starting' | 'ready' | 'error'; message?: string }>
+        setup?: () => Promise<{ state: 'not-installed' | 'installed-not-running' | 'starting' | 'ready' | 'error'; message?: string }>
         // Every bot that has a computer and whether it runs; never starts one. The bot relay uses it.
         list: () => Promise<{ ok: true; computers: { profile: string; running: boolean }[] } | { ok: false; error: string }>
         status: (profile: string) => Promise<BotComputerResult>

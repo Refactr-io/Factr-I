@@ -600,12 +600,31 @@ function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: (
 const DOCKER_URL = 'https://www.docker.com/products/docker-desktop/'
 
 /** The pane when there is no running computer to show: why, and the one thing to do. */
-function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
+export function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
   const t = useBots().computer
   const { error, reason } = computer.status
   const mac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
   const open = (url: string) => void window.factrDesktop?.openExternal?.(url)
-  const openDocker = () => void window.factrDesktop?.botComputer?.openDocker?.()
+  const [settingUp, setSettingUp] = useState(false)
+  const [setupMessage, setSetupMessage] = useState<string | undefined>()
+  const setup = async () => {
+    if (settingUp) return
+    const api = window.factrDesktop?.botComputer
+    if (!api?.setup) {
+      if (mac && reason === 'not-running') void api?.openDocker?.()
+      else open(DOCKER_URL)
+      return
+    }
+    setSettingUp(true)
+    setSetupMessage(undefined)
+    try {
+      const result = await api.setup()
+      if (result.state === 'ready') onStart()
+      else setSetupMessage(result.message)
+    } catch (error) {
+      setSetupMessage(error instanceof Error ? error.message : String(error))
+    } finally { setSettingUp(false) }
+  }
 
   const view = (() => {
     if (computer.state === 'starting') {
@@ -614,11 +633,11 @@ function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: (
 
     if (computer.state === 'no-docker') {
       return reason === 'not-installed'
-        ? { action: { label: t.getDocker, run: () => open(DOCKER_URL) }, body: t.dockerNotInstalledBody, title: t.dockerNotInstalled }
+        ? { action: { label: t.getDocker, run: () => void setup() }, body: t.dockerNotInstalledBody, title: t.dockerNotInstalled }
         : {
             action: mac
-              ? { label: t.openDocker, run: openDocker }
-              : { label: t.getDocker, run: () => open(DOCKER_URL) },
+              ? { label: t.openDocker, run: () => void setup() }
+              : { label: t.getDocker, run: () => void setup() },
             body: t.dockerNotRunningBody,
             title: t.dockerNotRunning
           }
@@ -635,14 +654,14 @@ function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: (
     <PaneGate
       actions={
         'action' in view && view.action ? (
-          <Button onClick={view.action.run} size="sm">
+          <Button disabled={settingUp} onClick={view.action.run} size="sm">
             {view.action.label}
           </Button>
         ) : null
       }
-      line={view.body}
-      spinner={computer.state === 'starting'}
-      title={view.title}
+      line={setupMessage || view.body}
+      spinner={settingUp || computer.state === 'starting'}
+      title={settingUp ? t.starting : view.title}
     />
   )
 }
