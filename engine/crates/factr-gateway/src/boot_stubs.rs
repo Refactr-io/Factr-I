@@ -38,7 +38,10 @@ pub(crate) fn answer(method: &str, _params: &Value) -> Option<Value> {
 /// so the answer is the same `{"enabled": false}` Python gives and the poll need not wake or keep
 /// alive the Python backend. Anything unclear (unreadable file, odd value, session-bound call) is false.
 pub(crate) fn pet_disabled(method: &str, params: &Value) -> bool {
-    if !matches!(method, "pet.info" | "pet.info.meta") || params["session_id"].as_str().is_some_and(|s| !s.is_empty()) {
+    if !matches!(method, "pet.info" | "pet.info.meta")
+        || params.get("session_id").is_some_and(|v| v.as_str() != Some(""))
+        || params.get("profile").is_some_and(|v| !v.is_string())
+    {
         return false;
     }
     // Python layers a managed-scope config over config.yaml; with one present the file alone is not the answer.
@@ -53,8 +56,18 @@ fn pet_disabled_in(home: &std::path::Path, profile: &str) -> bool {
         home.to_path_buf()
     } else if profile == "default" {
         root_home(home)
-    } else if profile.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-        root_home(home).join("profiles").join(profile)
+    } else if profile != "factr"
+        && profile.len() <= 64
+        && profile.as_bytes().first().is_some_and(u8::is_ascii_alphanumeric)
+        && profile.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-' || c == b'_')
+    {
+        // Python canonicalizes aliases/case and rejects unavailable profiles. Only an
+        // existing, canonical named directory is knowable from this fast path.
+        let dir = root_home(home).join("profiles").join(profile);
+        if !dir.is_dir() {
+            return false;
+        }
+        dir
     } else {
         return false;
     };
@@ -121,6 +134,14 @@ mod tests {
         assert!(!pet_disabled_in(&dir, ""), "unreadable config is forwarded");
         std::fs::write(dir.join("profiles/scribe/config.yaml"), "display:\n  pet:\n    enabled: true\n").unwrap();
         assert!(!pet_disabled_in(&dir, "scribe") && !pet_disabled_in(&dir, "../x"));
+        for profile in ["SCRIBE", "Default", "missing", "factr", ".factr", "_invalid"] {
+            assert!(!pet_disabled_in(&dir, profile), "{profile} requires Python profile resolution");
+        }
+        std::fs::write(dir.join("profiles/scribe/config.yaml"), "display: {pet: {enabled: false}}\n").unwrap();
+        assert!(pet_disabled_in(&dir, "scribe"), "canonical existing disabled profiles stay local");
+        for params in [json!({"profile": 123}), json!({"profile": null}), json!({"session_id": 123}), json!({"session_id": null})] {
+            assert!(!pet_disabled("pet.info", &params), "non-string scope requires Python");
+        }
         assert!(!pet_disabled("pet.select", &json!({})) && !pet_disabled("pet.info", &json!({ "session_id": "s1" })));
         std::fs::remove_dir_all(&dir).unwrap();
     }

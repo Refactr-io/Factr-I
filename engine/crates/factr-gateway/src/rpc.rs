@@ -4963,6 +4963,10 @@ mod tests {
         for method in ["pet.info", "pet.info.meta"] {
             assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"enabled": false}));
             assert_eq!(conn.dispatch(method, &json!({"profile": "scribe"})).await.unwrap(), json!({"forwarded": true}));
+            for profile in ["SCRIBE", "Default", "missing", "factr", ".factr", "_invalid"] {
+                assert_eq!(conn.dispatch(method, &json!({"profile": profile})).await.unwrap(), json!({"forwarded": true}));
+            }
+            assert_eq!(conn.dispatch(method, &json!({"profile": 123})).await.unwrap(), json!({"forwarded": true}));
             assert_eq!(conn.dispatch(method, &json!({"session_id": "s1"})).await.unwrap(), json!({"forwarded": true}));
             unsafe { std::env::set_var("FACTR_CONFIG_HOME", dir.join("profiles/scribe")) };
             assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"forwarded": true}));
