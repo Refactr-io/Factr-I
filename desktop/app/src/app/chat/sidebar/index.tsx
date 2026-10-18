@@ -204,10 +204,10 @@ const COMPACT_FLAT = 'compact:max-h-none compact:overflow-visible'
 // etc. The bar itself only shows while the pointer is in the list.
 const SCROLL_Y = 'overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-fade'
 
-// The outer list reserves its bar's width whether or not one is showing, so
-// filtering or collapsing a section doesn't reflow every row sideways. Only the
-// outer one: nested scrollers would each reserve their own and stack the inset.
-const SCROLL_GUTTER = '[scrollbar-gutter:stable]'
+// The outer list runs to the panel's far edge (the panel pads its content by 8px, so -mr-2 undoes that on this one
+// element): the scrollbar of the list inside it then sits flush at the edge, as an overlay that shows only while
+// scrolling, instead of floating inside the padding. No gutter is reserved.
+const SCROLL_EDGE = '-mr-2'
 
 // A non-session group's scroll body: own scroller when tall, flattened when compact.
 const GROUP_BODY = cn(SCROLL_Y, COMPACT_FLAT)
@@ -1643,7 +1643,7 @@ export function ChatSidebar({
 
         {showSessionSections && (
           <div
-            className={cn('flex min-h-0 flex-1 flex-col pb-1.75', SCROLL_Y, SCROLL_GUTTER)}
+            className={cn('flex min-h-0 flex-1 flex-col pb-1.75', SCROLL_Y, SCROLL_EDGE)}
             data-sessions-mode={sessionsMode}
             data-sessions-project={inProject ? (enteredProjectId ?? undefined) : undefined}
           >
