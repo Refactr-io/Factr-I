@@ -71,3 +71,12 @@
 - User clarification pending: provide executable path or waive the Fable advice requirement. COMMON-RULES.md requires Fable before architectural/design forks. The next material pool choice is whether to keep the Rust session-snapshot fallback or add a Rust retirement permit that freezes admission through the existing retirement protocol. Do not choose or implement that protocol change without satisfying the advice instruction.
 - Parent advice file re-read after the recovered milestone and before this one: none yet; no STOP.
 - Remaining in order: finish task 2(a), finish default existing-session/packaged QA, fix/verify 2(c), then tasks 3-9. No claim that task 2 is complete.
+
+## Blocked handoff and cleanup
+
+- Source milestone committed as `7c5d220`; recovered harness milestone is `a185e02`. Both include the required co-author trailer.
+- Wrote REPORT.md and NEEDS-GUI-QA.md with precise remaining scope, test limits, the Fable blocker and isolated resume commands. No task 2 completion claimed.
+- Re-read the full supplied design law against this milestone: no UI/design changes or controls were introduced; no visual verification is claimed.
+- Checked process executable paths: no running process from this worktree's target. No Docker resources were created. Removed the 3.9 GiB worktree target as generated build output. Dependencies remain for resumption. Rebuild the test-profile engine before running the e2e harnesses again.
+- Copied the final report to `/Users/rameelmalik/Documents/Sovereign AI/handoff/bots-REPORT.md` under the explicit handoff instruction.
+- Stopping because the required advice executable is unavailable at the next protocol/design fork; user executable-path/waiver response remains pending.
