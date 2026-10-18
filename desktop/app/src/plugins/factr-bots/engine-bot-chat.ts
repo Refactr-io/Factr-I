@@ -1,6 +1,11 @@
-import { requestForBot } from './routing'
+import { backendTargetProfile, botConnectionRoute, requestForBot } from './routing'
 import type { BotRequestOptions } from './routing'
 import type { CanonicalSession, RosterRow } from './types'
+
+/** The profile the registry is asked about. Always sent: which engine answers depends on how the window is routed
+ *  (an unrouted row reaches the ACTIVE gateway, which may be another bot's engine), and the pointer is keyed by this
+ *  name, so every engine writes and reads the same one. */
+const targetProfile = (bot: Partial<RosterRow>) => backendTargetProfile(botConnectionRoute(bot), String(bot.name ?? ''))
 
 /** A bot's own engine keeps its sessions in its own store; the roster's `canonical_session` is read from the
  *  primary's state.db, which never sees them, so it is null for every engine-backed bot. The engine serves the
@@ -11,7 +16,12 @@ export async function engineBotChat(
   options?: BotRequestOptions
 ): Promise<CanonicalSession | null | undefined> {
   try {
-    const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(bot, 'bot.chat.get', {}, options)
+    const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(
+      bot,
+      'bot.chat.get',
+      { profile: targetProfile(bot) },
+      options
+    )
 
     return res && typeof res === 'object' && 'canonical_session' in res ? (res.canonical_session ?? null) : undefined
   } catch {
@@ -23,7 +33,10 @@ export async function engineBotChat(
  *  the one that was already there (the first wins). `undefined` when the engine cannot answer. */
 export async function engineClaimBotChat(bot: Partial<RosterRow>, sessionId: string): Promise<CanonicalSession | undefined> {
   try {
-    const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(bot, 'bot.chat.claim', { session_id: sessionId })
+    const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(bot, 'bot.chat.claim', {
+      profile: targetProfile(bot),
+      session_id: sessionId
+    })
 
     return res?.canonical_session ?? undefined
   } catch {

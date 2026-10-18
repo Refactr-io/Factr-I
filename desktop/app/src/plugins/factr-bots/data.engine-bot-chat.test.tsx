@@ -174,8 +174,12 @@ describe('the roster fills canonical_session from the primary engine', () => {
     expect(hostMock.requestProfile).not.toHaveBeenCalled()
   })
 
-  it('never asks about a bot with no route of its own (that request would reach the active gateway)', async () => {
-    hostMock.request.mockImplementation(async () => ({ profiles: [{ name: 'alpha', canonical_session: null }] }))
+  it('asks about a bot with no route of its own by profile name, through the primary, so no engine is chosen by accident', async () => {
+    hostMock.request.mockImplementation(async (method: string) =>
+      method === 'bot.chat.get_many'
+        ? { chats: { alpha: ENGINE_CHAT } }
+        : { profiles: [{ name: 'alpha', canonical_session: null }] }
+    )
     hostMock.agents.mockRejectedValue(new Error('no union roster on this build'))
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -186,10 +190,12 @@ describe('the roster fills canonical_session from the primary engine', () => {
       )
     })
 
-    await waitFor(() => expect(result.current.data).toBeTruthy())
-    await result.current.refetch()
+    await waitFor(() => expect(manyCalls()).toHaveLength(1))
+    expect(manyCalls()[0][1]).toEqual({ profiles: ['alpha'] })
 
-    expect(manyCalls()).toHaveLength(0)
+    const { data } = await result.current.refetch()
+
+    expect(rowOf(data?.profiles as RosterRow[], 'alpha').canonical_session).toMatchObject({ id: 'engine-chat' })
     expect(hostMock.requestProfile).not.toHaveBeenCalled()
   })
 

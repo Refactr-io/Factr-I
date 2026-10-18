@@ -13,6 +13,7 @@ import { botsText } from './i18n'
 import { displayName } from './labels'
 import {
   aliasIdentityFor,
+  backendTargetProfile,
   beginAliasRouteIndex,
   botConnectionRoute,
   botRosterMeta,
@@ -720,23 +721,21 @@ async function primaryBotChats(
 const ENGINE_CHAT_TTL_MS = 30_000
 let engineChatFlight = false
 
-/** Rows whose bot lives on this host and has its own route. The primary engine shares their engine home, so it
- *  can name their Bot Chat without any bot engine being started. Remote rows and unrouted rows (an unrouted request
- *  goes to the active gateway, whose Bot Chat is another bot's) are left to the open path. */
-const askablePrimaryRow = (row: RosterRow | undefined) =>
-  Boolean(
-    row?.name &&
-    !row.ghost &&
-    row.sourceReachable !== false &&
-    !row.remoteSource &&
-    (botConnectionRoute(row)?.connectionId ?? '') === 'local'
-  )
+/** Rows whose bot lives on this host (routed to the local connection, or not routed at all). The primary engine shares
+ *  their engine home, so it can name their Bot Chat from the shared registry without any bot engine being started;
+ *  the question carries the profile name, so it does not matter which engine the request reaches. Remote rows are
+ *  left to the open path. */
+const askablePrimaryRow = (row: RosterRow | undefined) => {
+  if (!row?.name || row.ghost || row.sourceReachable === false || row.remoteSource) {
+    return false
+  }
 
-const profileOf = (row: RosterRow) => {
   const route = botConnectionRoute(row)
 
-  return String(route?.targetProfile || route?.profile || row.name)
+  return !route || route.connectionId === 'local'
 }
+
+const profileOf = (row: RosterRow) => backendTargetProfile(botConnectionRoute(row), row.name)
 
 /** Give each local routed row what the primary engine's shared registry says about its Bot Chat (`bot.chat.get_many`:
  *  one background call for every stale row, answered from the shared pointers, so NO bot engine is spawned for the
@@ -750,7 +749,7 @@ function withEngineBotChats(
 ): RosterSnapshot {
   const rows = snapshot?.profiles
 
-  if (!Array.isArray(rows) || !rows.some(row => botConnectionRoute(row))) {
+  if (!Array.isArray(rows) || !rows.some(askablePrimaryRow)) {
     return snapshot
   }
 
@@ -777,7 +776,7 @@ function withEngineBotChats(
   }
 
   const profiles = rows.map(row => {
-    const known = botConnectionRoute(row) ? cachedEngineBotChat(row)?.chat : null
+    const known = askablePrimaryRow(row) ? cachedEngineBotChat(row)?.chat : null
 
     return known ? { ...row, canonical_session: known } : row
   })
