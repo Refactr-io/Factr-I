@@ -30,7 +30,23 @@ fn canonical_row(info: &Value) -> Value {
     let mut row = map::session_row(info);
     row["root_title"] = json!(TITLE);
     row["last_active"] = row["started_at"].clone();
+    // The window waits to paint as many messages as this says (`expectHistory`). `session_row` also counts the
+    // internal system-reminder turns a new chat starts with, which the transcript hides: a brand-new chat then
+    // reported 1, showed 0, and its open waited forever. Count what the transcript shows.
+    if let Some(stored) = row["id"].as_str().and_then(|id| factr_base::session::Session::load(id).ok()) {
+        row["message_count"] = json!(visible_messages(&stored));
+    }
     row
+}
+
+/// User and assistant messages the transcript shows (no internal system reminders).
+fn visible_messages(session: &factr_base::session::Session) -> usize {
+    session
+        .messages
+        .iter()
+        .filter(|m| matches!(m.role, factr_base::message::Role::User | factr_base::message::Role::Assistant))
+        .filter(|m| !factr_base::session::is_internal_system_reminder_message(m))
+        .count()
 }
 
 /// One minter at a time per engine process: two windows (or a window and a relay) asking at once
@@ -210,6 +226,19 @@ mod tests {
         let infos = vec![archived, child, info("mine")];
         assert!(find(&infos, "mine").is_some());
         assert!(find(&infos, "old").is_none() && find(&infos, "child").is_none() && find(&infos, "nope").is_none());
+    }
+
+    #[test]
+    fn a_new_chat_reports_the_messages_the_transcript_shows_not_its_hidden_reminders() {
+        use factr_base::message::{ContentBlock, Role};
+        let text = |t: &str| vec![ContentBlock::Text { text: t.into(), cache_control: None }];
+        let mut session = factr_base::session::Session::create(None, None);
+        // The persona/system reminder a new chat starts with is a user turn the transcript hides.
+        session.add_message(Role::User, text("<system-reminder>\nAs you answer, use this context.\n</system-reminder>"));
+        assert_eq!(visible_messages(&session), 0, "the window would otherwise wait for history that never comes");
+        session.add_message(Role::User, text("hello"));
+        session.add_message(Role::Assistant, text("hi"));
+        assert_eq!(visible_messages(&session), 2);
     }
 
     #[test]

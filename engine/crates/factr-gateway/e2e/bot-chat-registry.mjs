@@ -107,6 +107,11 @@ try {
   check(first.created === true && typeof idA === 'string' && idA.length > 0, `bot A ensure creates it (${idA})`)
   check(first.canonical_session.title === 'Bot Chat' && first.canonical_session.root_title === 'Bot Chat' && first.canonical_session.resolved_id === idA, 'row has the roster shape (id, resolved_id, title, root_title)')
 
+  // The window waits for as many visible messages as the row reports (`expectHistory`): a count that includes the
+  // hidden persona/system-reminder turns, or any message the transcript does not show, makes that wait forever.
+  const resumed = await result(a, 'session.resume', { session_id: idA })
+  console.log(`      row message_count=${first.canonical_session.message_count}, visible history=${(resumed.messages || []).length}`)
+  check(first.canonical_session.message_count === (resumed.messages || []).length, "a new chat's message_count equals the visible history the window will hydrate")
   const second = await result(a, 'bot.chat.ensure')
   check(second.created === false && second.canonical_session.id === idA, 'bot A ensure again: same id, nothing created')
   check((await result(a, 'bot.chat.get')).canonical_session.id === idA, 'bot A get now finds it')
