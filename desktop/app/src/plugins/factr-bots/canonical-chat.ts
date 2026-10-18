@@ -12,6 +12,7 @@ import * as sdk from '@factr/plugin-sdk'
 import { host } from '@factr/plugin-sdk'
 
 import { $botMeta, botMetaKey, botOwner, persistBotMetaSnapshot } from './data'
+import { engineBotChat, engineClaimBotChat } from './engine-bot-chat'
 import { botsText } from './i18n'
 import { backendTargetProfile, botConnectionRoute, botRosterMeta, botWorkspaceOwnerKey, requestForBot } from './routing'
 import type { RpcErrorLike } from './routing'
@@ -228,6 +229,17 @@ export function notifyBotOpenFailure(error: unknown, bot: RosterRow, step: BotOp
  *  authorizes this RPC. */
 async function findExistingCanonicalChat(owner: RosterRow | string): Promise<CanonicalChatRow | null> {
   const { bot, name, route } = botOwner(owner)
+
+  // A bot on its own engine: that engine's registry (`bot.chat.get`, one pointer per profile) is the authority.
+  // Its `session.list` has no title lookup and, on a host engine, lists every bot's chats from the one shared
+  // store, so a title scan could return another bot's "Bot Chat". An answer, even "none", settles it; an engine
+  // that cannot answer (older build, Python gateway) takes the title lookup below.
+  const engine = await engineBotChat(bot ?? { name }, { spawnPriority: 'foreground' })
+
+  if (engine !== undefined) {
+    return engine?.id ? engine : null
+  }
+
   // FAIL CLOSED. A failed registry lookup MUST NOT read as "no Bot Chat
   // exists" — that is the one remaining way to fork a bot's forever chat.
   // The failure lives exactly in the post-update window: the desktop
@@ -446,6 +458,18 @@ export function createCanonicalChat(
           title: CANONICAL_CHAT_TITLE
         })
         titled = true
+
+        // An engine-backed bot registers its chat (first one wins, see `bot.chat.claim`); a chat that lost the race
+        // is abandoned and the registered one is adopted, like the title conflict below.
+        const registered = await engineClaimBotChat(bot, runtime)
+
+        if (registered?.id && registered.id !== runtime && registered.id !== sid) {
+          if (typeof host.openSession === 'function' && canNavigate()) {
+            await openStoredBotChat(owner, registered.resolved_id || registered.id, registered)
+          }
+
+          return registered.id
+        }
       } catch (error) {
         // ADOPT-BEFORE-MINT: a title-uniqueness rejection is not an old
         // gateway — it means another writer took the canonical title between

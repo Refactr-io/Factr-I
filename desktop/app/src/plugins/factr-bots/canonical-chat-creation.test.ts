@@ -130,7 +130,7 @@ describe('the lazy row is materialized before anything else touches it', () => {
     // No kickoff option: the click-path mint. The eager title write persists
     // the row, so NO intro turn fires — the user speaks first (ScottFive).
     expect(await createCanonicalChat('ops')).toBe('stored-1')
-    expect(events).toEqual(['session.list', 'session.create', 'session.title', 'open:stored-1'])
+    expect(events).toEqual(['bot.chat.get', 'session.list', 'session.create', 'session.title', 'bot.chat.claim', 'open:stored-1'])
   })
 
   it('always creates hidden — Bot Mode sessions have no visibility pref', async () => {
@@ -181,7 +181,7 @@ describe('the lazy row is materialized before anything else touches it', () => {
     const { createCanonicalChat } = await loadModule()
 
     expect(await createCanonicalChat('ops', { kickoff: true })).toBe('stored-1')
-    expect(events).toEqual(['session.list', 'session.create', 'session.title', 'open:stored-1', 'prompt.submit'])
+    expect(events).toEqual(['bot.chat.get', 'session.list', 'session.create', 'session.title', 'bot.chat.claim', 'open:stored-1', 'prompt.submit'])
   })
 
   it('scopes the open to the bots workspace even with no staleness probe', async () => {
