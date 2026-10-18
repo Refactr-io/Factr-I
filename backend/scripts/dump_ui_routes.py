@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROUTES = {
     "schema": "/api/config/schema",
@@ -24,17 +25,10 @@ ROUTES = {
     "cron_blueprints": "/api/cron/blueprints",
 }
 
-FIXTURES = {
-    "pristine": {},
-    "configured": {
-        "config.yaml": "model:\n  default: gpt-5.5\n  provider: openai-codex\nauxiliary:\n  vision:\n    provider: openrouter\n    model: google/gemini-3-flash\n"
-                       "moa:\n  default_preset: default\n  presets:\n    default:\n      reference_models:\n        - {provider: openrouter, model: deepseek/deepseek-v4-pro}\n"
-                       "      aggregator: {provider: openrouter, model: anthropic/claude-opus-4.8}\ndisplay:\n  language: en\n",
-    },
-}
+FIXTURES = json.loads((Path(__file__).resolve().parents[2] / "engine/crates/factr-gateway/tests/fixtures/ui_routes/cases.json").read_text())
 
 
-def run_one(home: str, out: str) -> None:
+def run_one(fixture: str, out: str) -> None:
     from starlette.testclient import TestClient
     from factr_backend.web_server import app, _SESSION_HEADER_NAME, _SESSION_TOKEN
 
@@ -42,11 +36,16 @@ def run_one(home: str, out: str) -> None:
     client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
     from factr_backend.config import DEFAULT_CONFIG
 
-    result = {"_defaults": DEFAULT_CONFIG}
-    for name, path in ROUTES.items():
-        r = client.get(path)
-        result[name] = {"status": r.status_code, "body": r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text}
-    Path(out).write_text(json.dumps(result, indent=1, sort_keys=True) + "\n")
+    case = FIXTURES[fixture]
+    result = {"_defaults": DEFAULT_CONFIG} if fixture in ("pristine", "configured") else {}
+    with patch("time.time", return_value=1800000060):
+        for name in case.get("routes", ROUTES):
+            path = ROUTES[name] + ("?" + case["query"] if case.get("query") else "")
+            r = client.get(path)
+            result[name] = {"status": r.status_code, "body": r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text}
+    # Cron rows include absolute homes. Keep temporary paths out of the contract.
+    data = json.dumps(result, indent=1, sort_keys=True).replace(os.environ["FIXTURE_ROOT"], "<fixture>")
+    Path(out).write_text(data + "\n")
 
 
 def main() -> int:
@@ -55,26 +54,32 @@ def main() -> int:
         run_one(sys.argv[3], sys.argv[1])
         return 0
     drift = False
-    for fixture, files in FIXTURES.items():
-        home = Path(tempfile.mkdtemp(prefix=f"ui-routes-{fixture}-"))
+    for fixture, case in FIXTURES.items():
+        home = Path(tempfile.mkdtemp(prefix=f"ui-routes-{fixture}-", dir="/private/tmp"))
         try:
-            for rel, text in files.items():
-                (home / rel).parent.mkdir(parents=True, exist_ok=True)
-                (home / rel).write_text(text)
-            env = {**os.environ, "FACTR_CONFIG_HOME": str(home / "c"), "FACTR_HOME": str(home / "e"), "HOME": str(home)}
-            (home / "c").mkdir()
-            if "config.yaml" in files:
-                shutil.move(str(home / "config.yaml"), str(home / "c" / "config.yaml"))
-            for k in ("ELEVENLABS_API_KEY", "FACTR_MANAGED_DIR"):
-                env.pop(k, None)
+            root = home / "c"
+            config_home = root / case.get("home", "")
+            config_home.mkdir(parents=True)
+            for rel, text in case.get("files", {}).items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text)
+            # Whitelist rather than inherit credentials or platform settings from the caller.
+            env = {k: os.environ[k] for k in ("PATH", "PYTHONPATH") if k in os.environ}
+            env.update(FACTR_CONFIG_HOME=str(config_home), FACTR_HOME=str(home / "e"), HOME=str(home),
+                       PYTHONDONTWRITEBYTECODE="1", FIXTURE_ROOT=str(root))
+            if case.get("managed"):
+                env["FACTR_MANAGED_DIR"] = str(root / case["managed"])
             target = out_dir / f"{fixture}.json"
-            tmp = Path(tempfile.mkstemp(suffix=".json")[1])
-            subprocess.run([sys.executable, __file__, str(tmp), "--one", str(home)], check=True, env=env)
+            tmp = home / "result.json"
+            subprocess.run([sys.executable, __file__, str(tmp), "--one", fixture], check=True, env=env, cwd=home)
             if "--check" in sys.argv:
-                drift |= not target.exists() or json.loads(target.read_text()) != json.loads(tmp.read_text())
+                changed = not target.exists() or json.loads(target.read_text()) != json.loads(tmp.read_text())
+                drift |= changed
+                print(f"{fixture}: {'DRIFT' if changed else 'OK'}")
             else:
                 out_dir.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(tmp), target)
+                print(f"{fixture}: wrote golden")
         finally:
             shutil.rmtree(home, ignore_errors=True)
     return 1 if drift else 0

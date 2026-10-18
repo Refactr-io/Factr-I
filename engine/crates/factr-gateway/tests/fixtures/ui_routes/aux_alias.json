@@ -1,0 +1,101 @@
+{
+ "model_auxiliary": {
+  "body": {
+   "main": {
+    "model": "fixture-model",
+    "provider": "ollama"
+   },
+   "tasks": [
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "main",
+     "reasoning_effort": "high",
+     "task": "vision"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "compression"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "skills_hub"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "approval"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "mcp"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "title_generation"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "review"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "triage_specifier"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "kanban_decomposer"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "profile_describer"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "curator"
+    }
+   ]
+  },
+  "status": 200
+ }
+}

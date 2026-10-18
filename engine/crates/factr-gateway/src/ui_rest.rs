@@ -43,13 +43,18 @@ pub(crate) fn answer(path: &str, query: &str, defaults: &Value) -> Option<Value>
     ) {
         return None;
     }
-    // `current` and `default` are this engine's own home; any other profile is Python's to resolve.
+    // Explicit profile resolution belongs to Python unless it is this engine's home.
     let profile = crate::auth::query_param(query, "profile").unwrap_or_default();
     let scoped_ok = matches!(profile.as_str(), "" | "current" | "default") || (path == "/api/cron/jobs" && profile == "all");
     if !scoped_ok || managed_scope() {
         return None;
     }
     let home = factr_base::factr_config::home()?;
+    if (profile == "default" && crate::boot_stubs::root_home(&home) != home)
+        || (path == "/api/cron/jobs" && profile == "current")
+    {
+        return None;
+    }
     let cfg = Config::load(&home)?;
     match path {
         "/api/config/schema" => schema_applies(&cfg, &home, defaults).then(|| golden(&SCHEMA_V, SCHEMA)),
@@ -200,11 +205,22 @@ fn no_cron_jobs(home: &Path) -> bool {
 }
 
 fn user_plugins(home: &Path) -> bool {
-    std::fs::read_dir(home.join("plugins")).is_ok_and(|mut rd| rd.next().is_some())
+    [home.to_path_buf(), crate::boot_stubs::root_home(home)].iter().any(|dir| {
+        match std::fs::read_dir(dir.join("plugins")) {
+            Ok(mut rd) => rd.next().is_some(),
+            Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+        }
+    })
 }
 
 /// The cron blueprints' delivery options come from the connected messaging platforms.
 fn cron_blueprints_apply(cfg: &Config, home: &Path) -> bool {
+    // Python adds bot-chat delivery targets for every profile, not just the active one.
+    if std::fs::read_dir(crate::boot_stubs::root_home(home).join("profiles"))
+        .is_ok_and(|mut rd| rd.next().is_some())
+    {
+        return false;
+    }
     let env_key = |k: &str| PLATFORM_ENV.iter().any(|p| k.to_ascii_uppercase().contains(p));
     let env_text = std::fs::read_to_string(home.join(".env")).unwrap_or_default();
     let in_file = env_text.lines().filter_map(|l| l.split_once('=')).any(|(k, v)| env_key(k) && !v.trim().is_empty());
@@ -260,3 +276,26 @@ fn schema_applies(cfg: &Config, home: &Path, defaults: &Value) -> bool {
 }
 
 static SCHEMA_PARSED: OnceLock<Value> = OnceLock::new();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uncertain_config_and_network_credentials_still_require_python() {
+        let dir = std::env::temp_dir().join(format!("ui-rest-guards-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.yaml"), "model: {default: '${MODEL}'}\n").unwrap();
+        assert!(Config::load(&dir).is_none());
+        std::fs::write(dir.join("config.yaml"), "[not, a, mapping]\n").unwrap();
+        assert!(Config::load(&dir).is_none());
+        std::fs::write(dir.join("config.yaml"), "auxiliary: {vision: {base_url: 'http://127.0.0.1:1/v1'}}\n").unwrap();
+        let cfg = Config::load(&dir).unwrap();
+        assert!(auxiliary(&cfg, &json!({"auxiliary": {}})).is_none());
+        std::fs::write(dir.join(".env"), "ELEVENLABS_API_KEY=fixture-only\n").unwrap();
+        assert!(!no_elevenlabs_key(&cfg, &dir));
+        std::fs::write(dir.join(".env"), "TELEGRAM_BOT_TOKEN=fixture-only\n").unwrap();
+        assert!(!cron_blueprints_apply(&cfg, &dir));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
