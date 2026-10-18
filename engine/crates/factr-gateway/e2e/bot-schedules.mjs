@@ -13,6 +13,7 @@ const work = fileURLToPath(new URL('../../../../', import.meta.url))
 const root = fs.mkdtempSync(path.join(process.env.SCRATCH || os.tmpdir(), 'bots-schedules-'))
 const cfg = path.join(root, 'config'), home = path.join(root, 'engine')
 const calls = [], engines = new Set()
+let courier
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function until(test, timeout = 30000) {
   const deadline = Date.now() + timeout
@@ -93,6 +94,8 @@ try {
   const described = await primary.rpc('profiles.describe', { name: 'alpha' })
   assert.equal(described.description, 'Read team documents')
   await primary.rpc('profiles.create', { name: 'alpha-copy', clone_from: 'alpha', no_alias: true, mirror_credentials: false })
+  await primary.rpc('profiles.create', { name: 'beta', description: 'Process scheduled output', no_alias: true, no_skills: true, mirror_credentials: false })
+  await primary.rpc('profiles.configure', { name: 'beta', ui_meta: { 'factr-bots': { title: 'Beta' } } })
   assert.equal(fs.readFileSync(path.join(cfg, 'profiles/alpha-copy/SOUL.md'), 'utf8'), 'Use the team vocabulary.')
   console.log('ok: real create, description, SOUL and clone surfaces')
   await primary.stop()
@@ -123,6 +126,39 @@ try {
   await alpha.api(route, 'DELETE')
   assert.ok(!JSON.stringify(await alpha.api('/api/cron/jobs')).includes(created.id))
   console.log('ok: routine create, pause, restart, resume, real fire, output, policy and delete')
+  const beta = await start('beta')
+  const betaChat = (await beta.rpc('bot.chat.ensure', { profile: 'beta' })).canonical_session.id
+  const spool = path.join(cfg, 'bot_relay')
+  fs.mkdirSync(path.join(spool, 'claimed'), { recursive: true })
+  fs.mkdirSync(path.join(spool, 'outbox'), { recursive: true })
+  let draining = false
+  courier = setInterval(async () => {
+    fs.writeFileSync(path.join(spool, 'desktop.json'), '{}')
+    if (draining) return
+    draining = true
+    try {
+      for (const file of fs.readdirSync(path.join(spool, 'outbox'))) {
+        if (!file.endsWith('.json')) continue
+        const envelope = JSON.parse(fs.readFileSync(path.join(spool, 'outbox', file), 'utf8'))
+        fs.renameSync(path.join(spool, 'outbox', file), path.join(spool, 'claimed', file))
+        assert.equal(envelope.target_profile, 'beta')
+        let result = await beta.rpc('bot.chat.deliver', { profile: 'beta', envelope_id: envelope.id, text: envelope.message })
+        while (result.status === 'pending') result = await beta.rpc('bot.chat.deliver_status', { envelope_id: envelope.id })
+        assert.equal(result.ok, true, JSON.stringify(result))
+        await alpha.rpc('bot_relay.reply', { id: envelope.id, reply: result.reply })
+      }
+    } catch (error) { console.error(error); process.exitCode = 1 }
+    finally { draining = false }
+  }, 100)
+  await sleep(200)
+  const cross = await alpha.api('/api/cron/jobs', 'POST', { name: '[bot:alpha] Send to Beta', schedule: '0 9 * * 1-5', prompt: 'SCHEDULE_TO_BETA', deliver: 'bot-chat:beta' })
+  await alpha.api(`/api/cron/jobs/${cross.id}/trigger`, 'POST')
+  await until(async () => (await alpha.api(`/api/cron/jobs/${cross.id}`)).last_status === 'ok', 60000)
+  assert.ok(JSON.stringify(await beta.rpc('session.history', { session_id: betaChat })).includes('[Cronjob'))
+  await alpha.api(`/api/cron/jobs/${cross.id}`, 'DELETE')
+  clearInterval(courier)
+  await beta.stop()
+  console.log('ok: scheduled output reaches another profile through the engine courier')
   await alpha.stop()
   const cleanup = await start('default')
   await cleanup.api('/api/profiles/alpha-copy?feature=1', 'DELETE')
@@ -130,6 +166,7 @@ try {
   await cleanup.stop()
   console.log('PASS real profile lifecycle and scheduled engine turns')
 } finally {
+  clearInterval(courier)
   for (const child of engines) child.kill('SIGKILL')
   model.closeAllConnections(); model.close()
   console.log(`Isolated schedule artifacts: ${root}`)

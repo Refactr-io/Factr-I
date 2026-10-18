@@ -104,6 +104,10 @@ export FACTR_DESKTOP=1
 mkdir -p -m 700 "$FACTR_RUNTIME_DIR"
 cd "$home"
 
+# Relay receipts and queued native replies must survive container recreation with the profile.
+mkdir -p "$home/bot-relay"
+if [ ! -e /data/bot_relay ]; then ln -s "$home/bot-relay" /data/bot_relay; fi
+
 # The bot's Screen should never be empty: bring the desktop up once the engine answers, with no RPC needed.
 # (backend/tools/bot_desktop/runtime.py auto-restarts it on the next screen use because FACTR_BOT_COMPUTER=1.)
 (
@@ -115,5 +119,11 @@ cd "$home"
     "$py/runtime/bin/python3.12" -c 'from tools.bot_desktop import runtime; runtime.start()' \
     >"$FACTR_RUNTIME_DIR/desktop-autostart.log" 2>&1
 ) &
+
+# The teammate-messaging MCP entry in the bot's config.yaml (message_agent) must name THIS container's python.
+# A host-written entry carries a host path that does not exist here; rewrite it in the portable ${FACTR_BACKEND_PYTHON}
+# form the engine expands. Best effort: a bot without the entry (or an unreadable config) just starts without it.
+PYTHONPATH="$FACTR_BACKEND_PYTHONPATH" "$FACTR_BACKEND_PYTHON" -c \
+  'from tools.message_agent_mcp import ensure_teammate_mcp; ensure_teammate_mcp("/data")' >/dev/null 2>&1 || true
 
 exec factr --profile "$bot" serve --host 0.0.0.0 --port "$port" --allow-remote --token-stdin <<<"$token"

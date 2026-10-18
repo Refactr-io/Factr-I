@@ -6,9 +6,9 @@
 set -uo pipefail
 
 IMAGE="${IMAGE:-bots-factr-bot-computer:dev}"
-SCRATCH="${SCRATCH:-/Users/rameelmalik/factri-bots-scratch/img}/run-$$"
+SCRATCH="${SCRATCH:-${TMPDIR:-/tmp}/bots-image}/run-$$"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-A=bots-test-a; B=bots-test-b; C=bots-test-c; D=bots-test-d; NET=bots-factr-net; NET_CREATED=
+A=bots-test-a-$$; B=bots-test-b-$$; C=bots-test-c-$$; D=bots-test-d-$$; NET=bots-factr-net; NET_CREATED=
 BOT_A=testbota; BOT_B=testbotb; BOT_C=testbotc; BOT_D=testbotd
 PASS=0; FAIL=0; FAILED=""
 
@@ -25,9 +25,10 @@ cleanup() {
   # Chromium and Xvnc ran as uid 1000 inside the container; on Linux hosts the files may not be ours.
   rm -rf "$SCRATCH" 2>/dev/null
 }
-trap cleanup EXIT
 cleanup_names_free() { for n in "$A" "$B" "$C" "$D"; do docker inspect "$n" >/dev/null 2>&1 && { echo "refusing to run: $n already exists"; exit 2; }; done; }
 cleanup_names_free
+trap cleanup EXIT
+mkdir -p "$(dirname "$SCRATCH")"
 
 if [ -n "${BUILD:-}" ] || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   echo "building $IMAGE"
@@ -140,12 +141,18 @@ check "socat forwards 11434 and 1234 on the container loopback" bash -c "docker 
 check "pids limit is 2048" bash -c "[ \"\$(docker inspect -f '{{.HostConfig.PidsLimit}}' $A)\" = 2048 ]"
 
 echo "(c3) optional engine-home mount read-only (what the engine needs)"
+# One pair at a time on the shared daemon.
+docker stop -t 10 "$B" >/dev/null
 mkdir -p "$SCRATCH/home-d" "$SCRATCH/$BOT_D"; echo '{"anthropic_accounts":[]}' > "$SCRATCH/home-d/auth.json"
 run_bot "$D" "$BOT_D" "$TOKEN_B" "$SCRATCH/$BOT_D" "$PORT_D" -v "$SCRATCH/home-d:/data/engine-home:ro" -e FACTR_HOME=/data/engine-home
 sleep 20
 echo "  read-only engine home: health=$(api "$PORT_D" - /api/health) state=$(docker inspect -f '{{.State.Status}}' "$D") files=$(ls "$SCRATCH/home-d" | tr '\n' ' ')"
 docker logs --tail 5 "$D" 2>&1 | sed 's/^/    /' | cut -c1-200
 check "a read-only engine home is refused: the engine needs it writable" test "$(docker inspect -f '{{.State.Status}}' "$D")" = exited
+
+docker rm -f "$D" >/dev/null
+docker start "$B" >/dev/null
+check "B returns after the read-only mount probe" bash -c "$(declare -f api wait_health); wait_health $PORT_B"
 
 echo "(d) persistence across docker stop/start"
 BP="/data/profiles/$BOT_A/bot-desktop/browser-profile"
@@ -197,6 +204,7 @@ OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3.8:27b}"
 if [ -n "${SKIP_OLLAMA:-}" ] || ! curl -fsS -m 3 http://localhost:11434/api/tags 2>/dev/null | grep -q "\"$OLLAMA_MODEL\""; then
   echo "  skip: Ollama with $OLLAMA_MODEL is not running on the host (or SKIP_OLLAMA is set)"
 else
+  docker stop -t 10 "$B" >/dev/null
   mkdir -p "$SCRATCH/$BOT_C"; TOKEN_C="$(openssl rand -hex 32)"
   run_bot "$C" "$BOT_C" "$TOKEN_C" "$SCRATCH/$BOT_C" "$PORT_C" -e FACTR_PROVIDER=ollama -e FACTR_MODEL="$OLLAMA_MODEL" \
     -e FACTR_OLLAMA_NUM_CTX=4096 -e OLLAMA_HOST=127.0.0.1:11434

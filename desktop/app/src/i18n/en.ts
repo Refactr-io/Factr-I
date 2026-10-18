@@ -2765,6 +2765,7 @@ export const en: Translations = {
     failedLoad: 'Could not load scheduled jobs',
     failedUpdate: 'Could not update the job',
     failedTrigger: 'Could not start the job',
+    runNow: 'Run now',
     failedDelete: 'Could not delete the job',
     failedSave: 'Could not save the job',
     editTitle: 'Edit scheduled job',

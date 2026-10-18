@@ -67,6 +67,8 @@ declare global {
       // The bot relay's local door: stamps the heartbeat the Python tools read and counts mail waiting in the outbox.
       botRelay?: { tick: () => Promise<{ ok: boolean; pending: number }> }
       botComputer?: {
+        // Every bot that has a computer and whether it runs; never starts one. The bot relay uses it.
+        list: () => Promise<{ ok: true; computers: { profile: string; running: boolean }[] } | { ok: false; error: string }>
         status: (profile: string) => Promise<BotComputerResult>
         // Starts the bot's computer (stopping any host engine for it first) and resolves when its engine is healthy.
         start: (profile: string) => Promise<BotComputerResult>

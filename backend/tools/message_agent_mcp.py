@@ -60,6 +60,12 @@ def ensure_teammate_mcp(root: "Path | str") -> int:
                 path = Path(profile_dir) / "config.yaml"
                 if name != "default" and not _is_bot_managed(Path(profile_dir)):
                     continue
+                from tools.bot_relay import has_computer
+
+                # A bot with a computer gets the entry from inside its container (computer/entrypoint.sh): a
+                # host-written absolute python path does not exist there.
+                if has_computer(profile_dir) and not os.environ.get("FACTR_BOT_COMPUTER"):
+                    continue
                 import yaml
 
                 data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
@@ -143,16 +149,17 @@ def deliver(target: str, message: str, home: Optional[Path] = None) -> tuple[str
         return _run(cmd, label=f"@{profile or name} on peer '{name}'")
 
     resolved = dm._resolve_local_name(raw, list(homes), root)
+    computer_target = ""
     if resolved is not None and resolved != me:
-        from tools.bot_relay import HAS_COMPUTER_MESSAGE, has_computer, local_target, relay_alive
+        from tools.bot_relay import computer_connection_id, has_computer, local_target, relay_alive
         if has_computer(homes[resolved]):
-            return (f"@{_handle(resolved)}: {HAS_COMPUTER_MESSAGE}. Do not retry.", False)
-        if relay_alive(root):
-            # The Desktop relay is running: the message becomes a real turn in the teammate's own Bot Chat, on its own
-            # engine (`bot.chat.deliver`), not a Python CLI turn in a session its Bot Chat never shows.
+            computer_target = resolved
+            raw, resolved = f"{resolved}@{computer_connection_id(resolved)}", None
+        elif relay_alive(root):
             text = _relay_local(root, me, content, local_target(resolved, _handle(resolved)))
             if text is not None:
                 return text
+    if resolved is not None and resolved != me:
         file = dm._write_dm_file(content)
         cmd = dm._delivery_command([*bot_cli_prefix(), "-p", resolved, *BOT_CHAT_TURN_ARGS], file,
                                    stdin_file=False, profile_home=homes[resolved], author=author)
@@ -182,6 +189,9 @@ def deliver(target: str, message: str, home: Optional[Path] = None) -> tuple[str
             return _run(waiter_command(root, envelope), label=f"@{match['handle']}")
     except Exception as exc:
         return (f"Relay delivery failed: {exc}", False)
+    if computer_target:
+        from tools.bot_relay import HAS_COMPUTER_MESSAGE
+        return (f"@{_handle(computer_target)}: {HAS_COMPUTER_MESSAGE}. Do not retry.", False)
     if resolved == me:
         return ("You can't message yourself. Pick a teammate from the roster.", False)
     return (f"No teammate named '{raw}'. Teammates: {', '.join(teammates) or 'none'}.", False)

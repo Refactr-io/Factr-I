@@ -97,9 +97,11 @@ import {
   destroyComputer,
   ensureComputer,
   isBotProfile,
+  listComputers,
   reconcileComputers,
   setComputerHold,
   stopComputer,
+  stopUnscheduledComputers,
   touchComputer,
   validateBotProfile
 } from './bot-computers'
@@ -11842,6 +11844,7 @@ configureBotComputers({
   waitReady: (baseUrl, token) => waitForFactr(baseUrl, token),
   maxRunning: () => poolMaxBackends(),
   // Where a new bot's credentials are seeded from (one-time copy): the engine home, as the engine resolves it.
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   hostEngineHome: process.env.FACTR_HOME || path.join(app.getPath('home'), '.factr', 'engine'),
   // Idle or cap stop: drop the pool entry so the renderer parks and re-dials (which wakes it) instead of a dead socket.
   onStopped: profile => {
@@ -11974,7 +11977,10 @@ const backendShutdown = createBackendShutdownCoordinator(async () => {
     poolIdleReaper = null
   }
 
-  await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops], 7_000)
+  // Bot computers stop with the app, except those holding enabled cron jobs: their schedules keep firing.
+  const computersStopped = stopUnscheduledComputers()
+
+  await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops, computersStopped], 7_000)
 })
 
 const quitTeardown = createQuitTeardownCoordinator(() => app.quit())
@@ -14687,6 +14693,13 @@ ipcMain.handle('factr:bot-relay:tick', () => {
     return { ok: true, pending: fs.readdirSync(path.join(dir, 'outbox')).filter(name => name.endsWith('.json')).length }
   } catch {
     return { ok: false, pending: 0 }
+  }
+})
+ipcMain.handle('factr:bot-computer:list', async () => {
+  try {
+    return { ok: true, computers: listComputers() }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
 })
 ipcMain.handle('factr:bot-computer:status', botComputerIpc(botComputerStatus))

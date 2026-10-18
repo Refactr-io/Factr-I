@@ -9,6 +9,7 @@
 
 import { host, LruCache } from '@factr/plugin-sdk'
 
+import { listComputers } from './computer'
 import { botHandle, clearBotAttention, noteBotAttention } from './data'
 import type { ProfileRoute, RosterRow } from './types'
 
@@ -75,6 +76,14 @@ const RELAY_LOCAL_TICK_MS = 4000
 // A relayed turn can take minutes: `bot.chat.deliver` answers `pending` after ~45 s and the relay polls
 // `bot.chat.deliver_status`, so no single call outlives a request deadline.
 const RELAY_ENGINE_CALL_MS = 130_000
+// A bot with its own computer is its own relay connection: its engine is a separate backend with its own outbox,
+// roster and turn lock, and the local connection must never carry it. Mirrors tools/bot_relay.py
+// COMPUTER_CONNECTION_PREFIX (connection ids are `[A-Za-z0-9_-]{1,64}`, so a profile over 55 chars has no route).
+const COMPUTER_CONNECTION_PREFIX = 'computer-'
+const computerConnectionId = (profile: string) => `${COMPUTER_CONNECTION_PREFIX}${profile}`
+// The Rust engine holds a forwarded RPC for at most 120 s, so a relayed turn is delivered by polling: each
+// bot_relay.deliver call returns within the backend's own poll window (90 s) with `pending` until the turn is done.
+const RELAY_DELIVER_POLL_TIMEOUT_MS = 150_000
 
 /** Everything the two loops mutate. */
 interface RelayLifecycle {
@@ -124,6 +133,10 @@ const relayRouteRetentions = new Map<string, () => void>()
 interface RelayConnection {
   id: string
   route: ProfileRoute
+  /** A computer that is off is a delivery target (delivering wakes it) but is never polled or pushed to. */
+  live: boolean
+  /** The bot whose computer this connection is. */
+  computerProfile?: string
 }
 
 /** One agent as pushed to a peer gateway's relay roster. */
@@ -201,21 +214,48 @@ async function relayConnections(): Promise<RelayConnection[]> {
   }
 
   try {
-    const routes = await host.profileRoutes()
+    const fetched = await host.profileRoutes()
+    const routes = Array.isArray(fetched) ? fetched : []
+    const computers = await listComputers()
+    const computerProfiles = new Set(computers.map(computer => computer.profile))
     const byConnection = new Map<string, ProfileRoute>()
 
-    for (const route of Array.isArray(routes) ? routes : []) {
+    for (const route of routes) {
       const id = String(route?.connectionId || '')
 
-      if (id && !byConnection.has(id)) {
+      // A computer's profile is never the representative of the local connection: a call on its route wakes it.
+      const ownedByComputer = id === 'local' && computerProfiles.has(String(route?.profile || ''))
+
+      if (id && !ownedByComputer && !byConnection.has(id)) {
         byConnection.set(id, route)
       }
     }
 
-    return [...byConnection.entries()].map(([id, route]) => ({
+    const connections: RelayConnection[] = [...byConnection.entries()].map(([id, route]) => ({
       id,
+      live: true,
       route
     }))
+
+    for (const { profile, running } of computers) {
+      if (computerConnectionId(profile).length > 64) {
+        continue
+      }
+
+      connections.push({
+        computerProfile: profile,
+        id: computerConnectionId(profile),
+        live: running,
+        route: routes.find(route => route?.connectionId === 'local' && route?.profile === profile) ?? {
+          connectionId: 'local',
+          mode: 'local',
+          profile,
+          targetProfile: profile
+        }
+      })
+    }
+
+    return connections
   } catch {
     return []
   }
@@ -252,7 +292,8 @@ async function connectionLabels(): Promise<Map<string, string>> {
  *  definitively offline → false runtime_offline refusals (#93091 item 2). */
 async function relayAgentsOn(
   connection: RelayConnection,
-  labels: Map<string, string>
+  labels: Map<string, string>,
+  computerProfiles: Set<string> = new Set()
 ): Promise<RelayAgentRow[] | null> {
   try {
     const res = await host.requestProfile<{ profiles?: RosterRow[] }>(connection.route, 'profiles.list', {
@@ -266,8 +307,13 @@ async function relayAgentsOn(
       .map(profile => ({
         profile: String(profile?.name || ''),
         handle: botHandle(profile?.name, profile),
-        connection_id: connection.id,
-        connection_label: label,
+        // A bot with a computer lives on its own connection, wherever the local profile list reports it.
+        ...(connection.id === 'local' && computerProfiles.has(String(profile?.name || ''))
+          ? {
+              connection_id: computerConnectionId(String(profile?.name || '')),
+              connection_label: `${botHandle(profile?.name, profile)} computer`
+            }
+          : { connection_id: connection.id, connection_label: label }),
         title: String(profile?.ui_meta?.['factr-bots']?.title || profile?.display_name || ''),
         description: String(profile?.description || '')
       }))
@@ -332,22 +378,26 @@ async function syncRelayRosters() {
 
     relay.rosterClearedFor = null
 
-    const agentsByConnection = new Map<string, RelayAgentRow[]>()
+    const computerProfiles = new Set(connections.flatMap(connection => connection.computerProfile ?? []))
+    const rows: RelayAgentRow[] = []
     await Promise.all(
-      connections.map(async connection => {
-        const agents = await relayAgentsOn(connection, labels)
+      // A computer contributes no fetch of its own: its row comes from the local profile list (a fetch would wake it).
+      connections
+        .filter(connection => !connection.computerProfile)
+        .map(async connection => {
+          const agents = await relayAgentsOn(connection, labels, computerProfiles)
 
-        if (agents === null) {
-          // Transient fetch failure: reuse the last good rows for this
-          // connection (or contribute nothing this cycle) so the pushed
-          // roster never drops a live machine's agents — absence from a
-          // fresh roster means offline to the gateway-side fail-fast.
-          agentsByConnection.set(connection.id, relayAgentsCache.get(connection.id) || [])
-        } else {
-          relayAgentsCache.set(connection.id, agents)
-          agentsByConnection.set(connection.id, agents)
-        }
-      })
+          if (agents === null) {
+            // Transient fetch failure: reuse the last good rows for this
+            // connection (or contribute nothing this cycle) so the pushed
+            // roster never drops a live machine's agents — absence from a
+            // fresh roster means offline to the gateway-side fail-fast.
+            rows.push(...(relayAgentsCache.get(connection.id) || []))
+          } else {
+            relayAgentsCache.set(connection.id, agents)
+            rows.push(...agents)
+          }
+        })
     )
 
     // Connections gone from profileRoutes are genuinely disconnected — drop
@@ -360,27 +410,48 @@ async function syncRelayRosters() {
       }
     }
 
+    // Only live connections are pushed to: a computer that is off has no engine to push into (and a push wakes it).
     await Promise.all(
-      connections.map(async connection => {
-        const others: RelayAgentRow[] = []
+      connections
+        .filter(connection => connection.live)
+        .map(async connection => {
+          const others = rows.filter(row => row.connection_id !== connection.id)
 
-        for (const [id, agents] of agentsByConnection) {
-          if (id !== connection.id) {
-            others.push(...agents)
+          try {
+            const res = await host.requestProfile<{ count?: number }>(connection.route, 'bot_relay.roster.sync', {
+              agents: others
+            })
+
+            // A freshly started engine answers roster.sync from a boot stub ({count: 0}) until its Python backend
+            // runs. Any real drain starts it; claim what is queued (it is delivered like any drain) and push again.
+            if (connection.computerProfile && others.length > 0 && res?.count === 0) {
+              const byId = new Map(connections.map(peer => [peer.id, peer]))
+
+              for (const { envelope, sender } of await claimFrom(connection)) {
+                enqueueRelayDelivery(sender, envelope, byId)
+              }
+
+              await host.requestProfile(connection.route, 'bot_relay.roster.sync', { agents: others })
+            }
+          } catch {
+            // Older backend without the relay RPCs — skip this connection.
           }
-        }
-
-        try {
-          await host.requestProfile(connection.route, 'bot_relay.roster.sync', {
-            agents: others
-          })
-        } catch {
-          // Older backend without the relay RPCs — skip this connection.
-        }
-      })
+        })
     )
   } finally {
     relay.rosterBusy = false
+  }
+}
+
+/** Claim one connection's queued envelopes (an unreachable or older gateway yields none). */
+async function claimFrom(sender: RelayConnection): Promise<RelayQueuedEnvelope[]> {
+  try {
+    const res = await host.requestProfile<{ envelopes?: RelayEnvelope[] }>(sender.route, 'bot_relay.outbox.drain', {})
+
+    return (Array.isArray(res?.envelopes) ? res.envelopes : []).map(envelope => ({ envelope, sender }))
+  } catch {
+    // Older backend without the relay RPCs — skip this connection.
+    return []
   }
 }
 
@@ -411,7 +482,7 @@ async function drainRelayOutboxes() {
 
     // Retention follows the relay-eligible set: with fewer than two
     // connections there is nothing to relay, so nothing stays pinned.
-    syncRelayRetention(connections.length >= 2 ? connections : [])
+    syncRelayRetention(connections.length >= 2 ? connections.filter(connection => connection.live) : [])
 
     // One connection is nothing to relay BETWEEN, unless local bots have mail for each other (forced by the local tick).
     if (connections.length < (forced ? 1 : 2)) {
@@ -429,20 +500,9 @@ async function drainRelayOutboxes() {
     // `queued_expired` for a message nothing was wrong with.
     const queued: RelayQueuedEnvelope[] = []
 
-    for (const sender of connections) {
-      try {
-        const res = await host.requestProfile<{ envelopes?: RelayEnvelope[] }>(
-          sender.route,
-          'bot_relay.outbox.drain',
-          {}
-        )
-
-        for (const envelope of Array.isArray(res?.envelopes) ? res.envelopes : []) {
-          queued.push({ envelope, sender })
-        }
-      } catch {
-        // Older backend without the relay RPCs — skip this connection.
-      }
+    // A computer that is off has nothing queued and a drain would wake it: only live connections are claimed from.
+    for (const sender of connections.filter(connection => connection.live)) {
+      queued.push(...(await claimFrom(sender)))
     }
 
     // Phase 2 — deliver, without holding the drain. Envelopes for the same
@@ -559,12 +619,18 @@ async function deliverToTarget(
     }
   }
 
-  return host.requestProfile<{ reply?: string }>(
-    target.route,
-    'bot_relay.deliver',
-    { profile, message, from_profile, from_handle, from_connection },
-    RELAY_DELIVER_TIMEOUT_MS
-  )
+  const base = { profile, message, from_profile, from_handle, from_connection }
+  for (;;) {
+    let res: { pending?: boolean; reply?: string }
+    try {
+      res = await host.requestProfile(route, 'bot_relay.deliver', { ...base, hops: envelope.hops ?? 0, envelope_id: envelopeId }, RELAY_DELIVER_POLL_TIMEOUT_MS)
+    } catch (error: any) {
+      if (!/extra inputs are not permitted|out of sync/i.test(String(error?.message || error))) throw error
+      return host.requestProfile(route, 'bot_relay.deliver', base, RELAY_DELIVER_TIMEOUT_MS)
+    }
+    if (!res?.pending) return res
+    if (Date.now() > deadline) throw Object.assign(new Error('delivery timed out'), { data: { reason: 'delivery_timeout' } })
+  }
 }
 
 interface EngineDelivery {

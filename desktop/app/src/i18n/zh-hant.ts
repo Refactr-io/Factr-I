@@ -2135,6 +2135,7 @@ export const zhHant = defineLocale({
     failedLoad: '載入排程工作失敗',
     failedUpdate: '更新排程工作失敗',
     failedTrigger: '觸發排程工作失敗',
+    runNow: '立即執行',
     failedDelete: '刪除排程工作失敗',
     failedSave: '儲存排程工作失敗',
     editTitle: '編輯排程工作',

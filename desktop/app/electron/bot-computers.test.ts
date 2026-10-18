@@ -14,18 +14,23 @@ import {
   chooseBotBackend,
   computerImageReady,
   computerStatus,
+  computeSpec,
   configureBotComputers,
   createArgs,
   deriveBotToken,
   destroyComputer,
   dockerAvailable,
+  enabledCronJobs,
   ensureComputer,
   isBotProfile,
+  listComputers,
   reconcileComputers,
   resetBotComputersForTest,
   seedBotAuth,
   setComputerHold,
+  startScheduledComputers,
   stopComputer,
+  stopUnscheduledComputers,
   sweepIdleComputers,
   validateBotProfile
 } from './bot-computers'
@@ -37,7 +42,8 @@ let home: string
 let calls: { args: string[]; env?: Record<string, string> }[]
 let clock: number
 let stopped: string[]
-let existing: Record<string, { status: string; label: string; port: string }>
+let existing: Record<string, { status: string; label: string; port: string; spec?: string; imageId?: string }>
+let imageId: string
 let nextPort: number
 let startError: Error | null
 let imageMissing: boolean
@@ -52,7 +58,7 @@ function fakeRun(args: string[], opts?: { env?: Record<string, string> }): Promi
   }
 
   if (cmd === 'image') {
-    return imageMissing ? Promise.reject(NO_SUCH) : Promise.resolve('sha256:abc')
+    return imageMissing ? Promise.reject(NO_SUCH) : Promise.resolve(imageId)
   }
 
   if (cmd === 'inspect') {
@@ -60,7 +66,9 @@ function fakeRun(args: string[], opts?: { env?: Record<string, string> }): Promi
     const c = existing[name]
 
     return c
-      ? Promise.resolve(`${c.status}|${IMAGE}|${c.label}|2026-10-18T10:00:00Z|${c.port}`)
+      ? Promise.resolve(
+          `${c.status}|${IMAGE}|${c.label}|2026-10-18T10:00:00Z|${c.port}|${c.imageId ?? imageId}|${c.spec ?? ''}`
+        )
       : Promise.reject(NO_SUCH)
   }
 
@@ -71,7 +79,8 @@ function fakeRun(args: string[], opts?: { env?: Record<string, string> }): Promi
   if (cmd === 'create') {
     const name = args[args.indexOf('--name') + 1]
     const port = args.find(a => a.startsWith('factr.port='))?.slice('factr.port='.length) ?? ''
-    existing[name] = { status: 'created', label: name.slice(BOT_COMPUTER.namePrefix.length), port }
+    const spec = args.find(a => a.startsWith('factr.spec='))?.slice('factr.spec='.length) ?? ''
+    existing[name] = { status: 'created', label: name.slice(BOT_COMPUTER.namePrefix.length), port, spec, imageId }
   }
 
   if (cmd === 'start') {
@@ -140,6 +149,7 @@ beforeEach(() => {
   nextPort = 41000
   startError = null
   imageMissing = false
+  imageId = 'sha256:one'
   ps = ''
   waitReady.mockClear()
 })
@@ -191,6 +201,7 @@ describe('docker create args', () => {
       '--label', 'factr.bot=scout',
       '--label', 'factr.computer.v=1',
       '--label', 'factr.port=41234',
+      '--label', `factr.spec=${computeSpec('scout', IMAGE, '/h/profiles/scout')}`,
       '--network', 'bots-factr-net',
       '--add-host', 'host.docker.internal:host-gateway',
       '--cap-drop', 'ALL',
@@ -207,6 +218,30 @@ describe('docker create args', () => {
       IMAGE
     ])
     expect(args.join(' ')).not.toContain(deriveBotToken('scout'))
+  })
+
+  it('passes the host time zone as TZ, and ignores anything that is not a zone name', () => {
+    configure()
+
+    const withTz = createArgs('scout', IMAGE, '/h/p', 41234, [], 'Asia/Kolkata')
+
+    expect(withTz[withTz.indexOf('TZ=Asia/Kolkata') - 1]).toBe('-e')
+    expect(createArgs('scout', IMAGE, '/h/p', 41234, [], 'x; rm -rf /').join(' ')).not.toContain('TZ=')
+    expect(createArgs('scout', IMAGE, '/h/p', 41234).join(' ')).not.toContain('TZ=')
+  })
+
+  it('the spec hash ignores the port but changes with any run flag', () => {
+    configure()
+
+    const base = computeSpec('scout', IMAGE, '/h/p')
+
+    expect(computeSpec('scout', IMAGE, '/h/p')).toBe(base)
+    expect(createArgs('scout', IMAGE, '/h/p', 1111)).toContain(`factr.spec=${base}`)
+    expect(createArgs('scout', IMAGE, '/h/p', 2222)).toContain(`factr.spec=${base}`)
+    expect(computeSpec('scout', IMAGE, '/h/p', [], 'Europe/Paris')).not.toBe(base)
+    expect(computeSpec('scout', IMAGE, '/h/other')).not.toBe(base)
+    expect(computeSpec('scout', 'bots-factr-bot-computer:v2', '/h/p')).not.toBe(base)
+    expect(computeSpec('scout', IMAGE, '/h/p', ['-v', '/x:/y'])).not.toBe(base)
   })
 })
 
@@ -608,5 +643,161 @@ describe('routing decision', () => {
 
   it('computers off: bots get host engines', () => {
     expect(chooseBotBackend('scout', { ...bot, disabled: true }, true)).toBe('host-engine')
+  })
+})
+
+
+describe('recreate when the spec or the image changes', () => {
+  it('recreates a STOPPED container whose run flags changed, keeping the profile folder', async () => {
+    configure({ timeZone: 'Europe/Paris' })
+    await ensureComputer('scout')
+    await stopComputer('scout')
+    fs.writeFileSync(path.join(home, 'profiles', 'scout', 'keep.txt'), 'state')
+    calls = []
+
+    configure({ timeZone: 'Asia/Kolkata' })
+    await ensureComputer('scout')
+
+    expect(dockerCalls('rm').map(c => c.args)).toEqual([['rm', '-f', 'bots-factr-bot-scout']])
+    expect(dockerCalls('create')).toHaveLength(1)
+    expect(dockerCalls('create')[0].args).toContain('TZ=Asia/Kolkata')
+    expect(fs.readFileSync(path.join(home, 'profiles', 'scout', 'keep.txt'), 'utf8')).toBe('state')
+  })
+
+  it('recreates a stopped container when the image behind the tag was rebuilt', async () => {
+    configure()
+    await ensureComputer('scout')
+    await stopComputer('scout')
+    calls = []
+    imageId = 'sha256:two'
+    await ensureComputer('scout')
+
+    expect(dockerCalls('rm')).toHaveLength(1)
+    expect(dockerCalls('create')).toHaveLength(1)
+  })
+
+  it('leaves an unchanged stopped container alone', async () => {
+    configure({ timeZone: 'Europe/Paris' })
+    await ensureComputer('scout')
+    await stopComputer('scout')
+    calls = []
+    await ensureComputer('scout')
+
+    expect(dockerCalls('rm')).toEqual([])
+    expect(dockerCalls('create')).toEqual([])
+    expect(dockerCalls('start')).toHaveLength(1)
+  })
+
+  it('never recreates a RUNNING container (that would kill its turn and schedules)', async () => {
+    configure({ timeZone: 'Europe/Paris' })
+    await ensureComputer('scout')
+    calls = []
+    configure({ timeZone: 'Asia/Kolkata' })
+    await ensureComputer('scout')
+
+    expect(dockerCalls('rm')).toEqual([])
+    expect(dockerCalls('create')).toEqual([])
+  })
+})
+
+describe('scheduled bots', () => {
+  const jobs = (profile: string, list: unknown[]) => {
+    fs.mkdirSync(path.join(home, 'profiles', profile, 'cron'), { recursive: true })
+    fs.writeFileSync(path.join(home, 'profiles', profile, 'cron', 'jobs.json'), JSON.stringify({ jobs: list }))
+  }
+
+  it('counts only jobs the engine would fire', () => {
+    configure()
+    expect(enabledCronJobs('scout')).toBe(0) // no store
+    jobs('scout', [
+      { id: '1', enabled: true, state: 'scheduled', schedule: { kind: 'interval', minutes: 1 } },
+      { id: '2', state: 'scheduled' }, // enabled defaults to true
+      { id: '3', enabled: false, state: 'paused' },
+      { id: '4', enabled: true, paused_at: '2026-10-18T00:00:00Z' },
+      { id: '5', enabled: true, state: 'completed' },
+      { id: '6', enabled: true, state: 'error', schedule: { kind: 'once' } },
+      { id: '7', enabled: true, state: 'error', schedule: { kind: 'interval', minutes: 5 } } // still live
+    ])
+    expect(enabledCronJobs('scout')).toBe(3)
+    fs.writeFileSync(path.join(home, 'profiles', 'scout', 'cron', 'jobs.json'), '{not json')
+    expect(enabledCronJobs('scout')).toBe(0)
+  })
+
+  it('the idle sweep never stops a bot with an enabled job, and stops it once the job is paused', async () => {
+    configure()
+    await ensureComputer('scout')
+    await ensureComputer('writer')
+    jobs('scout', [{ id: '1', enabled: true, state: 'scheduled' }])
+    clock += BOT_COMPUTER.idleMs + 1
+    await sweepIdleComputers()
+    expect(dockerCalls('stop').map(c => c.args.at(-1))).toEqual(['bots-factr-bot-writer'])
+
+    jobs('scout', [{ id: '1', enabled: false, state: 'paused' }])
+    await sweepIdleComputers()
+    expect(dockerCalls('stop').map(c => c.args.at(-1))).toEqual(['bots-factr-bot-writer', 'bots-factr-bot-scout'])
+  })
+
+  it('the cap evicts an unscheduled bot, never a scheduled one', async () => {
+    configure({ maxRunning: () => 2 })
+    await ensureComputer('scout')
+    clock += 1000
+    await ensureComputer('writer')
+    jobs('scout', [{ id: '1', enabled: true, state: 'scheduled' }]) // scout is older but scheduled
+    clock += 1000
+    await ensureComputer('a')
+
+    expect(dockerCalls('stop').map(c => c.args.at(-1))).toEqual(['bots-factr-bot-writer'])
+  })
+
+  it('app start starts the computer of a scheduled bot that has one, and no other', async () => {
+    configure()
+
+    // scout: has a computer marker and a job but is down; writer: marker, no job; a: job but never had a computer.
+    for (const p of ['scout', 'writer']) {
+      fs.writeFileSync(path.join(home, 'profiles', p, '.computer'), '{}')
+    }
+
+    jobs('scout', [{ id: '1', enabled: true, state: 'scheduled' }])
+    jobs('writer', [])
+    jobs('a', [{ id: '1', enabled: true, state: 'scheduled' }])
+
+    expect(await startScheduledComputers(['scout', 'writer', 'a', 'default', '../x'])).toEqual(['scout'])
+    expect(dockerCalls('start').map(c => c.args[1])).toEqual(['bots-factr-bot-scout'])
+  })
+
+  it('reconcile runs the scheduled starts after clearing orphans', async () => {
+    configure()
+    fs.writeFileSync(path.join(home, 'profiles', 'scout', '.computer'), '{}')
+    jobs('scout', [{ id: '1', enabled: true, state: 'scheduled' }])
+    ps = ''
+    await reconcileComputers(['scout'])
+    expect(dockerCalls('start').map(c => c.args[1])).toEqual(['bots-factr-bot-scout'])
+  })
+
+  it('on app quit every computer stops except those with enabled jobs, which keep running', async () => {
+    configure()
+    await ensureComputer('scout')
+    await ensureComputer('writer')
+    jobs('scout', [{ id: '1', enabled: true, state: 'scheduled' }])
+    await stopUnscheduledComputers()
+
+    expect(dockerCalls('stop').map(c => c.args.at(-1))).toEqual(['bots-factr-bot-writer'])
+    expect((await computerStatus('scout')).scheduledJobs).toBe(1)
+  })
+})
+
+describe('listComputers', () => {
+  it('lists bots with a computer marker and whether each runs, without touching docker', async () => {
+    configure()
+    fs.writeFileSync(path.join(home, 'profiles', 'scout', '.computer'), '{}')
+    fs.writeFileSync(path.join(home, 'profiles', 'writer', '.computer'), '{}')
+    await ensureComputer('writer')
+    calls = []
+
+    expect(listComputers().sort((x, y) => x.profile.localeCompare(y.profile))).toEqual([
+      { profile: 'scout', running: false },
+      { profile: 'writer', running: true }
+    ])
+    expect(calls).toEqual([])
   })
 })

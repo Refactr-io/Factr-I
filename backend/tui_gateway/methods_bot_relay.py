@@ -29,6 +29,32 @@ def _relay_root() -> Path:
     return _factr_root(Path(_default_home()))
 
 
+def _engine_delivery(profile: str, tmp: str, env: dict | None, timeout: float) -> "subprocess.CompletedProcess | None":
+    """One relayed turn run by this bot computer's OWN engine (``POST /api/agent/run``, one engine session per bot
+    chat), or None when this is not a bot computer. The Python CLI transport refuses models under 64k context and
+    is not what runs the bot's chat; inside a computer the engine is. The reply comes back as a CompletedProcess so
+    the caller's retry and classification stay as they are."""
+    if not (os.environ.get("FACTR_BOT_COMPUTER") and os.environ.get("FACTR_ENGINE_URL")
+            and os.environ.get("FACTR_ENGINE_TOKEN")):
+        return None
+    from cron.scheduler import _run_job_via_factr_engine
+    from tools.bot_relay import RELAY_HOPS_ENV, relay_hops_marker
+
+    text = Path(tmp).read_text(encoding="utf-8")
+    hops = int((env or {}).get(RELAY_HOPS_ENV) or 0)
+    with relay_hops_marker(_relay_root(), profile, hops):
+        try:
+            res = _run_job_via_factr_engine(
+                os.environ["FACTR_ENGINE_URL"], os.environ["FACTR_ENGINE_TOKEN"], "Bot Chat", text, None,
+                session_key=f"bot-chat:{profile}", surface="bot", timeout_s=timeout)
+        except Exception as exc:  # transport/HTTP failure: a failed turn, classified like any other
+            return subprocess.CompletedProcess([], 1, stdout="", stderr=str(exc))
+    reply = str(res.get("final_text") or res.get("text") or "")
+    if res.get("ok") is False or res.get("error"):
+        return subprocess.CompletedProcess([], 1, stdout=reply, stderr=str(res.get("error") or "engine turn failed"))
+    return subprocess.CompletedProcess([], 0, stdout=reply, stderr="")
+
+
 def _run_delivery(profile: str, tmp: str, env: dict | None = None, *,
                   timeout: float = TURN_ATTEMPT_TIMEOUT_SECONDS) -> subprocess.CompletedProcess:
     """One relayed turn; the cap bounds the TURN, not the child (#114980). ``-Q`` prints its answer
@@ -36,6 +62,9 @@ def _run_delivery(profile: str, tmp: str, env: dict | None = None, *,
     child that exits under the cap is booked from its streams as before; one still lingering at the
     cap is booked from its turn report — its answer and outcome, never a timeout — and left to finish
     the linger that protects its own handoff. Only a turn that never ends is a timeout."""
+    engine = _engine_delivery(profile, tmp, env, timeout)
+    if engine is not None:
+        return engine
     from factr_backend.quiet_single_query import run_reported_turn
     from tools.bot_relay import local_delivery_command
     report = f"{tmp}.turn.json"
@@ -77,8 +106,19 @@ def _(rid, params: dict, _root=_relay_root, _run=_run_delivery,
       _failure_reason=delivery_failure_reason) -> dict:
     """Deliver a relayed DM (``profile``, attribution-prefixed ``message``) into a Bot Chat ON THIS
     GATEWAY via the one-turn ``factr -p <profile> chat -c "Bot Chat"`` transport local DMs use →
-    ``{reply}``. Blocking by design (Desktop relay worker; the RPC pool keeps it off the reader)."""
+    ``{reply}``. Blocking by design (Desktop relay worker; the RPC pool keeps it off the reader).
+
+    With ``envelope_id`` it is poll-style instead: the first call starts the turn (keyed by that id), and every call
+    waits at most DELIVER_POLL_SECONDS, answering ``{reply: "", pending: true}`` until the turn is done. The Rust
+    engine gives a forwarded RPC 120 s, far less than a real turn."""
     import tempfile
+    envelope_id = str(params.get("envelope_id") or "").strip()
+    if envelope_id:
+        from tools.bot_relay import DELIVER_POLL_SECONDS, deliver_job
+        inner = {k: v for k, v in params.items() if k != "envelope_id"}
+        done, response = deliver_job(envelope_id, lambda: _methods["bot_relay.deliver"](rid, inner),
+                                     DELIVER_POLL_SECONDS)
+        return {**response, "id": rid} if done else _ok(rid, {"reply": "", "pending": True})
     profile = str(params.get("profile") or "").strip()
     message = str(params.get("message") or "").strip()
     if not profile or not message:
@@ -182,7 +222,14 @@ def _(rid, params: dict, _root=_relay_root, _run=_run_delivery,
             from tools.bot_failure_reasons import turn_failure_text
             return turn_failure_text(p.stdout, p.stderr)
 
-        turn_env = delivery_env(author, live_home)
+        try:
+            hops = int(params.get("hops") or 0)
+        except (TypeError, ValueError):
+            hops = 0
+        # Inside a bot computer the served profile IS this process's own: name its home so the env builder (which
+        # fails closed under multiplexing without a target) has a scope.
+        turn_home = live_home if live_home is not None or not os.environ.get("FACTR_BOT_COMPUTER") else Path(_factr_home)
+        turn_env = delivery_env(author, turn_home, hops)
 
         fd, tmp = tempfile.mkstemp(prefix="factr-relay-dm-", suffix=".txt", text=True)
         try:

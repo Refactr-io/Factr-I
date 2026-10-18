@@ -1113,6 +1113,7 @@ export interface RelayEnvelope {
   target_profile: string
   target_handle: string
   message: string
+  hops?: number | null
   [key: string]: unknown
 }
 /** ``profile`` here is the TARGET profile on this gateway (also what the desktop route wrapper adds). */
@@ -1122,9 +1123,12 @@ export interface BotRelayDeliverParams {
   from_profile?: string | null
   from_handle?: string | null
   from_connection?: string | null
+  hops?: number | null
+  envelope_id?: string | null
 }
 export interface BotRelayDeliverResult {
   reply: string
+  pending?: boolean | null
 }
 export interface BotRelayReplyParams {
   profile?: string | null
@@ -3064,7 +3068,7 @@ export interface CronManageParams {
   deliver?: string | null
   profile?: string | null
 }
-export type CronAction = 'list' | 'add' | 'remove' | 'pause' | 'resume'
+export type CronAction = 'list' | 'add' | 'remove' | 'pause' | 'resume' | 'run'
 /** Pass-through of ``tools/cronjob_tools.py::cronjob`` JSON: ``list`` → ``jobs``/``count`` (+ ``scoped`` when profile-scoped); ``add`` → the created job's summary + ``job``; ``remove`` → ``removed_job``; ``pause``/``resume`` → ``job``. A tool-level failure lands in ``error``. */
 export interface CronManageResult {
   success?: boolean | null
@@ -4163,7 +4167,7 @@ export interface RpcMethods {
   'connectors.operation.status': { params: ConnectionOperationParams; result: ConnectionOperationStatus }
   /** The browser leg came back (factr://connections/done): read the accounts now, not at the next tick. */
   'connectors.operation.wake': { params: ConnectionOperationParams; result: ConnectionWakeResult }
-  /** List/add/remove/pause/resume cron jobs in the (optionally profile-scoped) cron store. */
+  /** List/add/remove/pause/resume/run cron jobs in the (optionally profile-scoped) cron store. */
   'cron.manage': { params: CronManageParams; result: CronManageResult }
   /** Block/unblock NEW spawns globally (active children keep running); returns the new state. */
   'delegation.pause': { params: DelegationPauseParams; result: DelegationPauseResult }

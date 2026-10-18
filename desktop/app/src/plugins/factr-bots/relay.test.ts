@@ -1211,3 +1211,237 @@ describe('local bot-to-bot delivery through the target engine', () => {
     stopBotRelay()
   })
 })
+
+// A bot with its own computer (a Docker container with its own engine, outbox and turn lock) is its own relay
+// connection: `computer-<profile>`. The local connection never carries it, a computer that is off is a delivery
+// target (delivering wakes it) but is never polled, pushed to, or asked for its profile list.
+describe('bot computers are relay connections', () => {
+  const local = (profile: string): ProfileRoute => ({
+    connectionId: 'local',
+    mode: 'local',
+    profile,
+    targetProfile: profile
+  })
+
+  const setComputers = (computers: { profile: string; running: boolean }[]) => {
+    ;(window as any).factrDesktop = { botComputer: { list: vi.fn(async () => ({ ok: true, computers })) } }
+    hostMock.profileRoutes = vi.fn(async () => [local('scout'), local('default'), local('writer')])
+  }
+
+  afterEach(() => {
+    delete (window as any).factrDesktop
+  })
+
+  const profilesList = (call: RelayCall) =>
+    call.method === 'profiles.list' ? { profiles: [{ name: 'default' }, { name: 'scout' }, { name: 'writer' }] } : {}
+
+  it('pushes rosters only to live connections, with each computer as its own connection and never its own row', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: false }
+    ])
+
+    const calls = respondWith(profilesList)
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // The local connection is represented by a non-computer profile, and nothing ever touches the stopped computer.
+    expect(calls.filter(call => call.profile === 'writer')).toEqual([])
+    expect(calls.filter(call => call.method === 'profiles.list').map(call => call.profile)).toEqual(['default'])
+
+    const syncs = calls.filter(call => call.method === 'bot_relay.roster.sync')
+    const ids = (call: RelayCall) => (call.params.agents as { connection_id: string }[]).map(row => row.connection_id).sort()
+
+    expect(syncs.map(call => [call.connectionId, call.profile])).toEqual([
+      ['local', 'default'],
+      ['local', 'scout']
+    ])
+    expect(ids(syncs[0])).toEqual(['computer-scout', 'computer-writer'])
+    // scout is told about the host's default and about writer, but not about itself.
+    expect(ids(syncs[1])).toEqual(['computer-writer', 'local'])
+
+    stopBotRelay()
+  })
+
+  it('drains only running computers', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: false }
+    ])
+
+    const calls = respondWith(profilesList)
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    calls.length = 0
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain').map(call => call.profile).sort()).toEqual([
+      'default',
+      'scout'
+    ])
+    expect(calls.some(call => call.profile === 'writer')).toBe(false)
+
+    stopBotRelay()
+  })
+
+  it('delivers to a stopped computer on its own route (waking it), tagged with the sender computer and the hop count', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: false }
+    ])
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain' && call.profile === 'scout') {
+        return {
+          envelopes: [
+            {
+              id: 'e'.repeat(32),
+              message: 'Message from scout',
+              from_handle: 'scout',
+              from_profile: 'scout',
+              hops: 1,
+              target_connection: 'computer-writer',
+              target_profile: 'writer'
+            }
+          ]
+        }
+      }
+
+      return call.method === 'bot_relay.deliver' ? { reply: 'writer says hi' } : profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    const deliver = calls.find(call => call.method === 'bot_relay.deliver')
+
+    expect([deliver?.connectionId, deliver?.profile]).toEqual(['local', 'writer'])
+    expect(deliver?.params).toMatchObject({
+      envelope_id: 'e'.repeat(32),
+      from_connection: 'computer-scout',
+      hops: 1,
+      profile: 'writer'
+    })
+
+    const reply = calls.find(call => call.method === 'bot_relay.reply')
+
+    expect([reply?.profile, reply?.params]).toEqual(['scout', { id: 'e'.repeat(32), reply: 'writer says hi' }])
+
+    stopBotRelay()
+  })
+
+  it('polls a long turn: each call returns pending until the turn is done, one reply is posted', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: true }
+    ])
+
+    let polls = 0
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain' && call.profile === 'scout') {
+        return {
+          envelopes: [{ id: 'f'.repeat(32), message: 'm', target_connection: 'computer-writer', target_profile: 'writer' }]
+        }
+      }
+
+      if (call.method === 'bot_relay.deliver') {
+        polls += 1
+
+        return polls < 3 ? { pending: true, reply: '' } : { reply: 'finally' }
+      }
+
+      return profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    const delivers = calls.filter(call => call.method === 'bot_relay.deliver')
+
+    expect(delivers).toHaveLength(3)
+    expect(new Set(delivers.map(call => call.params.envelope_id))).toEqual(new Set(['f'.repeat(32)]))
+    expect(calls.filter(call => call.method === 'bot_relay.reply').map(call => call.params.reply)).toEqual(['finally'])
+
+    stopBotRelay()
+  })
+
+  it('falls back to the blocking call for a backend that predates the poll protocol', async () => {
+    setComputers([{ profile: 'scout', running: true }])
+
+    let first = true
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain' && call.profile === 'default') {
+        return {
+          envelopes: [
+            { id: 'a'.repeat(32), message: 'm', hops: 1, target_connection: 'computer-scout', target_profile: 'scout' }
+          ]
+        }
+      }
+
+      if (call.method === 'bot_relay.deliver') {
+        if (first) {
+          first = false
+          throw new Error('invalid params for bot_relay.deliver: hops: Extra inputs are not permitted')
+        }
+
+        return { reply: 'old backend reply' }
+      }
+
+      return profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    const delivers = calls.filter(call => call.method === 'bot_relay.deliver')
+
+    expect(delivers).toHaveLength(2)
+    expect(Object.keys(delivers[1].params).sort()).toEqual(['from_connection', 'from_handle', 'from_profile', 'message', 'profile'])
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params.reply).toBe('old backend reply')
+
+    stopBotRelay()
+  })
+
+  it('gives a freshly started computer its roster even though its engine answers the first push from a boot stub', async () => {
+    setComputers([{ profile: 'scout', running: true }])
+
+    let scoutSyncs = 0
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.roster.sync' && call.profile === 'scout') {
+        scoutSyncs += 1
+
+        return { count: scoutSyncs === 1 ? 0 : 1 }
+      }
+
+      return profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+
+    const forScout = calls.filter(call => call.profile === 'scout').map(call => call.method)
+
+    // sync (stub, count 0) -> a drain starts the python backend -> sync again.
+    expect(forScout).toEqual(['bot_relay.roster.sync', 'bot_relay.outbox.drain', 'bot_relay.roster.sync'])
+
+    stopBotRelay()
+  })
+})

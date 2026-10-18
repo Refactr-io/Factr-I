@@ -532,6 +532,7 @@ class RelayEnvelope(OpenModel):
     target_profile: str
     target_handle: str
     message: str
+    hops: int | None = None  # relay hops this message has taken (tools/bot_relay.py MAX_RELAY_HOPS)
 
 
 class BotRelayOutboxDrainResult(Result):
@@ -550,10 +551,13 @@ class BotRelayDeliverParams(Params):
     from_profile: str | None = None
     from_handle: str | None = None
     from_connection: str | None = None
+    hops: int | None = None  # the envelope's hop count, exported to the delivery turn as FACTR_RELAY_HOPS
+    envelope_id: str | None = None  # poll-style delivery: start once per id, answer `pending` until the turn is done
 
 
 class BotRelayDeliverResult(Result):
     reply: str
+    pending: bool | None = None  # true: the turn is still running, call again with the same envelope_id
 
 
 method("bot_relay.deliver", params=BotRelayDeliverParams, result=BotRelayDeliverResult,

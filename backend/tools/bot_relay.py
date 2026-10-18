@@ -21,10 +21,11 @@ import re
 import shlex
 import shutil
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Optional
+from typing import Any, Callable, Iterator, Mapping, Optional
 
 from tools.bot_mode_probe import _default_home, _factr_root, alias_forms
 from utils import atomic_json_write
@@ -319,25 +320,8 @@ def local_target(profile: str, handle: str) -> dict:
     return {"profile": profile, "handle": handle, "connection_id": LOCAL_CONNECTION, "connection_label": "this computer"}
 
 
-def current_relay_hops(root: Path | str | None = None, profile: "str | None" = None) -> int:
-    """How many relay hops the turn running now already travelled (0 when not relayed): FACTR_RELAY_HOPS, else the
-    marker the target engine wrote for ``profile``'s turn (ignored when stale: a crashed turn)."""
-    raw = os.environ.get(RELAY_HOPS_ENV)
-    if raw is None and root is not None and profile:
-        try:
-            name = re.sub(r"[^A-Za-z0-9_-]", "_", str(profile))
-            data = json.loads((relay_root(root) / HOPS_DIR / f"{name}.json").read_text(encoding="utf-8"))
-            fresh = time.time() - float(data.get("at", 0)) <= TURN_ATTEMPT_TIMEOUT_SECONDS * TURN_MAX_ATTEMPTS
-            raw = data.get("hops") if fresh else None
-        except (OSError, ValueError, AttributeError):
-            raw = None
-    try:
-        return max(0, min(int(raw if raw is not None else 0), 99))
-    except (TypeError, ValueError):
-        return 0
-
-
-def enqueue_envelope(root: Path | str, *, target: dict, message: str, sender_profile: str, sender_handle: str) -> dict:
+def enqueue_envelope(root: Path | str, *, target: dict, message: str, sender_profile: str, sender_handle: str,
+                     envelope_id: str | None = None) -> dict:
     """Queue a cross-connection DM for the Desktop relay; returns the envelope. Raises
     ``EnvelopeRefusedError`` ('runtime_offline') without writing when the target is
     definitively offline; unknown liveness enqueues (fail-open)."""
@@ -352,8 +336,18 @@ def enqueue_envelope(root: Path | str, *, target: dict, message: str, sender_pro
         raise EnvelopeRefusedError("hop_limit", f"this message already crossed {MAX_RELAY_HOPS} bots on its way here; "
                                    "it was NOT sent. Answer from what you have instead of passing it on.")
     base = _ensure_dirs(root)
+    if envelope_id is not None:
+        if not re.fullmatch(r"[0-9a-f]{32}", envelope_id):
+            raise ValueError("invalid envelope id")
+        for directory in (OUTBOX_DIR, CLAIMED_DIR):
+            previous = base / directory / f"{envelope_id}.json"
+            if previous.exists():
+                stored = json.loads(previous.read_text(encoding="utf-8"))
+                if stored.get("message") != message or stored.get("target_profile") != target["profile"]:
+                    raise ValueError("delivery id already belongs to a different payload")
+                return stored
     envelope = {
-        "id": uuid.uuid4().hex, "created_at": int(time.time()), "hops": hops,
+        "id": envelope_id or uuid.uuid4().hex, "created_at": int(time.time()), "hops": hops,
         "from_profile": sender_profile, "from_handle": sender_handle,
         "target_connection": target["connection_id"], "target_profile": target["profile"],
         "target_handle": target["handle"], "message": message,
@@ -603,7 +597,98 @@ def bot_cli_profile(argv: "list[str]") -> "str | None":
 # exists, removed when it is destroyed. A bot with a computer owns its folder's SQLite from inside the container, so a
 # host CLI turn against that profile would be a second writer across the VM boundary.
 COMPUTER_MARKER = ".computer"
-HAS_COMPUTER_MESSAGE = "this bot runs on its own computer; handoff between computers comes later"
+# Set inside every bot computer by the image (Dockerfile ENV): there the profile IS the computer's own.
+IN_COMPUTER_ENV = "FACTR_BOT_COMPUTER"
+HAS_COMPUTER_MESSAGE = ("this bot runs on its own computer and is reached through the Desktop relay, "
+                        "which has no route to it right now (is the Factr-I app open?)")
+# The relay treats every bot computer as its own connection (desktop/app/src/plugins/factr-bots/relay.ts).
+COMPUTER_CONNECTION_PREFIX = "computer-"
+# Loop cap (OpenGrokBot's MAX_HOPS=2): a relayed turn may relay on, but a chain longer than this is refused.
+# The Desktop passes an envelope's `hops` to bot_relay.deliver, which exports it to the delivery turn as
+# FACTR_RELAY_HOPS; the next enqueue from that turn is hops + 1.
+def computer_connection_id(profile: str) -> str:
+    """The relay connection id of ``profile``'s computer. Shared with relay.ts."""
+    return f"{COMPUTER_CONNECTION_PREFIX}{profile}"
+
+
+# A relayed turn outlives the 120 s the Rust engine gives any forwarded RPC (and a Desktop request deadline), so the
+# Desktop delivers by polling: `bot_relay.deliver {envelope_id}` starts the turn once (keyed by the envelope id) and
+# every call waits at most this long, answering `pending` until the turn is done. No engine change needed.
+DELIVER_POLL_SECONDS = 90
+_DELIVERY_JOBS: "dict[str, Any]" = {}
+_DELIVERY_JOBS_LOCK = threading.Lock()
+
+
+def deliver_job(envelope_id: str, start: "Callable[[], Any]", wait_seconds: float = DELIVER_POLL_SECONDS) -> tuple[bool, Any]:
+    """Run ``start()`` once per ``envelope_id`` in a background thread and wait up to ``wait_seconds`` for it.
+    Returns ``(True, result)`` when done (the job is forgotten), else ``(False, None)``: poll again with the same id."""
+    import concurrent.futures
+    import contextvars
+
+    key = re.sub(r"[^A-Za-z0-9_-]", "_", str(envelope_id))[:64]
+    with _DELIVERY_JOBS_LOCK:
+        for old, (started, fut) in list(_DELIVERY_JOBS.items()):  # a result nobody fetched for an hour is dropped
+            if fut.done() and time.time() - started > 3600:
+                del _DELIVERY_JOBS[old]
+        if key not in _DELIVERY_JOBS:
+            fut: "concurrent.futures.Future" = concurrent.futures.Future()
+            ctx = contextvars.copy_context()
+
+            def _run() -> None:
+                try:
+                    fut.set_result(ctx.run(start))
+                except BaseException as exc:  # never lose the job's outcome
+                    fut.set_exception(exc)
+
+            threading.Thread(target=_run, name=f"bot-relay-deliver-{key[:12]}", daemon=True).start()
+            _DELIVERY_JOBS[key] = (time.time(), fut)
+        fut = _DELIVERY_JOBS[key][1]
+    try:
+        result = fut.result(timeout=wait_seconds)
+    except concurrent.futures.TimeoutError:
+        return (False, None)
+    finally:
+        if fut.done():
+            with _DELIVERY_JOBS_LOCK:
+                _DELIVERY_JOBS.pop(key, None)
+    return (True, result)
+
+
+def _hops_marker(root: "Path | str", profile: str) -> Path:
+    return relay_root(root) / HOPS_DIR / f"{re.sub(r'[^A-Za-z0-9_-]', '_', str(profile))}.json"
+
+
+@contextlib.contextmanager
+def relay_hops_marker(root: "Path | str", profile: str, hops: int):
+    """Mark ``profile`` as running a relayed turn of ``hops`` hops while the block runs. A turn the ENGINE runs (the
+    bot computer's transport) has no per-run environment, so its message_agent child reads this file instead of
+    FACTR_RELAY_HOPS. Deliveries into one profile are serialised by the turn lock, so one marker per profile is exact."""
+    path = _hops_marker(root, profile)
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(path, {"hops": int(hops), "at": int(time.time())})
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            path.unlink()
+
+
+def current_relay_hops(root: "Path | str | None" = None, profile: "str | None" = None) -> int:
+    """How many relay hops the turn running now already travelled (0 when not relayed): FACTR_RELAY_HOPS from the
+    delivery process, else the per-profile marker the engine transport wrote."""
+    raw = os.environ.get(RELAY_HOPS_ENV)
+    if raw is None and root is not None and profile:
+        try:
+            data = json.loads(_hops_marker(root, profile).read_text(encoding="utf-8"))
+            fresh = time.time() - float(data.get("at", 0)) <= TURN_ATTEMPT_TIMEOUT_SECONDS * TURN_MAX_ATTEMPTS
+            raw = data.get("hops") if fresh else None
+        except (OSError, ValueError, AttributeError):
+            raw = None
+    try:
+        return max(0, min(int(raw if raw is not None else 0), 99))
+    except (TypeError, ValueError):
+        return 0
 
 
 class ComputerHandoffRefused(EnvelopeRefusedError):
@@ -618,7 +703,10 @@ def has_computer(home: "str | Path") -> bool:
 
 
 def assert_no_computer(profile: str, home: "str | Path | None" = None) -> None:
-    """Refuse a host-side delivery turn into ``profile`` when its container exists."""
+    """Refuse a host-side delivery turn into ``profile`` when its container exists. Inside a computer the
+    profile is the computer's own, so it is never refused there."""
+    if os.environ.get(IN_COMPUTER_ENV):
+        return
     if home is None:
         from factr_backend.profiles import get_profile_dir
         try:
@@ -690,7 +778,7 @@ def relaying_principal_author(principal: str) -> dict:
     return {"id": bot_author_id("relay", str(principal or "").strip()), "name": "relayed teammate", "is_bot": True}
 
 
-def delivery_env(author: Optional[dict], profile_home: "str | Path | None" = None) -> dict[str, str]:
+def delivery_env(author: Optional[dict], profile_home: "str | Path | None" = None, hops: int = 0) -> dict[str, str]:
     """Environment for one delivery turn's ``factr -p <profile>`` child. The dispatcher's own
     FACTR_TURN_AUTHOR is dropped first so a delivery without an author never inherits the author of the turn
     that sent it. Dispatcher session identity (the canonical ``gateway.session_context`` session env names) is
@@ -709,6 +797,8 @@ def delivery_env(author: Optional[dict], profile_home: "str | Path | None" = Non
         env.pop(name, None)
     if author:
         env.update(turn_author_env(author))
+    # The turn this env starts was relayed `hops` times: any envelope it enqueues is hops + 1 (see MAX_RELAY_HOPS).
+    env[RELAY_HOPS_ENV] = str(max(0, min(int(hops or 0), 99)))
     return env
 
 

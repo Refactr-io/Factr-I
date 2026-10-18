@@ -44,6 +44,8 @@ export const BOT_COMPUTER = {
    * stop/start) and recorded in the `factr.port` label.
    */
   labelPort: 'factr.port',
+  /** Hash of the run flags (limits, mounts, env, network): a changed spec recreates a stopped container. */
+  labelSpec: 'factr.spec',
   envPort: 'FACTR_ENGINE_PORT',
   /** Container path of the bot's profile folder. */
   mountRoot: '/data/profiles',
@@ -83,6 +85,8 @@ export interface ComputerStatus {
   memLimitBytes?: number
   /** ISO time the container started (uptime = now - startedAt). */
   startedAt?: string
+  /** Enabled cron jobs the bot holds: while there are any the computer is exempt from the idle stop. */
+  scheduledJobs?: number
   error?: string
 }
 
@@ -100,8 +104,14 @@ export interface BotComputerDeps {
   /** A computer stopped on its own (idle or cap): drop its pool entry so the renderer re-dials. */
   onStopped?: (profile: string) => void
   imageTag?: string
+  /** Test seam: a different container name prefix, so real-Docker tests never share names with the app's computers. */
+  namePrefix?: string
+  /** Test seam: extra `docker create` args placed before the image (for example a dev bind mount of the backend). */
+  extraCreateArgs?: string[]
   /** A free loopback port for a new container (default: listen on 127.0.0.1:0, read it, close). */
   pickPort?: () => Promise<number>
+  /** The host IANA time zone, passed as TZ so the bot's clock and cron schedules follow the user's. */
+  timeZone?: string
   /** The host engine home (FACTR_HOME, default ~/.factr/engine): where credentials are seeded from. */
   hostEngineHome?: string
   run?: DockerRun
@@ -227,10 +237,53 @@ export function chooseBotBackend(
   return facts.isBot && !facts.disabled && dockerUp ? 'container' : 'host-engine'
 }
 
+/**
+ * Every bot that has a computer (its `.computer` marker exists), and whether it is running. Sync and host-only: the
+ * relay uses it to treat each computer as its own connection without waking any of them.
+ */
+export function listComputers(): { profile: string; running: boolean }[] {
+  const root = path.join(cfg().configHome, 'profiles')
+
+  let names: string[] = []
+
+  try {
+    names = fs.readdirSync(root)
+  } catch {
+    // No profiles folder yet.
+  }
+
+  return names
+    .filter(name => PROFILE_RE.test(name) && fs.existsSync(path.join(root, name, BOT_COMPUTER.marker)))
+    .map(profile => ({ profile, running: computerActive(profile) }))
+}
+
+/**
+ * How many enabled cron jobs the bot's own engine holds, read from its job store in the profile folder
+ * (`<profile>/cron/jobs.json`, host-readable). The gate is the engine's own due-scan (cron_tick.rs): a job fires unless
+ * it is disabled, paused (state or marker), completed, or a one-shot in error. Never throws.
+ */
+export function enabledCronJobs(profile: string): number {
+  try {
+    const data = JSON.parse(fs.readFileSync(path.join(hostProfileDir(validateBotProfile(profile)), 'cron', 'jobs.json'), 'utf8'))
+    const jobs: unknown[] = Array.isArray(data) ? data : Array.isArray(data?.jobs) ? data.jobs : []
+
+    return jobs.filter((job: any) => {
+      if (!job || typeof job !== 'object' || job.enabled === false || job.paused_at || job.state === 'paused') {
+        return false
+      }
+
+      return job.state !== 'completed' && !(job.state === 'error' && job.schedule?.kind === 'once')
+    }).length
+  } catch {
+    return 0
+  }
+}
+
 /** A computer that is running (or being started) for this bot. Sync, for routing decisions. */
 export const computerActive = (profile: string) => tracked.has(profile) || starting.has(profile)
 
-export const computerName = (profile: string) => `${BOT_COMPUTER.namePrefix}${validateBotProfile(profile)}`
+export const computerName = (profile: string) =>
+  `${deps?.namePrefix ?? BOT_COMPUTER.namePrefix}${validateBotProfile(profile)}`
 
 export const computerImage = () => `${BOT_COMPUTER.imageRepo}:${deps?.imageTag || BOT_COMPUTER.defaultTag}`
 
@@ -326,6 +379,9 @@ interface Inspect {
   startedAt: string
   /** The engine port from the `factr.port` label ('' on a container created without one). */
   port: string
+  /** The image id the container was created from, and its `factr.spec` label ('' when absent). */
+  imageId: string
+  spec: string
 }
 
 async function inspect(name: string): Promise<Inspect | null> {
@@ -333,13 +389,15 @@ async function inspect(name: string): Promise<Inspect | null> {
     const out = await docker([
       'inspect',
       '--format',
-      `{{.State.Status}}|{{.Config.Image}}|{{index .Config.Labels "${BOT_COMPUTER.labelBot}"}}|{{.State.StartedAt}}|{{index .Config.Labels "${BOT_COMPUTER.labelPort}"}}`,
+      `{{.State.Status}}|{{.Config.Image}}|{{index .Config.Labels "${BOT_COMPUTER.labelBot}"}}|{{.State.StartedAt}}|{{index .Config.Labels "${BOT_COMPUTER.labelPort}"}}|{{.Image}}|{{index .Config.Labels "${BOT_COMPUTER.labelSpec}"}}`,
       name
     ])
 
-    const [status = '', image = '', botLabel = '', startedAt = '', port = ''] = out.trim().split('|')
+    const [status = '', image = '', botLabel = '', startedAt = '', port = '', imageId = '', spec = ''] = out
+      .trim()
+      .split('|')
 
-    return { status, image, botLabel, startedAt, port }
+    return { status, image, botLabel, startedAt, port, imageId, spec }
   } catch (error: any) {
     if (/no such (object|container)/i.test(`${error?.stderr || ''}${error?.message || ''}`)) {
       return null
@@ -411,6 +469,15 @@ export async function computerImageReady(fresh = false): Promise<boolean> {
   return ok
 }
 
+/** The id of the image behind the tag, or null when absent. */
+async function currentImageId(): Promise<null | string> {
+  try {
+    return (await docker(['image', 'inspect', '--format', '{{.Id}}', computerImage()])).trim() || null
+  } catch {
+    return null
+  }
+}
+
 /**
  * The routing answer for one profile, with Docker or the image missing treated alike: no computer, so the bot falls
  * back to its own host engine and still chats. Docker and the image are only asked about for a would-be bot. A
@@ -429,17 +496,43 @@ export function createArgs(
   profile: string,
   image: string,
   hostDir: string,
-  port: number
+  port: number,
+  extra: string[] = [],
+  timeZone?: string
 ): string[] {
+  return ['create', ...runFlags(profile, image, hostDir, port, extra, timeZone, computeSpec(profile, image, hostDir, extra, timeZone))]
+}
+
+/**
+ * Hash of every run flag but the port (which is picked per create). Stored as the `factr.spec` label, so a changed
+ * limit, mount, env or network is visible on an existing container without comparing flags.
+ */
+export function computeSpec(profile: string, image: string, hostDir: string, extra: string[] = [], timeZone?: string) {
+  return crypto
+    .createHash('sha256')
+    .update(runFlags(profile, image, hostDir, 0, extra, timeZone, '').join('\0'))
+    .digest('hex')
+    .slice(0, 16)
+}
+
+function runFlags(
+  profile: string,
+  image: string,
+  hostDir: string,
+  port: number,
+  extra: string[],
+  timeZone: string | undefined,
+  spec: string
+) {
   const name = computerName(profile)
   const L = BOT_COMPUTER.limits
 
   return [
-    'create',
     '--name', name,
     '--label', `${BOT_COMPUTER.labelBot}=${profile}`,
     '--label', `${BOT_COMPUTER.labelVersion}=${BOT_COMPUTER.version}`,
     '--label', `${BOT_COMPUTER.labelPort}=${port}`,
+    '--label', `${BOT_COMPUTER.labelSpec}=${spec}`,
     '--network', BOT_COMPUTER.network,
     // The bot reaches host services (a local model server) at host.docker.internal on every platform.
     '--add-host', 'host.docker.internal:host-gateway',
@@ -454,11 +547,13 @@ export function createArgs(
     '-e', `${BOT_COMPUTER.envPort}=${port}`,
     '-v', `${hostDir}:${BOT_COMPUTER.mountRoot}/${profile}`,
     '-e', `${BOT_COMPUTER.envBot}=${profile}`,
+    ...(timeZone && /^[A-Za-z0-9_+\-/]{1,64}$/.test(timeZone) ? ['-e', `TZ=${timeZone}`] : []),
     // Name only: the value rides the docker client's env, so it is not in argv (`ps`).
     '-e', BOT_COMPUTER.envToken,
     // A localhost model provider (Ollama :11434, LM Studio :1234) works unchanged: the image's entrypoint forwards
     // those ports to host.docker.internal.
     // ponytail: Linux hosts need --user <host uid> for the bind mount; Docker Desktop (Mac/Windows) maps ownership.
+    ...extra,
     image
   ]
 }
@@ -517,8 +612,11 @@ async function stopForCap(except: string) {
     return
   }
 
-  const idle = running.filter(([, t]) => t.holds.size === 0).sort((a, b) => a[1].lastActive - b[1].lastActive)
-  // Every running computer is busy: exceed the soft cap rather than kill a live session.
+  const idle = running
+    .filter(([p, t]) => t.holds.size === 0 && enabledCronJobs(p) === 0)
+    .sort((a, b) => a[1].lastActive - b[1].lastActive)
+
+  // Every running computer is busy or scheduled: exceed the soft cap rather than kill a live session or a schedule.
   const victim = idle[0]?.[0]
 
   if (victim) {
@@ -569,7 +667,7 @@ export async function ensureComputer(profile: string): Promise<ComputerHandle> {
           seedBotAuth(deps.hostEngineHome, hostDir)
         }
 
-        await docker(createArgs(profile, image, hostDir, port), {
+        await docker(createArgs(profile, image, hostDir, port, cfg().extraCreateArgs, cfg().timeZone), {
           env: { [BOT_COMPUTER.envToken]: token }
         })
 
@@ -580,6 +678,20 @@ export async function ensureComputer(profile: string): Promise<ComputerHandle> {
       if (info && !info.port) {
         await docker(['rm', '-f', name])
         info = null
+      }
+
+      // A STOPPED container whose run flags (the `factr.spec` label) or image id no longer match is recreated, so a
+      // new limit, mount, time zone or image build takes effect; the profile folder keeps all state. A running one is
+      // left alone (recreating would kill its turn and schedules) and picks the change up after its next stop.
+      if (info && info.status !== 'running') {
+        const wantImage = await currentImageId()
+
+        const wantSpec = computeSpec(profile, image, hostProfileDir(profile), cfg().extraCreateArgs, cfg().timeZone)
+
+        if (info.spec !== wantSpec || (wantImage && info.imageId !== wantImage)) {
+          await docker(['rm', '-f', name])
+          info = null
+        }
       }
 
       let port = info ? info.port : await create()
@@ -693,7 +805,7 @@ export async function computerStatus(profile: string): Promise<ComputerStatus> {
       return { state: 'starting', busy }
     }
 
-    const out: ComputerStatus = { state: 'on', busy, startedAt: info.startedAt }
+    const out: ComputerStatus = { state: 'on', busy, startedAt: info.startedAt, scheduledJobs: enabledCronJobs(profile) }
 
     try {
       const stats = await docker(['stats', '--no-stream', '--format', '{{.MemUsage}}', computerName(profile)], {
@@ -758,6 +870,9 @@ export async function reconcileComputers(existingProfiles: Iterable<string>): Pr
     removed.push(profile)
   }
 
+  // Bots with enabled jobs run first-class: their schedules only fire while their computer is up.
+  await startScheduledComputers(keep)
+
   // The shared network is ours too: drop it once the last bot computer is gone (docker refuses while one is attached).
   if (removed.length > 0 && removed.length === lines.length) {
     await docker(['network', 'rm', BOT_COMPUTER.network]).catch(() => {})
@@ -766,11 +881,49 @@ export async function reconcileComputers(existingProfiles: Iterable<string>): Pr
   return removed
 }
 
+/**
+ * Start the computer of every bot that has one and holds an enabled job (app start). They count against the running
+ * cap like any other, but never as its victims (see stopForCap), so a full cap evicts an unscheduled bot instead.
+ */
+export async function startScheduledComputers(profiles: Iterable<string>): Promise<string[]> {
+  const started: string[] = []
+
+  for (const profile of profiles) {
+    if (
+      PROFILE_RE.test(profile) &&
+      profile !== 'default' &&
+      fs.existsSync(markerPath(profile)) &&
+      !computerActive(profile) &&
+      enabledCronJobs(profile) > 0
+    ) {
+      try {
+        await ensureComputer(profile)
+        started.push(profile)
+      } catch {
+        // Docker down or image missing: the bot's schedules wait; status reports why.
+      }
+    }
+  }
+
+  return started
+}
+
+/**
+ * App quit: stop every computer except those with enabled jobs. Those keep running (the container outlives the app) so
+ * their schedules fire; the next app start adopts them (reconcile) and the idle sweep still never stops them.
+ */
+export async function stopUnscheduledComputers(): Promise<void> {
+  await Promise.all(
+    [...tracked.keys()].filter(profile => enabledCronJobs(profile) === 0).map(profile => stopComputer(profile).catch(() => {}))
+  )
+}
+
 async function sweepIdle() {
   const cutoff = now() - BOT_COMPUTER.idleMs
 
   for (const [profile, t] of [...tracked]) {
-    if (t.holds.size === 0 && t.lastActive < cutoff) {
+    // A bot with an enabled job keeps running: its schedules fire only while its computer is up.
+    if (t.holds.size === 0 && t.lastActive < cutoff && enabledCronJobs(profile) === 0) {
       await stopComputer(profile).catch(() => {})
     }
   }

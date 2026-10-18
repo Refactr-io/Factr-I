@@ -484,7 +484,7 @@ export function RoutineRow({ job, onOpen, owner }: RoutineRowProps) {
     setPendingActive(null) // server caught up
   }
 
-  const act = async (action: 'pause' | 'remove' | 'resume') => {
+  const act = async (action: 'pause' | 'remove' | 'resume' | 'run') => {
     if (busy) {
       return
     }
@@ -506,9 +506,13 @@ export function RoutineRow({ job, onOpen, owner }: RoutineRowProps) {
           : {})
       })
       await invalidateRoutineOwner(owner)
+
+      if (action === 'run') {
+        host.notify({ kind: 'info', message: c.triggered })
+      }
     } catch (err) {
       setPendingActive(null)
-      host.notifyError(err, c.failedUpdate)
+      host.notifyError(err, action === 'run' ? c.failedTrigger : c.failedUpdate)
     } finally {
       setBusy(false)
     }
@@ -552,6 +556,18 @@ export function RoutineRow({ job, onOpen, owner }: RoutineRowProps) {
           disabled={busy || legacyUnsafe}
           onCheckedChange={value => act(value ? 'resume' : 'pause')}
         />
+        <Tip label={c.runNow}>
+          <Button
+            aria-label={c.runNow}
+            className="opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+            disabled={busy || legacyUnsafe}
+            onClick={() => act('run')}
+            size="icon-xs"
+            variant="ghost"
+          >
+            <Codicon name="play" />
+          </Button>
+        </Tip>
         <Tip label={t.common.delete}>
           <Button
             aria-label={t.common.delete}

@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('factrDesktop', {
   // Bot computers (one Docker container per bot). Failures return {ok:false,error}, never throw.
   botRelay: { tick: () => ipcRenderer.invoke('factr:bot-relay:tick') },
   botComputer: {
+    list: () => ipcRenderer.invoke('factr:bot-computer:list'),
     status: profile => ipcRenderer.invoke('factr:bot-computer:status', profile),
     start: profile => ipcRenderer.invoke('factr:bot-computer:start', profile),
     stop: profile => ipcRenderer.invoke('factr:bot-computer:stop', profile),

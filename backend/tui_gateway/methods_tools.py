@@ -1202,7 +1202,7 @@ def _(rid, params: dict) -> dict:
             continuity=is_truthy_value(params.get("continuity")) if params.get("continuity") is not None else None,
             deliver=_str_arg(params, "deliver") or None)
         return _ok(rid, json.loads(raw))
-    if action in {"remove", "pause", "resume"}:
+    if action in {"remove", "pause", "resume", "run"}:  # "run": fire the job now, in the background
         return _ok(rid, json.loads(cronjob(action=action, job_id=jid)))
     return _err(rid, 4016, f"unknown cron action: {action}")
 

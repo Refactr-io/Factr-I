@@ -1830,6 +1830,7 @@ export const ar = defineLocale({
     failedLoad: 'فشل تحميل المهام',
     failedUpdate: 'فشل التحديث',
     failedTrigger: 'فشل التشغيل',
+    runNow: 'تشغيل الآن',
     failedDelete: 'فشل الحذف',
     failedSave: 'فشل الحفظ',
     editTitle: 'تحرير المهمة المجدولة',

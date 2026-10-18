@@ -111,6 +111,59 @@ def test_outbox_drain_reoffers_a_claimed_envelope_the_desktop_never_delivered(ho
     assert reply["reason"] == "delivery_timeout" and reply["error"]
 
 
+def test_deliver_exports_the_envelope_hop_count_to_the_turn(home, monkeypatch):
+    seen = {}
+
+    class _Proc:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def _fake_run(argv, **kwargs):
+        seen["env"] = kwargs["env"]
+        return _Proc()
+
+    monkeypatch.setattr("factr_backend.quiet_single_query.run_reported_turn", _fake_run)
+    _result(srv._methods["bot_relay.deliver"](1, {"profile": "ops", "message": "ping", "hops": 1}))
+    assert seen["env"][bot_relay.RELAY_HOPS_ENV] == "1"
+    _result(srv._methods["bot_relay.deliver"](2, {"profile": "ops", "message": "ping", "hops": "junk"}))
+    assert seen["env"][bot_relay.RELAY_HOPS_ENV] == "0"
+
+
+def test_deliver_with_an_envelope_id_polls_until_the_turn_is_done(home, monkeypatch):
+    import threading
+
+    gate, started = threading.Event(), []
+
+    class _Proc:
+        returncode = 0
+        stdout = "slow reply"
+        stderr = ""
+
+    def _slow_run(argv, **kwargs):
+        started.append(1)
+        gate.wait(10)
+        return _Proc()
+
+    monkeypatch.setattr("factr_backend.quiet_single_query.run_reported_turn", _slow_run)
+    monkeypatch.setattr(bot_relay, "DELIVER_POLL_SECONDS", 0.2)
+    import tools.bot_relay as _br
+    monkeypatch.setattr(_br, "DELIVER_POLL_SECONDS", 0.2)
+    call = {"profile": "ops", "message": "ping", "envelope_id": "ab" * 16}
+
+    first = srv._methods["bot_relay.deliver"](1, dict(call))
+    assert _result(first) == {"reply": "", "pending": True}
+    again = srv._methods["bot_relay.deliver"](2, dict(call))  # a poll joins the running turn
+    assert _result(again) == {"reply": "", "pending": True}
+    gate.set()
+    for rid in (3, 4, 5, 6, 7, 8, 9, 10):
+        done = srv._methods["bot_relay.deliver"](rid, dict(call))
+        if "pending" not in (done.get("result") or {}):
+            break
+    assert _result(done) == {"reply": "slow reply"} and done["id"] == rid
+    assert started == [1]
+
+
 def test_deliver_validates_profile_and_runs_transport(home, monkeypatch):
     calls = {}
 
@@ -136,13 +189,13 @@ def test_deliver_validates_profile_and_runs_transport(home, monkeypatch):
     assert calls["kwargs"]["report_path"].endswith(".turn.json")
     argv = calls["argv"]
     # argv[0] may be a resolved venv path (#93590) — match by basename.
-    assert argv[1:3] == ["-p", "ops"]
-    assert argv[0].rsplit("\\", 1)[-1].rsplit("/", 1)[-1] in ("factr", "factr.exe")
+    assert argv[1:3] == ["-m", "factr_backend.main"]
+    assert argv[3:5] == ["-p", "ops"]
     assert "Bot Chat" in argv and "--query-file" in argv
 
     # 'factr' alias resolves to default
     _result(srv._methods["bot_relay.deliver"](2, {"profile": "factr", "message": "x"}))
-    assert calls["argv"][1:3] == ["-p", "default"]
+    assert calls["argv"][3:5] == ["-p", "default"]
 
     # unknown profile refuses without spawning; so does a bare infra dir under profiles/ (#99392)
     calls.clear()

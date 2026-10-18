@@ -2300,6 +2300,7 @@ export const ru = defineLocale({
     failedLoad: 'Не удалось загрузить cron-задачи',
     failedUpdate: 'Не удалось обновить cron-задачу',
     failedTrigger: 'Не удалось запустить cron-задачу',
+    runNow: 'Запустить сейчас',
     failedDelete: 'Не удалось удалить cron-задачу',
     failedSave: 'Не удалось сохранить cron-задачу',
     editTitle: 'Изменить cron-задачу',

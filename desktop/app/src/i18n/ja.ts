@@ -2117,6 +2117,7 @@ export const ja = defineLocale({
     failedLoad: 'Cron ジョブの読み込みに失敗しました',
     failedUpdate: 'Cron ジョブの更新に失敗しました',
     failedTrigger: 'Cron ジョブのトリガーに失敗しました',
+    runNow: '今すぐ実行',
     failedDelete: 'Cron ジョブの削除に失敗しました',
     failedSave: 'Cron ジョブの保存に失敗しました',
     editTitle: 'Cron ジョブを編集',

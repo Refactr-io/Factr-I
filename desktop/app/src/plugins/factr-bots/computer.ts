@@ -15,6 +15,15 @@ export type ComputerStatus = Extract<Awaited<ReturnType<Api['status']>>, { ok: t
 
 const api = (): Api | undefined => (typeof window === 'undefined' ? undefined : window.factrDesktop?.botComputer)
 
+/** Bots that have a computer (running or not), for the relay; empty where the desktop app has no such API. */
+export async function listComputers(): Promise<{ profile: string; running: boolean }[]> {
+  const result = await api()
+    ?.list?.()
+    .catch(() => null)
+
+  return result?.ok ? result.computers : []
+}
+
 /** Only local, non-default bots get a computer, and only where the desktop app exposes the API. */
 export const computerProfile = (bot: Partial<RosterRow> | null | undefined): null | string =>
   api() && bot?.name && bot.name !== 'default' && (!bot.connectionId || bot.connectionId === 'local') ? bot.name : null
