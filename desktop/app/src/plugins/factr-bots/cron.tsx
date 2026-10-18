@@ -68,12 +68,8 @@ function showsHandle(name: string, meta: BotMeta | null | undefined, bot?: Roste
 
 // ── routines (cron) ──────────────────────────────────────────────────────────
 //
-// Jobs are namespaced "[bot:<name>] <routine>". A job running in the active
-// bot profile uses the plain instruction; a different profile keeps the
-// factr -p <bot> chat delegation wrapper so the run reaches that bot's
-// history. The tile follows the bot you're chatting with (gateway profile).
+// Jobs are created through the owner's engine route and run its turn API directly.
 const BOT_TAG_RE = /^\[bot:([a-z0-9][a-z0-9_-]*)\]\s*/i
-const SAFE_ROUTINE_MARKER = '[bot-mode:routine:v2] '
 const LEGACY_DELEGATED_ROUTINE_PREFIX = 'You are running the scheduled routine "'
 
 /** A routine's owner: a roster row, a bare profile name, or nothing resolved yet. */
@@ -253,11 +249,8 @@ export function normalizedProfileName(profile: unknown): string {
   return typeof profile === 'string' ? profile.trim().toLowerCase() : ''
 }
 
-function shellQuote(value: unknown): string {
-  return `'${String(value).replaceAll("'", "'\"'\"'")}'`
-}
-
 export function routineInputError(title: string, instruction: string): null | string {
+  if (!String(title).trim()) return 'Give this routine a name.'
   if (String(title).includes('\0')) {
     return 'Job name cannot contain NUL (U+0000).'
   }
@@ -270,21 +263,12 @@ export function routineInputError(title: string, instruction: string): null | st
 }
 
 export function routinePrompt(
-  bot: string | undefined,
-  title: string,
+  _bot: string | undefined,
+  _title: string,
   instruction: string,
-  activeProfile: string
+  _activeProfile: string
 ): string {
-  if (normalizedProfileName(bot) && normalizedProfileName(bot) === normalizedProfileName(activeProfile)) {
-    return instruction
-  }
-
-  return (
-    `${SAFE_ROUTINE_MARKER}You are running the scheduled routine "${title}" for agent '${bot}'. ` +
-    `Execute it AS that agent so the run lands in its own history: run this in the terminal and relay the output:\n\n` +
-    `factr -p ${shellQuote(bot)} chat -c ${shellQuote(`Routine: ${title}`)} -q ${shellQuote(`[Scheduled routine] ${instruction}`)}\n\n` +
-    `If the command fails, report the error instead.`
-  )
+  return instruction
 }
 
 function scheduleLabel(schedule: string | undefined): string {

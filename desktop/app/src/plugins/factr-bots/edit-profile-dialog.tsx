@@ -19,7 +19,7 @@ import {
   useI18n,
   useValue
 } from '@factr/plugin-sdk'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { avatarColor, botAppearance, BotFace } from './avatar'
 import { AvatarPicker } from './avatar-picker'
@@ -74,6 +74,19 @@ export function EditProfileDialog({ bot, open, onClose }: EditProfileDialogProps
   // Re-seed local state each time a different bot opens the dialog.
   const [seedKey, setSeedKey] = useState<null | string>(null)
   const currentKey = bot ? `${botSelectionKey(bot)}:${open}` : null
+
+  useEffect(() => {
+    if (!open || !bot) return
+    let cancelled = false
+    const initial = bot.description || ''
+    void requestForBot<{ description?: string }>(bot, 'profiles.describe', { name: bot.name }, { spawnPriority: 'foreground' })
+      .then(result => {
+        if (!cancelled && typeof result?.description === 'string') {
+          setDescription(current => current === initial ? result.description! : current)
+        }
+      }).catch(() => {})
+    return () => { cancelled = true }
+  }, [currentKey])
 
   if (currentKey !== seedKey) {
     setSeedKey(currentKey)
@@ -224,6 +237,7 @@ export function EditProfileDialog({ bot, open, onClose }: EditProfileDialogProps
           {labeled(
             'Description',
             <Textarea
+              aria-label="Description"
               className="min-h-16"
               onChange={event => setDescription(event.target.value)}
               placeholder={b.bot.helpPromptPlaceholder}

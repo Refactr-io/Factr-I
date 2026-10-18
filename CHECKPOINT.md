@@ -134,3 +134,23 @@
 - Parent advice re-read after dd06d95f and before this milestone: no STOP. Next task 4: routines, engine-owned group sessions/durable room integration, complete model inheritance, child cancellation, Description/blank routine name/delete verification; then tasks 5-9.
 
 - Final full gateway suite: 401 passed, 1 ignored, exit 0, /private/tmp/bots-parity-release-cargo.log (fresh isolated root recorded at its top). git diff --check exit 0.
+
+## Resumed account-change run: recovered task 4 milestone
+
+- Read parent advice first, then checkpoint/report/status/log, full common rules and handoff, pause notes, design sections and research. REPORT.md was stale: task 3 is already committed as b5bc491e. Inspected the 520-line backup patch and every recovered untracked module; kept the sound implementation. Existing target/debug/factr was present. Disk: 87 GiB free. No credential files read, no push.
+- Graph Verify: nearest whole-tree sibling generation 2026-10-18T11:06:56Z. Checked all recovered paths; new bot_routine/group/stop modules absent from sibling graph, read exact worktree source. Traced model inheritance callers.
+- Routines now submit literal instructions on the owner engine; an additive Rust parser upgrades safely quoted saved v2 wrappers without a shell. Owner-engine group session pointers survive restart/concurrent opens. Model inheritance carries endpoint/context even when voice created config first. Edit Description fetches stored metadata without overwriting typing; blank routine names are rejected. Existing delete route and auth/silence behavior retained.
+- Parent cancellation now precedes descendant cancellation to stop further parent work first. Real delegate streams close and subagent.list becomes interrupted. Core loop/tools/prompts/providers untouched.
+- Corrected recovered harness failure: its local Stop result shadowed the eviction-count array. Also made churn deterministic by requesting a nonresident profile and asserting exactly one reclaimed full slot each round. This was a harness defect, not evidence of failed pool eviction.
+- Validation, every command via rtk proxy and /private/tmp/bots-test.py with fresh HOME/FACTR_HOME/FACTR_CONFIG_HOME/Electron userData:
+  - engine cargo test -p factr-gateway --locked --quiet: 404 passed, 1 ignored, exit 0 (377 unit + 27 integration), root /private/tmp/bots-check-g2s9q2uu. Repeated after parent-cancel ordering below.
+  - engine cargo build --profile test --bin factr --locked --quiet: exit 0, /private/tmp/bots-check-u3gkiu46.
+  - desktop/app ../node_modules/.bin/vitest run --project ui src/plugins/factr-bots: 94 files, 762 passed, exit 0, /private/tmp/bots-check-hjkmgeyf.
+  - backend .venv/bin/python -m pytest tests/tui_gateway/test_profiles_inherit_launch_model.py tests/tools/test_message_agent_mcp.py -q: 11 passed, exit 0, /private/tmp/bots-check-z05b7kxt.
+  - backend profile configure/delete settlement/off-loop/tombstone suites: 36 passed, exit 0, /private/tmp/bots-check-d8kvvuxg.
+  - renderer tsc -p tsconfig.json --noEmit: exit 0, /private/tmp/bots-check-vm8fuw9o.
+  - production-pool/real-engine runtime harness: exit 0, /private/tmp/bots-check-y66skg1p; group concurrency/restart, saved routine literal execution, two delegated child streams cancelled, native replies/restart/expiry/peer, 7 forced pool evictions across 5 bots, hung MCP typed timeout.
+- Advice: parent second-round rules still apply; no STOP. Recorded hosted-group transport question and continue. Owner-engine group sessions work; full gateway-owned room-round execution after Desktop closes is still a separate parity gap (Rust driver=false). This milestone does not claim that durable room behavior or packaged GUI clicks.
+- Next: finish task 4 group-boundary verification, then task 5 automated 17-item engine checklist, followed by computer branch integration and setup/sandbox/platform work.
+
+- Final repeated gateway suite after parent-first Stop: 404 passed, 1 ignored, exit 0, /private/tmp/bots-check-h1_cnkol.

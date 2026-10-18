@@ -21,6 +21,7 @@ const cfg = path.join(base, "config"),
 const children = new Set<any>();
 const seen: any[] = [];
 const peerRequests: any[] = [];
+const closedChildren: string[] = [];
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(test: () => boolean, ms = 15_000) {
   const end = Date.now() + ms;
@@ -57,6 +58,24 @@ const model = http.createServer(async (req, res) => {
   res.setHeader("content-type", "text/event-stream");
   const chunk = (delta: any, finish: string | null) =>
     `data: ${JSON.stringify({ id: "stub", object: "chat.completion.chunk", created: 1, model: "bot-stub", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+  if (user.includes('DELEGATE_PARENT') && !user.includes('CHILD_WAIT_')) {
+    const loaded = body.tools?.some(t => t.function.name === 'delegate');
+    const spawned = messages.some(m => m.tool_calls?.some(t => t.function.name === 'delegate'));
+    const tool = (name: string, args: any, index: number) => ({ index, id: `task-${index}-${name}`, type: 'function', function: { name, arguments: JSON.stringify(args) } });
+    const tasks = !loaded ? [tool('load_tools', { names: ['delegate'] }, 0)] : !spawned ? [
+      tool('delegate', { action: 'spawn', label: 'one', prompt: 'CHILD_WAIT_A' }, 0),
+      tool('delegate', { action: 'spawn', label: 'two', prompt: 'CHILD_WAIT_B' }, 1)
+    ] : [];
+    res.write(chunk(tasks.length ? { role: 'assistant', tool_calls: tasks } : { role: 'assistant', content: 'Children started' }, null));
+    res.write(chunk({}, tasks.length ? 'tool_calls' : 'stop'));
+    return res.end('data: [DONE]\n\n');
+  }
+  if (user.includes('CHILD_WAIT_')) {
+    res.write(chunk({ role: 'assistant', content: 'Partial child work' }, null));
+    await new Promise<void>(resolve => { const timer = setTimeout(resolve, 60000); res.once('close', () => { closedChildren.push(user); clearTimeout(timer); resolve() }); });
+    if (!res.destroyed) res.end(chunk({}, 'stop') + 'data: [DONE]\n\n');
+    return;
+  }
   res.write(
     chunk(
       calls
@@ -222,12 +241,18 @@ async function start(name: string) {
     assert.equal(r.status, 200);
     return r.json() as Promise<any>;
   };
+  const run = async (body: any) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/agent/run`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal(response.status, 200, await response.clone().text());
+    return response.json() as Promise<any>;
+  };
   return {
     ...rpc,
     call,
     open,
     stop,
     retirement,
+    run,
     child,
     process: child,
     port,
@@ -317,6 +342,34 @@ try {
   const b = await pooled("b");
   const targetChat = (await b.call("bot.chat.ensure", { profile: "b" }))
     .canonical_session.id;
+  const groups = await Promise.all([b.call('bot.group.ensure', { profile: 'b', title: 'Group: runtime-room · thread' }), b.call('bot.group.ensure', { profile: 'b', title: 'Group: runtime-room · thread' })]);
+  assert.equal(groups[0].session_id, groups[1].session_id, 'concurrent opens share one member session');
+  const groupId = groups[0].session_id;
+  await b.call('prompt.submit', { session_id: groupId, text: 'GROUP_MEMBER_TURN' });
+  await until(() => b.events.some(e => e.session_id === groupId && e.type === 'message.complete'));
+  assert.equal((await b.call('bot.chat.get', { profile: 'b' })).canonical_session.id, targetChat);
+  const oldRoutine = '[bot-mode:routine:v2] You are running a routine\n\nfactr -p \'b\' chat -c \'Routine: Check\' -q \'[Scheduled routine] ROUTINE_LITERAL $(keep) `keep`\'\n\nIf the command fails, report the error instead.';
+  const routine = await b.run({ prompt: oldRoutine, surface: 'cron', title: '[bot:b] Check', timeout_s: 30 });
+  assert.equal(routine.ok, true, JSON.stringify(routine));
+  assert.ok(seen.some(s => s.user === '[Scheduled routine] ROUTINE_LITERAL $(keep) `keep`'));
+  assert.ok(!seen.some(s => s.user.includes('factr -p')));
+  console.log('ok: member group session and saved routine execute through the owner engine');
+  const parent = await primary.call('session.create', { title: 'Stop family' });
+  await primary.call('prompt.submit', { session_id: parent.session_id, text: 'DELEGATE_PARENT' });
+  await until(() => seen.some(s => s.user.includes('CHILD_WAIT_A')) && seen.some(s => s.user.includes('CHILD_WAIT_B')), 30000);
+  console.log('family before Stop', JSON.stringify(await primary.call('subagent.list', { session_id: parent.session_id })));
+  const stoppedFamily = await primary.call('session.interrupt', { session_id: parent.session_id });
+  if (!stoppedFamily.children_stopped) console.log('Stop diagnostic', JSON.stringify(primary.events.filter(e => e.type === 'error')));
+  assert.ok(stoppedFamily.children_stopped >= 2, JSON.stringify(stoppedFamily));
+  await until(() => closedChildren.length >= 2, 10000);
+  console.log('ok: both child provider streams closed after Stop');
+  let childRows = await primary.call('subagent.list', { session_id: parent.session_id });
+  for (let i=0; i<100 && (childRows.subagents || []).some(c => c.status === 'running'); i++) {
+    await sleep(100);
+    childRows = await primary.call('subagent.list', { session_id: parent.session_id });
+  }
+  assert.ok(!(childRows.subagents || []).some(c => c.status === 'running'), JSON.stringify(childRows));
+  console.log('ok: Stop cancels two real delegated children');
   console.log("stage: native handoff");
   await primary.call("prompt.submit", {
     session_id: chat.session_id,
@@ -445,6 +498,7 @@ try {
   releases.get("b")!();
   console.log("stage: restart");
   const restarted = await pooled("b");
+  assert.equal((await restarted.call('bot.group.ensure', { profile: 'b', title: 'Group: runtime-room · thread' })).session_id, groupId);
   assert.equal(
     (await restarted.call("bot.chat.get", { profile: "b" })).canonical_session
       .id,
@@ -474,11 +528,14 @@ try {
   console.log("stage: pool churn");
   await pooled("c");
   await pooled("d");
-  for (const name of ["e", "a", "b", "c", "d", "e", "a"]) {
+  for (let round = 0; round < 7; round++) {
+    const name = ["a", "b", "c", "d", "e"].find(name => !pool.has(name))!;
+    const previousStops = stopped.length;
     const engine = await pooled(name);
     await engine.call("bot.chat.ensure", { profile: name });
     engine.lastActiveAt = Date.now();
     assert.ok(pool.size <= 3);
+    assert.equal(stopped.length, previousStops + 1, "a cold open reclaims exactly one full pool slot");
   }
   assert.ok(
     stopped.length >= 5,

@@ -34,6 +34,9 @@ mod bot_chat_deliver;
 mod bot_preamble;
 mod bot_message;
 mod bot_peer;
+mod bot_routine;
+mod bot_stop;
+mod bot_group;
 pub(crate) use bot_message::start as start_bot_replies;
 mod bot_retirement;
 pub(crate) use bot_retirement::request as pool_retirement;
@@ -1458,6 +1461,7 @@ impl Conn {
     /// history, not a running one).
     fn map_subagent_status(info: &Value, sessions: &HashMap<String, SessionState>, followed: bool) -> Value {
         let child_id = info["session_id"].as_str().unwrap_or_default();
+        if bot_stop::cancelled(child_id) { return json!("interrupted"); }
         if followed || sessions.get(child_id).is_some_and(SessionState::turn_active) {
             return json!("running");
         }
@@ -1530,6 +1534,7 @@ impl Conn {
         match method {
             "ping" | "gateway.ping" => Ok(json!({})),
             "bot.chat.reply" => Box::pin(self.bot_reply(p)).await,
+            "bot.group.ensure" => Box::pin(self.bot_group_ensure(p)).await,
             m if local_state::handles(m) => self.local_state(m, p).await,
             m if bot_chat_deliver::handles(m) => self.bot_deliver(m, p).await,
             m if bot_chat::handles(m) => self.bot_chat(m, p).await,
@@ -2703,9 +2708,14 @@ impl Conn {
                     || self.observer.has_active_run(id);
                 self.ensure_attached(id).await.map_err(RpcError::internal)?;
                 call(json!({ "req": "cancel", "session_id": id })).await?;
+                let children = match self.stop_bot_children(id).await {
+                    Ok(count) => count,
+                    Err(error) => { self.emit("error", Some(id), json!({"message":format!("Some child tasks could not be stopped: {error}"),"reason":"child_cancel_failed"})).await; 0 }
+                };
                 Ok(json!({
                     "status": if busy { "interrupted" } else { "not_interrupted" },
                     "interrupted": busy,
+                    "children_stopped": children,
                 }))
             }
             "session.title" => {
@@ -3800,6 +3810,8 @@ pub(crate) async fn agent_run(
     timeout: Duration,
 ) -> Result<Value> {
     // Queued behind the chat's running turn (its `timeout` starts once this turn does).
+    let routine = if opts.surface == "cron" { bot_routine::prompt(prompt, crate::profile::current().name.as_deref().unwrap_or("default"))? } else { std::borrow::Cow::Borrowed(prompt) };
+    let prompt = routine.as_ref();
     let turn = match session_key {
         Some(key) => Some(chat_turn(key).await),
         None => None,

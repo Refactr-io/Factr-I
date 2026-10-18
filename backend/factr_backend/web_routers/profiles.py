@@ -133,7 +133,11 @@ def _write_profile_model(profile_dir: Path, provider: str, model: str, validate_
     from factr_backend.config import load_config, save_config
     with _config_profile_scope(_scope_profile_name(validate_in or profile_dir)):
         provider, model = _normalize_main_model_assignment(provider, model)
-        result = _validated_main_model_selection(load_config(), provider, model)
+        cfg = load_config()
+        current = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
+        endpoint = current.get("base_url", "") if provider in {"custom", "local"} else ""
+        result = _validated_main_model_selection(cfg, provider, model, base_url=endpoint,
+                                               api_key=current.get("api_key", "") if endpoint else "")
     with _config_profile_scope(_scope_profile_name(profile_dir)), _CONFIG_MUTATION_LOCK:  # RMW span
         cfg = load_config()
         cfg["model"] = _apply_main_model_assignment(cfg.get("model", {}), result)

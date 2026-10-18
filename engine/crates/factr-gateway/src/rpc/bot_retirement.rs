@@ -32,6 +32,7 @@ pub(super) fn admission(method: &str) -> Result<Option<Admission>, RpcError> {
             | "prompt.btw"
             | "bot.chat.deliver"
             | "bot.chat.reply"
+            | "bot.group.ensure"
     ) {
         admit().map(Some)
     } else {
