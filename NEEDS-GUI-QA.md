@@ -1,34 +1,33 @@
-# Factr-I bots: pending GUI QA
+# Factr-I bots: remaining UI and external QA
 
-Status: not run in this resumed session. These are pending tests, not claims of success or screen-permission failures. No UI code changed. Use this worktree and fresh HOME, FACTR_HOME, FACTR_CONFIG_HOME and Electron userData beneath /private/tmp. Use only stub model settings and generated test credentials. Do not use the release checkout or the installed production app.
+Use only this worktree, a QA/dev build and fresh HOME, FACTR_HOME, FACTR_CONFIG_HOME and FACTR_ELECTRON_USER_DATA_DIR under /private/tmp. Do not launch the installed production app or the release checkout. Use the deterministic stub contract in engine/crates/factr-gateway/e2e/bot-schedules.mjs or bot-chat-deliver.mjs. Engine suite success does not certify the controls below.
 
-## Creation-time intro hang, task 2(a)
+The automated entry point is bot-checklist.mjs. Its checklist.json accounts for all 17 upstream flows and identifies the narrower engine evidence.
 
-1. Build a QA app from `feat/bots-step2` in this worktree after the advice blocker is resolved. Set FACTR_BOT_COMPUTERS=0 and FACTR_GATEWAY_TRACE=1 in the isolated QA launch. Keep the engine stderr and stub OpenAI-compatible endpoint request timeline. The existing harness model in `engine/crates/factr-gateway/e2e/bot-chat-deliver.mjs` is the reference contract; do not substitute real credentials.
-2. Start with no profiles and no MCP schema cache. Create Alpha with Name, Title and Description. Keep its newly created Bot Chat mounted. Create Beta immediately, then return to Alpha.
-3. Verify that Alpha's intro appears exactly once and completes. Correlate profile creation, session.create, session.title, bot.chat.claim, session.resume, prompt.submit, message acceptance and the first model request. The historical renderer log alone does not establish where the turn blocked.
-4. Repeat while opening the fresh chat on a second window, and while the roster refreshes. The bot's first model request must include message_agent without restarting the app. There must be one canonical Bot Chat.
-5. If the turn hangs, retain the isolated engine trace and model request timestamps before pressing Stop. Then Stop and submit a normal prompt. Report the last successful stage and actual elapsed time. Do not call the historical hang fixed merely because a later turn works.
+| Item | Exact UI/external procedure and expected result |
+| --- | --- |
+| 1 | Fresh install with no MCP cache: New Agent > Alpha, enter Name/Title/Description, create. The intro renders once within the first-response budget. Repeat Beta while Alpha is open in a second window. On a deliberately hung MCP, a visible teammate_mcp_timeout appears; Stop and a subsequent prompt work. Historical 13-minute packaged cause remains unproven. |
+| 2 | Advanced create: clone Alpha, choose model/provider and a subset of skills/toolsets/MCP, custom SOUL. Edit Profile shows stored Description. Type before a slow description fetch completes; typing survives. Duplicate retains memory/SOUL but not schedules/channels. Delete requires confirmation, stops its backend, removes its row and survives relaunch. Default cannot be deleted. |
+| 3 | Click each bot: one permanent Bot Chat per profile. /new and /reset become /compact with a notice; reopen/relaunch preserves that one chat. Archive retires it and the next click creates one replacement. |
+| 4 | Open a default session BEFORE creating Beta. After creation, type @beta and select its autocomplete tag. The model composes message_agent; queued acknowledgment arrives immediately, target receives @factr attribution, later reply wakes the original session. Repeat in a new default session. |
+| 5 | Alpha asks Beta a question. Both transcripts show attribution. Unknown and ambiguous targets are refused with the roster. Keep the sender window closed during the reply, reopen, and verify exactly one reply. |
+| 6 | Make Beta answer only [SILENT], then NO_REPLY. Neither marker appears in the rendered reply and Alpha receives no spurious wake turn. |
+| 7 | Stub Beta returns HTTP 401: Alpha shows [reason: provider_auth_or_access], no retry. Stub 503 once: exactly one retry on the same session and no duplicate incoming message. |
+| 8 | Create a room with 2-6 bots; send, mention one, use @user, Stop, then @all. Verify serial rounds, caps, holds and needs-you badge. Member engine session identity/turn/restart is automated. GAP: Rust advertises driver=false and rounds still live in Desktop; close-Desktop continuation is not implemented by the recovered session fix. |
+| 9 | Routines: blank Name displays validation and creates no job. Enter a named weekday-9am job, then fire, pause/resume, inspect output/history, remove. Reload/relaunch preserves paused state. Run now control requires the computer branch integration. |
+| 10 | Own-profile bot-chat output is automated. Also create deliver=bot-chat:Beta from Alpha; output must reach Beta's canonical engine chat exactly once. This cross-profile courier integration remains open. |
+| 11 | Within a scheduled turn request another cron job. Scheduling tools stay unavailable; no nested job is persisted. Test both the model's response and a forced unavailable-tool request. |
+| 12 | Spawn 2-3 parallel delegated children, press Stop while streaming. Their provider streams close, statuses leave running, partial transcripts persist and unrelated sessions remain active. Engine stream cancellation is automated; inspect rendered status/partial text. |
+| 13 | Physical second machine: add a disposable connection, Create on that machine, mention its qualified tag, verify queued handoff/wake in both directions. Disconnect/reconnect without duplicates. |
+| 14 | Register a disposable peer, peer dm and message_agent spark/researcher. Native HTTP contract is checked against a Python golden and stub peer; real account/secret-store integration needs user-owned setup. |
+| 15 | Two disposable Telegram bot accounts: each profile answers only on its token. Attempt the same token on the second profile and verify the token-lock refusal. No real tokens were accessed by this run. |
+| 16 | Computer screen: watch headed browser, Take over at a local mock login, type disposable data, Hand back, verify same browser session and enforced lease. Docker/sandbox/platform integration is still in progress. |
+| 17 | Turn Bot Mode off/on in Capabilities without restart. Roster/Routines unregister/re-register live and data survives. Native protocol-tool gate is automated; live renderer lifecycle needs the click test. |
 
-## Default chat handoff, task 2(b)
+## Three-engine pool
 
-1. On a fresh isolated install, open a default chat BEFORE creating a bot. Leave that session open.
-2. Create Beta and set its description to say it answers the handoff question. Return to the already-open default chat without restarting.
-3. Type `@beta Tell me the word you were given.` Verify autocomplete resolves Beta and the active agent calls message_agent. This existing-session case is not covered by the new-chat engine regression.
-4. Verify Beta's own Bot Chat receives the attributed message. The existing handle for the default profile is @factr. Verify the sender receives the reply.
-5. Create a NEW default chat after Beta exists. Repeat the handoff without an app restart. Engine-level schema availability and direct MCP delivery for this case passed; the actual renderer flow remains unrun.
-6. Repeat on an install without any Bot Mode profiles. Its default config/tool surface must not gain the teammate MCP from this installer change.
-7. Fire-and-forget is still an open task 3 deviation. The current tool blocks for a reply. Do not accept that as upstream parity.
+Create Alpha/Beta/Gamma/Delta/Epsilon with computers off and cap=3. Open all five three rounds. At most three pooled engines remain resident, default primary is separate. Keep one bot streaming and repeat; the busy bot finishes. Test stale renderer busy state, hidden routine/delivery, retiring admission, immediate reopen and a crash mid-drain. Queued opens wait for physical exit; typed retiring is rerouted with the same envelope id. The production arbiter/real-engine churn is automated. Late autonomous work at the 60s drain cap needs transcript inspection.
 
-## Pool, task 2(c), after implementation
+## Platform QA
 
-1. Set the local engine cap to 3. Create Alpha, Beta, Gamma, Delta and Epsilon with computers off.
-2. Open all five in order; wait for each intro to finish. Repeat three complete rounds quickly enough that all previous touches remain inside the keepalive window.
-3. Verify every open succeeds, at most three pool engines remain resident, and the least recently used idle engine is retired. Default's primary engine is separate from the pool.
-4. Keep Alpha in a deliberately slow model turn. Open the other four repeatedly. Alpha must finish uninterrupted; another idle resident must make room.
-5. Switch away while a turn finishes, close/reopen the window, and repeat. Verify a stale renderer activeTurn flag cannot strand a foreground waiter.
-6. Start a hidden delivery or routine in a bot. It must not be stopped to free a slot. Test a new turn arriving during retirement as well; a pair of idle snapshots alone does not freeze admission.
-
-## Remaining handoff QA
-
-Tasks 3-9 are not implemented by this resumed milestone. The 17-item checklist harness, full packaged checklist, computer-bot message/schedule scenarios, real Docker image test (53 checks), cross-platform setup/sandbox tests and Windows manual procedure remain to be completed in task order. No real Windows/Linux or Docker run occurred in this resumed session.
+Windows and Linux setup/sandbox manual steps will be appended with their implementation. No real Windows-machine verdict is claimed.

@@ -986,6 +986,13 @@ async fn handle(
             )
             .await
         }
+        ("POST", "/api/bot/deliver") => {
+            let body: Value = serde_json::from_slice(&read_body_max(&mut stream, &req, MAX_RUN_BODY_BYTES).await?).unwrap_or(Value::Null);
+            match rpc::deliver_bot_output(config.clone(), hub.clone(), observer.clone(), &body).await {
+                Ok(body) => respond(&mut stream, "200 OK", &body).await,
+                Err(error) => respond(&mut stream, "400 Bad Request", &error).await,
+            }
+        }
         ("POST", "/api/health/retirement") => {
             let body: Value = serde_json::from_slice(&read_body_max(&mut stream, &req, 4096).await?).unwrap_or(Value::Null);
             let result = rpc::pool_retirement(config.clone(), hub.clone(), observer.clone(), &body).await;

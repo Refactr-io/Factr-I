@@ -37,6 +37,8 @@ mod bot_peer;
 mod bot_routine;
 mod bot_stop;
 mod bot_group;
+mod bot_http;
+pub(crate) use bot_http::deliver as deliver_bot_output;
 pub(crate) use bot_message::start as start_bot_replies;
 mod bot_retirement;
 pub(crate) use bot_retirement::request as pool_retirement;

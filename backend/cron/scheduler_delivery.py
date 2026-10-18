@@ -826,6 +826,17 @@ def _deliver_to_bot_chat(job: dict, content: str, profile: str, *, deferred: Opt
         ).encode("utf-8")).hexdigest()
         if deferred is not None:
             key = deferred["id"]
+        if (os.environ.get("FACTR_ENGINE_URL") and os.environ.get("FACTR_ENGINE_TOKEN")
+                and home == source_home):
+            if suppress_notification:
+                job["_notification_all_targets_suppressed"] = True
+                return None
+            from cron.engine_bot_chat import deliver
+            result = deliver(message, key)
+            target = f"bot-chat:{profile_label}"
+            job.setdefault("_bot_chat_delivery_receipts", {})[target] = {
+                "status": "settled" if result["ok"] else "failed", "delivery_id": key}
+            return None if result["ok"] else f"{target} failed [reason: {result.get('reason', 'unknown')}]: {result.get('error', 'not completed')}"
         # Read BEFORE discovery: the previous owner may have exited after accepting.
         # No receipt state, including ambiguous/failed, authorizes a CLI replay.
         receipt = read_delivery_result(home, key)

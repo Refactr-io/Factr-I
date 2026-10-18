@@ -154,3 +154,15 @@
 - Next: finish task 4 group-boundary verification, then task 5 automated 17-item engine checklist, followed by computer branch integration and setup/sandbox/platform work.
 
 - Final repeated gateway suite after parent-first Stop: 404 passed, 1 ignored, exit 0, /private/tmp/bots-check-h1_cnkol.
+
+### Task 4/5: cron output on the canonical engine chat
+
+- New real profile/schedule harness bot-schedules.mjs uses only isolated generated config and an OpenAI-compatible stub. Exercises real create/describe/clone/SOUL, cron create/pause/restart/resume/fire/delete, output storage and denied scheduling tools. Initial 404 was a test mistake: feature HTTP routes require feature=1; corrected.
+- The output-delivery extension exposed the remaining Python CLI fallback for cron bot-chat output. Added a small authenticated /api/bot/deliver adapter over the existing Rust canonical delivery path, and an owner-engine Python HTTP adapter. Existing delivery id derives from execution id and preserves restart deduplication. Suppressed warning policy remains respected. Cross-profile output routing remains a separate test/integration item.
+- backend pytest tests/cron/test_engine_bot_chat.py tests/cron/test_cron_bot_chat_delivery.py tests/cron/test_bot_chat_pending.py tests/cron/test_cron_delivery_redaction.py tests/cron/test_warning_delivery_policy.py -q: 38 passed, 3 skipped, exit 0, isolated /private/tmp/bots-check-r9w_cu8p. The three existing skips were reported by pytest; not counted as passes.
+- Engine build after private RPC error type correction: exit 0, /private/tmp/bots-check-72_kyj6h. No visibility widening of the shared error type.
+
+- Final gateway after HTTP output adapter: 404 passed, 1 ignored, exit 0, /private/tmp/bots-check-hf_8oeyp.
+- bot-schedules.mjs including bot-chat output: exit 0, /private/tmp/bots-check-7uyvt85f. Saved output is processed in the pre-existing canonical Bot Chat, with no per-output CLI chat.
+- New combined bot-checklist.mjs: four real-engine suites passed, exit 0, isolated /private/tmp/bots-check-mxvq6m5w; artifact /private/tmp/bots-check-mxvq6m5w/bots-checklist-5mI0wJ/checklist.json. All 17 flows enumerated with narrower engine evidence and remaining GUI/external/implementation boundaries, not 17 full passes. Electron tsc: exit 0, /private/tmp/bots-check-sgbunz_3.
+- Rewrote stale NEEDS-GUI-QA.md and active REPORT.md. Task 4's member sessions and native routine/output execution are validated; durable close-Desktop room rounds remain explicitly partial. Task 5 harness is implemented and green at its stated engine scope. Real UI/external checklist is pending. Next ordered implementation: useful computer branch commits and real isolated computer tests.
