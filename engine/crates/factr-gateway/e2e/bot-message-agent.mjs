@@ -124,8 +124,8 @@ const relay = setInterval(async () => {
 }, 500)
 
 // ── A's message_agent tool: the MCP server the engine runs for it, driven over stdio ───────────────────────
-function mcp(extraEnv = {}) {
-  const child = spawn(PYTHON, ['-m', 'tools.message_agent_mcp'], { env: { ...process.env, PYTHONPATH: BACKEND, FACTR_CONFIG_HOME: path.join(cfg, 'profiles', 'a'), ...extraEnv }, stdio: ['pipe', 'pipe', 'pipe'] })
+function mcp(extraEnv = {}, profile = 'a') {
+  const child = spawn(PYTHON, ['-m', 'tools.message_agent_mcp'], { env: { ...process.env, PYTHONPATH: BACKEND, FACTR_CONFIG_HOME: profile === 'default' ? cfg : path.join(cfg, 'profiles', profile), ...extraEnv }, stdio: ['pipe', 'pipe', 'pipe'] })
   const pending = new Map()
   let buf = ''
   child.stdout.on('data', d => {
@@ -169,6 +169,15 @@ try {
   const msgs = await transcript()
   const textOf = m => (typeof m.text === 'string' ? m.text : typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? m))
   check(msgs.some(m => m.role === 'user' && textOf(m).includes('Message from 🤖 a (@a): ping from a')) && msgs.some(m => m.role === 'assistant' && textOf(m).includes('ECHO:')), "B's Bot Chat shows the incoming message and the bot's reply")
+
+  const primaryTool = mcp({}, 'default')
+  try {
+    const handoff = await primaryTool.call('message_agent', { target: 'b', message: 'handoff from the user chat' })
+    check(handoff.result.isError === false && /Reply from @b/.test(text(handoff)), 'the default chat can send to a bot through the live relay and get its reply')
+    check(seen.some(u => u.includes('(@factr): handoff from the user chat')), 'the bot receives default-chat sender attribution')
+  } finally {
+    primaryTool.close()
+  }
 
   const auth = await tool.call('message_agent', { target: 'b', message: 'FAIL401 please' })
   check(auth.result.isError === true || /failed/.test(text(auth)), `an auth failure reaches A (${text(auth).slice(0, 160)})`)

@@ -1,8 +1,8 @@
 """Teammate messaging for bots whose chat runs in the Rust engine (the packaged desktop app).
 
 The engine has no ``message_agent`` tool, so each Bot-Mode bot profile gets one stdio MCP server in its OWN
-``config.yaml`` (``mcp_servers.factr_teammates``). The default profile's config is never touched, so default
-chats (and the benchmark harness) load exactly the tool list they always did.
+``config.yaml`` (``mcp_servers.factr_teammates``). On a Bot-Mode-managed install the default profile gets it too,
+so the user's chat can hand work to a teammate. Installs without a bot roster are unchanged.
 
 This module is the seam for a later Rust port: ``ensure_teammate_mcp`` (config), the stdio server below
 (tool surface), and ``deliver`` (transport). ``deliver`` runs the same cleanup-owning runner, per-profile turn
@@ -45,21 +45,24 @@ def desired_server_entry() -> dict:
 
 
 def ensure_teammate_mcp(root: "Path | str") -> int:
-    """Add (or refresh) the teammate server in every Bot-Mode-managed NAMED profile's config.yaml.
-    Returns how many files were written. Never raises; the default profile is never written."""
+    """Refresh the teammate server in managed bots and the default chat when a bot roster exists.
+    Returns how many files were written. Never raises."""
     written = 0
     try:
         from tools.bot_mode_probe import _is_bot_managed, _roster
 
+        roster = _roster(Path(root))
+        if not any(_is_bot_managed(Path(d)) for _, d in roster):
+            return 0
         desired = desired_server_entry()
-        for name, profile_dir in _roster(Path(root)):
+        for name, profile_dir in roster:
             try:
                 path = Path(profile_dir) / "config.yaml"
-                if name == "default" or not path.is_file() or not _is_bot_managed(Path(profile_dir)):
+                if name != "default" and not _is_bot_managed(Path(profile_dir)):
                     continue
                 import yaml
 
-                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
                 if not isinstance(data, dict):
                     continue
                 servers = data.get("mcp_servers")

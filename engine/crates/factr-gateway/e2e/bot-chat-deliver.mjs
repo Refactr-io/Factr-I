@@ -218,13 +218,28 @@ try {
   // The real fresh-install condition: a brand-new store, a bot created, and the desktop makes the bot's FIRST chat with a
   // plain session.create (+ claim), never `ensure`. The first request the model gets must already offer message_agent.
   const freshHome = path.join(scratch, 'fresh-engine-home')
-  seed('f', modelUrl, MODEL, 8192, freshHome)
   const python = process.env.FACTR_BACKEND_PYTHON
   const backend = process.env.FACTR_BACKEND_PYTHONPATH
-  fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Fresh Bot\n')
-  fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'config.yaml'), python && backend
-    ? `mcp_servers:\n  factr_teammates:\n    command: ${JSON.stringify(python)}\n    args: ['-m', 'tools.message_agent_mcp']\n    env:\n      PYTHONPATH: ${JSON.stringify(backend)}\n    timeout_secs: 900\n`
-    : `mcp_servers:\n  factr_teammates:\n    command: ${process.execPath}\n    args: ['${stub}']\n`)
+  if (python && backend) {
+    const primaryHome = path.join(scratch, 'primary-engine-home')
+    seed('default', modelUrl, MODEL, 8192, primaryHome)
+    const primary = await start('default', MODEL, primaryHome)
+    const created = await ok(primary, 'profiles.create', { name: 'f', no_skills: true, no_alias: true, mirror_credentials: false })
+    check(created.path === path.join(cfg, 'profiles', 'f'), `profile created under config root (${created.path})`)
+    const configured = await ok(primary, 'profiles.configure', { name: 'f', ui_meta: { 'factr-bots': { title: 'Fresh Bot' } } })
+    check(configured.ok === true, 'the real profile create/configure path marks the fresh bot')
+    check(fs.readFileSync(path.join(cfg, 'profiles', 'f', 'config.yaml'), 'utf8').includes('factr_teammates'), 'the real profile path installs the teammate MCP')
+    const userChat = await ok(primary, 'session.create', { title: 'User chat' })
+    await ok(primary, 'prompt.submit', { session_id: userChat.session_id, text: 'default chat can hand off' })
+    for (let i = 0; i < 100 && !primary.events.some(e => e.type === 'message.complete' && e.session_id === userChat.session_id); i++) await sleep(100)
+    check(seen.find(x => x.user.includes('default chat can hand off'))?.tools?.some(t => /message_agent/.test(t)), 'the default chat offers message_agent after a bot is created, without restarting its engine')
+    await primary.stop()
+  } else {
+    fs.mkdirSync(path.join(cfg, 'profiles', 'f'), { recursive: true })
+    fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Fresh Bot\n')
+    fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'config.yaml'), `mcp_servers:\n  factr_teammates:\n    command: ${process.execPath}\n    args: ['${stub}']\n`)
+  }
+  seed('f', modelUrl, MODEL, 8192, freshHome)
   const f = await start('f', MODEL, freshHome)
   check(!fs.existsSync(path.join(freshHome, 'mcp-schema-cache.json')), 'fresh store: nothing cached before the first chat')
   const firstChat = await ok(f, 'session.create', { title: 'Bot Chat', hidden: true, follow_profile_config: true })
@@ -234,7 +249,7 @@ try {
   const firstWindow = await f.open()
   await ok(firstWindow, 'session.resume', { session_id: firstChat.session_id })
   await ok(f, 'prompt.submit', { session_id: firstChat.session_id, text: 'first words in a fresh install' })
-  for (let i = 0; i < 100 && !seen.some(x => x.user.includes('first words in a fresh install')); i++) await sleep(100)
+  for (let i = 0; i < 100 && !firstWindow.events.some(e => e.type === 'message.complete' && e.session_id === firstChat.session_id); i++) await sleep(100)
   const firstRequest = seen.find(x => x.user.includes('first words in a fresh install'))
   check(firstRequest?.tools?.some(t => /message_agent/.test(t)), `the bot's very first session offers message_agent (tools: ${(firstRequest?.tools || []).join(', ').slice(0, 200)})`)
   check(firstWindow.events.some(e => e.type === 'message.complete' && e.session_id === firstChat.session_id), 'the mounted window sees the creation-time intro complete')
