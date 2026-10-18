@@ -1027,8 +1027,6 @@ export const ja = defineLocale({
       unavailableDesc: 'デスクトップ IPC ブリッジはゲートウェイ設定を公開していません。',
       title: 'ゲートウェイ接続',
       envOverride: 'env オーバーライド',
-      intro:
-        'Factr-I はデフォルトで独自のローカルゲートウェイを起動します。別のマシンや信頼できるプロキシの背後で既に動作している Factr-I バックエンドをこのアプリで制御する場合は、リモートゲートウェイを使用してください。ゲートウェイ接続はマシン単位の設定で、プロファイルは接続したゲートウェイから検出されます。',
       envOverrideTitle: '環境変数がこのデスクトップセッションを制御しています。',
       envOverrideDesc:
         '保存された設定を使用するには FACTR_DESKTOP_REMOTE_URL と FACTR_DESKTOP_REMOTE_TOKEN の設定を解除してください。',
@@ -1036,8 +1034,6 @@ export const ja = defineLocale({
       localDesc:
         'ローカルホストでプライベートな Factr-I バックエンドを起動します。これがデフォルトで、オフラインでも動作します。',
       remoteTitle: 'リモートゲートウェイ',
-      remoteDesc:
-        'このデスクトップシェルをリモートの Factr-I バックエンドに接続します。ホスト型ゲートウェイは OAuth またはユーザー名とパスワードを使用します。自己ホスト型はセッショントークンを使用する場合があります。',
       remoteUrlTitle: 'リモート URL',
       remoteUrlDesc:
         'リモートダッシュボードバックエンドのベース URL。/factr などのパスプレフィックスもサポートしています。',
