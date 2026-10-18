@@ -56,5 +56,13 @@
 - Final adjacent-source search found one additional Factr Desktop name in desktop/shared/src/websocket-url.ts, surfaced by all desktop WebSocket consumers. Changed only that error string to Factr-I.
 - Read helper, callers and existing app gateway-ws-url tests. Graph coverage has no recorded issue for this file in the related index; source checked locally because the index is for another worktree.
 - Shared `npm run typecheck` and `../node_modules/.bin/eslint src/websocket-url.ts`: passed.
-- App `npm run test:ui -- src/i18n src/lib/gateway-ws-url.test.ts`: passed 56 tests in five files.
+- App `npm run test:ui -- src/i18n src/lib/gateway-ws-url.test.ts`: passed 59 tests in five files.
 - No source change in the helper's auth/ticket behavior. Final check also found a few Electron UI copy leftovers; handle those before the final report.
+
+## Milestone 2 follow-up: Electron-visible English copy (validated)
+- Final desktop-source audit found 11 visible English em dashes in seven Electron files: install repair copy, plugin removal error, update/wait/recovery/About copy, plugin compatibility list, missing-renderer-assets HTML text, SSH validation and foreign-lockfile refusal. Changed only those string spans to hyphens.
+- Preserved main-process logs, generated-script comments, and the preview-reach e2e fixture. No lifecycle/auth/SSH behavior changed.
+- App `npm run typecheck`: passed all three tsc projects.
+- ESLint on the seven touched Electron files: passed without warnings.
+- `npm run test:desktop:platforms -- electron/bootstrap-failure-copy.test.ts electron/desktop-plugin-remove.test.ts electron/plugin-compat-notice.test.ts electron/renderer-load-error-page.test.ts electron/ssh-connection.test.ts electron/remote-lifecycle.test.ts`: 174 tests passed across the five existing matching files. bootstrap-failure-copy.test.ts does not exist; bootstrap copy and the three main.ts messages received source/diff checks only, with real dialogs left for GUI QA.
+- Line-by-line check confirms exactly 11 punctuation substitutions and no other Electron edits. `git diff --check`: passed.

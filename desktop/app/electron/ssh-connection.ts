@@ -80,7 +80,7 @@ function validateSshTarget(host, user, port) {
 
   if (/\s/.test(host)) {
     throw new Error(
-      'Invalid SSH host: contains whitespace. Enter only the destination (user@host or host) — no "ssh " prefix or extra options.'
+      'Invalid SSH host: contains whitespace. Enter only the destination (user@host or host) - no "ssh " prefix or extra options.'
     )
   }
 
@@ -100,7 +100,7 @@ function validateSshTarget(host, user, port) {
       // Never echo the suspect segment — it may be a pasted credential.
       throw new Error(
         `Invalid SSH host "${host.split(':')[0]}:<hidden>": unexpected ":" segment. ` +
-          'Use host or host:port — and never put a password in the host field; Desktop SSH authenticates with keys.'
+          'Use host or host:port - and never put a password in the host field; Desktop SSH authenticates with keys.'
       )
     }
   } else if (!_HOSTNAME_RE.test(host)) {
@@ -117,7 +117,7 @@ function validateSshTarget(host, user, port) {
 
   if (user && /[\s@]/.test(user)) {
     throw new Error(
-      `Invalid SSH user "${user}": contains whitespace or "@". Enter only the destination (user@host) — no "ssh " prefix.`
+      `Invalid SSH user "${user}": contains whitespace or "@". Enter only the destination (user@host) - no "ssh " prefix.`
     )
   }
 
