@@ -232,7 +232,7 @@ struct Engine {
     rx: tokio::sync::Mutex<mpsc::Receiver<Message>>,
     session: String,
     /// The message being delivered and how many messages the chat held before it: a completion is ours only when the
-    /// stored transcript shows this message followed by an answer (another turn's `message.complete` is not).
+    /// live transcript shows this message followed by an answer (another turn's `message.complete` is not).
     text: String,
     before: usize,
 }
@@ -259,7 +259,7 @@ impl Engine {
             Ok(Some(payload)) => {
                 let reply = turn_reply(&payload, &self.session, "bot");
                 let ok = reply["ok"] == true && reply["interrupted"] != true;
-                // The answer is read from the stored transcript: our message followed by an assistant message. A
+                // The answer is read from the live transcript: our message followed by an assistant message. A
                 // completion for some other turn on this chat (one that was already running, or a replayed one) has no
                 // answer to our message yet, so it is not ours and we wait on.
                 let ours = if ok { self.answer().await } else { None };
@@ -283,12 +283,13 @@ impl Engine {
 }
 
 impl Engine {
-    /// The answer to our message in the stored transcript, if there is one (a short grace for the write).
+    /// The actor's live transcript includes the completed turn before its on-disk snapshot is flushed.
     async fn answer(&self) -> Option<String> {
         for _ in 0..4 {
-            let messages = factr_base::session::Session::load(&self.session).map(|s| s.messages).unwrap_or_default();
-            if let Some(Some(reply)) = answer_to(&messages, &self.text, self.before) {
-                return Some(reply);
+            if let Ok(history) = self.run.call(json!({ "req": "get_history", "session_id": self.session })).await {
+                if let Some(Some(reply)) = history["messages"].as_array().and_then(|rows| answer_to(rows, &self.text, self.before)) {
+                    return Some(reply);
+                }
             }
             tokio::time::sleep(Duration::from_millis(400)).await;
         }
@@ -351,7 +352,14 @@ async fn deliver_now(conn: &Arc<Conn>, text: &str, hops: u64, sender_session: Op
     }
     conn.hub.mark_headless(&session, "bot").await;
     let _hops = HopsMarker::set(&profile, hops);
-    let before = factr_base::session::Session::load(&session).map(|s| s.messages.len()).unwrap_or(0);
+    let before = match run.call(json!({ "req": "get_history", "session_id": session })).await {
+        Ok(history) => history["messages"].as_array().map(Vec::len).unwrap_or(0),
+        Err(error) => {
+            conn.hub.unmark_headless(&session).await;
+            end_run(&run, None).await;
+            return Outcome::failed(format!("could not read the Bot Chat: {error}"), "runtime_offline").to_json(&session);
+        }
+    };
     let engine = Engine { run: run.clone(), rx: tokio::sync::Mutex::new(rx), session: session.clone(), text: text.to_string(), before };
     let done = flow(&engine, text).await;
     conn.hub.unmark_headless(&session).await;
@@ -369,18 +377,18 @@ async fn session_processing(conn: &Arc<Conn>, session: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Plain text of a stored message (its text blocks).
-fn text_of(m: &factr_base::session::StoredMessage) -> String {
-    m.content.iter().filter_map(|b| if let factr_base::message::ContentBlock::Text { text, .. } = b { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n")
-}
-
-/// What the stored transcript says about a message handed to a window: `None` until the window has submitted `text`,
-/// then `Some(None)` while the turn runs and `Some(Some(reply))` when an assistant answer follows it.
-pub(super) fn answer_to(messages: &[factr_base::session::StoredMessage], text: &str, before: usize) -> Option<Option<String>> {
-    use factr_base::message::Role;
+/// A completed turn is ours only after its submitted message, including the optional engine environment block.
+pub(super) fn answer_to(messages: &[Value], text: &str, before: usize) -> Option<Option<String>> {
     let want = text.trim();
-    let at = messages.iter().enumerate().skip(before.saturating_sub(1)).rev().find(|(_, m)| m.role == Role::User && text_of(m).trim() == want).map(|(i, _)| i)?;
-    let reply = messages[at + 1..].iter().rev().filter(|m| m.role == Role::Assistant).map(text_of).find(|t| !t.trim().is_empty());
+    let at = messages.iter().enumerate().skip(before).rev().find(|(_, m)| {
+        let actual = m["content"].as_str().unwrap_or_default().trim();
+        m["role"] == "user" && (actual == want || actual.strip_prefix(want).is_some_and(|suffix| {
+            let suffix = suffix.trim();
+            suffix.starts_with("<environment>") && suffix.ends_with("</environment>")
+        }))
+    }).map(|(i, _)| i)?;
+    let reply = messages[at + 1..].iter().rev().filter(|m| m["role"] == "assistant")
+        .filter_map(|m| m["content"].as_str()).find(|t| !t.trim().is_empty()).map(str::to_string);
     Some(reply)
 }
 
@@ -682,25 +690,19 @@ mod tests {
 
     #[test]
     fn a_handed_over_message_is_followed_in_the_transcript_until_an_answer_appears() {
-        use factr_base::message::{ContentBlock, Role};
-        let text = |t: &str| vec![ContentBlock::Text { text: t.into(), cache_control: None }];
-        let mut chat = factr_base::session::Session::create(None, None);
-        chat.add_message(Role::User, text("Message from 🤖 A (@a): old"));
-        chat.add_message(Role::Assistant, text("old answer"));
-        let before = chat.messages.len();
+        let row = |role: &str, text: &str| json!({"role":role,"content":text});
         let ask = "Message from 🤖 A (@a): what now?";
-        assert_eq!(answer_to(&chat.messages, ask, before), None, "the window has not submitted it yet");
-        chat.add_message(Role::User, text(ask));
-        assert_eq!(answer_to(&chat.messages, ask, before), Some(None), "submitted, the turn still runs");
-        chat.add_message(Role::Assistant, text("  "));
-        assert_eq!(answer_to(&chat.messages, ask, before), Some(None), "an empty assistant message is not an answer");
-        chat.add_message(Role::Assistant, text("do the thing"));
-        assert_eq!(answer_to(&chat.messages, ask, before), Some(Some("do the thing".to_string())));
-        // The same text sent earlier does not count as this delivery.
-        let mut again = factr_base::session::Session::create(None, None);
-        again.add_message(Role::User, text(ask));
-        again.add_message(Role::Assistant, text("stale answer"));
-        assert_eq!(answer_to(&again.messages, ask, again.messages.len()), None);
+        let mut messages = vec![row("user", ask), row("assistant", "stale answer")];
+        let before = messages.len();
+        assert_eq!(answer_to(&messages, ask, before), None, "earlier identical text is not this delivery");
+        messages.push(row("user", &format!("{ask}<environment>cwd /own/workspace; shell: bash</environment>")));
+        assert_eq!(answer_to(&messages, ask, before), Some(None));
+        messages.push(row("assistant", "  "));
+        assert_eq!(answer_to(&messages, ask, before), Some(None));
+        messages.push(row("assistant", "do the thing"));
+        assert_eq!(answer_to(&messages, ask, before), Some(Some("do the thing".into())));
+        assert_eq!(answer_to(&[row("user", &format!("{ask} extra user text")), row("assistant", "unrelated")], ask, 0), None);
+        assert_eq!(answer_to(&[row("user", ask), row("assistant", "plain answer")], ask, 0), Some(Some("plain answer".into())));
     }
 
     #[tokio::test]

@@ -379,9 +379,9 @@ fn queue(base: &Path, sender: &str, session: &str, args: &Value) -> Result<Value
     )
 }
 
-pub(super) fn reminder(previous: Option<&str>, id: &str) -> Option<String> {
+fn reminder(previous: Option<&str>, is_chat: bool) -> Option<String> {
     let local = roster(&root());
-    if !enabled() || !chat_session(id) || !local.iter().any(|r| r["managed"] == true) {
+    if !enabled() || !is_chat || !local.iter().any(|r| r["managed"] == true) {
         return previous.map(str::to_string);
     }
     let rows = local
@@ -410,10 +410,21 @@ pub(super) fn reminder(previous: Option<&str>, id: &str) -> Option<String> {
 }
 
 impl Conn {
+    async fn bot_tool_chat(&self, id: &str) -> bool {
+        if self.run_kind == "cron" { return false; }
+        if own() == "default" || (self.run_kind == "bot" && self.run_title.as_deref() == Some("Bot Chat")) { return true; }
+        let known = self.known.lock().await;
+        known.get(id).is_some_and(|info| info["title"] == "Bot Chat" || info["custom_title"] == "Bot Chat") || chat_session(id)
+    }
+
+    pub(super) async fn bot_reminder(&self, previous: Option<&str>, id: &str) -> Option<String> {
+        reminder(previous, self.bot_tool_chat(id).await)
+    }
+
     pub(super) async fn prepare_bot_tool(self: &Arc<Self>, p: &Value) -> Result<(), RpcError> {
         let id = p["session_id"].as_str().unwrap_or_default();
         let local = roster(&root());
-        let is_chat = chat_session(id);
+        let is_chat = self.bot_tool_chat(id).await;
         if is_chat
             && self.run_kind != "cron"
             && (local.iter().any(|r| r["managed"] == true) || !remote(&root()).is_empty())
@@ -533,7 +544,7 @@ impl Conn {
         let runtime = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {
             runtime.block_on(async move {
-            let queued = if enabled() && chat_session(&session) { queue(&root(),&own(),&session,&input) } else { Err(anyhow!("message_agent is disabled in this session")) };
+            let queued = if enabled() && conn.bot_tool_chat(&session).await { queue(&root(),&own(),&session,&input) } else { Err(anyhow!("message_agent is disabled in this session")) };
             let (output,error) = match queued { Ok(v)=>(v.to_string(),None),Err(e)=>{ let message=e.to_string(); let reason = if message.contains("runtime_offline") {"runtime_offline"} else if message.contains("hop_limit") {"hop_limit"} else {bot_chat_deliver::classify(&message)}; (json!({"error":message,"reason":reason}).to_string(),Some(message)) } };
             let _ = conn.call(json!({"req":"tool_result","session_id":session,"call_id":call,"output":output,"error":error})).await;
         })

@@ -2670,7 +2670,7 @@ impl Conn {
                     let (home, id) = (self.config.home.clone(), id.clone());
                     tokio::task::spawn_blocking(move || attach::staged_images(&home, &id)).await.map_err(|e| RpcError::internal(e.into()))?
                 };
-                let reminder = bot_message::reminder(p["system_reminder"].as_str(), p["session_id"].as_str().unwrap_or_default());
+                let reminder = self.bot_reminder(p["system_reminder"].as_str(), &id).await;
                 if let Err(err) = self.submit(&id, &text, reminder.as_deref(), images).await {
                     self.observer.failed_submit(&id, &run, &err.to_string());
                     attach::restore_staged(&self.config.home, &id, &staged, &unreadable);
