@@ -23,7 +23,8 @@ import {
   enabledCronJobs,
   ensureComputer,
   stopComputer,
-  sweepIdleComputers
+  sweepIdleComputers,
+  touchComputer
 } from './bot-computers'
 
 const REAL = process.env.FACTR_REAL_DOCKER === '1'
@@ -38,6 +39,7 @@ const B = `rb${suffix}`
 const run = path.join(SCRATCH, `real-${suffix}`)
 const nick = `zebra-${crypto.randomBytes(3).toString('hex')}`
 const nickA = `otter-${crypto.randomBytes(3).toString('hex')}`
+const privateCanary = `private-${crypto.randomBytes(12).toString('hex')}`
 let clock = Date.now()
 const ports: Record<string, number> = {}
 
@@ -116,6 +118,7 @@ class Rpc {
 }
 
 const rpcs: Record<string, Rpc> = {}
+let senderSession: string | undefined
 const rpc = async (profile: string) => (rpcs[profile] ??= await new Rpc(ports[profile], deriveBotToken(profile, SECRET)).open())
 
 function post(profile: string, route: string, body: object, timeoutMs: number): Promise<any> {
@@ -201,6 +204,7 @@ async function deliver(sender: string, env: any) {
       }
     }
 
+    if (res.status !== 'done' || res.ok !== true) throw new Error(JSON.stringify(res))
     entry.reply = String(res.reply)
     await reply({ reply: String(res.reply || '') })
   } catch (e: any) {
@@ -278,12 +282,32 @@ describe.skipIf(!REAL)('two bot computers: bot-to-bot and scheduled work (real D
     }
 
     exec(A, `mkdir -p /home/bot/workspace && echo ${nickA} > /home/bot/workspace/nickname.txt`)
-    exec(B, `mkdir -p /home/bot/workspace && echo ${nick} > /home/bot/workspace/nickname.txt`)
+    exec(B, `mkdir -p /home/bot/workspace && echo ${nick} > /home/bot/workspace/nickname.txt && echo ${privateCanary} > /home/bot/workspace/private.txt`)
     await syncRosters()
     startRelay()
   }, 15 * MIN)
 
   afterAll(async () => {
+    const diagnostics = path.join(SCRATCH, `bots-real-diagnostics-${suffix}`)
+    fs.mkdirSync(diagnostics, { recursive: true })
+    fs.writeFileSync(path.join(diagnostics, 'relay.json'), JSON.stringify(relayLog, null, 2))
+    for (const p of [A, B]) {
+      try {
+        const sessions = await (await rpc(p)).call('session.list', {}, 10_000)
+        fs.writeFileSync(path.join(diagnostics, `${p}-sessions.json`), JSON.stringify(sessions, null, 2))
+        const ids = new Set<string>((sessions.sessions || []).map((session: { id: string }) => session.id))
+        if (p === A && senderSession) ids.add(senderSession)
+        for (const id of ids) {
+          const history = await (await rpc(p)).call('session.history', { session_id: id }, 10_000)
+          fs.writeFileSync(path.join(diagnostics, `${p}-${id}.json`), JSON.stringify(history, null, 2))
+        }
+        const logs = sh(['logs', '--tail', '250', PREFIX + p])
+        fs.writeFileSync(path.join(diagnostics, `${p}-engine.log`), logs.replaceAll(deriveBotToken(p, SECRET), '[redacted]'))
+      } catch (error) {
+        fs.writeFileSync(path.join(diagnostics, `${p}-diagnostic-error.txt`), String(error))
+      }
+    }
+    console.log(`Synthetic diagnostics: ${diagnostics}`)
     clearInterval(relayTimer)
     Object.values(rpcs).forEach(r => r.close())
 
@@ -315,7 +339,7 @@ describe.skipIf(!REAL)('two bot computers: bot-to-bot and scheduled work (real D
       A,
       '/api/agent/run',
       {
-        prompt: `Use your message_agent tool now. Target: ${B}. Message: "Please read the file ~/workspace/nickname.txt on YOUR computer and tell me the exact text it contains." Finish once the tool queues the message; the reply will wake this chat later.`,
+        prompt: `Use your message_agent tool now. Target: ${B}. Message: "Please read /home/bot/workspace/nickname.txt on YOUR computer using your read tool and tell me the exact text it contains." Finish once the tool queues the message; the reply will wake this chat later.`,
         surface: 'bot',
         session_key: `real-${suffix}`,
         title: 'Bot Chat',
@@ -325,14 +349,20 @@ describe.skipIf(!REAL)('two bot computers: bot-to-bot and scheduled work (real D
     )
 
     // Native message_agent returns queued first; the later reply wakes the original sender session.
+    senderSession = res.session_id
+    fs.writeFileSync(path.join(SCRATCH, `bots-native-start-${suffix}.json`), JSON.stringify(res, null, 2))
     expect(res.ok).toBe(true)
+    const history = await (await rpc(A)).call('session.history', { session_id: res.session_id })
+    fs.writeFileSync(path.join(SCRATCH, `bots-native-history-${suffix}.json`), JSON.stringify(history, null, 2))
+    const hop = await until('A produces an outbound envelope for B', 30_000, () => relayLog.find(l => l.sender === A && l.target === B))
+    await until('B completes the delivered turn', 15 * MIN, () => hop.reply !== undefined || hop.error)
+    expect(hop.error).toBeUndefined()
+    expect(hop.reply).toContain(nick)
     await until('native reply wakes A', 15 * MIN, async () => {
       const history = await (await rpc(A)).call('session.history', { session_id: res.session_id })
       return JSON.stringify(history).includes(nick)
     })
     // ... and the message really went A -> relay -> B, one hop, with B's own engine producing the reply.
-    const hop = relayLog.find(l => l.sender === A && l.target === B)
-
     expect(hop?.hops).toBe(1)
     expect(relayLog.some(l => l.reply?.includes(nick))).toBe(true)
   }, 30 * MIN)
@@ -342,7 +372,7 @@ describe.skipIf(!REAL)('two bot computers: bot-to-bot and scheduled work (real D
     expect(exec(B, 'cat /home/bot/workspace/nickname.txt').trim()).toBe(nick)
     // A sees only its own profile folder and none of B's files.
     expect(exec(A, 'ls /data/profiles').trim()).toBe(A)
-    expect(exec(A, `grep -rl ${nick} /home/bot /data 2>/dev/null | head -1 || true`).trim()).toBe('')
+    expect(exec(A, `grep -rl ${privateCanary} /home/bot /data 2>/dev/null | head -1 || true`).trim()).toBe('')
 
     // No network path to B: not by container address (inter-container traffic is off on the shared network) ...
     const ipB = sh(['inspect', '-f', '{{(index .NetworkSettings.Networks "bots-factr-net").IPAddress}}', PREFIX + B]).trim()
@@ -354,7 +384,7 @@ describe.skipIf(!REAL)('two bot computers: bot-to-bot and scheduled work (real D
     expect(
       execFileSync('curl', ['-s', '-o', '/dev/null', '-w', '%{http_code}', '-H', `X-Factr-Session-Token: ${bad}`, `http://127.0.0.1:${ports[B]}/api/sessions`], { encoding: 'utf8' })
     ).toBe('401')
-  })
+  }, 60_000)
 
   it('stops a message chain at the hop cap: a turn already two hops deep cannot relay on', () => {
     const out = exec(
@@ -411,6 +441,7 @@ print(m.deliver('${B}', 'ping', Path('/data/profiles/${A}')))"`,
     it('pause stops it firing; resume starts it again', async () => {
       await manage('pause', { name: jobId })
       expect(enabledCronJobs(A)).toBe(0)
+      touchComputer(A) // The user just interacted; a paused schedule no longer protects against idle stop.
       // Let any in-flight fire finish, then count over a window longer than two schedule periods.
       await sleep(60_000)
 
