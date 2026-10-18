@@ -27,6 +27,14 @@ export function selectRetirementCandidates<K, E extends PoolRetireEntry>(
     .sort((a, b) => (a[1].lastActiveAt || 0) - (b[1].lastActiveAt || 0))
 }
 
+/**
+ * How recently used an idle engine may be and still be evicted to make room. A foreground open (the user clicked a bot)
+ * takes the least recently used IDLE engine whatever its age: waiting on the keepalive window left a cold open queued
+ * for a slot, timing out while the engine it needed was still starting. Everything else spares a recently touched one.
+ */
+export const evictionFreshMs = (priority: 'background' | 'foreground' | undefined, keepaliveFreshMs: number) =>
+  priority === 'foreground' ? 0 : keepaliveFreshMs
+
 /** One arbiter owns foreground recovery, idle reaping and stale LRU eviction.
  * A permit freezes backend admission; a GET snapshot never authorizes a kill.
  * Occupied-not-busy diagnosis, parking, backend-work proof and the shared stop boundary

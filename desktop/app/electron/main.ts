@@ -344,7 +344,7 @@ import {
   undialedSshRouteSeeds
 } from './plugin-profile-routes'
 import { clampPoolLimits, parsePoolLimits, POOL_LIMITS_DEFAULTS } from './pool-limits'
-import { createPoolRetirer } from './pool-retire'
+import { createPoolRetirer, evictionFreshMs } from './pool-retire'
 import { createPoolRetirementClient } from './pool-retire-http'
 import {
   BackgroundSlotRetryBackoff,
@@ -10397,8 +10397,12 @@ async function ensureBackend(
   assertNotPassiveSpawn(passive, key)
   // The hard slot is released only after the evicted child exits. Wait for
   // that teardown before entering the spawn queue; otherwise a successful
-  // LRU choice still leaves this wake racing the old child for 30 seconds.
-  await evictLruPoolBackends(poolMaxBackends() - 1)
+  // LRU choice still leaves this wake racing the old child for 30 seconds. A foreground open of a LOCAL engine
+  // takes the least recently used idle one now (a remote source holds no process and evicts nothing it need not).
+  await evictLruPoolBackends(
+    poolMaxBackends() - 1,
+    routeOpts.profileRemoteOverride || routeOpts.globalRemote || routeOpts.primaryRemoteActive ? undefined : spawnPriority
+  )
 
   const entry = {
     process: null,
@@ -10579,7 +10583,7 @@ async function ensureRegistryBackend(
     }
 
     assertNotPassiveSpawn(passive, localRoute.poolKey)
-    await evictLruPoolBackends(poolMaxBackends() - 1)
+    await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
     const localEntry = {
       process: null,
@@ -11332,8 +11336,8 @@ function touchPoolBackend(profile, options: { activeTurn?: boolean } = {}) {
 // across N registered remote connections LRU-evict a REAL local backend that
 // was merely idle past the keepalive window. Descriptors are still reclaimed
 // by the idle reaper.
-async function evictLruPoolBackends(keep) {
-  return poolRetirer.evictTo(Math.max(0, keep), POOL_KEEPALIVE_FRESH_MS)
+async function evictLruPoolBackends(keep, priority?: LocalBackendSpawnPriority) {
+  return poolRetirer.evictTo(Math.max(0, keep), evictionFreshMs(priority, POOL_KEEPALIVE_FRESH_MS))
 }
 
 function startPoolIdleReaper() {

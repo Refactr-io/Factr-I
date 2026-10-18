@@ -15,19 +15,33 @@ export async function engineBotChat(
   bot: Partial<RosterRow>,
   options?: BotRequestOptions
 ): Promise<CanonicalSession | null | undefined> {
-  try {
-    const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(
-      bot,
-      'bot.chat.get',
-      { profile: targetProfile(bot) },
-      options
-    )
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(
+        bot,
+        'bot.chat.get',
+        { profile: targetProfile(bot) },
+        options
+      )
 
-    return res && typeof res === 'object' && 'canonical_session' in res ? (res.canonical_session ?? null) : undefined
-  } catch {
-    return undefined
+      return res && typeof res === 'object' && 'canonical_session' in res ? (res.canonical_session ?? null) : undefined
+    } catch (error) {
+      // A cold open with a full pool queues behind an eviction (and the engine's own start): that is a slow answer, not
+      // a "cannot answer". Ask once more when it is over, so the click does not end in "Could not open".
+      if (attempt === 0 && TRANSIENT_OPEN_FAILURE.test(String((error as Error)?.message ?? error))) {
+        await new Promise(resolve => setTimeout(resolve, OPEN_RETRY_MS))
+
+        continue
+      }
+
+      return undefined
+    }
   }
 }
+
+/** Failures of a cold open that are worth one more try. */
+const TRANSIENT_OPEN_FAILURE = /timed out|free local slot|retired|cancelled|connection descriptor|starting/i
+export const OPEN_RETRY_MS = 2500
 
 /** Register a Bot Chat the desktop just created on this engine. The registered chat comes back: the new one, or
  *  the one that was already there (the first wins). `undefined` when the engine cannot answer. */

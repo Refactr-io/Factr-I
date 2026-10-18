@@ -38,6 +38,23 @@ const WARM_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub(super) fn handles(method: &str) -> bool {
     matches!(method, "bot.chat.deliver" | "bot.chat.deliver_status" | "bot.chat.ensure")
+        || (method == "session.create" && !teammates_warm() && !IN_WARM.try_with(|v| *v).unwrap_or(false))
+}
+
+tokio::task_local! {
+    /// True while a `session.create` that was warmed first is being handed on to the engine's own arm.
+    static IN_WARM: bool;
+}
+
+/// Set once the teammate server's schema is known to be cached (or nothing needs caching).
+static WARM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// When the last warm-up that did not settle ended: a server that cannot start is not retried on every new chat.
+static LAST_TRY: std::sync::Mutex<Option<Instant>> = std::sync::Mutex::new(None);
+const RETRY_AFTER: Duration = Duration::from_secs(60);
+
+fn teammates_warm() -> bool {
+    WARM.load(std::sync::atomic::Ordering::Relaxed)
+        || LAST_TRY.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|at| at.elapsed() < RETRY_AFTER)
 }
 
 // ── failure classification (tools/bot_failure_reasons.py) ────────────────────────────────────────────
@@ -364,12 +381,17 @@ pub(super) fn answer_to(messages: &[factr_base::session::StoredMessage], text: &
     Some(reply)
 }
 
-/// Connect the teammate MCP server once and store its tool schema, if the cache does not hold it yet.
+/// Connect the teammate MCP server once and store its tool schema, if the cache does not hold it yet. A session locks
+/// its tool list when it is created, and only a cached schema is advertised then, so this runs before any chat is
+/// made (`session.create` itself, whoever makes the chat) as well as before `bot.chat.ensure` and a delivery.
 async fn warm_teammates() {
     use factr_base::mcp::{McpClient, McpConfig, McpSchemaCache};
     let config = McpConfig::load();
+    // No such server (the primary profile never has one, nor does a non-bot profile): nothing to cache, and the next
+    // chat looks again, because a profile can be given the server after this engine started.
     let Some(server) = config.servers.get(TEAMMATES_SERVER).filter(|s| s.is_enabled()) else { return };
     if McpSchemaCache::load().tools_for(TEAMMATES_SERVER, server).is_some() {
+        WARM.store(true, std::sync::atomic::Ordering::Relaxed);
         return;
     }
     let server = server.clone();
@@ -381,8 +403,11 @@ async fn warm_teammates() {
             if cache.update(TEAMMATES_SERVER, &server, tools) {
                 cache.save();
             }
+            WARM.store(true, std::sync::atomic::Ordering::Relaxed);
+            return;
         }
     }
+    *LAST_TRY.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
 }
 
 impl Conn {
@@ -395,6 +420,10 @@ impl Conn {
                     warm_teammates().await;
                 }
                 self.bot_chat(method, p).await
+            }
+            "session.create" => {
+                warm_teammates().await;
+                IN_WARM.scope(true, Box::pin(self.dispatch(method, p))).await
             }
             "bot.chat.deliver" => self.deliver_rpc(p).await,
             _ => {
@@ -653,6 +682,29 @@ mod tests {
         again.add_message(Role::User, text(ask));
         again.add_message(Role::Assistant, text("stale answer"));
         assert_eq!(answer_to(&again.messages, ask, again.messages.len()), None);
+    }
+
+    #[tokio::test]
+    async fn any_new_chat_warms_the_teammate_schema_first_but_not_forever_and_never_twice_in_a_row() {
+        use std::sync::atomic::Ordering;
+        WARM.store(false, Ordering::Relaxed);
+        *LAST_TRY.lock().unwrap() = None;
+        // Until the schema is known, a new chat (whoever makes it: the desktop's create, a group, a claim) goes through
+        // the warm-up first ...
+        assert!(handles("session.create"));
+        // ... which then hands the very same request on to the engine's own arm instead of warming again ...
+        assert!(!IN_WARM.scope(true, async { handles("session.create") }).await);
+        // ... and once the schema is cached, or a server that cannot start was just tried, the engine's own arm answers.
+        WARM.store(true, Ordering::Relaxed);
+        assert!(!handles("session.create"));
+        WARM.store(false, Ordering::Relaxed);
+        *LAST_TRY.lock().unwrap() = Some(Instant::now());
+        assert!(!handles("session.create"), "a server that cannot start is not retried on every new chat");
+        *LAST_TRY.lock().unwrap() = Some(Instant::now() - RETRY_AFTER - Duration::from_secs(1));
+        assert!(handles("session.create"), "... but is tried again after a minute");
+        *LAST_TRY.lock().unwrap() = None;
+        // No other method is touched by it.
+        assert!(!handles("session.resume") && !handles("prompt.submit"));
     }
 
     #[test]

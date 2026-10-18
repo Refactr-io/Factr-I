@@ -158,3 +158,59 @@ test('a foreground open with all slots busy evicts the least recently used IDLE 
   release()
   retirer.dispose()
 })
+
+test('a foreground open evicts a recently used idle engine at once; everything else spares it for the keepalive window', async () => {
+  const { createPoolRetirer, evictionFreshMs } = await import('./pool-retire')
+  const { LocalBackendSpawnCoordinator } = await import('./pool-spawn-coordinator')
+
+  assert.equal(evictionFreshMs('foreground', 240_000), 0)
+  assert.equal(evictionFreshMs('background', 240_000), 240_000)
+  assert.equal(evictionFreshMs(undefined, 240_000), 240_000)
+
+  const build = () => {
+    const pool = new Map(
+      ['a', 'b', 'c'].map((key, i) => [key, { kind: 'factr', lastActiveAt: Date.now() - 1000 * (3 - i), port: 4000 + i, process: {}, token: 't' }])
+    )
+
+    const stopped: string[] = []
+
+    const retirer = createPoolRetirer({
+      coordinator: new LocalBackendSpawnCoordinator(3),
+      pool,
+      stopBackend: async key => {
+        stopped.push(key)
+        pool.delete(key)
+      },
+      ...createPoolRetirementClient(async (url: string) => {
+        if (url.includes('/api/health/retirement')) {
+          throw new Error('404')
+        }
+
+        return { sessions: [] }
+      })
+    })
+
+    return { pool, retirer, stopped }
+  }
+
+  // All three were touched seconds ago (inside the keepalive window) and none runs a turn.
+  const background = build()
+
+  assert.deepEqual(await background.retirer.evictTo(2, evictionFreshMs('background', 240_000)), [])
+  assert.deepEqual(background.stopped, [])
+
+  const foreground = build()
+
+  assert.deepEqual(await foreground.retirer.evictTo(2, evictionFreshMs('foreground', 240_000)), ['a'], 'the least recently used goes')
+  assert.deepEqual(foreground.stopped, ['a'])
+  assert.equal(foreground.pool.size, 2)
+
+  // Two foreground opens in a row are serialised: the second sees the first one's room already made.
+  const burst = build()
+  const [first, second] = await Promise.all([burst.retirer.evictTo(2, 0), burst.retirer.evictTo(2, 0)])
+
+  assert.deepEqual([...first, ...second], ['a'], 'one engine freed for two opens that each need one slot')
+  burst.retirer.dispose()
+  background.retirer.dispose()
+  foreground.retirer.dispose()
+})

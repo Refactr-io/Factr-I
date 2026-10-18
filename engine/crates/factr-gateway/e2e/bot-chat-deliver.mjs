@@ -55,7 +55,7 @@ const model = http.createServer((req, res) => {
     const body = JSON.parse(raw || '{}')
     const user = userText(body)
     const delay = user.includes('SLOWTURN') ? 6000 : 0
-    const entry = { user, status: 200 }
+    const entry = { user, status: 200, tools: (body.tools || []).map(t => t.function?.name || t.name) }
     seen.push(entry)
     const fail = (status, message, type) => {
       entry.status = status
@@ -90,20 +90,20 @@ await new Promise(r => model.listen(0, '127.0.0.1', r))
 const modelUrl = `http://127.0.0.1:${model.address().port}/v1`
 
 // ── engines ────────────────────────────────────────────────────────────────────────────────────────────────
-function seed(bot, base, name, window = 8192) {
+function seed(bot, base, name, window = 8192, home = shared) {
   fs.mkdirSync(path.join(cfg, 'profiles', bot), { recursive: true })
   fs.mkdirSync(path.join(scratch, bot), { recursive: true })
-  fs.mkdirSync(shared, { recursive: true })
+  fs.mkdirSync(home, { recursive: true })
   fs.writeFileSync(
-    path.join(shared, 'config.toml'),
+    path.join(home, 'config.toml'),
     `[provider]\ndefault_provider = "local"\n\n[providers.local]\ntype = "openai-compatible"\nbase_url = "${base}"\napi_key = "none"\nrequires_api_key = false\ndefault_model = "${name}"\n\n[[providers.local.models]]\nid = "${name}"\ncontext_window = ${window}\n`
   )
 }
 
-async function start(bot, modelName = MODEL) {
+async function start(bot, modelName = MODEL, home = shared) {
   const token = crypto.randomBytes(24).toString('hex')
   const runtime = fs.mkdtempSync('/tmp/bcd-')
-  const env = { ...process.env, HOME: path.join(scratch, bot), FACTR_HOME: shared, FACTR_CONFIG_HOME: cfg, FACTR_RUNTIME_DIR: runtime, FACTR_DASHBOARD_SESSION_TOKEN: token, OLLAMA_HOST: '127.0.0.1:1' }
+  const env = { ...process.env, HOME: path.join(scratch, bot), FACTR_HOME: home, FACTR_CONFIG_HOME: cfg, FACTR_RUNTIME_DIR: runtime, FACTR_DASHBOARD_SESSION_TOKEN: token, OLLAMA_HOST: '127.0.0.1:1' }
   const child = spawn(BIN, ['--profile', bot, '--provider', 'openai-compatible', '--model', modelName, 'serve', '--host', '127.0.0.1', '--port', '0'], { env, cwd: path.join(scratch, bot), stdio: ['ignore', 'pipe', 'pipe'] })
   let stderr = ''
   child.stderr.on('data', d => { stderr += d })
@@ -208,6 +208,20 @@ try {
   const chatB = await ensureChat(b, 'b')
   const cache = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf8')) : {}
   check(cache.servers?.factr_teammates?.tools?.some(t => t.name === 'message_agent'), "bot.chat.ensure cached the teammate server's tool schema before the chat's first spawn (message_agent is available at once)")
+
+  // The real fresh-install condition: a brand-new store, a bot created, and the desktop makes the bot's FIRST chat with a
+  // plain session.create (+ claim), never `ensure`. The first request the model gets must already offer message_agent.
+  const freshHome = path.join(scratch, 'fresh-engine-home')
+  seed('f', modelUrl, MODEL, 8192, freshHome)
+  fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'config.yaml'), `mcp_servers:\n  factr_teammates:\n    command: ${process.execPath}\n    args: ['${stub}']\n`)
+  const f = await start('f', MODEL, freshHome)
+  check(!fs.existsSync(path.join(freshHome, 'mcp-schema-cache.json')), 'fresh store: nothing cached before the first chat')
+  const firstChat = await ok(f, 'session.create', { title: 'Bot Chat', hidden: true, follow_profile_config: true })
+  await ok(f, 'prompt.submit', { session_id: firstChat.session_id, text: 'first words in a fresh install' })
+  for (let i = 0; i < 100 && !seen.some(x => x.user.includes('first words in a fresh install')); i++) await sleep(100)
+  const firstRequest = seen.find(x => x.user.includes('first words in a fresh install'))
+  check(firstRequest?.tools?.some(t => /message_agent/.test(t)), `the bot's very first session offers message_agent (tools: ${(firstRequest?.tools || []).join(', ').slice(0, 200)})`)
+  await f.stop()
   const chatA = await ensureChat(a, 'a')
   check(chatA !== chatB, 'two engines, two Bot Chats, one shared store')
 
