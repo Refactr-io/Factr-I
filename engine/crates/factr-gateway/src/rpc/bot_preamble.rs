@@ -1,4 +1,4 @@
-//! Bound a bot's first response without changing the agent loop or provider.
+//! Bound an interactive bot's first response without changing the agent loop or provider.
 use super::*;
 use std::sync::{LazyLock, Mutex as StdMutex};
 
@@ -33,7 +33,11 @@ pub(super) fn trace(action: &str, id: &str, client: u64) {
     }
 }
 
-fn first_bot_turn(session: &factr_base::session::Session) -> bool {
+fn first_bot_turn(session: &factr_base::session::Session, kind: &str) -> bool {
+    // Headless bot delivery already has a turn deadline and can wait behind a serial local model.
+    if kind == "bot" {
+        return false;
+    }
     session.custom_title.as_deref().or(session.title.as_deref()) == Some("Bot Chat")
         && !session.messages.iter().any(|m| {
             m.role == factr_base::message::Role::User
@@ -71,7 +75,7 @@ impl Drop for Preamble {
 pub(super) fn arm(conn: &Arc<Conn>, p: &Value) -> Preamble {
     let id = p["session_id"].as_str().unwrap_or_default().to_string();
     let first = std::env::var("FACTR_PROFILE").is_ok_and(|n| n != "default")
-        && factr_base::session::Session::load(&id).is_ok_and(|s| first_bot_turn(&s));
+        && factr_base::session::Session::load(&id).is_ok_and(|s| first_bot_turn(&s, conn.run_kind));
     if !first {
         return Preamble(None);
     }
@@ -143,7 +147,8 @@ mod tests {
     #[test]
     fn only_an_empty_bot_chat_gets_the_first_response_deadline() {
         let mut s = factr_base::session::Session::create(None, Some("Bot Chat".into()));
-        assert!(first_bot_turn(&s));
+        assert!(first_bot_turn(&s, "desktop"));
+        assert!(!first_bot_turn(&s, "bot"));
         s.add_message(
             factr_base::message::Role::User,
             vec![factr_base::message::ContentBlock::Text {
@@ -151,6 +156,6 @@ mod tests {
                 cache_control: None,
             }],
         );
-        assert!(!first_bot_turn(&s));
+        assert!(!first_bot_turn(&s, "desktop"));
     }
 }

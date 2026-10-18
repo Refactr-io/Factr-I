@@ -276,6 +276,18 @@ try {
     await ok(firstWindow, 'prompt.submit', { session_id: stalled.session_id, text: 'retry after stalled intro' })
     for (let i = 0; i < 100 && !seen.some(e => e.user.includes('retry after stalled intro')); i++) await sleep(100)
     check(seen.some(e => e.user.includes('retry after stalled intro')), 'the bot accepts the next turn after first-response cancellation')
+    // A queued native delivery can wait behind its sender on a serial model.
+    const delayedHome = path.join(scratch, 'delayed-native-home')
+    seed('delayed-native', modelUrl, MODEL, 8192, delayedHome)
+    const delayedBot = await start('delayed-native', MODEL, delayedHome)
+    const delayed = await deliver(delayedBot, {
+      profile: 'delayed-native', text: attributed('STALLINTRO native delivery'),
+      from_handle: 'a', envelope_id: id(), hops: 1
+    })
+    check(delayed.ok === true && delayed.reply.includes('STALLINTRO native delivery'),
+      'a native first delivery still completes when the model starts after the 60-second intro budget')
+    check(!delayedBot.stderr().includes('bot-preamble: timeout'), 'native deliveries retain their own bounded turn deadline')
+    await delayedBot.stop()
   }
   firstWindow.close()
   await f.stop()
