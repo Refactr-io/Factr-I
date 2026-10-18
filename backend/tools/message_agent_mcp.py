@@ -141,9 +141,15 @@ def deliver(target: str, message: str, home: Optional[Path] = None) -> tuple[str
 
     resolved = dm._resolve_local_name(raw, list(homes), root)
     if resolved is not None and resolved != me:
-        from tools.bot_relay import HAS_COMPUTER_MESSAGE, has_computer
+        from tools.bot_relay import HAS_COMPUTER_MESSAGE, has_computer, local_target, relay_alive
         if has_computer(homes[resolved]):
             return (f"@{_handle(resolved)}: {HAS_COMPUTER_MESSAGE}. Do not retry.", False)
+        if relay_alive(root):
+            # The Desktop relay is running: the message becomes a real turn in the teammate's own Bot Chat, on its own
+            # engine (`bot.chat.deliver`), not a Python CLI turn in a session its Bot Chat never shows.
+            text = _relay_local(root, me, content, local_target(resolved, _handle(resolved)))
+            if text is not None:
+                return text
         file = dm._write_dm_file(content)
         cmd = dm._delivery_command([*bot_cli_prefix(), "-p", resolved, *BOT_CHAT_TURN_ARGS], file,
                                    stdin_file=False, profile_home=homes[resolved], author=author)
@@ -176,6 +182,23 @@ def deliver(target: str, message: str, home: Optional[Path] = None) -> tuple[str
     if resolved == me:
         return ("You can't message yourself. Pick a teammate from the roster.", False)
     return (f"No teammate named '{raw}'. Teammates: {', '.join(teammates) or 'none'}.", False)
+
+
+def _relay_local(root: Path, me: str, content: str, match: dict) -> "tuple[str, bool] | None":
+    """Queue ``content`` for another bot on this install through the Desktop relay and wait for its reply.
+    None when the relay could not be used (the caller then runs the local CLI turn instead)."""
+    try:
+        from tools.bot_mode_probe import _handle
+        from tools.bot_relay import EnvelopeRefusedError, enqueue_envelope, waiter_command
+
+        try:
+            envelope = enqueue_envelope(root, target=match, message=content, sender_profile=me,
+                                        sender_handle=_handle(me))
+        except EnvelopeRefusedError as exc:
+            return (json.dumps({"error": str(exc), "reason": exc.reason}), False)
+        return _run(waiter_command(root, envelope), label=f"@{match['handle']}")
+    except Exception:
+        return None
 
 
 # ── MCP stdio server ──────────────────────────────────────────────────────────────────────────

@@ -38,6 +38,20 @@ CLAIMED_DIR = "claimed"
 REPLIES_DIR = "replies"
 LOCKS_DIR = "locks"
 
+# The Desktop's relay (relay.ts) stamps `<root>/bot_relay/desktop.json` every few seconds while it runs. A bot's
+# message_agent delivers into a teammate's own engine through the relay only while that stamp is fresh; without a
+# Desktop (a headless CLI run) it falls back to the local CLI turn.
+RELAY_BEAT_FILE = "desktop.json"
+RELAY_BEAT_FRESH_SECONDS = 45
+# The Desktop's id for this machine (the "local" connection): a target there is another bot on this install.
+LOCAL_CONNECTION = "local"
+# Loop cap (OpenGrokBot's MAX_HOPS=2): a relayed turn may relay on, but a chain longer than this is refused. The target
+# engine writes the envelope's hop count to `<root>/bot_relay/hops/<profile>.json` for the turn it runs, and the next
+# enqueue from that turn is hops + 1 (FACTR_RELAY_HOPS in the environment wins, for a turn run by a child process).
+MAX_RELAY_HOPS = 2
+RELAY_HOPS_ENV = "FACTR_RELAY_HOPS"
+HOPS_DIR = "hops"
+
 # Config fallbacks (real knobs: ``bot_mode.turn_wait_seconds`` / ``bot_mode.envelope_ttl_seconds``).
 TURN_WAIT_SECONDS_FALLBACK = 120
 DEFAULT_ENVELOPE_TTL_SECONDS = 900  # older envelopes are refused at drain with 'queued_expired'
@@ -292,18 +306,54 @@ def _target_liveness(root: Path | str, target: dict) -> Optional[bool]:
         return None
 
 
+def relay_alive(root: Path | str) -> bool:
+    """Whether the Desktop relay stamped its heartbeat recently (so an envelope will actually be drained). Never raises."""
+    try:
+        return time.time() - (relay_root(root) / RELAY_BEAT_FILE).stat().st_mtime <= RELAY_BEAT_FRESH_SECONDS
+    except OSError:
+        return False
+
+
+def local_target(profile: str, handle: str) -> dict:
+    """A relay target row for another bot on THIS install (the Desktop's 'local' connection)."""
+    return {"profile": profile, "handle": handle, "connection_id": LOCAL_CONNECTION, "connection_label": "this computer"}
+
+
+def current_relay_hops(root: Path | str | None = None, profile: "str | None" = None) -> int:
+    """How many relay hops the turn running now already travelled (0 when not relayed): FACTR_RELAY_HOPS, else the
+    marker the target engine wrote for ``profile``'s turn (ignored when stale: a crashed turn)."""
+    raw = os.environ.get(RELAY_HOPS_ENV)
+    if raw is None and root is not None and profile:
+        try:
+            name = re.sub(r"[^A-Za-z0-9_-]", "_", str(profile))
+            data = json.loads((relay_root(root) / HOPS_DIR / f"{name}.json").read_text(encoding="utf-8"))
+            fresh = time.time() - float(data.get("at", 0)) <= TURN_ATTEMPT_TIMEOUT_SECONDS * TURN_MAX_ATTEMPTS
+            raw = data.get("hops") if fresh else None
+        except (OSError, ValueError, AttributeError):
+            raw = None
+    try:
+        return max(0, min(int(raw if raw is not None else 0), 99))
+    except (TypeError, ValueError):
+        return 0
+
+
 def enqueue_envelope(root: Path | str, *, target: dict, message: str, sender_profile: str, sender_handle: str) -> dict:
     """Queue a cross-connection DM for the Desktop relay; returns the envelope. Raises
     ``EnvelopeRefusedError`` ('runtime_offline') without writing when the target is
     definitively offline; unknown liveness enqueues (fail-open)."""
-    if _target_liveness(root, target) is False:
+    # The Desktop's own machine is never "offline" to the relay roster (it lists OTHER connections' agents).
+    if target.get("connection_id") != LOCAL_CONNECTION and _target_liveness(root, target) is False:
         label = (f"@{target.get('handle') or target.get('profile') or '?'} on "
                  f"{target.get('connection_label') or target.get('connection_id') or '?'}")
         raise EnvelopeRefusedError("runtime_offline", f"{label} is offline right now — the message was NOT queued. "
                                    "Try again once that machine reconnects to the Desktop.")
+    hops = current_relay_hops(root, sender_profile) + 1
+    if hops > MAX_RELAY_HOPS:
+        raise EnvelopeRefusedError("hop_limit", f"this message already crossed {MAX_RELAY_HOPS} bots on its way here; "
+                                   "it was NOT sent. Answer from what you have instead of passing it on.")
     base = _ensure_dirs(root)
     envelope = {
-        "id": uuid.uuid4().hex, "created_at": int(time.time()),
+        "id": uuid.uuid4().hex, "created_at": int(time.time()), "hops": hops,
         "from_profile": sender_profile, "from_handle": sender_handle,
         "target_connection": target["connection_id"], "target_profile": target["profile"],
         "target_handle": target["handle"], "message": message,
@@ -491,7 +541,8 @@ def waiter_command(root: Path | str, envelope: dict) -> str:
     quoted), never as source text, so a hostile handle or connection id stays data.
     """
     reply_path = str(relay_root(root) / REPLIES_DIR / f"{envelope['id']}.json")
-    label = f"@{envelope.get('target_handle', '')} on {envelope.get('target_connection', '')}"
+    label = (f"@{envelope.get('target_handle', '')}" if envelope.get("target_connection") == LOCAL_CONNECTION
+             else f"@{envelope.get('target_handle', '')} on {envelope.get('target_connection', '')}")
     runner = str(Path(__file__).resolve().with_name("bot_mode_dm.py"))
     argv = [sys.executable or "python3", runner, "--wait-reply", reply_path, label, str(REPLY_WAIT_SECONDS)]
     if sys.platform == "win32":
