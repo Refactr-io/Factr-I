@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 const work = fileURLToPath(new URL('../../../../', import.meta.url))
 const scratch = fs.mkdtempSync(path.join(process.env.SCRATCH || os.tmpdir(), 'bots-checklist-'))
-const suites = ['bot-chat-registry.mjs', 'bot-chat-deliver.mjs', 'bot-runtime.mts', 'bot-schedules.mjs']
+const suites = ['bot-chat-registry.mjs', 'bot-chat-deliver.mjs', 'bot-runtime.mts', 'bot-schedules.mjs', 'bot-feature-reconnect.mjs']
 for (const name of suites) {
   const command = name.endsWith('.mts') ? path.join(work, 'desktop/node_modules/.bin/tsx') : process.execPath
   const log = fs.openSync(path.join(scratch, `${name}.log`), 'w')
@@ -31,7 +31,7 @@ const cases = [
   ['Auth reason and transient retry', 'bot-chat-deliver', 'GUI: typed reason displayed'],
   ['Groups', 'bot-runtime (member session, turn, restart)', 'PARTIAL: room-round coordinator remains in Desktop; no close-Desktop durable driver'],
   ['Routines create/fire/pause/resume/delete', 'bot-schedules', 'GUI: natural-language schedule and Run now control'],
-  ['Scheduled bot-chat delivery', 'bot-schedules (own canonical engine chat)', 'PARTIAL: explicit other-profile delivery needs courier integration'],
+  ['Scheduled bot-chat delivery', 'bot-schedules (own and cross-profile canonical engine chats through the courier)', 'GUI: output rendering and reopen'],
   ['Cron cannot self-schedule', 'bot-schedules (model tool policy)', 'GUI: model refusal wording; external tool attempts remain denied by existing policy'],
   ['Parallel children and Stop', 'bot-runtime', 'GUI: child status and partial transcript'],
   ['Second machine', 'bot-runtime (relay protocol only)', 'EXTERNAL: physical second-machine connection and Create on'],
@@ -43,4 +43,4 @@ const cases = [
 assert.equal(cases.length, 17)
 const output = { suites, cases, note: 'Suite success is engine evidence only. Remaining scope is not counted as passed.' }
 fs.writeFileSync(path.join(scratch, 'checklist.json'), JSON.stringify(output, null, 2) + '\n')
-console.log(`PASS four engine suites; all 17 flows accounted for with explicit limits. Artifact: ${scratch}/checklist.json`)
+console.log(`PASS ${suites.length} engine suites; all 17 flows accounted for with explicit limits. Artifact: ${scratch}/checklist.json`)

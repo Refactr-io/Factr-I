@@ -38,6 +38,7 @@ mod bot_routine;
 mod bot_stop;
 mod bot_group;
 mod bot_http;
+mod feature_link;
 pub(crate) use bot_http::deliver as deliver_bot_output;
 pub(crate) use bot_message::start as start_bot_replies;
 mod bot_retirement;
@@ -302,8 +303,9 @@ impl RpcError {
 
 /// A WebSocket to the Factr feature backend for one desktop connection.
 struct Upstream {
+    port: u16,
     tx: mpsc::Sender<String>,
-    pending: Mutex<HashMap<String, oneshot::Sender<Value>>>,
+    pending: Arc<feature_link::Replies>,
     tasks: Vec<tokio::task::AbortHandle>,
 }
 
@@ -3400,18 +3402,22 @@ Reply ONLY with a single JSON object on one line:\n\
             crate::note_unsupported("rpc", method);
             return Err(RpcError::unsupported(method));
         };
+        let _lease = features.lease();
         let upstream = self.upstream(&features).await.map_err(RpcError::internal)?;
         let id = format!("fwd-{}", self.next_forward.fetch_add(1, Ordering::Relaxed));
-        let (tx, rx) = oneshot::channel();
-        upstream.pending.lock().await.insert(id.clone(), tx);
+        let rx = upstream.pending.register(id.clone()).await.map_err(RpcError::internal)?;
         let frame = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-        upstream
+        if upstream
             .tx
             .send(frame.to_string())
             .await
-            .map_err(|_| RpcError::internal(anyhow!("feature backend connection closed")))?;
-        let reply = tokio::time::timeout(FORWARD_TIMEOUT, rx)
-            .await
+            .is_err() {
+            upstream.pending.close().await;
+            return Err(RpcError::internal(anyhow!("feature backend connection closed")));
+        }
+        let received = tokio::time::timeout(FORWARD_TIMEOUT, rx).await;
+        upstream.pending.remove(&id).await;
+        let reply = received
             .map_err(|_| RpcError::internal(anyhow!("{method} timed out in the feature backend")))?
             .map_err(|_| RpcError::internal(anyhow!("the feature backend restarted; try again")))?;
         features.touch(method, "forwarded-rpc");
@@ -3441,28 +3447,34 @@ Reply ONLY with a single JSON object on one line:\n\
         features: &crate::features::Features,
     ) -> Result<Arc<Upstream>> {
         let mut slot = self.upstream.lock().await;
+        // Join an in-progress idle shutdown/start before considering the cached socket.
+        let port = features.port().await?;
         if let Some(up) = slot.as_ref() {
-            if !up.tx.is_closed() {
+            if up.port == port && !up.tx.is_closed() && up.pending.is_open().await {
                 return Ok(up.clone());
             }
         }
-        let port = features.port().await?;
         let url = format!("ws://127.0.0.1:{port}/api/ws?token={}", features.token);
         let (ws, _) = tokio_tungstenite::connect_async(url)
             .await
             .context("connecting to the feature backend")?;
         let (mut ws_tx, mut ws_rx) = ws.split();
         let (tx, mut rx) = mpsc::channel::<String>(256);
+        let pending = Arc::new(feature_link::Replies::default());
+        let writer_pending = pending.clone();
         let writer = tokio::spawn(async move {
             while let Some(text) = rx.recv().await {
                 if ws_tx.send(Message::Text(text)).await.is_err() {
                     break;
                 }
             }
+            writer_pending.close().await;
         });
         let up = Arc::new_cyclic(|weak: &std::sync::Weak<Upstream>| {
             let weak_up = weak.clone();
             let conn = Arc::downgrade(self);
+            let reader_pending = pending.clone();
+            let writer_abort = writer.abort_handle();
             let reader = tokio::spawn(async move {
                 while let Some(Ok(msg)) = ws_rx.next().await {
                     let Message::Text(text) = msg else { continue };
@@ -3474,9 +3486,7 @@ Reply ONLY with a single JSON object on one line:\n\
                     };
                     if frame.get("method").is_none() {
                         if let Some(id) = frame["id"].as_str() {
-                            if let Some(tx) = up.pending.lock().await.remove(id) {
-                                let _ = tx.send(frame);
-                            }
+                            up.pending.resolve(id, frame.clone()).await;
                         }
                     } else if frame["method"] == "event" {
                         // The desktop already has our own gateway.ready.
@@ -3492,10 +3502,13 @@ Reply ONLY with a single JSON object on one line:\n\
                         conn.send_json(frame).await;
                     }
                 }
+                reader_pending.close().await;
+                writer_abort.abort();
             });
             Upstream {
+                port,
                 tx,
-                pending: Mutex::new(HashMap::new()),
+                pending,
                 tasks: vec![writer.abort_handle(), reader.abort_handle()],
             }
         });
