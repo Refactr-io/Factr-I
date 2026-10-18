@@ -29,6 +29,7 @@ mod detached;
 mod driver;
 pub(crate) use driver::start as start_driver;
 pub(crate) mod attach;
+mod bot_chat;
 mod local_state;
 mod settings;
 pub(crate) use settings::{config_record, yolo_active};
@@ -1514,6 +1515,7 @@ impl Conn {
         match method {
             "ping" | "gateway.ping" => Ok(json!({})),
             m if local_state::handles(m) => self.local_state(m, p).await,
+            m if bot_chat::handles(m) => self.bot_chat(m, p).await,
             m if attach::handles(m) => {
                 // Only a session this connection has open or the engine has stored may stage files.
                 if let Some(id) = p["session_id"].as_str().filter(|s| !s.is_empty()) {

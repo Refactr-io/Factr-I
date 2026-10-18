@@ -1,0 +1,289 @@
+//! `bot.chat.get` / `bot.chat.ensure` / `bot.chat.claim`: this engine's one canonical "Bot Chat".
+//!
+//! A bot runs on its own engine, so its chats live in this engine's store, not in the primary's
+//! state.db that `profiles.list` reads for `canonical_session`. The window asks the bot's own engine
+//! instead. Host engines of several bots share one engine home (`FACTR_HOME`, one session store), so a
+//! title alone cannot say whose "Bot Chat" it is: the registry is a pointer per profile
+//! (`bot_chat:<profile>` in the engine's settings) to a live, top-level session. `ensure` mints the chat
+//! the way the desktop does (`session.create` with the title) when the pointer is empty or stale, and
+//! `claim` lets the desktop's own create flow register the session it just made. One minter at a time,
+//! so concurrent callers still end up with exactly one chat.
+
+use super::*;
+
+const TITLE: &str = "Bot Chat";
+
+pub(super) fn handles(method: &str) -> bool {
+    matches!(method, "bot.chat.get" | "bot.chat.ensure" | "bot.chat.claim")
+}
+
+/// The pointed-at session among the engine's session infos: live and top-level.
+fn find<'a>(infos: &'a [Value], id: &str) -> Option<&'a Value> {
+    infos.iter().find(|s| s["session_id"] == id && s["parent_session_id"].is_null() && s["archived"] != true)
+}
+
+/// The row as the roster's `canonical_session` carries it.
+fn canonical_row(info: &Value) -> Value {
+    let mut row = map::session_row(info);
+    row["root_title"] = json!(TITLE);
+    row["last_active"] = row["started_at"].clone();
+    row
+}
+
+/// One minter at a time per engine process: two windows (or a window and a relay) asking at once
+/// must not both find nothing and both create.
+static MINT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// What the registry needs from the engine: the pointer, the session list, a way to mint.
+trait Store {
+    fn pointer(&self) -> Option<String>;
+    fn set_pointer(&self, id: &str);
+    async fn list(&self) -> Result<Vec<Value>, RpcError>;
+    /// Create a session titled "Bot Chat"; its id.
+    async fn create(&self) -> Result<String, RpcError>;
+}
+
+/// The pointer's live session, if any.
+async fn current(store: &impl Store) -> Result<Option<Value>, RpcError> {
+    let Some(id) = store.pointer() else { return Ok(None) };
+    Ok(find(&store.list().await?, &id).cloned())
+}
+
+/// `get`: the profile's Bot Chat or none. `ensure`: the same, minted when missing. `claim`: register `id`
+/// (a chat the desktop just created) unless the profile already has a live one, which then wins.
+async fn resolve(store: &impl Store, method: &str, claim: Option<&str>) -> Result<Value, RpcError> {
+    let _one = MINT.lock().await;
+    if let Some(info) = current(store).await? {
+        return Ok(json!({ "canonical_session": canonical_row(&info), "created": false, "claimed": false }));
+    }
+    if let Some(id) = claim {
+        let infos = store.list().await?;
+        let info = find(&infos, id).ok_or_else(|| RpcError::params("unknown or archived session_id"))?;
+        store.set_pointer(id);
+        return Ok(json!({ "canonical_session": canonical_row(info), "created": false, "claimed": true }));
+    }
+    if method != "bot.chat.ensure" {
+        return Ok(json!({ "canonical_session": null, "created": false, "claimed": false }));
+    }
+    let id = store.create().await?;
+    let infos = store.list().await?;
+    let info = find(&infos, &id).ok_or_else(|| RpcError::internal(anyhow!("the Bot Chat was created but the engine does not list it")))?;
+    store.set_pointer(&id);
+    Ok(json!({ "canonical_session": canonical_row(info), "created": true, "claimed": false }))
+}
+
+struct EngineStore<'a> {
+    conn: &'a Arc<Conn>,
+    params: &'a Value,
+}
+
+impl EngineStore<'_> {
+    fn key() -> String {
+        format!("bot_chat:{}", crate::profile::current().name.as_deref().filter(|n| !n.is_empty()).unwrap_or("default"))
+    }
+}
+
+impl Store for EngineStore<'_> {
+    fn pointer(&self) -> Option<String> {
+        crate::rpc::entries_or_log(&self.conn.config.home)?.setting(&Self::key()).filter(|id| !id.is_empty())
+    }
+
+    fn set_pointer(&self, id: &str) {
+        if let Some(store) = crate::rpc::entries_or_log(&self.conn.config.home) {
+            let _ = store.set_setting(&Self::key(), id);
+        }
+    }
+
+    async fn list(&self) -> Result<Vec<Value>, RpcError> {
+        let reply = self
+            .conn
+            .call(json!({ "req": "list_sessions", "limit": 1000, "include_archived": false }))
+            .await
+            .map_err(RpcError::internal)?;
+        Ok(reply["sessions"].as_array().cloned().unwrap_or_default())
+    }
+
+    /// The desktop's own steps: `session.create` with the title, then the same eager `session.title`
+    /// write, so the row is in the store before anyone can ask again.
+    async fn create(&self) -> Result<String, RpcError> {
+        let mut params = json!({ "title": TITLE, "hidden": true, "follow_profile_config": true });
+        if let Some(cwd) = self.params["cwd"].as_str() {
+            params["cwd"] = json!(cwd);
+        }
+        let created = Box::pin(self.conn.dispatch("session.create", &params)).await?;
+        let id = created["stored_session_id"].as_str().or(created["session_id"].as_str()).unwrap_or_default().to_string();
+        if id.is_empty() {
+            return Err(RpcError::internal(anyhow!("the engine created no session")));
+        }
+        Box::pin(self.conn.dispatch("session.title", &json!({ "session_id": id, "title": TITLE }))).await?;
+        Ok(id)
+    }
+}
+
+impl Conn {
+    pub(super) async fn bot_chat(self: &Arc<Self>, method: &str, p: &Value) -> Result<Value, RpcError> {
+        let claim = match method {
+            "bot.chat.claim" => Some(p["session_id"].as_str().filter(|s| !s.is_empty()).ok_or_else(|| RpcError::params("session_id is required"))?),
+            _ => None,
+        };
+        resolve(&EngineStore { conn: self, params: p }, method, claim).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn info(id: &str) -> Value {
+        json!({ "session_id": id, "title": TITLE, "parent_session_id": null })
+    }
+
+    /// A store that lists what was created, like the engine's.
+    struct Fake {
+        rows: Mutex<Vec<Value>>,
+        pointer: Mutex<Option<String>>,
+        creates: AtomicUsize,
+    }
+
+    impl Fake {
+        fn new(rows: Vec<Value>) -> Self {
+            Self { rows: Mutex::new(rows), pointer: Mutex::new(None), creates: AtomicUsize::new(0) }
+        }
+        async fn run(&self, method: &str) -> Value {
+            resolve(self, method, None).await.unwrap()
+        }
+        fn id_of(v: &Value) -> Option<&str> {
+            v["canonical_session"]["id"].as_str()
+        }
+    }
+
+    impl Store for Fake {
+        fn pointer(&self) -> Option<String> {
+            self.pointer.lock().unwrap().clone()
+        }
+        fn set_pointer(&self, id: &str) {
+            *self.pointer.lock().unwrap() = Some(id.to_string());
+        }
+        async fn list(&self) -> Result<Vec<Value>, RpcError> {
+            Ok(self.rows.lock().unwrap().clone())
+        }
+        async fn create(&self) -> Result<String, RpcError> {
+            tokio::task::yield_now().await; // a slow create: a second caller must queue behind it
+            let id = format!("minted-{}", self.creates.fetch_add(1, Ordering::SeqCst));
+            self.rows.lock().unwrap().push(info(&id));
+            Ok(id)
+        }
+    }
+
+    #[test]
+    fn only_a_live_top_level_session_can_be_the_registered_chat() {
+        let mut archived = info("old");
+        archived["archived"] = json!(true);
+        let mut child = info("child");
+        child["parent_session_id"] = json!("parent");
+        let infos = vec![archived, child, info("mine")];
+        assert!(find(&infos, "mine").is_some());
+        assert!(find(&infos, "old").is_none() && find(&infos, "child").is_none() && find(&infos, "nope").is_none());
+    }
+
+    #[test]
+    fn the_row_has_the_roster_shape() {
+        let row = canonical_row(&info("s1"));
+        for key in ["id", "resolved_id", "root_title", "title", "preview", "started_at", "last_active", "message_count"] {
+            assert!(row.get(key).is_some(), "{key} missing in {row}");
+        }
+        assert_eq!((row["id"].as_str(), row["root_title"].as_str(), row["title"].as_str()), (Some("s1"), Some(TITLE), Some(TITLE)));
+    }
+
+    #[tokio::test]
+    async fn get_never_creates_and_ensure_creates_once_then_finds_the_same_chat() {
+        let store = Fake::new(Vec::new());
+        let missing = store.run("bot.chat.get").await;
+        assert!(missing["canonical_session"].is_null() && missing["created"] == false);
+        assert_eq!(store.creates.load(Ordering::SeqCst), 0, "get is read-only");
+
+        let first = store.run("bot.chat.ensure").await;
+        assert_eq!((first["created"].as_bool(), Fake::id_of(&first)), (Some(true), Some("minted-0")));
+        let again = store.run("bot.chat.ensure").await;
+        assert_eq!((again["created"].as_bool(), Fake::id_of(&again)), (Some(false), Some("minted-0")));
+        assert_eq!(Fake::id_of(&store.run("bot.chat.get").await), Some("minted-0"));
+        assert_eq!(store.creates.load(Ordering::SeqCst), 1, "exactly one Bot Chat per profile");
+    }
+
+    #[tokio::test]
+    async fn another_profiles_chat_in_a_shared_store_is_not_this_profiles_chat() {
+        // The store lists a "Bot Chat" (another bot's, titled the same). With no pointer of our own it is not ours.
+        let store = Fake::new(vec![info("someone-elses")]);
+        assert!(store.run("bot.chat.get").await["canonical_session"].is_null());
+        assert_eq!(Fake::id_of(&store.run("bot.chat.ensure").await), Some("minted-0"));
+    }
+
+    #[tokio::test]
+    async fn concurrent_ensures_still_mint_exactly_one() {
+        let store = std::sync::Arc::new(Fake::new(Vec::new()));
+        let runs: Vec<_> = (0..8)
+            .map(|_| {
+                let store = store.clone();
+                tokio::spawn(async move { Fake::id_of(&store.run("bot.chat.ensure").await).unwrap().to_string() })
+            })
+            .collect();
+        let mut ids = Vec::new();
+        for run in runs {
+            ids.push(run.await.unwrap());
+        }
+        assert!(ids.iter().all(|id| id == "minted-0"), "{ids:?}");
+        assert_eq!(store.creates.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn a_retired_chat_is_replaced_and_a_stale_pointer_is_not_trusted() {
+        let store = Fake::new(vec![info("first")]);
+        store.set_pointer("first");
+        assert_eq!(Fake::id_of(&store.run("bot.chat.get").await), Some("first"));
+        store.rows.lock().unwrap()[0]["archived"] = json!(true); // archived = retired
+        assert!(store.run("bot.chat.get").await["canonical_session"].is_null());
+        assert_eq!(Fake::id_of(&store.run("bot.chat.ensure").await), Some("minted-0"));
+        store.rows.lock().unwrap().clear(); // the pointed-at file is gone
+        assert!(store.run("bot.chat.get").await["canonical_session"].is_null());
+    }
+
+    #[tokio::test]
+    async fn claim_registers_the_desktops_own_chat_unless_one_already_wins() {
+        let store = Fake::new(vec![info("made-by-the-desktop"), info("racer")]);
+        let claimed = resolve(&store, "bot.chat.claim", Some("made-by-the-desktop")).await.unwrap();
+        assert_eq!((claimed["claimed"].as_bool(), Fake::id_of(&claimed)), (Some(true), Some("made-by-the-desktop")));
+        let lost = resolve(&store, "bot.chat.claim", Some("racer")).await.unwrap();
+        assert_eq!((lost["claimed"].as_bool(), Fake::id_of(&lost)), (Some(false), Some("made-by-the-desktop")), "the registered chat wins");
+        let missing = resolve(&Fake::new(Vec::new()), "bot.chat.claim", Some("ghost")).await;
+        assert!(missing.is_err(), "an unknown session cannot be registered");
+    }
+
+    #[tokio::test]
+    async fn a_chat_that_never_shows_up_in_the_list_is_an_error_not_a_second_mint() {
+        struct Blind(AtomicUsize);
+        impl Store for Blind {
+            fn pointer(&self) -> Option<String> {
+                None
+            }
+            fn set_pointer(&self, _: &str) {}
+            async fn list(&self) -> Result<Vec<Value>, RpcError> {
+                Ok(Vec::new())
+            }
+            async fn create(&self) -> Result<String, RpcError> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Ok("ghost".into())
+            }
+        }
+        let blind = Blind(AtomicUsize::new(0));
+        assert!(resolve(&blind, "bot.chat.ensure", None).await.is_err());
+        assert_eq!(blind.0.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn only_the_bot_chat_methods_are_handled() {
+        assert!(handles("bot.chat.get") && handles("bot.chat.ensure") && handles("bot.chat.claim"));
+        assert!(!handles("bot.chat") && !handles("session.list"));
+    }
+}
