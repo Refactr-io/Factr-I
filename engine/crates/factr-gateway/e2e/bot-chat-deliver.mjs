@@ -11,6 +11,8 @@
 //   same envelope_id   -> one turn, the same answer
 //   a window holds the chat, idle -> the delivery still runs headless and the window sees the turn live
 //   a window is mid-turn on it     -> the delivery waits for that turn to end, then runs; the two never interleave
+// Also: the teammate MCP server's tool schema is cached on first connection, so a fresh install's first chat could not
+// load `message_agent` until the next start. `bot.chat.ensure` warms the cache first (checked with a stub MCP server).
 // With REAL_MODEL=1 a third engine also answers one turn through local Ollama (factr/qwen3.8-27b:latest, 64k context).
 //
 //   cargo build --release --bin factr && node crates/factr-gateway/e2e/bot-chat-deliver.mjs
@@ -179,12 +181,33 @@ async function ensureChat(eng, profile) {
 }
 const textOf = m => (typeof m.text === 'string' ? m.text : typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? m))
 
+// A stub stdio MCP server exposing `message_agent`, standing in for tools/message_agent_mcp.py.
+const stub = path.join(scratch, 'teammates-stub.mjs')
+fs.writeFileSync(
+  stub,
+  `import readline from 'node:readline'
+readline.createInterface({ input: process.stdin }).on('line', line => {
+  const m = JSON.parse(line)
+  if (m.id === undefined) return
+  const result = m.method === 'initialize' ? { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'factr_teammates', version: '1' } }
+    : m.method === 'tools/list' ? { tools: [{ name: 'message_agent', description: 'Message a teammate', inputSchema: { type: 'object', properties: { target: { type: 'string' }, message: { type: 'string' } }, required: ['target', 'message'] } }] }
+    : {}
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\\n')
+})
+`
+)
+
 try {
   seed('a', modelUrl, MODEL)
   seed('b', modelUrl, MODEL)
+  fs.writeFileSync(path.join(cfg, 'profiles', 'b', 'config.yaml'), `mcp_servers:\n  factr_teammates:\n    command: ${process.execPath}\n    args: ['${stub}']\n`)
   const a = await start('a')
   const b = await start('b')
+  const cachePath = path.join(shared, 'mcp-schema-cache.json')
+  check(!fs.existsSync(cachePath), 'a fresh install: no MCP schema cache yet')
   const chatB = await ensureChat(b, 'b')
+  const cache = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf8')) : {}
+  check(cache.servers?.factr_teammates?.tools?.some(t => t.name === 'message_agent'), "bot.chat.ensure cached the teammate server's tool schema before the chat's first spawn (message_agent is available at once)")
   const chatA = await ensureChat(a, 'a')
   check(chatA !== chatB, 'two engines, two Bot Chats, one shared store')
 
