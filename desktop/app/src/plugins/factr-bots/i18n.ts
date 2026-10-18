@@ -320,7 +320,7 @@ type BotsMessages = {
    *  Daily/Hourly, the job verbs) resolves against core's `cron` section. */
   /** Bot computers: one Docker container per bot, started on demand. */
   computer: {
-    word: { noDocker: string; off: string; on: string; starting: string; working: string }
+    word: { localSandbox: string; noDocker: string; off: string; on: string; starting: string; working: string }
     start: string
     stop: string
     starting: string
@@ -647,7 +647,7 @@ const en: BotsMessages = {
     controlTaken: 'Another viewer took control. Watching only.'
   },
   computer: {
-    word: { noDocker: 'No Docker', off: 'Off', on: 'On', starting: 'Starting', working: 'Working' },
+    word: { localSandbox: 'Sandbox', noDocker: 'No Docker', off: 'Off', on: 'On', starting: 'Starting', working: 'Working' },
     start: 'Start computer',
     stop: 'Stop computer',
     starting: 'Starting your bot\u2019s computer',

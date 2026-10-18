@@ -91,7 +91,7 @@ describe('every source-scoped row resolves to an immutable owner', () => {
 })
 
 describe('requestForBot dispatches on the owner, not the active gateway', () => {
-  it('sends source-scoped rows through requestProfile and local rows through request', async () => {
+  it('routes local native sessions by profile and keeps explicit connection owners', async () => {
     await requestForBot({ name: 'local-bot' }, 'session.create', { title: 'x' })
     await requestForBot({ connectionId: 'local', name: 'local-bot', sourceScoped: true }, 'session.create', {
       title: 'x'
@@ -100,12 +100,24 @@ describe('requestForBot dispatches on the owner, not the active gateway', () => 
       text: 'hi'
     })
 
-    expect(request.mock.calls.map(([method]) => method)).toEqual(['session.create'])
+    expect(request).not.toHaveBeenCalled()
     // A registered LOCAL source still uses the explicit descriptor.
-    expect(requestProfile.mock.calls.map(([route, method]) => [route.connectionId, method])).toEqual([
+    expect(requestProfile.mock.calls.map(([route, method]) => [typeof route === 'string' ? route : route.connectionId, method])).toEqual([
+      ['local-bot', 'session.create'],
       ['local', 'session.create'],
       ['mac-mini', 'prompt.submit']
     ])
+    await requestForBot({ name: 'local-bot' }, 'profiles.configure', { name: 'local-bot' })
+    expect(request.mock.calls.map(([method]) => method)).toEqual(['profiles.configure'])
+  })
+
+  it('routes session attachments and answers privately while roster batches remain passive', async () => {
+    for (const method of ['image.attach_bytes', 'file.attach', 'pdf.attach', 'clarify.lock', 'request.answer', 'approval.respond']) {
+      await requestForBot({ name: 'local-bot' }, method, { session_id: 'private' })
+      expect(requestProfile).toHaveBeenLastCalledWith('local-bot', method, { session_id: 'private' })
+    }
+    await requestForBot({ name: 'local-bot' }, 'bot.chat.get_many', { profiles: ['local-bot'] })
+    expect(request).toHaveBeenCalledWith('bot.chat.get_many', { profiles: ['local-bot'] })
   })
 
   it('translates every backend-profile RPC shape for a non-identity alias', async () => {

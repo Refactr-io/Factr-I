@@ -822,6 +822,12 @@ describe('scheduled bots', () => {
 })
 
 describe('listComputers', () => {
+  it('identifies a running managed host engine as a local sandbox without touching Docker', async () => {
+    fs.writeFileSync(path.join(home, 'profiles/scout/profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Scout\n')
+    configure({ hostRunning: profile => profile === 'scout' })
+    expect(await computerStatus('scout')).toMatchObject({ state: 'no-docker', localSandbox: true })
+    expect(calls).toEqual([])
+  })
   it('includes isolated host bots, including unstarted targets, without probing or spawning Docker', () => {
     for (const profile of ['scout', 'writer']) fs.writeFileSync(path.join(home, 'profiles', profile, 'profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Test bot\n')
     configure({ hostRunning: profile => profile === 'scout' })

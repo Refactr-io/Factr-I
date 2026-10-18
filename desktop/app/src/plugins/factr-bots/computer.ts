@@ -142,7 +142,8 @@ const WORD_KEY = {
 } as const
 
 /** The roster's one status word key; Working replaces On while a view or turn holds the computer. */
-export function computerWordKey(status: ComputerStatus): 'noDocker' | 'off' | 'on' | 'starting' | 'working' | null {
+export function computerWordKey(status: ComputerStatus): 'localSandbox' | 'noDocker' | 'off' | 'on' | 'starting' | 'working' | null {
+  if (status.localSandbox) return 'localSandbox'
   if (status.state === 'error') {
     return null
   }

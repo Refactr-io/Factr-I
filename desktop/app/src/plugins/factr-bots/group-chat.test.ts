@@ -1073,6 +1073,19 @@ describe('room identity', () => {
     expect(merged.Old).toBeUndefined()
   })
 
+  it('tombstones a legacy rename even with a coalesced edit under its old name', async () => {
+    const { chat } = await loadRoom()
+    const room = { log: [], members: [], revision: 2 }
+    const after = chat.mergeGroupChatSyncSnapshots(
+      { rooms: { 'name:Old': { ...room, name: 'Old' } }, version: 3 },
+      { rooms: { 'name:New': { ...room, name: 'New' } }, version: 3 },
+      { changedRooms: ['Old', 'New'], deletedRooms: ['Old'], writeRevision: 3 }
+    )
+    expect(after.rooms['name:Old']).toBeUndefined()
+    expect(after.rooms['name:New'].name).toBe('New')
+    expect(after.deleted?.['name:Old']).toBe(3)
+  })
+
   it('keeps a same-name recreate that landed inside the disband sync window', async () => {
     const { chat } = await loadRoom()
 

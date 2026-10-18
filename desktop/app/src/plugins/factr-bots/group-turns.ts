@@ -520,12 +520,12 @@ async function retainGroupTurnRoute(member: GroupMember): Promise<() => void> {
     return noop
   }
 
-  if (!route || typeof host.retainProfile !== 'function') {
+  if (typeof host.retainProfile !== 'function') {
     return noop
   }
 
   try {
-    const release = await host.retainProfile(route, { spawnPriority: 'foreground' })
+    const release = await host.retainProfile(route || member.name, { spawnPriority: 'foreground' })
 
     return typeof release === 'function' ? release : noop
   } catch {

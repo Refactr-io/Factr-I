@@ -30,6 +30,7 @@ vi.mock('@factr/plugin-sdk', async importOriginal => {
       onEvent: vi.fn(() => () => undefined),
       profileRoutes: vi.fn(async () => []),
       request,
+      requestProfile: vi.fn(async () => ({})),
       setPersistedSessionHidden,
       state: {
         ...sdk.host.state,

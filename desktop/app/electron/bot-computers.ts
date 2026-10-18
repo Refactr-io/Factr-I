@@ -82,6 +82,7 @@ export interface ComputerHandle {
 export interface ComputerStatus {
   state: ComputerState
   busy: boolean
+  localSandbox?: boolean
   /** Set when state is 'no-docker'. */
   reason?: 'not-installed' | 'not-running'
   /** Set when state is 'on'. */
@@ -820,6 +821,9 @@ export async function computerStatus(profile: string): Promise<ComputerStatus> {
   validateBotProfile(profile)
   // "Working" means a turn is running; a watched screen ('view') keeps the computer awake but is not work.
   const busy = tracked.get(profile)?.holds.has('turn') ?? false
+  if (!fs.existsSync(markerPath(profile)) && isBotProfile(cfg().configHome, profile) && deps?.hostRunning?.(profile)) {
+    return { state: 'no-docker', busy, localSandbox: true, scheduledJobs: enabledCronJobs(profile) }
+  }
   const probe = await probeDocker()
 
   if (!probe.value) {

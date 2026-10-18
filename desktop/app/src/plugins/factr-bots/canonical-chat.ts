@@ -402,8 +402,10 @@ export function createCanonicalChat(
   }
 
   const canNavigate = () => !openingStillCurrent || openingStillCurrent()
+  let release: (() => void) | undefined
 
   const run = (async () => {
+    release = await host.retainProfile?.(route || name, { spawnPriority: 'foreground' })
     const existing = await findExistingCanonicalChat(owner)
 
     if (existing?.id) {
@@ -569,6 +571,7 @@ export function createCanonicalChat(
 
     return sid || null
   })().finally(() => {
+    release?.()
     if (canonicalCreations.get(key) === flight) {
       canonicalCreations.delete(key)
     }

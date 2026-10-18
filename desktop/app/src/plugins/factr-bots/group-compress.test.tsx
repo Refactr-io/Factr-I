@@ -74,16 +74,16 @@ beforeEach(() => {
 
   // The scripted gateway answers unknown methods with `{}`; give
   // session.compress the in-process gateway's real result shape.
-  const inner = state.gateway.host.request as (method: string, params: Record<string, unknown>) => Promise<unknown>
+  const inner = state.gateway.host.requestProfile as (route: unknown, method: string, params: Record<string, unknown>) => Promise<unknown>
 
-  state.gateway.host.request = async (method: string, params: Record<string, unknown> = {}) => {
+  state.gateway.host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown> = {}) => {
     if (method === 'session.compress') {
       state.gateway!.rpc.push({ method, params, refcountAfter: 0 })
 
       return { status: 'compressed', before_messages: 1588, after_messages: 134, summary: { headline: '1588 → 134' } }
     }
 
-    return inner(method, params)
+    return inner(route, method, params)
   }
 
   Object.assign(host, state.gateway.host)

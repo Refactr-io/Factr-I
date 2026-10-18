@@ -488,7 +488,10 @@ export function mergeGroupChatSyncSnapshots(
 
   for (const label of changedRooms) {
     for (const key of keysFor(label, localNorm)) {
-      changed.add(key)
+      // A coalesced pre-rename edit cannot revive a room absent from the current snapshot.
+      if (localNorm.rooms?.[key]) {
+        changed.add(key)
+      }
     }
   }
 

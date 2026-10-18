@@ -464,10 +464,10 @@ describe('round lifecycle', { retry: 2 }, () => {
     const first = room.rounds.sendToGroupChat('Failure', MEMBERS.slice(0, 2), '@research first')!
     await drain(() => room.gateway.calls.length < 1)
     const queued = room.rounds.sendToGroupChat('Failure', MEMBERS.slice(0, 2), '@builder queued')!
-    const request = host.request as (...args: unknown[]) => Promise<unknown>
+    const request = host.requestProfile as (...args: unknown[]) => Promise<unknown>
 
-    host.request = (...args: unknown[]) => {
-      const [method, params] = args as [string, { profile?: string }]
+    host.requestProfile = (...args: unknown[]) => {
+      const [, method, params] = args as [unknown, string, { profile?: string }]
 
       // JSON-shaped malformed reply text throws while harvesting, after RPC acceptance.
       return method === 'session.resume' && params.profile === 'builder'

@@ -65,8 +65,10 @@ describe('status word', () => {
     expect(word({ state: 'on' })).toBe('on')
     expect(word({ busy: true, state: 'on' })).toBe('working')
     expect(word({ state: 'no-docker' })).toBe('noDocker')
+    expect(word({ state: 'no-docker', localSandbox: true })).toBe('localSandbox')
     expect(word({ state: 'error' })).toBeNull()
     expect(t('computer.word.noDocker')).toBe('No Docker')
+    expect(t('computer.word.localSandbox')).toBe('Sandbox')
     expect(t('computer.word.working')).toBe('Working')
   })
 
