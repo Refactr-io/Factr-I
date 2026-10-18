@@ -9,8 +9,9 @@
 //! Upstream semantics kept: the message already carries the attribution prefix (`Message from <emoji> <Name>
 //! (@from):`, composed by the sender), one retry for a transient failure (the same session and message again),
 //! a typed `reason` on failure, `[SILENT]` becomes an empty reply, replies cap at 16,000 characters, and a message
-//! chain stops at two relay hops. The turn runs on a headless connection exactly like `/api/agent/run`; when a window
-//! has the chat open the window gets the message instead (an engine session has one live owner).
+//! chain stops at two relay hops. The turn runs on a headless connection exactly like `/api/agent/run`. A window that
+//! holds the chat idle does not get in the way (the engine lets a second connection attach and the window sees the turn
+//! live); when the window is mid-turn the delivery waits for that turn to end first, so the two never interleave.
 //!
 //! `bot.chat.ensure` also passes through here first: the teammate MCP server's tool schema is cached on disk after its
 //! first connection, so on a fresh install the bot's first chat advertised `message_agent` that it could not load until
@@ -213,6 +214,10 @@ struct Engine {
     run: Arc<Conn>,
     rx: tokio::sync::Mutex<mpsc::Receiver<Message>>,
     session: String,
+    /// The message being delivered and how many messages the chat held before it: a completion is ours only when the
+    /// stored transcript shows this message followed by an answer (another turn's `message.complete` is not).
+    text: String,
+    before: usize,
 }
 
 impl Engine {
@@ -236,10 +241,18 @@ impl Engine {
         match waited {
             Ok(Some(payload)) => {
                 let reply = turn_reply(&payload, &self.session, "bot");
+                let ok = reply["ok"] == true && reply["interrupted"] != true;
+                // The answer is read from the stored transcript: our message followed by an assistant message. A
+                // completion for some other turn on this chat (one that was already running, or a replayed one) has no
+                // answer to our message yet, so it is not ours and we wait on.
+                let ours = if ok { self.answer().await } else { None };
+                if ok && ours.is_none() {
+                    return Box::pin(self.finish(Ok(Value::Null))).await;
+                }
                 TurnEnd {
                     ok: reply["ok"] == true,
                     interrupted: reply["interrupted"] == true,
-                    text: reply["final_text"].as_str().or(reply["text"].as_str()).unwrap_or_default().to_string(),
+                    text: ours.unwrap_or_else(|| reply["final_text"].as_str().or(reply["text"].as_str()).unwrap_or_default().to_string()),
                     error: reply["error"].as_str().unwrap_or_default().to_string(),
                 }
             }
@@ -249,6 +262,20 @@ impl Engine {
                 TurnEnd { ok: false, interrupted: false, text: String::new(), error: "timed out waiting for the turn to finish".into() }
             }
         }
+    }
+}
+
+impl Engine {
+    /// The answer to our message in the stored transcript, if there is one (a short grace for the write).
+    async fn answer(&self) -> Option<String> {
+        for _ in 0..4 {
+            let messages = factr_base::session::Session::load(&self.session).map(|s| s.messages).unwrap_or_default();
+            if let Some(Some(reply)) = answer_to(&messages, &self.text, self.before) {
+                return Some(reply);
+            }
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }
+        None
     }
 }
 
@@ -267,7 +294,7 @@ impl Turns for Engine {
 }
 
 /// Run `text` in the bot's own canonical Bot Chat. A window that has the chat open gets the message instead.
-async fn deliver_now(conn: &Arc<Conn>, text: &str, from: &str, hops: u64) -> Value {
+async fn deliver_now(conn: &Arc<Conn>, text: &str, hops: u64) -> Value {
     let profile = own_profile();
     warm_teammates().await;
     let chat = match conn.bot_chat("bot.chat.ensure", &json!({ "profile": profile })).await {
@@ -277,15 +304,17 @@ async fn deliver_now(conn: &Arc<Conn>, text: &str, from: &str, hops: u64) -> Val
     let Some(session) = chat["canonical_session"]["id"].as_str().map(str::to_string) else {
         return Outcome::failed("this bot has no Bot Chat", "unknown").to_json("");
     };
-    // The chat is open in a window: that window owns the live session. Hand it the message to run as the chat's next
-    // turn (it renders and answers there); the sender is told it was delivered, as the upstream live-owner path does.
-    if conn.hub.has_window(&session).await {
-        let frame = json!({ "jsonrpc": "2.0", "method": "event", "params": { "type": "bot.chat.incoming", "session_id": session, "payload": { "text": text, "from": from } } });
-        conn.hub.broadcast_text(frame.to_string()).await;
-        return Outcome { ok: true, reply: format!("Delivered into @{profile}'s open Bot Chat; the reply will appear there."), error: String::new(), reason: String::new() }.to_json(&session);
-    }
     // One turn at a time per chat, queued behind a running one.
     let _turn = chat_turn(&format!("bot-chat-deliver:{profile}")).await;
+    // A window mid-turn on the chat: a prompt submitted now would not queue (the engine steers a running turn), so wait
+    // for that turn to end. Bounded: a chat that never goes idle is `target_busy`.
+    let give_up = Instant::now() + TURN_TIMEOUT;
+    while session_processing(conn, &session).await {
+        if Instant::now() > give_up {
+            return Outcome::failed("its Bot Chat is busy with another turn", "target_busy").to_json(&session);
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
     let (to_ws, rx) = mpsc::channel::<Message>(1024);
     let client = Arc::new(Client { id: conn.hub.next_client_id(), to_ws: to_ws.clone(), sessions: Mutex::new(Default::default()) });
     let run = Conn::new(conn.config.clone(), to_ws, conn.hub.clone(), client, conn.observer.clone(), false, "bot", Some(TITLE.to_string()), None);
@@ -298,17 +327,41 @@ async fn deliver_now(conn: &Arc<Conn>, text: &str, from: &str, hops: u64) -> Val
     .await;
     if let Err(message) = outcome {
         end_run(&run, None).await;
-        let busy = is_already_live(&message);
-        return Outcome::failed(message, if busy { "target_busy" } else { "runtime_offline" }).to_json(&session);
+        return Outcome::failed(message.clone(), if is_already_live(&message) { "target_busy" } else { "runtime_offline" }).to_json(&session);
     }
     conn.hub.mark_headless(&session, "bot").await;
     let _hops = HopsMarker::set(&profile, hops);
-    let engine = Engine { run: run.clone(), rx: tokio::sync::Mutex::new(rx), session: session.clone() };
+    let before = factr_base::session::Session::load(&session).map(|s| s.messages.len()).unwrap_or(0);
+    let engine = Engine { run: run.clone(), rx: tokio::sync::Mutex::new(rx), session: session.clone(), text: text.to_string(), before };
     let done = flow(&engine, text).await;
     conn.hub.unmark_headless(&session).await;
     conn.observer.release_replay(&session);
     end_run(&run, None).await;
     done.to_json(&session)
+}
+
+/// Whether the engine says a turn is running on `session` right now.
+async fn session_processing(conn: &Arc<Conn>, session: &str) -> bool {
+    conn.call(json!({ "req": "list_sessions", "limit": 1000, "include_archived": false }))
+        .await
+        .ok()
+        .and_then(|r| r["sessions"].as_array().and_then(|l| l.iter().find(|s| s["session_id"] == session).map(|s| s["status"] == "processing")))
+        .unwrap_or(false)
+}
+
+/// Plain text of a stored message (its text blocks).
+fn text_of(m: &factr_base::session::StoredMessage) -> String {
+    m.content.iter().filter_map(|b| if let factr_base::message::ContentBlock::Text { text, .. } = b { Some(text.as_str()) } else { None }).collect::<Vec<_>>().join("\n")
+}
+
+/// What the stored transcript says about a message handed to a window: `None` until the window has submitted `text`,
+/// then `Some(None)` while the turn runs and `Some(Some(reply))` when an assistant answer follows it.
+pub(super) fn answer_to(messages: &[factr_base::session::StoredMessage], text: &str, before: usize) -> Option<Option<String>> {
+    use factr_base::message::Role;
+    let want = text.trim();
+    let at = messages.iter().enumerate().skip(before.saturating_sub(1)).rev().find(|(_, m)| m.role == Role::User && text_of(m).trim() == want).map(|(i, _)| i)?;
+    let reply = messages[at + 1..].iter().rev().filter(|m| m.role == Role::Assistant).map(text_of).find(|t| !t.trim().is_empty());
+    Some(reply)
 }
 
 /// Connect the teammate MCP server once and store its tool schema, if the cache does not hold it yet.
@@ -366,7 +419,6 @@ impl Conn {
             return Ok(Outcome::failed(format!("this message already crossed {MAX_HOPS} bots on its way here; it was not delivered"), "hop_limit").to_json(""));
         }
         let id = p["envelope_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).unwrap_or_else(|| format!("anon-{:016x}", rand::random::<u64>()));
-        let from = p["from_handle"].as_str().or(p["from"].as_str()).unwrap_or_default().to_string();
         let start = {
             let mut slots = DELIVERIES.lock().unwrap_or_else(|e| e.into_inner());
             slots.retain(|_, s| s.tx.borrow().is_none() || s.at.elapsed() < KEEP_DONE);
@@ -384,7 +436,7 @@ impl Conn {
             let runtime = tokio::runtime::Handle::current();
             tokio::task::spawn_blocking(move || {
                 runtime.block_on(async move {
-                    let result = deliver_now(&conn, &text, &from, hops).await;
+                    let result = deliver_now(&conn, &text, hops).await;
                     if let Some(slot) = DELIVERIES.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
                         slot.tx.send_replace(Some(result));
                     }
@@ -578,6 +630,29 @@ mod tests {
     fn the_install_root_is_the_parent_of_profiles() {
         assert_eq!(root_of(std::path::Path::new("/h/.factr/profiles/scout")), std::path::PathBuf::from("/h/.factr"));
         assert_eq!(root_of(std::path::Path::new("/h/.factr")), std::path::PathBuf::from("/h/.factr"));
+    }
+
+    #[test]
+    fn a_handed_over_message_is_followed_in_the_transcript_until_an_answer_appears() {
+        use factr_base::message::{ContentBlock, Role};
+        let text = |t: &str| vec![ContentBlock::Text { text: t.into(), cache_control: None }];
+        let mut chat = factr_base::session::Session::create(None, None);
+        chat.add_message(Role::User, text("Message from 🤖 A (@a): old"));
+        chat.add_message(Role::Assistant, text("old answer"));
+        let before = chat.messages.len();
+        let ask = "Message from 🤖 A (@a): what now?";
+        assert_eq!(answer_to(&chat.messages, ask, before), None, "the window has not submitted it yet");
+        chat.add_message(Role::User, text(ask));
+        assert_eq!(answer_to(&chat.messages, ask, before), Some(None), "submitted, the turn still runs");
+        chat.add_message(Role::Assistant, text("  "));
+        assert_eq!(answer_to(&chat.messages, ask, before), Some(None), "an empty assistant message is not an answer");
+        chat.add_message(Role::Assistant, text("do the thing"));
+        assert_eq!(answer_to(&chat.messages, ask, before), Some(Some("do the thing".to_string())));
+        // The same text sent earlier does not count as this delivery.
+        let mut again = factr_base::session::Session::create(None, None);
+        again.add_message(Role::User, text(ask));
+        again.add_message(Role::Assistant, text("stale answer"));
+        assert_eq!(answer_to(&again.messages, ask, again.messages.len()), None);
     }
 
     #[test]
