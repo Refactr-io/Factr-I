@@ -190,3 +190,12 @@
 - Full gateway rerun had one timing-sensitive skills_seed_paths failure while container builds/model load ran; focused unchanged test passed in 6s (/private/tmp/bots-check-pzrcl9j6). Full-suite verdict remains the earlier 404 passes/1 ignored until a clean rerun.
 - Real lean-image test passed 57/57 including a local model turn; exact test containers removed. Two-computer real-model relay/schedule test still running, no verdict. Disk 70 GiB free.
 - Advice: parent re-read, no STOP or new answer. Continue local OS sandbox, browser profile, explicit Stop gate, then OS/manual QA and final documentation.
+
+## Restart recovery: explicit Stop milestone
+
+- Read parent advice first, complete common rules/handoff, checkpoint/report/status/log, and inspected all three interrupted files against the backup patch (identical). Kept and completed them. No advice blocker or STOP.
+- Engine target/debug/factr is present (192 MiB); no rebuild needed for TypeScript-only recovery. Disk 81 GiB free. docker info: 29.8.0, Linux; no bots- containers left from the interrupted run. Recreated missing /private/tmp/bots-test.py with fresh HOME/FACTR_HOME/FACTR_CONFIG_HOME/Electron userData per test.
+- Verify graph: factri-bots-app generation 2026-10-17T21:28:43Z, sibling root; recovered bot-computers paths not tracked, main metadata changed. Exact local source/callers read; no negative graph claim.
+- Explicit Stop now persists across reconnects/restarts and scheduled startup until explicit Start. Removed containers drop stale routes. A missing Docker daemon with a computer marker refuses host fallback to prevent two writers. Corrected recovered status shortcut so a failed Stop cannot report a live container as off.
+- Validation: rtk proxy python3 /private/tmp/bots-test.py desktop/app ../node_modules/.bin/vitest run --project electron electron/bot-computers.test.ts electron/bot-docker-setup.test.ts: 62 passed, exit 0, /private/tmp/bots-check-4x7i_v_t. Electron tsc -p tsconfig.electron.json --noEmit: exit 0, /private/tmp/bots-check-18ghvzdp. git diff --check: exit 0.
+- Next task 7: local sandbox fallback/browser profile, finish real computer relay/schedule QA, then task 8 platform checks and task 9 docs/cleanup. No credential files read or push.

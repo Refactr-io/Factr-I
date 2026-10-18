@@ -92,6 +92,8 @@ import { decideBootstrapRepair } from './bootstrap-repair-guard'
 import { runBootstrap } from './bootstrap-runner'
 import {
   botBackendFor,
+  pauseComputer,
+  resumeComputer,
   computerStatus as botComputerStatus,
   computerActive,
   configureBotComputers,
@@ -11881,6 +11883,7 @@ async function botComputerRemote(profile: string) {
 // Packaged only: the bot's container engine and a host engine must never own one profile folder together.
 async function startBotComputer(profile: string) {
   validateBotProfile(profile)
+  resumeComputer(profile)
   const existing = backendPool.get(profile)
 
   if (existing?.process) {
@@ -14734,7 +14737,7 @@ ipcMain.handle('factr:bot-computer:start', botComputerIpc(startBotComputer))
 ipcMain.handle(
   'factr:bot-computer:stop',
   botComputerIpc(async profile => {
-    await stopComputer(profile)
+    await pauseComputer(profile)
 
     return botComputerStatus(profile)
   })

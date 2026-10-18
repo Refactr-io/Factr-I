@@ -11,6 +11,8 @@ vi.mock('node:child_process', () => ({ execFile: execFileMock }))
 import {
   BOT_COMPUTER,
   botBackendFor,
+  pauseComputer,
+  resumeComputer,
   chooseBotBackend,
   computerImageReady,
   computerStatus,
@@ -799,5 +801,49 @@ describe('listComputers', () => {
       { profile: 'writer', running: true }
     ])
     expect(calls).toEqual([])
+  })
+})
+
+describe('explicit Stop and missing computers', () => {
+  it('does not wake a manually stopped computer until Start, including after module restart', async () => {
+    configure()
+    await ensureComputer('scout')
+    await pauseComputer('scout')
+    resetBotComputersForTest()
+    configure()
+    await expect(ensureComputer('scout')).rejects.toThrow('computer-stopped')
+    await expect(botBackendFor('scout', { primarySingleProfile: true, primaryProfile: 'default', isBot: true })).rejects.toThrow('computer-stopped')
+    expect(await startScheduledComputers(['scout'])).toEqual([])
+    expect((await computerStatus('scout')).state).toBe('off')
+    resumeComputer('scout')
+    await ensureComputer('scout')
+    expect((await computerStatus('scout')).state).toBe('on')
+  })
+  it('drops the stale route when the container was removed outside the app', async () => {
+    configure()
+    await ensureComputer('scout')
+    delete existing['bots-factr-bot-scout']
+    expect((await computerStatus('scout')).state).toBe('off')
+    expect(stopped).toEqual(['scout'])
+    expect(listComputers()).toEqual([{ profile: 'scout', running: false }])
+  })
+})
+
+
+describe('computer ownership while Docker is unavailable', () => {
+  it('refuses a host writer when a container could still own the profile', async () => {
+    configure()
+    await ensureComputer('scout')
+    resetBotComputersForTest()
+    configure({ run: () => Promise.reject(new Error('daemon unavailable')) })
+    await expect(botBackendFor('scout', { primarySingleProfile: true, primaryProfile: 'default', isBot: true })).rejects.toThrow('Docker is unavailable')
+  })
+  it('reports a failed Stop honestly while keeping automatic wake blocked', async () => {
+    configure()
+    await ensureComputer('scout')
+    configure({ run: (args, opts) => args[0] === 'stop' ? Promise.reject(new Error('stop failed')) : fakeRun(args, opts) })
+    await expect(pauseComputer('scout')).rejects.toThrow('stop failed')
+    expect((await computerStatus('scout')).state).toBe('on')
+    await expect(ensureComputer('scout')).rejects.toThrow('computer-stopped')
   })
 })

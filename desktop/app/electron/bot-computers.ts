@@ -408,6 +408,19 @@ async function inspect(name: string): Promise<Inspect | null> {
 }
 
 const hostProfileDir = (profile: string) => path.join(cfg().configHome, 'profiles', profile)
+const stoppedMarker = (profile: string) => path.join(hostProfileDir(validateBotProfile(profile)), '.computer-stopped')
+
+/** Explicit Stop survives reconnects and app restarts; idle/cap stops remain wakeable. */
+export async function pauseComputer(profile: string): Promise<void> {
+  fs.writeFileSync(stoppedMarker(profile), '')
+  await stopComputer(profile)
+}
+export function resumeComputer(profile: string): void {
+  fs.rmSync(stoppedMarker(profile), { force: true })
+}
+export function assertComputerMayStart(profile: string): void {
+  if (fs.existsSync(stoppedMarker(profile))) throw new Error('computer-stopped: press Start to resume this bot computer.')
+}
 
 async function ensureNetwork() {
   try {
@@ -488,7 +501,11 @@ export async function botBackendFor(profile: string, facts: BotRouteFacts) {
     return chooseBotBackend(profile, facts, false)
   }
 
-  return chooseBotBackend(profile, facts, (await dockerAvailable()) && (computerActive(profile) || (await computerImageReady())))
+  assertComputerMayStart(profile)
+  const available = await dockerAvailable()
+  // A missing daemon is not proof that an existing container stopped writing this profile.
+  if (!available && fs.existsSync(markerPath(profile))) throw new Error('Docker is unavailable. Start Docker before reconnecting this bot computer.')
+  return chooseBotBackend(profile, facts, available && (computerActive(profile) || (await computerImageReady())))
 }
 
 /** The exact `docker create` argv. Exported for tests. */
@@ -629,6 +646,7 @@ export async function ensureComputer(profile: string): Promise<ComputerHandle> {
 
   return serialized(profile, async () => {
     cfg()
+    assertComputerMayStart(profile)
 
     if (!(await dockerAvailable())) {
       throw new Error('Docker is not available, so this bot cannot get its own computer.')
@@ -753,6 +771,7 @@ export async function destroyComputer(profile: string): Promise<void> {
     const name = computerName(profile)
     tracked.delete(profile)
     fs.rmSync(markerPath(profile), { force: true })
+    resumeComputer(profile)
 
     try {
       await docker(['rm', '-f', name], { timeoutMs: 30_000 })
@@ -796,6 +815,7 @@ export async function computerStatus(profile: string): Promise<ComputerStatus> {
         return { state: 'starting', busy }
       }
 
+      if (tracked.delete(profile)) deps?.onStopped?.(profile)
       return (await computerImageReady())
         ? { state: 'off', busy }
         : { state: 'error', busy, error: 'image-missing' }
