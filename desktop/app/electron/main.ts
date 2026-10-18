@@ -11661,6 +11661,7 @@ async function runPoolBackendStart(
   tokenLaunch.deliver(child)
 
   entry.process = child
+  entry.kind = backend.kind
   entry.token = token
   registerLocalBackendExitFinalizer(backendPool, poolKey, entry, () => releaseLocalBackendSlot(entry))
   // Buffer stdout+stderr from the instant of spawn (#93608): an early crash's
