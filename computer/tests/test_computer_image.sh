@@ -87,7 +87,7 @@ check "auto-start did not rewrite the profile (no config.yaml created)" bash -c 
 echo "(tz) host time zone"
 check "A: TZ=Asia/Karachi gives +0500" bash -c "[ \"\$(docker exec $A date +%z)\" = +0500 ]"
 check "B: no TZ stays UTC" bash -c "[ \"\$(docker exec $B date +%z)\" = +0000 ]"
-check "an unknown TZ is dropped, not trusted" bash -c "docker run --rm --entrypoint sh $IMAGE -c 'test -f /usr/share/zoneinfo/Europe/Paris && ! test -f /usr/share/zoneinfo/Nowhere/Land'"
+
 
 echo "(tools) computer_use and request_takeover as the model's tool list sees them"
 TOOLS="$(docker exec -e FACTR_CONFIG_HOME=/data/profiles/$BOT_A -e FACTR_INTERACTIVE=1 -e PYTHONPATH=/opt/factr/backend-python/source:/opt/factr/backend-python/packages "$A" \
@@ -144,10 +144,11 @@ echo "(c3) optional engine-home mount read-only (what the engine needs)"
 # One pair at a time on the shared daemon.
 docker stop -t 10 "$B" >/dev/null
 mkdir -p "$SCRATCH/home-d" "$SCRATCH/$BOT_D"; echo '{"anthropic_accounts":[]}' > "$SCRATCH/home-d/auth.json"
-run_bot "$D" "$BOT_D" "$TOKEN_B" "$SCRATCH/$BOT_D" "$PORT_D" -v "$SCRATCH/home-d:/data/engine-home:ro" -e FACTR_HOME=/data/engine-home
+run_bot "$D" "$BOT_D" "$TOKEN_B" "$SCRATCH/$BOT_D" "$PORT_D" -v "$SCRATCH/home-d:/data/engine-home:ro" -e FACTR_HOME=/data/engine-home -e TZ=Nowhere/Land
 sleep 20
 echo "  read-only engine home: health=$(api "$PORT_D" - /api/health) state=$(docker inspect -f '{{.State.Status}}' "$D") files=$(ls "$SCRATCH/home-d" | tr '\n' ' ')"
 docker logs --tail 5 "$D" 2>&1 | sed 's/^/    /' | cut -c1-200
+check "an unknown TZ is dropped, not trusted" bash -c "docker logs $D 2>&1 | grep -q 'unknown TZ'"
 check "a read-only engine home is refused: the engine needs it writable" test "$(docker inspect -f '{{.State.Status}}' "$D")" = exited
 
 docker rm -f "$D" >/dev/null
