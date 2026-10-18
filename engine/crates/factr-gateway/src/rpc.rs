@@ -31,6 +31,10 @@ pub(crate) use driver::start as start_driver;
 pub(crate) mod attach;
 mod bot_chat;
 mod bot_chat_deliver;
+mod bot_preamble;
+mod bot_message;
+mod bot_retirement;
+pub(crate) use bot_retirement::request as pool_retirement;
 mod local_state;
 mod settings;
 pub(crate) use settings::{config_record, yolo_active};
@@ -724,6 +728,7 @@ impl Conn {
     /// and the engine's disconnect cleanup then drops the agent. A chat that has had no turn is not
     /// on disk yet, so `known` keeps it for `session.list`.
     async fn forget_link(&self, sid: &str) {
+        bot_preamble::trace("detach", sid, self.client.id);
         self.release_after_turn.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
         if self.is_detached() {
             detached::forget(sid, self);
@@ -860,6 +865,7 @@ impl Conn {
     }
 
     async fn attach_once(self: &Arc<Self>, session_id: &str) -> Result<Value> {
+        bot_preamble::trace("attach", session_id, self.client.id);
         // A closed window's connection only finishes the turns it holds: a new link would outlive them.
         if self.is_detached() {
             bail!("the window that held this chat has closed");
@@ -983,6 +989,8 @@ impl Conn {
     }
 
     async fn on_harness_frame(self: &Arc<Self>, frame: Value) {
+        bot_preamble::progress(&frame);
+        if self.bot_tool(&frame) { return; }
         if std::env::var_os("FACTR_GATEWAY_TRACE").is_some() {
             eprintln!(
                 "factr-gateway: harness {}",
@@ -1506,6 +1514,10 @@ impl Conn {
     }
 
     async fn dispatch(self: &Arc<Self>, method: &str, p: &Value) -> Result<Value, RpcError> {
+        if std::env::var_os("FACTR_BOT_TRACE").is_some() { eprintln!("bot-dispatch: {method}"); }
+        let _bot_admission = bot_retirement::admission(method)?;
+        let _preamble = (method == "prompt.submit").then(|| bot_preamble::arm(self, p));
+        if method == "prompt.submit" { Box::pin(self.prepare_bot_tool(p)).await?; }
         let sid = || {
             p["session_id"]
                 .as_str()
@@ -1515,6 +1527,7 @@ impl Conn {
         let call = |req: Value| async move { self.call(req).await.map_err(RpcError::internal) };
         match method {
             "ping" | "gateway.ping" => Ok(json!({})),
+            "bot.chat.reply" => Box::pin(self.bot_reply(p)).await,
             m if local_state::handles(m) => self.local_state(m, p).await,
             m if bot_chat_deliver::handles(m) => self.bot_deliver(m, p).await,
             m if bot_chat::handles(m) => self.bot_chat(m, p).await,
@@ -2648,7 +2661,8 @@ impl Conn {
                     let (home, id) = (self.config.home.clone(), id.clone());
                     tokio::task::spawn_blocking(move || attach::staged_images(&home, &id)).await.map_err(|e| RpcError::internal(e.into()))?
                 };
-                if let Err(err) = self.submit(&id, &text, p["system_reminder"].as_str(), images).await {
+                let reminder = bot_message::reminder(p["system_reminder"].as_str());
+                if let Err(err) = self.submit(&id, &text, reminder.as_deref(), images).await {
                     self.observer.failed_submit(&id, &run, &err.to_string());
                     attach::restore_staged(&self.config.home, &id, &staged, &unreadable);
                     return Err(RpcError::internal(err));

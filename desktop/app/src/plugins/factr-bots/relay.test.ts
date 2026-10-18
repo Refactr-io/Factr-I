@@ -1062,6 +1062,45 @@ describe('local bot-to-bot delivery through the target engine', () => {
     stopBotRelay()
   })
 
+  it('retries a retiring engine with the same envelope instead of posting a user-facing failure', async () => {
+    let pending = 1
+    let attempts = 0
+    setTick(() => pending)
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') { pending = 0; return { envelopes: [envelope] } }
+      if (call.method === 'bot.chat.deliver') {
+        if (++attempts === 1) throw Object.assign(new Error('engine is retiring'), { data: { reason: 'retiring' } })
+        return { ok: true, status: 'done', reply: 'rerouted' }
+      }
+      return {}
+    }, { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 200)
+    expect(attempts).toBe(2)
+    expect(calls.filter(c => c.method === 'bot.chat.deliver').map(c => c.params.envelope_id)).toEqual([envelope.id, envelope.id])
+    expect(calls.find(c => c.method === 'bot_relay.reply')?.params).toEqual({ id: envelope.id, reply: 'rerouted' })
+    expect(noteBotAttentionMock).not.toHaveBeenCalled()
+    stopBotRelay()
+  })
+
+  it('wakes a native sender on its own engine before recording final courier settlement', async () => {
+    let pending = 1
+    setTick(() => pending)
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') { pending = 0; return { envelopes: [{ ...envelope, native: true, sender_session: 'original' }] } }
+      return call.method === 'bot.chat.deliver' || call.method === 'bot.chat.reply' ? { ok: true, status: 'done', reply: 'answer' } : {}
+    }, { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+    const wake = calls.findIndex(c => c.method === 'bot.chat.reply')
+    expect(calls[wake].profile).toBe('alpha')
+    expect(calls[wake].params).toEqual({ id: envelope.id, reply: 'answer' })
+    expect(calls.findIndex(c => c.method === 'bot_relay.reply')).toBeGreaterThan(wake)
+    stopBotRelay()
+  })
+
   it('polls deliver_status while the turn runs and posts one reply', async () => {
     let pending = 1
     let polls = 0

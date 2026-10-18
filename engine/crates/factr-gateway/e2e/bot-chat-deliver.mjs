@@ -41,7 +41,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 const seen = [] // every chat request: { user, status }
 const flaky = new Map() // marker -> requests seen
 function userText(body) {
-  const last = [...(body.messages || [])].reverse().find(m => m.role === 'user')
+  const last = [...(body.messages || [])].reverse().find(m => m.role === 'user' && !JSON.stringify(m.content).includes('Teammates and roles:'))
   const c = last?.content
   return typeof c === 'string' ? c : Array.isArray(c) ? c.map(p => p.text || '').join('') : ''
 }
@@ -55,7 +55,7 @@ const model = http.createServer((req, res) => {
     }
     const body = JSON.parse(raw || '{}')
     const user = userText(body)
-    const delay = user.includes('SLOWTURN') ? 6000 : 0
+    const delay = user.includes('STALLINTRO') ? 70_000 : user.includes('SLOWTURN') ? 6000 : 0
     const entry = { user, status: 200, tools: (body.tools || []).map(t => t.function?.name || t.name) }
     seen.push(entry)
     const fail = (status, message, type) => {
@@ -105,7 +105,7 @@ async function start(bot, modelName = MODEL, home = shared) {
   const token = crypto.randomBytes(24).toString('hex')
   const runtime = fs.mkdtempSync('/tmp/bcd-')
   const env = { ...process.env, HOME: path.join(scratch, bot), FACTR_HOME: home, FACTR_CONFIG_HOME: cfg, FACTR_RUNTIME_DIR: runtime, FACTR_DASHBOARD_SESSION_TOKEN: token, OLLAMA_HOST: '127.0.0.1:1' }
-  const child = spawn(BIN, ['--profile', bot, '--provider', 'openai-compatible', '--model', modelName, 'serve', '--host', '127.0.0.1', '--port', '0'], { env, cwd: path.join(scratch, bot), stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(BIN, ['--profile', bot, 'serve', '--host', '127.0.0.1', '--port', '0'], { env, cwd: path.join(scratch, bot), stdio: ['ignore', 'pipe', 'pipe'] })
   engines.add(child)
   child.once('exit', () => engines.delete(child))
   let stderr = ''
@@ -224,6 +224,9 @@ try {
     const primaryHome = path.join(scratch, 'primary-engine-home')
     seed('default', modelUrl, MODEL, 8192, primaryHome)
     const primary = await start('default', MODEL, primaryHome)
+    const existingChat = await ok(primary, 'session.create', { title: 'Existing user chat' })
+    await ok(primary, 'prompt.submit', { session_id: existingChat.session_id, text: 'before bot roster exists' })
+    for (let i = 0; i < 100 && !primary.events.some(e => e.type === 'message.complete' && e.session_id === existingChat.session_id); i++) await sleep(100)
     const created = await ok(primary, 'profiles.create', { name: 'f', no_skills: true, no_alias: true, mirror_credentials: false })
     check(created.path === path.join(cfg, 'profiles', 'f'), `profile created under config root (${created.path})`)
     const configured = await ok(primary, 'profiles.configure', { name: 'f', ui_meta: { 'factr-bots': { title: 'Fresh Bot' } } })
@@ -233,6 +236,12 @@ try {
     await ok(primary, 'prompt.submit', { session_id: userChat.session_id, text: 'default chat can hand off' })
     for (let i = 0; i < 100 && !primary.events.some(e => e.type === 'message.complete' && e.session_id === userChat.session_id); i++) await sleep(100)
     check(seen.find(x => x.user.includes('default chat can hand off'))?.tools?.some(t => /message_agent/.test(t)), 'the default chat offers message_agent after a bot is created, without restarting its engine')
+    const reopened = await primary.open()
+    await ok(reopened, 'session.resume', { session_id: existingChat.session_id })
+    await ok(primary, 'prompt.submit', { session_id: existingChat.session_id, text: 'existing default chat can hand off' })
+    for (let i = 0; i < 100 && !seen.some(e => e.user.includes('existing default chat can hand off')); i++) await sleep(100)
+    check(seen.find(x => x.user.includes('existing default chat can hand off'))?.tools?.some(t => /message_agent/.test(t)), 'a default session created before the roster also offers message_agent')
+    reopened.close()
     await primary.stop()
   } else {
     fs.mkdirSync(path.join(cfg, 'profiles', 'f'), { recursive: true })
@@ -253,6 +262,21 @@ try {
   const firstRequest = seen.find(x => x.user.includes('first words in a fresh install'))
   check(firstRequest?.tools?.some(t => /message_agent/.test(t)), `the bot's very first session offers message_agent (tools: ${(firstRequest?.tools || []).join(', ').slice(0, 200)})`)
   check(firstWindow.events.some(e => e.type === 'message.complete' && e.session_id === firstChat.session_id), 'the mounted window sees the creation-time intro complete')
+  // A provider that accepts HTTP but never starts output must become a visible, bounded failure.
+  if (process.env.CHECK_PREAMBLE === '1') {
+    const stalled = await ok(f, 'session.create', { title: 'Bot Chat', hidden: true })
+    await ok(f, 'session.title', { session_id: stalled.session_id, title: 'Bot Chat' })
+    await ok(firstWindow, 'session.resume', { session_id: stalled.session_id })
+    const t = Date.now()
+    await ok(f, 'prompt.submit', { session_id: stalled.session_id, text: 'STALLINTRO' })
+    for (let i = 0; i < 700 && !firstWindow.events.some(e => e.session_id === stalled.session_id && e.type === 'error' && e.payload?.reason === 'preamble_timeout'); i++) await sleep(100)
+    console.log(f.stderr().split('\n').filter(s => s.includes('bot-preamble:')).join('\n'))
+    check(firstWindow.events.some(e => e.session_id === stalled.session_id && e.payload?.reason === 'preamble_timeout'), 'a stuck first response emits a visible preamble_timeout in the mounted window')
+    check(Date.now() - t < 68_000, 'the first response cap cancels the turn within its bound')
+    await ok(firstWindow, 'prompt.submit', { session_id: stalled.session_id, text: 'retry after stalled intro' })
+    for (let i = 0; i < 100 && !seen.some(e => e.user.includes('retry after stalled intro')); i++) await sleep(100)
+    check(seen.some(e => e.user.includes('retry after stalled intro')), 'the bot accepts the next turn after first-response cancellation')
+  }
   firstWindow.close()
   await f.stop()
   const chatA = await ensureChat(a, 'a')

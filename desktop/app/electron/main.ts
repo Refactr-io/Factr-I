@@ -10340,6 +10340,7 @@ async function ensureBackend(
   localBackendLifecycle.assertCanStart()
   const key = profile && String(profile).trim() ? String(profile).trim() : primaryProfileKey()
   const spawnPriority = spawnPriorityFrom(opts.spawnPriority)
+  await poolRetirer.waitForRetirement(key)
   poolRetirer.assertCanOpen(key, spawnPriority)
   const passive = Boolean(opts.passive)
 

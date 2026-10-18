@@ -138,6 +138,8 @@ interface RelayAgentRow {
 
 /** A queued cross-connection message drained from a gateway's outbox. */
 interface RelayEnvelope {
+  native?: boolean
+  sender_session?: string
   id?: string
   message?: string
   from_profile?: string
@@ -494,7 +496,8 @@ function enqueueRelayDelivery(sender: RelayConnection, envelope: RelayEnvelope, 
   })
 }
 
-const isUnknownMethod = (error: any) => /unknown method|method not found|not supported|-32601/i.test(String(error?.message || error))
+const isUnknownMethod = (error: any) =>
+  /unknown method|method not found|not supported|-32601/i.test(String(error?.message || error))
 
 /** One relayed message, delivered by the target bot's OWN engine (`bot.chat.deliver`) when it has that door, else by the
  *  gateway's `bot_relay.deliver` (a Python CLI turn: older engines, remote gateways). */
@@ -514,25 +517,35 @@ async function deliverToTarget(
   const route: ProfileRoute = { ...target.route, profile, targetProfile: profile }
   const deadline = Date.now() + RELAY_DELIVER_TIMEOUT_MS
 
+  const request = async (method: string, params: Record<string, unknown>) => {
+    for (;;) {
+      try {
+        return await host.requestProfile<EngineDelivery>(route, method, params, RELAY_ENGINE_CALL_MS, {
+          spawnPriority: 'foreground'
+        })
+      } catch (error: any) {
+        if (error?.data?.reason !== 'retiring' || Date.now() >= deadline) throw error
+        await new Promise(resolve => setTimeout(resolve, 150))
+      }
+    }
+  }
   try {
-    let res = await host.requestProfile<EngineDelivery>(
-      route,
-      'bot.chat.deliver',
-      { profile, text: message, from_handle, from_profile, from_connection, envelope_id: envelopeId, hops: envelope?.hops ?? 0 },
-      RELAY_ENGINE_CALL_MS
-    )
+    let res = await request('bot.chat.deliver', {
+      profile,
+      text: message,
+      from_handle,
+      from_profile,
+      from_connection,
+      envelope_id: envelopeId,
+      hops: envelope?.hops ?? 0
+    })
 
     while (res?.status === 'pending') {
       if (Date.now() > deadline) {
         throw Object.assign(new Error('delivery timed out'), { data: { reason: 'delivery_timeout' } })
       }
 
-      res = await host.requestProfile<EngineDelivery>(
-        route,
-        'bot.chat.deliver_status',
-        { envelope_id: envelopeId },
-        RELAY_ENGINE_CALL_MS
-      )
+      res = await request('bot.chat.deliver_status', { envelope_id: envelopeId })
     }
 
     if (res?.ok === false) {
@@ -574,6 +587,26 @@ async function deliverRelayEnvelope(
 
   const postReply = async (payload: { error?: string; reason?: string; reply?: string }) => {
     try {
+      if (envelope.native === true && envelope.sender_session) {
+        const profile = String(envelope.from_profile || 'default')
+        const route = { ...sender.route, profile, targetProfile: profile }
+        let reply = await host.requestProfile<EngineDelivery>(
+          route,
+          'bot.chat.reply',
+          { id: envelopeId, ...payload },
+          RELAY_ENGINE_CALL_MS,
+          { spawnPriority: 'foreground' }
+        )
+        while (reply?.status === 'pending') {
+          reply = await host.requestProfile<EngineDelivery>(
+            route,
+            'bot.chat.deliver_status',
+            { envelope_id: `reply-${envelopeId}` },
+            RELAY_ENGINE_CALL_MS,
+            { spawnPriority: 'foreground' }
+          )
+        }
+      }
       await host.requestProfile(sender.route, 'bot_relay.reply', {
         id: envelopeId,
         ...payload
@@ -648,7 +681,9 @@ async function localTick() {
     return
   }
 
-  const tick = await (typeof window === 'undefined' ? undefined : window.factrDesktop?.botRelay?.tick?.())?.catch?.(() => null)
+  const tick = await (typeof window === 'undefined' ? undefined : window.factrDesktop?.botRelay?.tick?.())?.catch?.(
+    () => null
+  )
 
   if (tick?.ok && tick.pending > 0) {
     relay.localPending = true

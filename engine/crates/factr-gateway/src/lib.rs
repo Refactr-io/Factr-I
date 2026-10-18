@@ -985,6 +985,14 @@ async fn handle(
             )
             .await
         }
+        ("POST", "/api/health/retirement") => {
+            let body: Value = serde_json::from_slice(&read_body_max(&mut stream, &req, 4096).await?).unwrap_or(Value::Null);
+            let result = rpc::pool_retirement(config.clone(), hub.clone(), observer.clone(), &body).await;
+            match result {
+                Ok(body) => respond(&mut stream, "200 OK", &body).await,
+                Err(_) => respond(&mut stream, "503 Service Unavailable", &json!({"ok":false})).await,
+            }
+        }
         ("POST", "/api/agent/reset" | "/api/agent/interrupt") => {
             let body: Value = serde_json::from_slice(&read_body(&mut stream, &req).await?).unwrap_or(Value::Null);
             let Some(key) = body["session_key"].as_str().filter(|k| !k.is_empty()) else {

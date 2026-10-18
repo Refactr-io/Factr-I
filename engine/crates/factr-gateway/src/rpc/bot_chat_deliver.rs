@@ -311,9 +311,10 @@ impl Turns for Engine {
 }
 
 /// Run `text` in the bot's own canonical Bot Chat. A window that has the chat open gets the message instead.
-async fn deliver_now(conn: &Arc<Conn>, text: &str, hops: u64) -> Value {
+async fn deliver_now(conn: &Arc<Conn>, text: &str, hops: u64, sender_session: Option<String>) -> Value {
     let profile = own_profile();
-    warm_teammates().await;
+    if let Err(err) = warm_teammates().await { return Outcome::failed(err.message, "teammate_mcp_timeout").to_json(""); }
+    let session = if let Some(session) = sender_session { session } else {
     let chat = match conn.bot_chat("bot.chat.ensure", &json!({ "profile": profile })).await {
         Ok(v) => v,
         Err(err) => return Outcome::failed(err.message, "unknown").to_json(""),
@@ -321,8 +322,10 @@ async fn deliver_now(conn: &Arc<Conn>, text: &str, hops: u64) -> Value {
     let Some(session) = chat["canonical_session"]["id"].as_str().map(str::to_string) else {
         return Outcome::failed("this bot has no Bot Chat", "unknown").to_json("");
     };
+    session
+    };
     // One turn at a time per chat, queued behind a running one.
-    let _turn = chat_turn(&format!("bot-chat-deliver:{profile}")).await;
+    let _turn = chat_turn(&format!("bot-chat-deliver:{session}")).await;
     // A window mid-turn on the chat: a prompt submitted now would not queue (the engine steers a running turn), so wait
     // for that turn to end. Bounded: a chat that never goes idle is `target_busy`.
     let give_up = Instant::now() + TURN_TIMEOUT;
@@ -384,48 +387,58 @@ pub(super) fn answer_to(messages: &[factr_base::session::StoredMessage], text: &
 /// Connect the teammate MCP server once and store its tool schema, if the cache does not hold it yet. A session locks
 /// its tool list when it is created, and only a cached schema is advertised then, so this runs before any chat is
 /// made (`session.create` itself, whoever makes the chat) as well as before `bot.chat.ensure` and a delivery.
-async fn warm_teammates() {
+async fn warm_teammates() -> Result<(), RpcError> {
     use factr_base::mcp::{McpClient, McpConfig, McpSchemaCache};
     let config = McpConfig::load();
     // No such server (the primary profile never has one, nor does a non-bot profile): nothing to cache, and the next
     // chat looks again, because a profile can be given the server after this engine started.
-    let Some(server) = config.servers.get(TEAMMATES_SERVER).filter(|s| s.is_enabled()) else { return };
+    let Some(server) = config.servers.get(TEAMMATES_SERVER).filter(|s| s.is_enabled()) else { return Ok(()) };
     if McpSchemaCache::load().tools_for(TEAMMATES_SERVER, server).is_some() {
         WARM.store(true, std::sync::atomic::Ordering::Relaxed);
-        return;
+        return Ok(());
     }
-    let server = server.clone();
+    let cached_server = server.clone();
+    let mut server = server.clone();
+    server.timeout_secs = Some(10);
     let connected = tokio::time::timeout(WARM_TIMEOUT, McpClient::connect(TEAMMATES_SERVER.to_string(), &server)).await;
     if let Ok(Ok(client)) = connected {
         let tools = client.tools();
         if !tools.is_empty() {
             let mut cache = McpSchemaCache::load();
-            if cache.update(TEAMMATES_SERVER, &server, tools) {
+            if cache.update(TEAMMATES_SERVER, &cached_server, tools) {
                 cache.save();
             }
             WARM.store(true, std::sync::atomic::Ordering::Relaxed);
-            return;
+            return Ok(());
         }
     }
     *LAST_TRY.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+    Err(RpcError { code: 408, message: "The teammate connection did not initialize within 20 seconds. Try again.".into(), data: Some(json!({"reason":"teammate_mcp_timeout"})) })
 }
 
 impl Conn {
+    async fn warm_bot_mcp(&self) -> Result<(), RpcError> {
+        if let Err(err) = warm_teammates().await {
+            self.emit("error", None, json!({"message":err.message,"reason":"teammate_mcp_timeout"})).await;
+            return Err(err);
+        }
+        Ok(())
+    }
     pub(super) async fn bot_deliver(self: &Arc<Self>, method: &str, p: &Value) -> Result<Value, RpcError> {
         match method {
             "bot.chat.ensure" => {
                 // The registry call is bot_chat.rs's; the schema cache is warmed first so the chat it may mint spawns
                 // with `message_agent` already known.
                 if p["profile"].as_str().is_none_or(|n| n.is_empty() || n == own_profile()) {
-                    warm_teammates().await;
+                    self.warm_bot_mcp().await?;
                 }
                 self.bot_chat(method, p).await
             }
             "session.create" => {
-                warm_teammates().await;
+                self.warm_bot_mcp().await?;
                 IN_WARM.scope(true, Box::pin(self.dispatch(method, p))).await
             }
-            "bot.chat.deliver" => self.deliver_rpc(p).await,
+            "bot.chat.deliver" => self.deliver_rpc(p, None).await,
             _ => {
                 let id = p["envelope_id"].as_str().filter(|s| !s.is_empty()).ok_or_else(|| RpcError::params("envelope_id is required"))?;
                 match await_slot(id, POLL_WAIT).await {
@@ -436,7 +449,7 @@ impl Conn {
         }
     }
 
-    async fn deliver_rpc(self: &Arc<Self>, p: &Value) -> Result<Value, RpcError> {
+    pub(super) async fn deliver_rpc(self: &Arc<Self>, p: &Value, sender_session: Option<String>) -> Result<Value, RpcError> {
         let text = p["text"].as_str().or(p["message"].as_str()).map(str::trim).filter(|t| !t.is_empty()).ok_or_else(|| RpcError::params("text is required"))?.to_string();
         if let Some(target) = p["profile"].as_str().filter(|n| !n.is_empty()) {
             if target != own_profile() {
@@ -448,6 +461,9 @@ impl Conn {
             return Ok(Outcome::failed(format!("this message already crossed {MAX_HOPS} bots on its way here; it was not delivered"), "hop_limit").to_json(""));
         }
         let id = p["envelope_id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).unwrap_or_else(|| format!("anon-{:016x}", rand::random::<u64>()));
+        let store_key = format!("bot-delivery:{}:{id}", own_profile());
+        if let Some(result) = entries_or_log(&self.config.home).and_then(|s| s.setting(&store_key)).and_then(|s| serde_json::from_str::<Value>(&s).ok()) { return Ok(result); }
+        let admission = bot_retirement::admit()?;
         let start = {
             let mut slots = DELIVERIES.lock().unwrap_or_else(|e| e.into_inner());
             slots.retain(|_, s| s.tx.borrow().is_none() || s.at.elapsed() < KEEP_DONE);
@@ -465,7 +481,9 @@ impl Conn {
             let runtime = tokio::runtime::Handle::current();
             tokio::task::spawn_blocking(move || {
                 runtime.block_on(async move {
-                    let result = deliver_now(&conn, &text, hops).await;
+                    let _admission = admission;
+                    let result = deliver_now(&conn, &text, hops, sender_session).await;
+                    if let Some(store) = entries_or_log(&conn.config.home) { let _ = store.set_setting(&store_key, &result.to_string()); }
                     if let Some(slot) = DELIVERIES.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
                         slot.tx.send_replace(Some(result));
                     }

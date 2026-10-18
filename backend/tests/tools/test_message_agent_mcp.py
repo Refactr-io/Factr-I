@@ -63,7 +63,7 @@ def test_packaged_entry_uses_engine_expanded_variables(monkeypatch):
     monkeypatch.setenv("FACTR_BACKEND_PYTHON", "/app/py")
     e = mcp.desired_server_entry()
     assert e["command"] == "${FACTR_BACKEND_PYTHON}" and e["env"]["PYTHONPATH"] == "${FACTR_BACKEND_PYTHONPATH}"
-    assert e["timeout_secs"] >= 600
+    assert e["timeout_secs"] == 10  # initialize and tools/list must never wait for a delivery budget
 
 
 def test_python_loop_skips_the_engine_side_server(root, monkeypatch):

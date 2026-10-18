@@ -25,7 +25,7 @@ from typing import Any, Optional
 
 SERVER_NAME = "factr_teammates"  # keep in step with tools.bot_relay.TEAMMATES_MCP_SERVER
 TOOL_NAME = "message_agent"
-# A teammate's turn can run for minutes; the engine's default MCP reply timeout is 30s.
+# Legacy runner budget. Engine chats use the native queued tool; MCP initialization stays bounded.
 REPLY_TIMEOUT_SECONDS = 900
 _PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -41,7 +41,7 @@ def desired_server_entry() -> dict:
         command = sys.executable or "python3"
         pythonpath = str(Path(__file__).resolve().parent.parent)
     return {"command": command, "args": ["-m", "tools.message_agent_mcp"], "env": {"PYTHONPATH": pythonpath},
-            "timeout_secs": REPLY_TIMEOUT_SECONDS}
+            "timeout_secs": 10}
 
 
 def ensure_teammate_mcp(root: "Path | str") -> int:

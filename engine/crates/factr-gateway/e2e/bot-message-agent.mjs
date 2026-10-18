@@ -43,7 +43,7 @@ const model = http.createServer((req, res) => {
       return res.end(JSON.stringify({ object: 'list', data: [{ id: MODEL, object: 'model' }] }))
     }
     const body = JSON.parse(raw || '{}')
-    const last = [...(body.messages || [])].reverse().find(m => m.role === 'user')
+    const last = [...(body.messages || [])].reverse().find(m => m.role === 'user' && !JSON.stringify(m.content).includes('Teammates and roles:'))
     const user = typeof last?.content === 'string' ? last.content : (last?.content || []).map(p => p.text || '').join('')
     seen.push(user)
     if (user.includes('FAIL401')) {

@@ -1,0 +1,11 @@
+{
+  "id": "<id>",
+  "created_at": 0,
+  "hops": 1,
+  "from_profile": "a",
+  "from_handle": "a",
+  "target_connection": "local",
+  "target_profile": "b",
+  "target_handle": "b",
+  "message": "Message from 🤖 a (@a): hi"
+}

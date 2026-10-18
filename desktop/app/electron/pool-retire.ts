@@ -3,6 +3,7 @@ import type { LocalBackendSpawnCoordinator } from './pool-spawn-coordinator'
 export interface PoolRetireEntry {
   /** An early veto only; backend admission owns the proof. */
   activeTurn?: boolean
+  kind?: string
   lastActiveAt?: null | number
   process?: unknown
 }
@@ -23,7 +24,10 @@ export function selectRetirementCandidates<K, E extends PoolRetireEntry>(
   exclude: ReadonlySet<K>
 ): [K, E][] {
   return [...entries]
-    .filter(([key, entry]) => Boolean(entry.process) && entry.activeTurn !== true && !exclude.has(key))
+    .filter(
+      ([key, entry]) =>
+        Boolean(entry.process) && (entry.kind === 'factr' || entry.activeTurn !== true) && !exclude.has(key)
+    )
     .sort((a, b) => (a[1].lastActiveAt || 0) - (b[1].lastActiveAt || 0))
 }
 
@@ -45,6 +49,7 @@ export function createPoolRetirer<E extends PoolRetireEntry>(deps: PoolRetirerDe
   let scheduled = false
   let disposed = false
   const retiredScopes = new Set<string>()
+  const retiring = new Map<string, Promise<boolean>>()
   let retry: ReturnType<typeof setTimeout> | undefined
   const report = (error: unknown) => deps.log?.(`Pool retirement failed: ${String(error)}`)
 
@@ -58,8 +63,19 @@ export function createPoolRetirer<E extends PoolRetireEntry>(deps: PoolRetirerDe
   const needsCapacity = () =>
     !disposed && deps.coordinator.foregroundWaiters.size > 0 && deps.coordinator.activeCount >= deps.coordinator.limit
 
-  async function retire(key: string, entry: E, needed: () => boolean): Promise<boolean> {
-    const eligible = () => !disposed && deps.pool.get(key) === entry && entry.activeTurn !== true && needed()
+  function retire(key: string, entry: E, needed: () => boolean): Promise<boolean> {
+    const previous = retiring.get(key)
+    if (previous) return previous
+    const run = retireEntry(key, entry, needed).finally(() => {
+      if (retiring.get(key) === run) retiring.delete(key)
+    })
+    retiring.set(key, run)
+    return run
+  }
+
+  async function retireEntry(key: string, entry: E, needed: () => boolean): Promise<boolean> {
+    const eligible = () =>
+      !disposed && deps.pool.get(key) === entry && (entry.kind === 'factr' || entry.activeTurn !== true) && needed()
 
     if (!entry.process || !eligible()) {
       return false
@@ -148,6 +164,9 @@ export function createPoolRetirer<E extends PoolRetireEntry>(deps: PoolRetirerDe
 
   return {
     wake,
+    waitForRetirement: async (key: string) => {
+      await retiring.get(key)
+    },
     assertCanOpen: (key: string, priority: 'foreground' | 'background') => {
       if (priority === 'foreground') {
         retiredScopes.delete(key)
