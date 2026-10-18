@@ -14669,6 +14669,20 @@ const botComputerIpc = (fn: (profile: string) => Promise<unknown>) => async (_ev
   }
 }
 
+// The bot relay's local tick (relay.ts): stamp `<root>/bot_relay/desktop.json` (the Python message_agent delivers through
+// the relay only while it is fresh) and count the envelopes waiting in the outbox. Plain files, no backend is woken.
+ipcMain.handle('factr:bot-relay:tick', () => {
+  try {
+    const dir = path.join(FACTR_CONFIG_HOME, 'bot_relay')
+
+    fs.mkdirSync(path.join(dir, 'outbox'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'desktop.json'), JSON.stringify({ at: Date.now() }), { mode: 0o600 })
+
+    return { ok: true, pending: fs.readdirSync(path.join(dir, 'outbox')).filter(name => name.endsWith('.json')).length }
+  } catch {
+    return { ok: false, pending: 0 }
+  }
+})
 ipcMain.handle('factr:bot-computer:status', botComputerIpc(botComputerStatus))
 ipcMain.handle('factr:bot-computer:start', botComputerIpc(startBotComputer))
 ipcMain.handle(

@@ -66,17 +66,28 @@ const route = (id: string): ProfileRoute => ({
 interface RelayCall {
   connectionId: string
   method: string
+  profile?: string
   params: Record<string, unknown>
 }
 
-function respondWith(handler: (call: RelayCall) => unknown) {
+function respondWith(handler: (call: RelayCall) => unknown, { engineDoor = false } = {}) {
   const calls: RelayCall[] = []
 
   ;(hostMock.requestProfile as ReturnType<typeof vi.fn>).mockImplementation(
     async (target: ProfileRoute, method: string, params: Record<string, unknown>) => {
-      const call = { connectionId: target.connectionId, method, params: structuredClone(params ?? {}) }
+      const call = {
+        connectionId: target.connectionId,
+        method,
+        params: structuredClone(params ?? {}),
+        profile: target.profile
+      }
 
       calls.push(call)
+
+      // An older engine (and every remote gateway) has no `bot.chat.deliver`: the relay falls back to bot_relay.deliver.
+      if (!engineDoor && method.startsWith('bot.chat.')) {
+        throw new Error('unknown method bot.chat.deliver')
+      }
 
       return handler(call)
     }
@@ -968,6 +979,195 @@ describe('the drain loop does not let one delivery hold every other gateway’s 
       'env-1',
       'env-3'
     ])
+
+    stopBotRelay()
+  })
+})
+
+// A message between two bots on THIS install is delivered by the target bot's own engine (`bot.chat.deliver`: a real
+// turn in its Bot Chat), not a Python CLI turn. The relay watches the local outbox through a cheap main-process tick, so
+// it works with a single connection and never wakes a backend to look.
+describe('local bot-to-bot delivery through the target engine', () => {
+  const localRoute: ProfileRoute = { connectionId: 'local', mode: 'local', profile: 'default', targetProfile: 'default' }
+  const envelope = { id: 'a'.repeat(32), message: 'Message from 🤖 Alpha (@alpha): hi', from_handle: 'alpha', from_profile: 'alpha', hops: 1, target_connection: 'local', target_profile: 'scout' }
+
+  const setTick = (pending: () => number) => {
+    const tick = vi.fn(async () => ({ ok: true, pending: pending() }))
+
+    ;(window as any).factrDesktop = { botRelay: { tick } }
+    hostMock.profileRoutes = vi.fn(async () => [localRoute])
+
+    return tick
+  }
+
+  afterEach(() => {
+    delete (window as any).factrDesktop
+  })
+
+  it('heartbeats on every tick, and drains only when the outbox has mail (one connection is enough)', async () => {
+    let pending = 0
+    const tick = setTick(() => pending)
+    const calls = respondWith(() => ({ envelopes: [] }), { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 * 3)
+    expect(tick.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain')).toEqual([]) // no mail: no backend is asked
+
+    pending = 1
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain').length).toBe(1)
+
+    stopBotRelay()
+    tick.mockClear()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(tick).not.toHaveBeenCalled()
+  })
+
+  it("hands the message to the target bot's own engine with its hop count, and posts the reply to the sender", async () => {
+    let pending = 1
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      return call.method === 'bot.chat.deliver' ? { ok: true, reply: 'scout says hi', status: 'done' } : {}
+    }, { engineDoor: true })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    const deliver = calls.find(call => call.method === 'bot.chat.deliver')
+
+    expect([deliver?.connectionId, deliver?.profile]).toEqual(['local', 'scout'])
+    expect(deliver?.params).toEqual({
+      envelope_id: envelope.id,
+      from_connection: 'local',
+      from_handle: 'alpha',
+      from_profile: 'alpha',
+      hops: 1,
+      profile: 'scout',
+      text: envelope.message
+    })
+    expect(calls.some(call => call.method === 'bot_relay.deliver')).toBe(false) // no Python CLI turn
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params).toEqual({ id: envelope.id, reply: 'scout says hi' })
+
+    stopBotRelay()
+  })
+
+  it('polls deliver_status while the turn runs and posts one reply', async () => {
+    let pending = 1
+    let polls = 0
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      if (call.method === 'bot.chat.deliver') {
+        return { envelope_id: envelope.id, status: 'pending' }
+      }
+
+      if (call.method === 'bot.chat.deliver_status') {
+        polls += 1
+
+        return polls < 3 ? { envelope_id: envelope.id, status: 'pending' } : { ok: true, reply: 'finally', status: 'done' }
+      }
+
+      return {}
+    }, { engineDoor: true })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    expect(calls.filter(call => call.method === 'bot.chat.deliver_status').map(call => call.params)).toEqual([
+      { envelope_id: envelope.id },
+      { envelope_id: envelope.id },
+      { envelope_id: envelope.id }
+    ])
+    expect(calls.filter(call => call.method === 'bot_relay.reply').map(call => call.params.reply)).toEqual(['finally'])
+
+    stopBotRelay()
+  })
+
+  it('forwards a typed failure (an auth error) to the sender with its reason', async () => {
+    let pending = 1
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      return call.method === 'bot.chat.deliver'
+        ? { error: 'Error code: 401 invalid x-api-key', ok: false, reason: 'provider_auth_or_access', status: 'done' }
+        : {}
+    }, { engineDoor: true })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params).toEqual({
+      error: 'Error code: 401 invalid x-api-key',
+      id: envelope.id,
+      reason: 'provider_auth_or_access'
+    })
+    expect(noteBotAttentionMock).toHaveBeenCalled()
+
+    stopBotRelay()
+  })
+
+  it('falls back to the gateway bot_relay.deliver when the engine has no bot.chat.deliver', async () => {
+    let pending = 1
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      return call.method === 'bot_relay.deliver' ? { reply: 'old engine reply' } : {}
+    }) // engineDoor off: bot.chat.* is an unknown method
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    expect(calls.some(call => call.method === 'bot.chat.deliver')).toBe(true)
+    expect(calls.find(call => call.method === 'bot_relay.deliver')?.params).toMatchObject({ message: envelope.message, profile: 'scout' })
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params).toEqual({ id: envelope.id, reply: 'old engine reply' })
+
+    stopBotRelay()
+  })
+
+  it('does nothing without the desktop door (a web or remote shell)', async () => {
+    hostMock.profileRoutes = vi.fn(async () => [localRoute])
+
+    const calls = respondWith(() => ({ envelopes: [] }), { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain')).toEqual([])
 
     stopBotRelay()
   })

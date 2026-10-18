@@ -67,6 +67,14 @@ const RELAY_DELIVER_TIMEOUT_MS = RELAY_DELIVER_BACKEND_CEILING_MS + RELAY_DELIVE
 // to ONE drain. The interval poll above stays as the backstop for older
 // backends (and connections whose events don't reach the tap).
 const RELAY_PUSH_DEBOUNCE_MS = 250
+// A message between two bots on THIS install (target connection 'local') is delivered by the target bot's own engine
+// (`bot.chat.deliver`: a real turn in its Bot Chat), not a Python CLI turn. The Desktop is the only router, so while the
+// relay runs it stamps a heartbeat the Python tools check (bot_relay.relay_alive) and watches the outbox cheaply (a
+// file count in the main process, never waking a backend) so one queued message is drained at once.
+const RELAY_LOCAL_TICK_MS = 4000
+// A relayed turn can take minutes: `bot.chat.deliver` answers `pending` after ~45 s and the relay polls
+// `bot.chat.deliver_status`, so no single call outlives a request deadline.
+const RELAY_ENGINE_CALL_MS = 130_000
 
 /** Everything the two loops mutate. */
 interface RelayLifecycle {
@@ -77,6 +85,9 @@ interface RelayLifecycle {
    *  re-broadcast) — so remember it and re-schedule after the drain finishes. */
   drainRerun: boolean
   drainTimer: null | ReturnType<typeof setInterval>
+  /** The local outbox had mail at the last tick: the next drain runs even with a single connection. */
+  localPending: boolean
+  localTimer: null | ReturnType<typeof setInterval>
   pushDebounceTimer: null | ReturnType<typeof setTimeout>
   pushUnsub: (() => void) | null
   rosterBusy: boolean
@@ -90,6 +101,8 @@ const relay: RelayLifecycle = {
   drainBusy: false,
   drainRerun: false,
   drainTimer: null,
+  localPending: false,
+  localTimer: null,
   pushDebounceTimer: null,
   pushUnsub: null,
   rosterBusy: false,
@@ -129,6 +142,7 @@ interface RelayEnvelope {
   message?: string
   from_profile?: string
   from_handle?: string
+  hops?: number
   target_connection?: string
   target_profile?: string
 }
@@ -386,6 +400,9 @@ async function drainRelayOutboxes() {
   }
 
   relay.drainBusy = true
+  const forced = relay.localPending
+
+  relay.localPending = false
 
   try {
     const connections = await relayConnections()
@@ -394,7 +411,8 @@ async function drainRelayOutboxes() {
     // connections there is nothing to relay, so nothing stays pinned.
     syncRelayRetention(connections.length >= 2 ? connections : [])
 
-    if (connections.length < 2) {
+    // One connection is nothing to relay BETWEEN, unless local bots have mail for each other (forced by the local tick).
+    if (connections.length < (forced ? 1 : 2)) {
       return
     }
 
@@ -476,6 +494,74 @@ function enqueueRelayDelivery(sender: RelayConnection, envelope: RelayEnvelope, 
   })
 }
 
+const isUnknownMethod = (error: any) => /unknown method|method not found|not supported|-32601/i.test(String(error?.message || error))
+
+/** One relayed message, delivered by the target bot's OWN engine (`bot.chat.deliver`) when it has that door, else by the
+ *  gateway's `bot_relay.deliver` (a Python CLI turn: older engines, remote gateways). */
+async function deliverToTarget(
+  target: RelayConnection,
+  sender: RelayConnection,
+  envelope: RelayEnvelope,
+  envelopeId: string
+): Promise<{ reply?: string }> {
+  const profile = String(envelope?.target_profile || '')
+  const message = String(envelope?.message || '')
+  const from_profile = String(envelope?.from_profile || '')
+  const from_handle = String(envelope?.from_handle || '')
+  const from_connection = String(sender.id)
+
+  // Route to the bot's own engine: same connection, the bot's own profile.
+  const route: ProfileRoute = { ...target.route, profile, targetProfile: profile }
+  const deadline = Date.now() + RELAY_DELIVER_TIMEOUT_MS
+
+  try {
+    let res = await host.requestProfile<EngineDelivery>(
+      route,
+      'bot.chat.deliver',
+      { profile, text: message, from_handle, from_profile, from_connection, envelope_id: envelopeId, hops: envelope?.hops ?? 0 },
+      RELAY_ENGINE_CALL_MS
+    )
+
+    while (res?.status === 'pending') {
+      if (Date.now() > deadline) {
+        throw Object.assign(new Error('delivery timed out'), { data: { reason: 'delivery_timeout' } })
+      }
+
+      res = await host.requestProfile<EngineDelivery>(
+        route,
+        'bot.chat.deliver_status',
+        { envelope_id: envelopeId },
+        RELAY_ENGINE_CALL_MS
+      )
+    }
+
+    if (res?.ok === false) {
+      throw Object.assign(new Error(String(res.error || 'delivery failed')), { data: { reason: res.reason } })
+    }
+
+    return { reply: String(res?.reply || '') }
+  } catch (error: any) {
+    if (!isUnknownMethod(error)) {
+      throw error
+    }
+  }
+
+  return host.requestProfile<{ reply?: string }>(
+    target.route,
+    'bot_relay.deliver',
+    { profile, message, from_profile, from_handle, from_connection },
+    RELAY_DELIVER_TIMEOUT_MS
+  )
+}
+
+interface EngineDelivery {
+  error?: string
+  ok?: boolean
+  reason?: string
+  reply?: string
+  status?: string
+}
+
 /** Deliver one claimed envelope on the target connection's own socket and post
  *  the reply (or the error) back to the sender gateway for its waiter. */
 async function deliverRelayEnvelope(
@@ -514,18 +600,7 @@ async function deliverRelayEnvelope(
   const attentionKey = `${target.id}::${String(envelope?.target_profile || '')}`
 
   try {
-    const res = await host.requestProfile<{ reply?: string }>(
-      target.route,
-      'bot_relay.deliver',
-      {
-        profile: String(envelope?.target_profile || ''),
-        message: String(envelope?.message || ''),
-        from_profile: String(envelope?.from_profile || ''),
-        from_handle: String(envelope?.from_handle || ''),
-        from_connection: String(sender.id)
-      },
-      RELAY_DELIVER_TIMEOUT_MS
-    )
+    const res = await deliverToTarget(target, sender, envelope, envelopeId)
 
     clearBotAttention(attentionKey)
     await postReply({
@@ -567,6 +642,20 @@ function scheduleRelayPushDrain() {
   }, RELAY_PUSH_DEBOUNCE_MS)
 }
 
+/** Stamp the heartbeat and look at the local outbox without waking any backend (the main process counts the files). */
+async function localTick() {
+  if (relay.disposed) {
+    return
+  }
+
+  const tick = await (typeof window === 'undefined' ? undefined : window.factrDesktop?.botRelay?.tick?.())?.catch?.(() => null)
+
+  if (tick?.ok && tick.pending > 0) {
+    relay.localPending = true
+    scheduleRelayPushDrain()
+  }
+}
+
 export function startBotRelay() {
   relay.disposed = false
   relay.rosterClearedFor = null
@@ -584,6 +673,11 @@ export function startBotRelay() {
 
   if (relay.drainTimer === null) {
     relay.drainTimer = setInterval(() => void drainRelayOutboxes(), RELAY_DRAIN_INTERVAL_MS)
+  }
+
+  if (relay.localTimer === null) {
+    relay.localTimer = setInterval(() => void localTick(), RELAY_LOCAL_TICK_MS)
+    void localTick()
   }
 
   // Push path: the gateway change watcher broadcasts when an envelope hits
@@ -616,6 +710,13 @@ export function stopBotRelay() {
     clearInterval(relay.drainTimer)
     relay.drainTimer = null
   }
+
+  if (relay.localTimer !== null) {
+    clearInterval(relay.localTimer)
+    relay.localTimer = null
+  }
+
+  relay.localPending = false
 
   if (relay.pushDebounceTimer !== null) {
     clearTimeout(relay.pushDebounceTimer)

@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('factrDesktop', {
   revalidateConnection: () => ipcRenderer.invoke('factr:connection:revalidate'),
   touchBackend: (profile, options) => ipcRenderer.invoke('factr:backend:touch', profile, options),
   // Bot computers (one Docker container per bot). Failures return {ok:false,error}, never throw.
+  botRelay: { tick: () => ipcRenderer.invoke('factr:bot-relay:tick') },
   botComputer: {
     status: profile => ipcRenderer.invoke('factr:bot-computer:status', profile),
     start: profile => ipcRenderer.invoke('factr:bot-computer:start', profile),

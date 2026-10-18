@@ -64,6 +64,8 @@ declare global {
       // main process. get resolves the limits currently in force; set applies
       // (and persists) new ones, evicting/reaping to converge immediately.
       // Bot computers: one hardened Docker container per bot, started on demand and stopped when idle (30 min).
+      // The bot relay's local door: stamps the heartbeat the Python tools read and counts mail waiting in the outbox.
+      botRelay?: { tick: () => Promise<{ ok: boolean; pending: number }> }
       botComputer?: {
         status: (profile: string) => Promise<BotComputerResult>
         // Starts the bot's computer (stopping any host engine for it first) and resolves when its engine is healthy.
