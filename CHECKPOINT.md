@@ -43,8 +43,7 @@ Run started 2026-10-18 on `feat/rust-ram`, starting commit `9b669100`.
 
 ## Next
 
-5. Electron idle costs: muted haptics guard and lazy KaTeX, preserving enabled warm-up and GPU/network settings as parent approved. Capture muted baseline from the existing m4 QA app before replacing its assets.
-6. Full QA; strengthen pet query boundaries (mixed-case/missing profile names currently need a conservative fallback), then final docs/cleanup/report.
+Tasks 1-7 are complete for the adopted, parent-approved scope. Final report and remaining manual scenarios are in REPORT.md and NEEDS-GUI-QA.md. Production code is committed; the final docs/cleanup milestone is recorded below. No further code task is pending. Known inherited Electron/shutdown issues are explicitly disclosed.
 
 ## Milestone 3: Scheduled-job editor read stays native (validated)
 
@@ -103,3 +102,14 @@ Run started 2026-10-18 on `feat/rust-ram`, starting commit `9b669100`.
 - Final engine + renderer app: Settings / Scheduled jobs / New job still keep Python stopped with zero console errors (`pages-final-combined.log`). Combined image-attachment/@/chat/browser smoke passes functional assertions; one inherited native exception remains (`smoke-safe-guest.log`). Manual-QA document distinguishes these from tested paths.
 - Rechecked the full supplied UI design law against all changed surfaces. No new type, palette, ornament, stock layout, icons, shadows or decorative motion introduced. Source text remains visible before/after optional chunk failure; math, image and job-dialog screenshots checked for legibility, clipping, alignment and gutters. Native disclosure controls were clicked open/closed; attachment/menu/page controls and blank browser controls were clicked. Existing screen styling preserved. New lifecycle fix retains readable live content through title updates. Remaining native exception is disclosed above.
 - Graph coverage checked on mirror/test; refreshed source read for metadata-changed/new file ranges. Parent advice read, no STOP. Updated QUESTIONS-rust.md with the independent title fix and the unresolved inherited native exception. Next: final documentation, remove unused build output, clean status and report copy.
+
+## Milestone 7: final docs and cleanup
+
+- Updated the authorized external rust-ram-baseline.md and rust-ram-plan.md with matched measurements, parent-approved scope decisions, native startup/request distinction, unresolved plain-chat plateau and remaining QA. Wrote REPORT.md and NEEDS-GUI-QA.md with done/half-done/untested status and exact resume commands.
+- Final combined-build math and disclosure-image replays PASS with zero console errors or leftovers (`math-final-combined.log`, `disclosure-final-combined.log`). Final pages replay PASS, zero request-phase Python/console errors. These run the final renderer including the pane title fix and the final rebuilt engine.
+- Removed our 9.2 GB logical Cargo target, 924 MB workspace node_modules, app-local generated node_modules/dist, all unused scratch renderer builds/npm cache, duplicate runtime and 60 command homes recorded in our logs. Removed app run scratch homes. Cleanup limited to task-owned build/scratch paths. Free disk: 88 GiB after cleanup.
+- Retained exactly one ad-hoc-signed isolated QA app plus evidence/logs/small scenario scripts for manual follow-up. Its runtime is reused through python-bundle symlink; QA has standalone Playwright packages so workspace dependencies can stay deleted. Standalone harness import and bundled FastAPI/Pillow imports PASS. Retained app is for QA, not a release package.
+- Process check: no own QA app or worktree test processes running before cleanup. Retained standalone harness replay PASS after workspace-dependency removal (`retained-harness-check.log`, evidence 20261018T125228-L0-rust-ram-pages): all pages Python-free, no console errors, no home changes or leftovers. Its new scratch home was then removed.
+- All adopted milestones validated and committed locally; no pushes or remote changes. Core agent/tools/prompts/providers unchanged. Remaining scenarios and inherited issues are disclosed; no blanket release certification. Parent advice read, no STOP.
+
+- Final REPORT.md copied byte-for-byte to `/Users/rameelmalik/Documents/Sovereign AI/handoff/rust-REPORT.md`. Worktree clean after the docs commit.
