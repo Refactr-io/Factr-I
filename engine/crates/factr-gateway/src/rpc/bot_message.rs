@@ -18,6 +18,9 @@ fn root() -> PathBuf {
         home
     }
 }
+pub(super) fn install_root() -> PathBuf {
+    root()
+}
 fn own() -> String {
     std::env::var("FACTR_PROFILE")
         .ok()
@@ -32,6 +35,15 @@ fn yaml(path: &Path) -> Value {
         .ok()
         .and_then(|s| serde_yaml::from_str(&s).ok())
         .unwrap_or(Value::Null)
+}
+fn enabled() -> bool {
+    factr_base::factr_config::home()
+        .is_none_or(|home| yaml(&home.join("config.yaml"))["agent"]["bot_mode_protocol"] != false)
+}
+fn chat_session(id: &str) -> bool {
+    own() == "default"
+        || factr_base::session::Session::load(id)
+            .is_ok_and(|s| s.custom_title.as_deref().or(s.title.as_deref()) == Some("Bot Chat"))
 }
 fn valid(name: &str) -> bool {
     !name.is_empty()
@@ -98,6 +110,132 @@ fn remote(base: &Path) -> Vec<Value> {
         .and_then(|v| v["agents"].as_array().cloned())
         .unwrap_or_default()
 }
+
+// The relay owns claims/TTL and writes durable reply files even when the Desktop disconnects.
+// Watch those same files, rather than spawning a Python waiter for every message.
+pub(crate) fn start(config: Arc<Config>, hub: Arc<Hub>, observer: Arc<Observer>) {
+    tokio::spawn(async move {
+        let (to_ws, mut rx) = mpsc::channel::<Message>(1024);
+        tokio::spawn(async move { while rx.recv().await.is_some() {} });
+        let client = Arc::new(Client {
+            id: hub.next_client_id(),
+            to_ws: to_ws.clone(),
+            sessions: Mutex::new(Default::default()),
+        });
+        let conn = Conn::new(
+            config,
+            to_ws,
+            hub,
+            client,
+            observer,
+            false,
+            "bot_reply",
+            None,
+            None,
+        );
+        let mut peers: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
+        loop {
+            peers.retain(|_, task| !task.is_finished());
+            let base = root();
+            if let Ok(entries) = std::fs::read_dir(base.join("bot_relay/native")) {
+                for entry in entries.flatten() {
+                    let file = entry.path();
+                    let Some(envelope) = std::fs::read(&file)
+                        .ok()
+                        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                    else {
+                        continue;
+                    };
+                    if envelope["from_profile"] != own() {
+                        continue;
+                    }
+                    if envelope["settled"] == true {
+                        if chrono::Utc::now().timestamp()
+                            - envelope["settled_at"].as_i64().unwrap_or(i64::MAX)
+                            > 6 * 3600
+                        {
+                            let _ = std::fs::remove_file(file);
+                        }
+                        continue;
+                    }
+                    let Some(id) = envelope["id"]
+                        .as_str()
+                        .filter(|id| id.len() == 32 && id.bytes().all(|c| c.is_ascii_hexdigit()))
+                    else {
+                        continue;
+                    };
+                    let reply_file = base.join("bot_relay/replies").join(format!("{id}.json"));
+                    if !reply_file.exists() && !envelope["peer_url"].is_string() {
+                        let ttl =
+                            yaml(&base.join("config.yaml"))["bot_mode"]["envelope_ttl_seconds"]
+                                .as_i64()
+                                .unwrap_or(900);
+                        let age = chrono::Utc::now().timestamp()
+                            - envelope["created_at"].as_i64().unwrap_or(0);
+                        let expired = base.join("bot_relay/expired").join(format!("{id}.json"));
+                        if ttl > 0 && age > ttl {
+                            let _ = std::fs::create_dir_all(expired.parent().unwrap());
+                            let _ = std::fs::rename(
+                                base.join("bot_relay/outbox").join(format!("{id}.json")),
+                                &expired,
+                            );
+                        }
+                        if expired.exists() {
+                            let _ = atomic(
+                                &reply_file,
+                                &json!({"error":"Queued message expired before the Desktop claimed it; it was not delivered","reason":"queued_expired"}),
+                            );
+                        } else if age > 3120 {
+                            let _ = atomic(
+                                &reply_file,
+                                &json!({"error":"No delivery outcome within the relay wait budget. It may have been delivered; do not resend blindly","reason":"delivery_timeout"}),
+                            );
+                        }
+                    }
+                    if envelope["peer_url"].is_string()
+                        && !reply_file.exists()
+                        && !peers.contains_key(id)
+                    {
+                        let mut envelope = envelope.clone();
+                        if envelope["attempted"] == true {
+                            let _ = atomic(
+                                &reply_file,
+                                &json!({"error":"Peer delivery was interrupted; its outcome is unknown. Do not resend blindly","reason":"delivery_timeout"}),
+                            );
+                        } else {
+                            let Ok(admission) = bot_retirement::admit() else {
+                                continue;
+                            };
+                            envelope["attempted"] = json!(true);
+                            if atomic(&file, &envelope).is_ok() {
+                                peers.insert(
+                                    id.to_string(),
+                                    tokio::spawn(async move {
+                                        let _admission = admission;
+                                        let reply = bot_peer::deliver(&envelope).await;
+                                        let _ = atomic(&reply_file, &reply);
+                                    }),
+                                );
+                            }
+                        }
+                        continue;
+                    }
+                    let Some(mut reply) = std::fs::read(&reply_file)
+                        .ok()
+                        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                    else {
+                        continue;
+                    };
+                    reply["id"] = json!(id);
+                    if conn.ensure_control().await.is_ok() {
+                        let _ = conn.bot_reply(&reply).await;
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(4)).await;
+        }
+    });
+}
 fn resolve<'a>(raw: &str, local: &'a [Value], peers: &'a [Value]) -> Result<&'a Value> {
     let raw = raw.trim().trim_start_matches('@').to_lowercase();
     let (want, connection) = raw
@@ -110,9 +248,8 @@ fn resolve<'a>(raw: &str, local: &'a [Value], peers: &'a [Value]) -> Result<&'a 
             .any(|v| v.eq_ignore_ascii_case(want))
     };
     let alias_match = |r: &&Value| {
-        aliases(r["title"].as_str().unwrap_or(""))
-            .iter()
-            .any(|a| a == want)
+        let title = r["title"].as_str().unwrap_or("");
+        title.eq_ignore_ascii_case(want) || aliases(title).iter().any(|a| a == want)
     };
     // Folder ids and reserved default handles have authority over friendly names.
     if connection.is_none() {
@@ -184,7 +321,11 @@ fn queue(base: &Path, sender: &str, session: &str, args: &Value) -> Result<Value
         local.iter().any(|r| r["managed"] == true) || !peers.is_empty(),
         "This install has no bot roster"
     );
-    let target = resolve(args["target"].as_str().unwrap_or(""), &local, &peers)?;
+    let peer = bot_peer::target(base, args["target"].as_str().unwrap_or(""))?;
+    let target = match &peer {
+        Some(row) => row,
+        None => resolve(args["target"].as_str().unwrap_or(""), &local, &peers)?,
+    };
     anyhow::ensure!(
         target["profile"] != sender || target["connection_id"] != "local",
         "You can't message yourself. Pick a teammate"
@@ -216,43 +357,77 @@ fn queue(base: &Path, sender: &str, session: &str, args: &Value) -> Result<Value
         .and_then(|r| r["title"].as_str())
         .unwrap_or(handle(sender));
     let id = format!("{:032x}", rand::random::<u128>());
-    let envelope = json!({"id":id,"created_at":chrono::Utc::now().timestamp(),"hops":hops,"from_profile":sender,"from_handle":handle(sender),
+    let mut envelope = json!({"id":id,"created_at":chrono::Utc::now().timestamp(),"hops":hops,"from_profile":sender,"from_handle":handle(sender),
         "target_connection":target["connection_id"],"target_profile":target["profile"],"target_handle":target["handle"],
         "message":format!("Message from 🤖 {name} (@{}): {message}",handle(sender)),"sender_session":session,"native":true});
+    if let Some(peer) = &peer {
+        envelope["peer_url"] = peer["peer_url"].clone();
+        envelope["peer_key_env"] = peer["peer_key_env"].clone();
+    }
     atomic(
         &base.join("bot_relay/native").join(format!("{id}.json")),
         &envelope,
     )?;
-    atomic(
-        &base.join("bot_relay/outbox").join(format!("{id}.json")),
-        &envelope,
-    )?;
-    Ok(json!({"status":"queued","delivery_id":id,"to":format!("@{}",target["handle"].as_str().unwrap_or("")),"reply_delivery":"notification","detail":"Finish your turn now. The reply or delivery failure wakes this chat later; do not wait, poll or resend."}))
+    if peer.is_none() {
+        atomic(
+            &base.join("bot_relay/outbox").join(format!("{id}.json")),
+            &envelope,
+        )?;
+    }
+    Ok(
+        json!({"status":"queued","delivery_id":id,"to":format!("@{}",target["handle"].as_str().unwrap_or("")),"reply_delivery":"notification","detail":"Finish your turn now. The reply or delivery failure wakes this chat later; do not wait, poll or resend."}),
+    )
 }
 
-pub(super) fn reminder(previous: Option<&str>) -> Option<String> {
+pub(super) fn reminder(previous: Option<&str>, id: &str) -> Option<String> {
     let local = roster(&root());
-    if !local.iter().any(|r| r["managed"] == true) { return previous.map(str::to_string); }
-    let rows = local.into_iter().chain(remote(&root())).filter(|r| r["profile"] != own() || r["connection_id"] != "local").map(|r| format!("- @{}{}: {} {}",r["handle"].as_str().unwrap_or(""), if r["connection_id"] != "local" { format!("@{}",r["connection_id"].as_str().unwrap_or("")) } else {String::new()},r["title"].as_str().unwrap_or(""),r["description"].as_str().unwrap_or(""))).collect::<Vec<_>>().join("\n");
-    Some(format!("{}\nMessaging other agents. Compose your own message and use message_agent; the later reply wakes this chat. Teammates and roles:\n{rows}",previous.unwrap_or("")))
+    if !enabled() || !chat_session(id) || !local.iter().any(|r| r["managed"] == true) {
+        return previous.map(str::to_string);
+    }
+    let rows = local
+        .into_iter()
+        .chain(remote(&root()))
+        .filter(|r| r["profile"] != own() || r["connection_id"] != "local")
+        .map(|r| {
+            format!(
+                "- @{}{}: {} {}",
+                r["handle"].as_str().unwrap_or(""),
+                if r["connection_id"] != "local" {
+                    format!("@{}", r["connection_id"].as_str().unwrap_or(""))
+                } else {
+                    String::new()
+                },
+                r["title"].as_str().unwrap_or(""),
+                r["description"].as_str().unwrap_or("")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(format!(
+        "{}\nMessaging other agents. Compose your own message and use message_agent; the later reply wakes this chat. Teammates and roles:\n{rows}",
+        previous.unwrap_or("")
+    ))
 }
 
 impl Conn {
     pub(super) async fn prepare_bot_tool(self: &Arc<Self>, p: &Value) -> Result<(), RpcError> {
         let id = p["session_id"].as_str().unwrap_or_default();
-        let sender = own();
         let local = roster(&root());
-        let is_chat = sender == "default"
-            || factr_base::session::Session::load(id).is_ok_and(|s| {
-                s.custom_title.as_deref().or(s.title.as_deref()) == Some("Bot Chat")
-            });
+        let is_chat = chat_session(id);
         if is_chat
             && self.run_kind != "cron"
             && (local.iter().any(|r| r["managed"] == true) || !remote(&root()).is_empty())
         {
             self.ensure_attached(id).await.map_err(RpcError::internal)?;
-            let schema: Value = serde_json::from_str(include_str!("../../tests/fixtures/message_agent.schema.json")).expect("upstream message_agent schema");
-            let request = json!({"req":"configure_tools","session_id":id,"tools":{"disabled":["mcp__factr_teammates__message_agent"],"custom":[schema["function"].clone()]}});
+            let schema: Value = serde_json::from_str(include_str!(
+                "../../tests/fixtures/message_agent.schema.json"
+            ))
+            .expect("upstream message_agent schema");
+            let request = if enabled() {
+                json!({"req":"configure_tools","session_id":id,"tools":{"disabled":["mcp__factr_teammates__message_agent"],"custom":[schema["function"].clone()]}})
+            } else {
+                json!({"req":"configure_tools","session_id":id,"tools":{"disabled":["mcp__factr_teammates__message_agent","message_agent"],"custom":[]}})
+            };
             let mut configured = self.call(request.clone()).await;
             for _ in 0..20 {
                 if !configured
@@ -282,12 +457,15 @@ impl Conn {
             .filter(|s| s.len() == 32 && s.bytes().all(|c| c.is_ascii_hexdigit()))
             .ok_or_else(|| RpcError::params("invalid delivery id"))?;
         let file = root().join("bot_relay/native").join(format!("{id}.json"));
-        let envelope: Value = std::fs::read(&file)
+        let mut envelope: Value = std::fs::read(&file)
             .ok()
             .and_then(|s| serde_json::from_slice(&s).ok())
             .ok_or_else(|| RpcError::params("unknown delivery id"))?;
         if envelope["from_profile"] != own() {
             return Err(RpcError::params("reply reached the wrong sender engine"));
+        }
+        if envelope["settled"] == true {
+            return Ok(envelope["result"].clone());
         }
         let session = envelope["sender_session"]
             .as_str()
@@ -295,6 +473,10 @@ impl Conn {
         let reply = p["reply"].as_str().unwrap_or("");
         let error = p["error"].as_str().unwrap_or("");
         if error.is_empty() && (reply.trim().is_empty() || bot_chat_deliver::is_silence(reply)) {
+            envelope["settled"] = json!(true);
+            envelope["settled_at"] = json!(chrono::Utc::now().timestamp());
+            envelope["result"] = json!({"ok":true,"silent":true});
+            atomic(&file, &envelope).map_err(RpcError::internal)?;
             return Ok(json!({"ok":true,"silent":true}));
         }
         let target = envelope["target_handle"].as_str().unwrap_or("teammate");
@@ -312,11 +494,19 @@ impl Conn {
                     .unwrap_or("unknown")
             )
         };
-        self.deliver_rpc(
-            &json!({"text":text,"envelope_id":format!("reply-{id}"),"hops":envelope["hops"]}),
-            Some(session.to_string()),
-        )
-        .await
+        let result = self
+            .deliver_rpc(
+                &json!({"text":text,"envelope_id":format!("reply-{id}"),"hops":envelope["hops"]}),
+                Some(session.to_string()),
+            )
+            .await?;
+        if result["status"] != "pending" {
+            envelope["settled"] = json!(true);
+            envelope["settled_at"] = json!(chrono::Utc::now().timestamp());
+            envelope["result"] = result.clone();
+            atomic(&file, &envelope).map_err(RpcError::internal)?;
+        }
+        Ok(result)
     }
 
     pub(super) fn bot_tool(self: &Arc<Self>, frame: &Value) -> bool {
@@ -336,8 +526,8 @@ impl Conn {
         let runtime = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {
             runtime.block_on(async move {
-            let queued = queue(&root(),&own(),&session,&input);
-            let (output,error) = match queued { Ok(v)=>(v.to_string(),None),Err(e)=>(e.to_string(),Some(e.to_string())) };
+            let queued = if enabled() && chat_session(&session) { queue(&root(),&own(),&session,&input) } else { Err(anyhow!("message_agent is disabled in this session")) };
+            let (output,error) = match queued { Ok(v)=>(v.to_string(),None),Err(e)=>{ let message=e.to_string(); let reason = if message.contains("runtime_offline") {"runtime_offline"} else if message.contains("hop_limit") {"hop_limit"} else {bot_chat_deliver::classify(&message)}; (json!({"error":message,"reason":reason}).to_string(),Some(message)) } };
             let _ = conn.call(json!({"req":"tool_result","session_id":session,"call_id":call,"output":output,"error":error})).await;
         })
         });

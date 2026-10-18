@@ -1084,7 +1084,7 @@ describe('local bot-to-bot delivery through the target engine', () => {
     stopBotRelay()
   })
 
-  it('wakes a native sender on its own engine before recording final courier settlement', async () => {
+  it('persists a native reply before waking the sender on its own engine', async () => {
     let pending = 1
     setTick(() => pending)
     const calls = respondWith(call => {
@@ -1097,7 +1097,7 @@ describe('local bot-to-bot delivery through the target engine', () => {
     const wake = calls.findIndex(c => c.method === 'bot.chat.reply')
     expect(calls[wake].profile).toBe('alpha')
     expect(calls[wake].params).toEqual({ id: envelope.id, reply: 'answer' })
-    expect(calls.findIndex(c => c.method === 'bot_relay.reply')).toBeGreaterThan(wake)
+    expect(calls.findIndex(c => c.method === 'bot_relay.reply')).toBeLessThan(wake)
     stopBotRelay()
   })
 

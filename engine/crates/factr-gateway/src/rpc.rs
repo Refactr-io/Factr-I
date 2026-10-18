@@ -33,6 +33,8 @@ mod bot_chat;
 mod bot_chat_deliver;
 mod bot_preamble;
 mod bot_message;
+mod bot_peer;
+pub(crate) use bot_message::start as start_bot_replies;
 mod bot_retirement;
 pub(crate) use bot_retirement::request as pool_retirement;
 mod local_state;
@@ -2661,7 +2663,7 @@ impl Conn {
                     let (home, id) = (self.config.home.clone(), id.clone());
                     tokio::task::spawn_blocking(move || attach::staged_images(&home, &id)).await.map_err(|e| RpcError::internal(e.into()))?
                 };
-                let reminder = bot_message::reminder(p["system_reminder"].as_str());
+                let reminder = bot_message::reminder(p["system_reminder"].as_str(), p["session_id"].as_str().unwrap_or_default());
                 if let Err(err) = self.submit(&id, &text, reminder.as_deref(), images).await {
                     self.observer.failed_submit(&id, &run, &err.to_string());
                     attach::restore_staged(&self.config.home, &id, &staged, &unreadable);

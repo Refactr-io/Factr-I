@@ -1,10 +1,10 @@
 """Teammate messaging for bots whose chat runs in the Rust engine (the packaged desktop app).
 
-The engine has no ``message_agent`` tool, so each Bot-Mode bot profile gets one stdio MCP server in its OWN
+Legacy engines use this stdio MCP server in each Bot-Mode bot profile's OWN
 ``config.yaml`` (``mcp_servers.factr_teammates``). On a Bot-Mode-managed install the default profile gets it too,
 so the user's chat can hand work to a teammate. Installs without a bot roster are unchanged.
 
-This module is the seam for a later Rust port: ``ensure_teammate_mcp`` (config), the stdio server below
+Current engines inject the native queued SDK tool and disable this alias. This compatibility module provides ``ensure_teammate_mcp`` (config), the stdio server below
 (tool surface), and ``deliver`` (transport). ``deliver`` runs the same cleanup-owning runner, per-profile turn
 lock, live-owner admission and author attribution as the Python ``message_agent`` tool, but waits for the reply and
 returns it as the tool result instead of relying on a completion notification the engine cannot consume.

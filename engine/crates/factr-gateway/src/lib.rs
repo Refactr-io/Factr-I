@@ -236,6 +236,7 @@ impl Gateway {
 
     pub async fn serve(self) -> Result<()> {
         rpc::start_driver(self.config.clone(), self.hub.clone(), self.observer.clone());
+        rpc::start_bot_replies(self.config.clone(), self.hub.clone(), self.observer.clone());
         factr_host::install(self.config.features.clone(), self.hub.clone());
         // The engine's one approval gate: bash, repl and factr calls are denied unless this is installed.
         factr_base::hooks::set_approval_hook(Some(Arc::new(approvals::HubGate(self.hub.clone()))));

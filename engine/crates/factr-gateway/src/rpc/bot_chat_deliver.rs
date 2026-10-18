@@ -29,7 +29,7 @@ const MAX_HOPS: u64 = 2;
 /// How long `deliver` and `deliver_status` hold the call before answering `pending`.
 const POLL_WAIT: Duration = Duration::from_secs(45);
 /// One turn's own limit (the relay's per-turn budget).
-const TURN_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+const TURN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// A finished delivery is remembered this long so a repeated call returns it instead of running a second turn.
 const KEEP_DONE: Duration = Duration::from_secs(3600);
 /// The teammate server whose schema is warmed (the only MCP server this module starts).
@@ -101,8 +101,8 @@ pub(super) fn cap_reply(reply: &str) -> String {
     if total <= MAX_CHARS {
         return reply.to_string();
     }
-    let head: String = reply.chars().take(MAX_CHARS).collect();
-    format!("{head}\n\n[reply cut at {MAX_CHARS} of {total} characters]")
+    let tail: String = reply.chars().skip(total - MAX_CHARS).collect();
+    format!("{tail}\n\n[reply cut at {MAX_CHARS} of {total} characters]")
 }
 
 // ── one delivery: the policy around a turn ───────────────────────────────────────────────────────────
@@ -578,6 +578,7 @@ mod tests {
 
     #[test]
     fn a_long_reply_is_cut_at_16000_with_a_note_and_a_short_one_is_untouched() {
+        assert!(cap_reply(&format!("{}THE_END", "x".repeat(16000))).contains("THE_END"));
         assert_eq!(cap_reply("short"), "short");
         let exact = "x".repeat(MAX_CHARS);
         assert_eq!(cap_reply(&exact), exact);

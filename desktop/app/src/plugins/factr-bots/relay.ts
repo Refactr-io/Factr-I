@@ -587,6 +587,8 @@ async function deliverRelayEnvelope(
 
   const postReply = async (payload: { error?: string; reason?: string; reply?: string }) => {
     try {
+      // Persist first: the native engine recovers this wake after a crash or pool retirement.
+      await host.requestProfile(sender.route, 'bot_relay.reply', { id: envelopeId, ...payload })
       if (envelope.native === true && envelope.sender_session) {
         const profile = String(envelope.from_profile || 'default')
         const route = { ...sender.route, profile, targetProfile: profile }
@@ -597,7 +599,9 @@ async function deliverRelayEnvelope(
           RELAY_ENGINE_CALL_MS,
           { spawnPriority: 'foreground' }
         )
+        const deadline = Date.now() + RELAY_DELIVER_TIMEOUT_MS
         while (reply?.status === 'pending') {
+          if (Date.now() > deadline) throw new Error('sender wake timed out; durable reply retained')
           reply = await host.requestProfile<EngineDelivery>(
             route,
             'bot.chat.deliver_status',
@@ -607,12 +611,8 @@ async function deliverRelayEnvelope(
           )
         }
       }
-      await host.requestProfile(sender.route, 'bot_relay.reply', {
-        id: envelopeId,
-        ...payload
-      })
     } catch {
-      // Sender gateway unreachable — its waiter times out with guidance.
+      // The sender's engine retries the durable reply on its next scan/start.
     }
   }
 

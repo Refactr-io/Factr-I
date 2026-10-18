@@ -20,6 +20,7 @@ const cfg = path.join(base, "config"),
   home = path.join(base, "engine");
 const children = new Set<any>();
 const seen: any[] = [];
+const peerRequests: any[] = [];
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(test: () => boolean, ms = 15_000) {
   const end = Date.now() + ms;
@@ -46,7 +47,7 @@ const model = http.createServer(async (req, res) => {
   const entry = { user, body, at: Date.now() };
   seen.push(entry);
   const lastTool = [...messages].reverse().find(m => m.role === "tool");
-  const calls = user.includes("NATIVE_ASK") && !lastTool;
+  const calls = (user.includes("NATIVE_ASK") || user.includes("NATIVE_PEER")) && !lastTool;
   if (user.includes("SLOW_DELIVERY")) await sleep(3000);
   const text = calls
     ? ""
@@ -69,7 +70,7 @@ const model = http.createServer(async (req, res) => {
                 function: {
                   name: "message_agent",
                   arguments: JSON.stringify({
-                    target: "b",
+                    target: user.includes("NATIVE_PEER") ? "spark/researcher" : "b",
                     message: "SLOW_DELIVERY native ping",
                   }),
                 },
@@ -84,6 +85,16 @@ const model = http.createServer(async (req, res) => {
   res.end("data: [DONE]\n\n");
 });
 await new Promise<void>((resolve) => model.listen(0, "127.0.0.1", resolve));
+const peer = http.createServer(async (req, res) => {
+  let raw = ''; for await (const part of req) raw += part;
+  const body = raw ? JSON.parse(raw) : undefined;
+  peerRequests.push({ method: req.method, url: req.url, body });
+  assert.equal(req.headers.authorization, 'Bearer bots-peer-test');
+  res.setHeader('content-type', 'application/json');
+  if (req.method === 'GET') return res.end(JSON.stringify({ data: [{ id: 'hidden-chat', title: 'Bot Chat', hidden: true }] }));
+  res.end(JSON.stringify({ message: { content: 'PEER_ANSWER' } }));
+});
+await new Promise<void>(resolve => peer.listen(0, '127.0.0.1', resolve));
 const endpoint = `http://127.0.0.1:${(model.address() as any).port}/v1`;
 fs.mkdirSync(home, { recursive: true });
 fs.mkdirSync(cfg, { recursive: true });
@@ -105,6 +116,7 @@ function seed(name: string) {
     );
 }
 seed("default");
+fs.appendFileSync(path.join(cfg, 'config.yaml'), `bot_peers:\n  spark:\n    url: http://127.0.0.1:${(peer.address() as any).port}\n`);
 async function start(name: string) {
   const token = crypto.randomBytes(24).toString("hex");
   const userHome = path.join(base, "homes", name);
@@ -122,6 +134,7 @@ async function start(name: string) {
         FACTR_RUNTIME_DIR: fs.mkdtempSync("/private/tmp/bots-rpc-"),
         FACTR_DASHBOARD_SESSION_TOKEN: token,
         OLLAMA_HOST: "127.0.0.1:1",
+        FACTR_PEER_SPARK_KEY: 'bots-peer-test',
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -372,6 +385,47 @@ try {
     seen.filter((s) => s.user.startsWith("Reply from @b:")).length,
     1,
   );
+  // A reply/expiry written by the existing Python courier must survive the sender process.
+  await primary.stop();
+  const expiredId = crypto.randomBytes(16).toString('hex');
+  fs.writeFileSync(path.join(cfg, 'bot_relay/native', `${expiredId}.json`), JSON.stringify({ ...envelope, id: expiredId }));
+  fs.mkdirSync(path.join(cfg, 'bot_relay/replies'), { recursive: true });
+  fs.writeFileSync(path.join(cfg, 'bot_relay/replies', `${expiredId}.json`), JSON.stringify({ id: expiredId, error: 'queued message expired', reason: 'queued_expired' }));
+  primary = await start('default');
+  await until(() => seen.some(s => s.user.includes('failed [reason: queued_expired]')), 15000);
+  assert.equal(seen.filter(s => s.user.includes('failed [reason: queued_expired]')).length, 1);
+  console.log('ok: durable expiry wakes the original chat after sender restart');
+  const staleId = crypto.randomBytes(16).toString('hex');
+  const stale = { ...envelope, id: staleId, created_at: 1 };
+  fs.writeFileSync(path.join(cfg, 'bot_relay/native', `${staleId}.json`), JSON.stringify(stale));
+  fs.writeFileSync(path.join(cfg, 'bot_relay/outbox', `${staleId}.json`), JSON.stringify(stale));
+  await until(() => seen.some(s => s.user.includes('Queued message expired before the Desktop claimed it')), 15000);
+  assert.ok(!fs.existsSync(path.join(cfg, 'bot_relay/outbox', `${staleId}.json`)));
+  console.log('ok: unclaimed stale mail expires without a Desktop or Python waiter');
+  const peerChat = await primary.call('session.create', { title: 'Peer check' });
+  await primary.call('prompt.submit', { session_id: peerChat.session_id, text: 'NATIVE_PEER' });
+  await until(() => peerRequests.some(r => r.method === 'POST'), 15000);
+  const peerTurn = peerRequests.find(r => r.method === 'POST');
+  assert.equal(peerTurn.url, '/p/researcher/api/sessions/hidden-chat/chat');
+  assert.equal(peerTurn.body.message, 'Message from 🤖 factr (@factr): SLOW_DELIVERY native ping');
+  assert.equal(peerTurn.body.author.is_bot, true);
+  const goldenPeer = JSON.parse(fs.readFileSync(path.join(work, 'engine/crates/factr-gateway/tests/fixtures/peer_dm.json'), 'utf8'));
+  const normalizePeer = (row: any) => {
+    const url = new URL(row.url, 'http://peer'); url.searchParams.sort();
+    const body = row.body ? { message: 'Message from 🤖 factr (@factr): hi' } : null;
+    return { method: row.method, url: url.pathname + url.search, body };
+  };
+  assert.deepEqual(peerRequests.map(normalizePeer), goldenPeer.map(normalizePeer), 'existing Python peer HTTP golden');
+  await until(() => seen.some(s => s.user.includes('PEER_ANSWER')), 15000);
+  assert.equal(peerRequests.filter(r => r.method === 'POST').length, 1);
+  console.log('ok: native registered peer REST contract and sender wake');
+  fs.appendFileSync(path.join(cfg, 'config.yaml'), 'agent:\n  bot_mode_protocol: false\n');
+  const disabledChat = await primary.call('session.create', { title: 'Protocol disabled' });
+  await primary.call('prompt.submit', { session_id: disabledChat.session_id, text: 'PROTOCOL_DISABLED' });
+  await until(() => seen.some(s => s.user === 'PROTOCOL_DISABLED'));
+  assert.ok(!seen.find(s => s.user === 'PROTOCOL_DISABLED').body.tools.some(t => t.function.name === 'message_agent'));
+  fs.writeFileSync(path.join(cfg, 'config.yaml'), fs.readFileSync(path.join(cfg, 'config.yaml'), 'utf8').replace('bot_mode_protocol: false', 'bot_mode_protocol: true'));
+  console.log('ok: native protocol toggle removes message_agent');
   console.log("stage: retirement");
   const permit = await b.retirement("prepare");
   assert.equal(permit.idle, true, JSON.stringify(permit));
@@ -446,6 +500,7 @@ try {
     "PASS native queued ack, sender wake, reply idempotency, busy refusal, admission freeze, physical exit, restart persistence and 5-bot pool churn",
   );
 } finally {
+  peer.close();
   retirer.dispose();
   for (const child of children) child.kill("SIGTERM");
   await sleep(500);
