@@ -1,8 +1,9 @@
 /**
  * A bot on its own engine: the primary's roster says `canonical_session: null` (it reads the primary's
- * state.db, which never sees that engine's chats), so the roster asks the bot's OWN engine for its Bot Chat
- * (`bot.chat.get`) and fills the row in. That is what lets `/new` become `/compact`, the empty-chat Teach
- * mount and the group start find the forever-chat of an engine-backed bot.
+ * state.db, which never sees that engine's chats). Host bots share one engine home, so the PRIMARY engine names
+ * their Bot Chat from the shared registry (`bot.chat.get_many`, one batched call) and the roster fills the row in:
+ * `/new` becomes `/compact`, the empty-chat Teach mount and the group start find the forever-chat. The roster
+ * never talks to a bot's own route, because that would start the bot's engine (RAM).
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -11,7 +12,8 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { isCanonicalChatOnScreen } from './canonical-chat'
-import { $lastRoster, resetEngineBotChats, ROSTER_KEY, useRoster } from './data'
+import { $lastRoster, ROSTER_KEY, useRoster } from './data'
+import { rememberEngineBotChat, resetEngineBotChats } from './engine-bot-chat'
 import type { RosterRow } from './types'
 
 const { hostMock, invalidateMock } = vi.hoisted(() => ({
@@ -57,8 +59,8 @@ const agent = (profile: string) => ({
   profile
 })
 
-function mountRoster(profiles: Array<Partial<RosterRow>>) {
-  hostMock.request.mockResolvedValue({ profiles })
+function mountRoster(profiles: Array<Partial<RosterRow>>, chats: unknown = { chats: {} }) {
+  hostMock.request.mockImplementation(async (method: string) => (method === 'bot.chat.get_many' ? chats : { profiles }))
   hostMock.agents.mockResolvedValue({ agents: profiles.map(p => agent(String(p.name))) })
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -71,6 +73,7 @@ function mountRoster(profiles: Array<Partial<RosterRow>>) {
 }
 
 const rowOf = (rows: RosterRow[] | undefined, name: string) => rows?.find(row => row.name === name) as RosterRow
+const manyCalls = () => hostMock.request.mock.calls.filter(call => call[0] === 'bot.chat.get_many')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -78,59 +81,80 @@ beforeEach(() => {
   $lastRoster.set([])
 })
 
-describe('a bot whose roster row has no canonical_session', () => {
-  it('asks its own engine for the Bot Chat and fills the row on the next roster read', async () => {
-    hostMock.requestProfile.mockResolvedValue({ canonical_session: ENGINE_CHAT, created: false })
-
-    const { result } = mountRoster([{ name: 'alpha', canonical_session: null }])
+describe('the roster fills canonical_session from the primary engine', () => {
+  it('asks once for every local bot, never touches a bot route, and fills the rows on the next read', async () => {
+    const { result } = mountRoster(
+      [
+        { name: 'alpha', canonical_session: null },
+        { name: 'beta', canonical_session: null }
+      ],
+      { chats: { alpha: ENGINE_CHAT, beta: null } }
+    )
 
     await waitFor(() => expect(result.current.data).toBeTruthy())
     await waitFor(() => expect(invalidateMock).toHaveBeenCalledWith({ queryKey: ROSTER_KEY }))
 
-    // The question went to alpha's own route (a profile route, never the primary's ambient request).
-    const [route, method] = hostMock.requestProfile.mock.calls[0]
-
-    expect(method).toBe('bot.chat.get')
-    expect(route).toMatchObject({ connectionId: 'local' })
+    expect(manyCalls()).toHaveLength(1)
+    expect(manyCalls()[0][1]).toEqual({ profiles: ['alpha', 'beta'] })
 
     const { data } = await result.current.refetch()
     const alpha = rowOf(data?.profiles as RosterRow[], 'alpha')
 
     expect(alpha.canonical_session).toMatchObject({ id: 'engine-chat', resolved_id: 'engine-chat' })
+    expect(rowOf(data?.profiles as RosterRow[], 'beta').canonical_session ?? null).toBeNull()
     // ... which is exactly what the /new guard reads.
     expect(isCanonicalChatOnScreen(alpha, 'engine-chat')).toBe(true)
     expect(isCanonicalChatOnScreen(alpha, 'some-scratch-chat')).toBe(false)
+    // RAM: a request on a bot's own route would start that bot's engine. The roster sent none.
+    expect(hostMock.requestProfile).not.toHaveBeenCalled()
   })
 
-  it("the engine's registry replaces the primary's pointer, and asks once per TTL, not once per poll", async () => {
-    hostMock.requestProfile.mockResolvedValue({ canonical_session: ENGINE_CHAT })
-
+  it("the primary's answer replaces its state.db pointer, and is asked once per TTL, not once per poll", async () => {
     const primary = { id: 'primary-chat', resolved_id: 'primary-chat', title: 'Bot Chat' }
-    const { result } = mountRoster([{ name: 'beta', canonical_session: primary }])
+    const { result } = mountRoster([{ name: 'beta', canonical_session: primary }], { chats: { beta: ENGINE_CHAT } })
 
     await waitFor(() => expect(invalidateMock).toHaveBeenCalled())
     await result.current.refetch()
+
     const { data } = await result.current.refetch()
 
-    expect(hostMock.requestProfile.mock.calls.filter(call => call[1] === 'bot.chat.get')).toHaveLength(1)
+    expect(manyCalls()).toHaveLength(1)
     // The chat the engine opens is the one the /new guard must recognise, not the primary's older pointer.
     expect(rowOf(data?.profiles as RosterRow[], 'beta').canonical_session).toMatchObject({ id: 'engine-chat' })
   })
 
-  it('keeps the primary\'s pointer when the engine says it has no Bot Chat', async () => {
-    hostMock.requestProfile.mockResolvedValue({ canonical_session: null })
-
+  it("keeps the primary's pointer when the registry does not know the bot", async () => {
     const primary = { id: 'primary-chat', resolved_id: 'primary-chat', title: 'Bot Chat' }
-    const { result } = mountRoster([{ name: 'beta', canonical_session: primary }])
+    const { result } = mountRoster([{ name: 'beta', canonical_session: primary }], { chats: { beta: null } })
 
-    await waitFor(() => expect(hostMock.requestProfile).toHaveBeenCalled())
+    await waitFor(() => expect(manyCalls()).toHaveLength(1))
+
     const { data } = await result.current.refetch()
 
     expect(rowOf(data?.profiles as RosterRow[], 'beta').canonical_session).toEqual(primary)
   })
 
-  it('never asks for a bot that has no route of its own: that request would reach the active gateway', async () => {
-    hostMock.request.mockResolvedValue({ profiles: [{ name: 'alpha', canonical_session: null }] })
+  it('stays as it was, without noise, when the primary cannot answer (older engine)', async () => {
+    const { result } = mountRoster([{ name: 'alpha', canonical_session: null }])
+
+    hostMock.request.mockImplementation(async (method: string) => {
+      if (method === 'bot.chat.get_many') {
+        throw new Error('method not found')
+      }
+
+      return { profiles: [{ name: 'alpha', canonical_session: null }] }
+    })
+
+    await waitFor(() => expect(result.current.data).toBeTruthy())
+    await result.current.refetch()
+
+    expect(rowOf(result.current.data?.profiles as RosterRow[], 'alpha').canonical_session ?? null).toBeNull()
+    expect(invalidateMock).not.toHaveBeenCalled()
+    expect(hostMock.requestProfile).not.toHaveBeenCalled()
+  })
+
+  it('never asks about a bot with no route of its own (that request would reach the active gateway)', async () => {
+    hostMock.request.mockImplementation(async () => ({ profiles: [{ name: 'alpha', canonical_session: null }] }))
     hostMock.agents.mockRejectedValue(new Error('no union roster on this build'))
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -144,31 +168,21 @@ describe('a bot whose roster row has no canonical_session', () => {
     await waitFor(() => expect(result.current.data).toBeTruthy())
     await result.current.refetch()
 
-    expect(hostMock.request.mock.calls.map(call => call[0])).not.toContain('bot.chat.get')
+    expect(manyCalls()).toHaveLength(0)
     expect(hostMock.requestProfile).not.toHaveBeenCalled()
   })
 
-  it('stays null, without noise, when the engine cannot answer (older engine, Python gateway)', async () => {
-    hostMock.requestProfile.mockRejectedValue(new Error('method not found'))
+  it('a chat learned when the bot was opened (a container keeps its own engine home) fills its row, still without spawning', async () => {
+    const { result } = mountRoster([{ name: 'boxed', canonical_session: null }], { chats: { boxed: null } })
 
-    const { result } = mountRoster([{ name: 'alpha', canonical_session: null }])
+    rememberEngineBotChat({ name: 'boxed' }, ENGINE_CHAT)
 
     await waitFor(() => expect(result.current.data).toBeTruthy())
-    await waitFor(() => expect(hostMock.requestProfile).toHaveBeenCalled())
-    await result.current.refetch()
 
-    expect(rowOf(result.current.data?.profiles as RosterRow[], 'alpha').canonical_session ?? null).toBeNull()
-    expect(invalidateMock).not.toHaveBeenCalled()
-  })
+    const { data } = await result.current.refetch()
 
-  it('does not ask for a bot the engine says has no Bot Chat yet to be "learned" (null stays null)', async () => {
-    hostMock.requestProfile.mockResolvedValue({ canonical_session: null, created: false })
-
-    const { result } = mountRoster([{ name: 'alpha', canonical_session: null }])
-
-    await waitFor(() => expect(hostMock.requestProfile).toHaveBeenCalled())
-    await result.current.refetch()
-
-    expect(rowOf(result.current.data?.profiles as RosterRow[], 'alpha').canonical_session ?? null).toBeNull()
+    // The primary does not know the container's chat (null) and does not erase what opening it taught.
+    expect(rowOf(data?.profiles as RosterRow[], 'boxed').canonical_session).toMatchObject({ id: 'engine-chat' })
+    expect(hostMock.requestProfile).not.toHaveBeenCalled()
   })
 })

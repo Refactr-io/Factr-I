@@ -12,7 +12,7 @@ import * as sdk from '@factr/plugin-sdk'
 import { host } from '@factr/plugin-sdk'
 
 import { $botMeta, botMetaKey, botOwner, persistBotMetaSnapshot } from './data'
-import { engineBotChat, engineClaimBotChat } from './engine-bot-chat'
+import { engineBotChat, engineClaimBotChat, rememberEngineBotChat } from './engine-bot-chat'
 import { botsText } from './i18n'
 import { backendTargetProfile, botConnectionRoute, botRosterMeta, botWorkspaceOwnerKey, requestForBot } from './routing'
 import type { RpcErrorLike } from './routing'
@@ -237,6 +237,10 @@ async function findExistingCanonicalChat(owner: RosterRow | string): Promise<Can
   const engine = await engineBotChat(bot ?? { name }, { spawnPriority: 'foreground' })
 
   if (engine !== undefined) {
+    if (engine?.id) {
+      rememberEngineBotChat(bot ?? { name }, engine)
+    }
+
     return engine?.id ? engine : null
   }
 
@@ -462,6 +466,10 @@ export function createCanonicalChat(
         // An engine-backed bot registers its chat (first one wins, see `bot.chat.claim`); a chat that lost the race
         // is abandoned and the registered one is adopted, like the title conflict below.
         const registered = await engineClaimBotChat(bot, runtime)
+
+        if (registered?.id) {
+          rememberEngineBotChat(bot, registered)
+        }
 
         if (registered?.id && registered.id !== runtime && registered.id !== sid) {
           if (typeof host.openSession === 'function' && canNavigate()) {

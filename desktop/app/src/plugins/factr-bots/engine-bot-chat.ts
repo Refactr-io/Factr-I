@@ -30,3 +30,27 @@ export async function engineClaimBotChat(bot: Partial<RosterRow>, sessionId: str
     return undefined
   }
 }
+
+/** What the bots' engines last said about their Bot Chat, kept for the roster. Filled from the primary's batch
+ *  answer and from the open path; the roster itself never asks a bot's engine, because that would start it. */
+const chats = new Map<string, { at: number; chat: CanonicalSession | null }>()
+
+/** `connection::profile`: the row and the open path name the same bot the same way. */
+export const engineChatKey = (bot: Partial<RosterRow>) => `${bot.connectionId ?? 'local'}::${bot.name ?? ''}`
+
+export const cachedEngineBotChat = (bot: Partial<RosterRow>) => chats.get(engineChatKey(bot))
+
+/** Remember an answer. A `null` (the asker did not know the chat) never erases a chat that was learned. */
+export function rememberEngineBotChat(bot: Partial<RosterRow>, chat: CanonicalSession | null, at = Date.now()): boolean {
+  const key = engineChatKey(bot)
+  const before = chats.get(key)?.chat ?? null
+
+  chats.set(key, { at, chat: chat ?? before })
+
+  return (chat?.id ?? null) !== (before?.id ?? null)
+}
+
+/** Test seam. */
+export function resetEngineBotChats(): void {
+  chats.clear()
+}

@@ -79,6 +79,17 @@ describe('a bot on its own engine', () => {
     expect(hostMock.openSession.mock.calls[0][0]).toBe('forever')
   })
 
+  it("remembers the engine's answer for the roster, so a bot with its own engine home shows its chat without a spawn", async () => {
+    respondWith(() => ({ canonical_session: { id: 'forever', resolved_id: 'forever', title: 'Bot Chat' } }))
+
+    const { openBotCanonicalChat } = await loadModule()
+    const { cachedEngineBotChat } = await import('./engine-bot-chat')
+
+    await openBotCanonicalChat(rosterBot)
+
+    expect(cachedEngineBotChat(rosterBot)?.chat?.id).toBe('forever')
+  })
+
   it('an engine that says "no Bot Chat" settles absence: the chat is created and registered, not refused', async () => {
     respondWith(method => {
       if (method === 'bot.chat.get') {

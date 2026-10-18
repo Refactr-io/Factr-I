@@ -8,7 +8,7 @@
 
 import { atom, host, queryClient, useQuery, useValue } from '@factr/plugin-sdk'
 
-import { engineBotChat } from './engine-bot-chat'
+import { cachedEngineBotChat, rememberEngineBotChat } from './engine-bot-chat'
 import { botsText } from './i18n'
 import { displayName } from './labels'
 import {
@@ -679,81 +679,107 @@ const ROOT_PROFILE_ROUTE = Object.freeze({
  *  falls back to the active gateway, which is what every other case uses. */
 async function requestRosterList(
   activeBot: { name: string },
-  activeConnectionId: null | string | undefined
+  activeConnectionId: null | string | undefined,
+  method = 'profiles.list',
+  params: Record<string, unknown> = {}
 ): Promise<RosterSnapshot> {
   if (activeBot.name !== 'default' && String(activeConnectionId || '').trim() === 'local') {
     try {
       return await requestForBot<RosterSnapshot>(
         { name: 'default', route: ROOT_PROFILE_ROUTE, sourceScoped: true },
-        'profiles.list',
-        {}
+        method,
+        params
       )
     } catch {
       /* root backend unreachable: the active gateway still answers for itself */
     }
   }
 
-  return requestForBot<RosterSnapshot>(activeBot, 'profiles.list', {})
+  return requestForBot<RosterSnapshot>(activeBot, method, params)
+}
+
+/** The primary engine's answer for a batch of local bots (`bot.chat.get_many`), profile -> chat or null.
+ *  `undefined` when the primary cannot answer (an older engine). */
+async function primaryBotChats(
+  activeConnectionId: null | string | undefined,
+  profiles: string[]
+): Promise<Record<string, CanonicalSession | null> | undefined> {
+  const activeBot = { name: String(host.state.profile?.get?.() || 'default').trim() || 'default' }
+
+  try {
+    const res = (await requestRosterList(activeBot, activeConnectionId, 'bot.chat.get_many', {
+      profiles
+    })) as unknown as { chats?: Record<string, CanonicalSession | null> }
+
+    return res?.chats && typeof res.chats === 'object' ? res.chats : undefined
+  } catch {
+    return undefined
+  }
 }
 
 const ENGINE_CHAT_TTL_MS = 30_000
-const engineChats = new Map<string, { at: number; chat: CanonicalSession | null }>()
-const engineChatFlights = new Set<string>()
+let engineChatFlight = false
 
-/** Test seam. */
-export function resetEngineBotChats(): void {
-  engineChats.clear()
-  engineChatFlights.clear()
+/** Rows whose bot lives on this host and has its own route. The primary engine shares their engine home, so it
+ *  can name their Bot Chat without any bot engine being started. Remote rows and unrouted rows (an unrouted request
+ *  goes to the active gateway, whose Bot Chat is another bot's) are left to the open path. */
+const askablePrimaryRow = (row: RosterRow | undefined) =>
+  Boolean(
+    row?.name &&
+    !row.ghost &&
+    row.sourceReachable !== false &&
+    !row.remoteSource &&
+    (botConnectionRoute(row)?.connectionId ?? '') === 'local'
+  )
+
+const profileOf = (row: RosterRow) => {
+  const route = botConnectionRoute(row)
+
+  return String(route?.targetProfile || route?.profile || row.name)
 }
 
-// Only rows with their OWN route: an unrouted request goes to the active gateway, whose Bot Chat is another
-// bot's, and would be filed under this row.
-const needsEngineChat = (row: RosterRow | undefined) =>
-  Boolean(row?.name && !row.ghost && row.sourceReachable !== false && botConnectionRoute(row))
-
-/** Give each routed row what its own engine last said about its Bot Chat, and ask the engines whose answer
- *  is missing or older than the TTL in the background (one flight per bot, never blocking the roster; the roster
- *  refetches when an answer arrives). */
-function withEngineBotChats(snapshot: RosterSnapshot, now = Date.now()): RosterSnapshot {
+/** Give each local routed row what the primary engine's shared registry says about its Bot Chat (`bot.chat.get_many`:
+ *  one background call for every stale row, answered from the shared pointers, so NO bot engine is spawned for the
+ *  roster). A chat the engine names replaces what the primary read from its state.db; "unknown" keeps that value.
+ *  Bots that keep their own engine home (containers) learn their chat when opened. Never blocks the roster: the roster
+ *  refetches when an answer arrives. */
+function withEngineBotChats(
+  snapshot: RosterSnapshot,
+  ask: (profiles: string[]) => Promise<Record<string, CanonicalSession | null> | undefined>,
+  now = Date.now()
+): RosterSnapshot {
   const rows = snapshot?.profiles
 
-  if (!Array.isArray(rows) || !rows.some(needsEngineChat)) {
+  if (!Array.isArray(rows) || !rows.some(row => botConnectionRoute(row))) {
     return snapshot
   }
 
-  let learned = false
+  const stale = rows.filter(row => askablePrimaryRow(row) && !((cachedEngineBotChat(row)?.at ?? 0) + ENGINE_CHAT_TTL_MS > now))
+
+  if (stale.length && !engineChatFlight) {
+    engineChatFlight = true
+
+    void ask([...new Set(stale.map(profileOf))])
+      .then(answers => {
+        let learned = false
+
+        for (const row of stale) {
+          learned = rememberEngineBotChat(row, answers?.[profileOf(row)] ?? null) || learned
+        }
+
+        if (learned) {
+          void queryClient.invalidateQueries({ queryKey: ROSTER_KEY })
+        }
+      })
+      .finally(() => {
+        engineChatFlight = false
+      })
+  }
 
   const profiles = rows.map(row => {
-    if (!needsEngineChat(row)) {
-      return row
-    }
+    const known = botConnectionRoute(row) ? cachedEngineBotChat(row)?.chat : null
 
-    const key = botSelectionKey(row)
-    const known = engineChats.get(key)
-
-    if ((!known || now - known.at >= ENGINE_CHAT_TTL_MS) && !engineChatFlights.has(key)) {
-      engineChatFlights.add(key)
-
-      void engineBotChat(row)
-        .then(chat => {
-          const before = engineChats.get(key)?.chat?.id
-
-          engineChats.set(key, { at: Date.now(), chat: chat ?? null })
-          learned = learned || (chat?.id ?? undefined) !== before
-        })
-        .finally(() => {
-          engineChatFlights.delete(key)
-
-          if (learned) {
-            learned = false
-            void queryClient.invalidateQueries({ queryKey: ROSTER_KEY })
-          }
-        })
-    }
-
-    // The engine's own registry is the authority for its bot: a chat it names replaces whatever the primary read
-    // from its state.db (the two stores can name different chats).
-    return known?.chat ? { ...row, canonical_session: known.chat } : row
+    return known ? { ...row, canonical_session: known } : row
   })
 
   return { ...snapshot, profiles }
@@ -764,7 +790,9 @@ function withEngineBotChats(snapshot: RosterSnapshot, now = Date.now()): RosterS
  *  cross-connection rows. */
 function fetchRosterSnapshot(activeConnectionId: null | string | undefined): Promise<RosterSnapshot> {
   return withTimeout(
-    fetchRosterSnapshotUnbounded(activeConnectionId).then(snapshot => withEngineBotChats(snapshot)),
+    fetchRosterSnapshotUnbounded(activeConnectionId).then(snapshot =>
+      withEngineBotChats(snapshot, profiles => primaryBotChats(activeConnectionId, profiles))
+    ),
     ROSTER_FETCH_TIMEOUT_MS,
     'The gateway did not answer in time'
   )
