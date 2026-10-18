@@ -79,6 +79,31 @@ describe('a bot on its own engine', () => {
     expect(hostMock.openSession.mock.calls[0][0]).toBe('forever')
   })
 
+  it('a brand-new engine chat (no visible history) opens without waiting for history that never comes', async () => {
+    respondWith(() => ({
+      canonical_session: { id: 'fresh', message_count: 0, resolved_id: 'fresh', title: 'Bot Chat' }
+    }))
+
+    const { openBotCanonicalChat } = await loadModule()
+
+    await openBotCanonicalChat(rosterBot)
+
+    // expectHistory true on an empty chat is a hydration wait that can never be satisfied: an endless loader.
+    expect(hostMock.openSession.mock.calls[0][1]).toMatchObject({ awaitHydration: true, expectHistory: false })
+  })
+
+  it('a chat with history still waits for it', async () => {
+    respondWith(() => ({
+      canonical_session: { id: 'old', message_count: 12, resolved_id: 'old', title: 'Bot Chat' }
+    }))
+
+    const { openBotCanonicalChat } = await loadModule()
+
+    await openBotCanonicalChat(rosterBot)
+
+    expect(hostMock.openSession.mock.calls[0][1]).toMatchObject({ expectHistory: true })
+  })
+
   it("remembers the engine's answer for the roster, so a bot with its own engine home shows its chat without a spawn", async () => {
     respondWith(() => ({ canonical_session: { id: 'forever', resolved_id: 'forever', title: 'Bot Chat' } }))
 
@@ -134,6 +159,33 @@ describe('a bot on its own engine', () => {
 
     await expect(createCanonicalChat(rosterBot)).resolves.toBe('winner')
     expect(hostMock.openSession.mock.calls.map(call => call[0])).toEqual(['winner'])
+    expect(calls).not.toContain('prompt.submit')
+  })
+
+  it('sends no unprompted intro when the engine registers the chat even though the eager title failed', async () => {
+    respondWith(method => {
+      if (method === 'bot.chat.get') {
+        return { canonical_session: null }
+      }
+
+      if (method === 'session.create') {
+        return { session_id: 'mine', stored_session_id: 'mine' }
+      }
+
+      if (method === 'session.title') {
+        throw new Error('title write failed')
+      }
+
+      if (method === 'bot.chat.claim') {
+        return { canonical_session: { id: 'mine', resolved_id: 'mine' }, claimed: true }
+      }
+
+      return {}
+    })
+
+    const { createCanonicalChat } = await loadModule()
+
+    await expect(createCanonicalChat(rosterBot)).resolves.toBe('mine')
     expect(calls).not.toContain('prompt.submit')
   })
 

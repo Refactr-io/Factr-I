@@ -504,6 +504,18 @@ export function createCanonicalChat(
         }
         /* compatibility fallback: prompt.submit will persist the lazy row */
       }
+
+      // An engine persists an empty chat on its own: if it registers the chat (the claim needs it in the store)
+      // the row exists even though the eager title did not land, and the compat intro below would be an unprompted
+      // model turn in a chat nobody has spoken in.
+      if (!titled) {
+        const registered = await engineClaimBotChat(bot, runtime)
+
+        if (registered && (registered.id === runtime || registered.id === sid)) {
+          rememberEngineBotChat(bot, registered)
+          titled = true
+        }
+      }
     }
 
     // Mount the session view FIRST, then send the kickoff — submitting into

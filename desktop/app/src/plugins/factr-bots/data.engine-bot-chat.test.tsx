@@ -153,6 +153,27 @@ describe('the roster fills canonical_session from the primary engine', () => {
     expect(hostMock.requestProfile).not.toHaveBeenCalled()
   })
 
+  it('boot creates nothing: the roster only reads (no ensure, claim, session.create or prompt for default or any bot)', async () => {
+    const { result } = mountRoster(
+      [
+        { name: 'default', canonical_session: null },
+        { name: 'alpha', canonical_session: null }
+      ],
+      { chats: { default: null, alpha: null } }
+    )
+
+    await waitFor(() => expect(manyCalls()).toHaveLength(1))
+    await result.current.refetch()
+
+    const methods = new Set([...hostMock.request.mock.calls, ...hostMock.requestProfile.mock.calls].map(call => call[0] === 'object' ? call[1] : call[0]))
+
+    for (const writer of ['bot.chat.ensure', 'bot.chat.claim', 'session.create', 'session.title', 'prompt.submit']) {
+      expect(methods.has(writer)).toBe(false)
+    }
+
+    expect(hostMock.requestProfile).not.toHaveBeenCalled()
+  })
+
   it('never asks about a bot with no route of its own (that request would reach the active gateway)', async () => {
     hostMock.request.mockImplementation(async () => ({ profiles: [{ name: 'alpha', canonical_session: null }] }))
     hostMock.agents.mockRejectedValue(new Error('no union roster on this build'))
