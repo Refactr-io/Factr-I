@@ -162,8 +162,26 @@ try {
   check(many.chats.x?.id === idX && many.chats.y?.id === idY && many.chats.nobody === null, 'primary: get_many answers x, y and null for an unregistered profile in one call')
   check((await result(p, 'bot.chat.get')).canonical_session === null, "primary: its own Bot Chat is still none (reading others' never creates or adopts)")
   const asked = await result(p, 'bot.chat.ensure', { profile: 'x' })
-  check(asked.created === true && asked.canonical_session.id !== idX, "primary: ensure ignores the profile param and acts for its own profile only")
+  check(asked.created === false && asked.canonical_session.id === idX, "primary: ensure for another profile only reads x's chat, it mints nothing")
   await p.stop()
+
+  // The window's call may reach ANY engine (an unrouted row hits whichever gateway is active), so every call names
+  // its profile and the pointer is keyed by that name: x registers a chat for w, w's own engine then sees it, and x
+  // minting for w is refused.
+  seed('w', shared)
+  const w = await start('w', shared)
+  const forW = (await result(x, 'session.create', { title: 'Bot Chat' })).session_id
+  await result(x, 'session.title', { session_id: forW, title: 'Bot Chat' })
+  const viaX = await result(x, 'bot.chat.claim', { profile: 'w', session_id: forW })
+  check(viaX.claimed === true && viaX.canonical_session.id === forW, "claim {profile:'w'} through engine x registers it for w")
+  check((await result(w, 'bot.chat.get')).canonical_session?.id === forW, "w's own engine reads it as its Bot Chat")
+  check((await result(x, 'bot.chat.get')).canonical_session?.id === idX, "x's own pointer is untouched by the claim made for w")
+  const refused = await result(x, 'bot.chat.ensure', { profile: 'nobody' })
+  check(refused.canonical_session === null && refused.created === false, 'ensure through x for another profile does not mint')
+  const t0 = Date.now()
+  const hydrated = await result(w, 'session.resume', { session_id: forW, omit_messages: false })
+  check(Date.now() - t0 < 5000 && (hydrated.messages || []).length === viaX.canonical_session.message_count, "w's engine resumes the chat x created at once, with exactly the history the row promised (no endless wake)")
+  await w.stop()
 
   // The desktop's own create flow (session.create + session.title) registers its chat with `claim`; the first wins.
   const z = await start('z', shared)

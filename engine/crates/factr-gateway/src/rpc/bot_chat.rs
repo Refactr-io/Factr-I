@@ -9,7 +9,8 @@
 //! `claim` lets the desktop's own create flow register the session it just made. One minter at a time,
 //! so concurrent callers still end up with exactly one chat.
 //!
-//! `get` and `get_many` take an optional `profile`(s): host engines share the pointer table, so the primary
+//! Every call may name a `profile`; the plugin always does. Without one a call means the engine's own profile. `get` and
+//! `get_many` take `profile`(s): host engines share the pointer table, so the primary
 //! engine answers for every bot on the host without any bot engine being started (the roster uses this).
 
 use super::*;
@@ -57,7 +58,9 @@ static MINT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 trait Store {
     /// The registered session id of `profile` (the engine's own profile when `None`).
     fn pointer(&self, profile: Option<&str>) -> Option<String>;
-    fn set_pointer(&self, id: &str);
+    fn set_pointer(&self, profile: Option<&str>, id: &str);
+    /// The profile this engine serves (what a call without `profile` means).
+    fn own_profile(&self) -> String;
     async fn list(&self) -> Result<Vec<Value>, RpcError>;
     /// Create a session titled "Bot Chat"; its id.
     async fn create(&self) -> Result<String, RpcError>;
@@ -83,8 +86,10 @@ async fn resolve_many(store: &impl Store, profiles: &[&str]) -> Result<Value, Rp
 /// `get`: the profile's Bot Chat or none. `ensure`: the same, minted when missing. `claim`: register `id`
 /// (a chat the desktop just created) unless the profile already has a live one, which then wins.
 async fn resolve(store: &impl Store, method: &str, claim: Option<&str>, profile: Option<&str>) -> Result<Value, RpcError> {
-    // Only a read may name another profile; `ensure` and `claim` always act for this engine's own.
-    let profile = profile.filter(|_| method == "bot.chat.get");
+    // Any engine may read or register a chat for any profile (host engines share one store, so the pointer lands
+    // right whichever engine the window happened to reach). Only the profile's own engine may mint its chat.
+    let profile = profile.filter(|p| !p.is_empty());
+    let may_mint = method == "bot.chat.ensure" && profile.is_none_or(|p| p == store.own_profile());
     let _one = MINT.lock().await;
     if let Some(info) = current(store, profile).await? {
         return Ok(json!({ "canonical_session": canonical_row(&info), "created": false, "claimed": false }));
@@ -92,16 +97,16 @@ async fn resolve(store: &impl Store, method: &str, claim: Option<&str>, profile:
     if let Some(id) = claim {
         let infos = store.list().await?;
         let info = find(&infos, id).ok_or_else(|| RpcError::params("unknown or archived session_id"))?;
-        store.set_pointer(id);
+        store.set_pointer(profile, id);
         return Ok(json!({ "canonical_session": canonical_row(info), "created": false, "claimed": true }));
     }
-    if method != "bot.chat.ensure" {
+    if !may_mint {
         return Ok(json!({ "canonical_session": null, "created": false, "claimed": false }));
     }
     let id = store.create().await?;
     let infos = store.list().await?;
     let info = find(&infos, &id).ok_or_else(|| RpcError::internal(anyhow!("the Bot Chat was created but the engine does not list it")))?;
-    store.set_pointer(&id);
+    store.set_pointer(profile, &id);
     Ok(json!({ "canonical_session": canonical_row(info), "created": true, "claimed": false }))
 }
 
@@ -123,10 +128,14 @@ impl Store for EngineStore<'_> {
         crate::rpc::entries_or_log(&self.conn.config.home)?.setting(&Self::key(profile)).filter(|id| !id.is_empty())
     }
 
-    fn set_pointer(&self, id: &str) {
+    fn set_pointer(&self, profile: Option<&str>, id: &str) {
         if let Some(store) = crate::rpc::entries_or_log(&self.conn.config.home) {
-            let _ = store.set_setting(&Self::key(None), id);
+            let _ = store.set_setting(&Self::key(profile), id);
         }
+    }
+
+    fn own_profile(&self) -> String {
+        crate::profile::current().name.filter(|n| !n.is_empty()).unwrap_or_else(|| "default".into())
     }
 
     async fn list(&self) -> Result<Vec<Value>, RpcError> {
@@ -203,8 +212,11 @@ mod tests {
         fn pointer(&self, profile: Option<&str>) -> Option<String> {
             self.pointers.lock().unwrap().get(profile.unwrap_or("own")).cloned()
         }
-        fn set_pointer(&self, id: &str) {
-            self.pointers.lock().unwrap().insert("own".into(), id.to_string());
+        fn set_pointer(&self, profile: Option<&str>, id: &str) {
+            self.pointers.lock().unwrap().insert(profile.unwrap_or("own").into(), id.to_string());
+        }
+        fn own_profile(&self) -> String {
+            "own".into()
         }
         async fn list(&self) -> Result<Vec<Value>, RpcError> {
             Ok(self.rows.lock().unwrap().clone())
@@ -293,7 +305,7 @@ mod tests {
     #[tokio::test]
     async fn a_retired_chat_is_replaced_and_a_stale_pointer_is_not_trusted() {
         let store = Fake::new(vec![info("first")]);
-        store.set_pointer("first");
+        store.set_pointer(None, "first");
         assert_eq!(Fake::id_of(&store.run("bot.chat.get").await), Some("first"));
         store.rows.lock().unwrap()[0]["archived"] = json!(true); // archived = retired
         assert!(store.run("bot.chat.get").await["canonical_session"].is_null());
@@ -320,7 +332,10 @@ mod tests {
             fn pointer(&self, _: Option<&str>) -> Option<String> {
                 None
             }
-            fn set_pointer(&self, _: &str) {}
+            fn set_pointer(&self, _: Option<&str>, _: &str) {}
+            fn own_profile(&self) -> String {
+                "own".into()
+            }
             async fn list(&self) -> Result<Vec<Value>, RpcError> {
                 Ok(Vec::new())
             }
@@ -346,9 +361,29 @@ mod tests {
         assert_eq!(many["chats"]["beta"]["id"], "beta-chat");
         assert!(many["chats"]["gamma"].is_null(), "a profile with no registered chat is null");
         assert_eq!(store.creates.load(Ordering::SeqCst), 0, "reads never create");
-        // ensure acts only for this engine's own profile, whatever `profile` says.
-        let ensured = resolve(&store, "bot.chat.ensure", None, Some("alpha")).await.unwrap();
-        assert_eq!((ensured["created"].as_bool(), Fake::id_of(&ensured)), (Some(true), Some("minted-0")));
+        // ensure never mints for a profile other than the engine's own; it reads what is registered.
+        let read = resolve(&store, "bot.chat.ensure", None, Some("alpha")).await.unwrap();
+        assert_eq!((read["created"].as_bool(), Fake::id_of(&read)), (Some(false), Some("alpha-chat")));
+        let none = resolve(&store, "bot.chat.ensure", None, Some("gamma")).await.unwrap();
+        assert!(none["canonical_session"].is_null(), "no chat is minted for another profile");
+        assert_eq!(store.creates.load(Ordering::SeqCst), 0);
+        // ... and its own profile (named or not) is minted.
+        let own = resolve(&store, "bot.chat.ensure", None, Some("own")).await.unwrap();
+        assert_eq!((own["created"].as_bool(), Fake::id_of(&own)), (Some(true), Some("minted-0")));
+    }
+
+    #[tokio::test]
+    async fn claims_land_on_the_named_profile_whichever_engine_serves_them() {
+        // The window's call reached some other engine: the pointer must still be the named profile's.
+        let store = Fake::new(vec![info("alpha-chat"), info("beta-chat")]);
+        let a = resolve(&store, "bot.chat.claim", Some("alpha-chat"), Some("alpha")).await.unwrap();
+        let b = resolve(&store, "bot.chat.claim", Some("beta-chat"), Some("beta")).await.unwrap();
+        assert_eq!((a["claimed"].as_bool(), b["claimed"].as_bool()), (Some(true), Some(true)));
+        assert_eq!(store.pointer(Some("alpha")).as_deref(), Some("alpha-chat"));
+        assert_eq!(store.pointer(Some("beta")).as_deref(), Some("beta-chat"));
+        assert!(store.pointer(None).is_none(), "the serving engine's own profile is untouched");
+        let again = resolve(&store, "bot.chat.get", None, Some("beta")).await.unwrap();
+        assert_eq!(Fake::id_of(&again), Some("beta-chat"));
     }
 
     #[test]
