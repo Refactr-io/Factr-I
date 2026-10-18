@@ -297,7 +297,7 @@ export function McpSetupButton({ profile, entry, onDone, ensureProfile }: McpSet
   if (supported === false) {
     return (
       <span className="ml-1.5 text-[0.625rem] text-(--ui-text-quaternary)">
-        {'needs setup (' + requires.join(', ') + ') \u2014 restart the gateway to enable in-app setup'}
+        {'needs setup (' + requires.join(', ') + ') - restart the gateway to enable in-app setup'}
       </span>
     )
   }

@@ -139,7 +139,7 @@ function jobPrompt(job: CronJob): string {
 }
 
 function jobScheduleDisplay(job: CronJob): string {
-  return asText(job.schedule_display) || asText(job.schedule?.display) || asText(job.schedule?.expr) || '—'
+  return asText(job.schedule_display) || asText(job.schedule?.display) || asText(job.schedule?.expr) || '-'
 }
 
 function jobScheduleExpr(job: CronJob): string {
@@ -275,7 +275,7 @@ function scheduleSummary(option: ScheduleOption, expr: string, c: Translations['
 
 function formatTime(iso?: null | string): string {
   if (!iso) {
-    return '—'
+    return '-'
   }
 
   const date = new Date(iso)
@@ -876,12 +876,12 @@ function CronJobDetail({ busy, c, job, onEdit, onOpenSession, onPauseResume, onT
 
 function formatRunTime(seconds?: null | number): string {
   if (!seconds) {
-    return '—'
+    return '-'
   }
 
   const date = new Date(seconds * 1000)
 
-  return Number.isNaN(date.valueOf()) ? '—' : date.toLocaleString()
+  return Number.isNaN(date.valueOf()) ? '-' : date.toLocaleString()
 }
 
 // Runs are produced by the background scheduler tick. cron.changed /

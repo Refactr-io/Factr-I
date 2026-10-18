@@ -894,7 +894,7 @@ const PLATFORM_INTRO: Record<string, string> = {
   feishu:
     'Create a Feishu / Lark app, configure the bot capability, and copy the App ID, App secret, and event encryption keys.',
   wecom:
-    'Add a group robot in WeCom and copy its webhook key as WECOM_BOT_ID. Send-only — use the WeCom (app) option for two-way.',
+    'Add a group robot in WeCom and copy its webhook key as WECOM_BOT_ID. Send-only - use the WeCom (app) option for two-way.',
   wecom_callback:
     'Set up a WeCom self-built app, expose its callback URL, and provide the corp ID, secret, agent ID, and AES key.',
   weixin:

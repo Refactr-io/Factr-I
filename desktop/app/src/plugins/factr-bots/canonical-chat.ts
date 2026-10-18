@@ -264,7 +264,7 @@ async function findExistingCanonicalChat(owner: RosterRow | string): Promise<Can
     // message so update-required classification and diagnostics still work.
     const message = typeof (error as RpcErrorLike)?.message === 'string' ? (error as { message: string }).message : ''
     const detail = message ? ` (${message})` : ''
-    throw new Error(`Could not check ${name}'s Bot Chat registry${detail} — not starting a new chat`)
+    throw new Error(`Could not check ${name}'s Bot Chat registry${detail} - not starting a new chat`)
   }
 
   const rows = res?.sessions ?? []
@@ -283,7 +283,7 @@ async function findExistingCanonicalChat(owner: RosterRow | string): Promise<Can
   // an empty lookup is unconfirmed absence, not confirmed absence, so fail
   // closed the same way a thrown RPC error already does instead of minting.
   if (bot?.canonical_session?.id) {
-    throw new Error(`Could not confirm ${name}'s Bot Chat registry — not starting a new chat`)
+    throw new Error(`Could not confirm ${name}'s Bot Chat registry - not starting a new chat`)
   }
 
   return null

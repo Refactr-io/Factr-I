@@ -56,7 +56,7 @@ export function sampleCurves(t: number) {
 export const INTRO_PROMPT = 'Model a hero cube in Blender and cycle it through some materials'
 
 export const INTRO_REPLY_WORDS =
-  'Done — materials compiled and previewed on the cube. Want a turntable render exported?'.split(' ')
+  'Done - materials compiled and previewed on the cube. Want a turntable render exported?'.split(' ')
 
 /** Tool activity rows that appear during the `working` beat. `doneAt` changes the trailing status from
  *  running to done. Times are absolute sequence ms, so the whole piece stays on one clock. */

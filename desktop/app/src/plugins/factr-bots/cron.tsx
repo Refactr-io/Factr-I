@@ -924,7 +924,7 @@ function SchedulePicker({ state, setState }: SchedulePickerProps) {
           <span className="text-xs text-(--ui-text-tertiary)">runs (blank = forever)</span>
         </div>
       ) : null}
-      <div className="text-[0.625rem] text-(--ui-text-quaternary)">{`${scheduleSummary(state)} \u00b7 ${composeSchedule(state) || '\u2014'}`}</div>
+      <div className="text-[0.625rem] text-(--ui-text-quaternary)">{`${scheduleSummary(state)} \u00b7 ${composeSchedule(state) || '-'}`}</div>
     </div>
   )
 }

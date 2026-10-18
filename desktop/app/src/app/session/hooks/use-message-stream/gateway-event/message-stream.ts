@@ -252,7 +252,7 @@ export function handleMessageStreamEvent(ctx: GatewayEventContext): boolean {
       const label = coerceGatewayText(payload?.label) || 'reference'
       const idx = typeof payload?.index === 'number' ? payload.index : undefined
       const cnt = typeof payload?.count === 'number' ? payload.count : undefined
-      const header = idx && cnt ? `◇ Reference ${idx}/${cnt} — ${label}` : `◇ Reference — ${label}`
+      const header = idx && cnt ? `◇ Reference ${idx}/${cnt} - ${label}` : `◇ Reference - ${label}`
       const body = coerceThinkingText(payload?.text)
       const text = `${header}\n${body}\n\n`
 
@@ -303,7 +303,7 @@ export function handleMessageStreamEvent(ctx: GatewayEventContext): boolean {
       const label = coerceGatewayText(payload?.label)
 
       const line = label
-        ? `◇ MoA refs ${payload.refs_done}/${payload.refs_total} — ${label}\n`
+        ? `◇ MoA refs ${payload.refs_done}/${payload.refs_total} - ${label}\n`
         : `◇ MoA refs ${payload.refs_done}/${payload.refs_total}\n`
 
       appendReasoningDelta(sessionId, line, payload.refs_done <= 1, occurredAt)

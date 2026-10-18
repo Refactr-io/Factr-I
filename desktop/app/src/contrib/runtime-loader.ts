@@ -265,7 +265,7 @@ export async function loadRuntimePlugin(
 
     if (unsupported.length > 0) {
       throw new Error(
-        `unsupported import${unsupported.length > 1 ? 's' : ''}: ${unsupported.join(', ')} — ` +
+        `unsupported import${unsupported.length > 1 ? 's' : ''}: ${unsupported.join(', ')} - ` +
           `runtime plugins may only import @factr/plugin-sdk and react`
       )
     }
@@ -282,7 +282,7 @@ export async function loadRuntimePlugin(
           deadline = setTimeout(
             () =>
               reject(
-                new Error(`import timed out after ${IMPORT_TIMEOUT_MS / 1000}s — module evaluation never settled`)
+                new Error(`import timed out after ${IMPORT_TIMEOUT_MS / 1000}s - module evaluation never settled`)
               ),
             IMPORT_TIMEOUT_MS
           )
@@ -308,11 +308,11 @@ export async function loadRuntimePlugin(
     // folder actively breaks the feature it shadows. The inventory row
     // carries the file path so Capabilities → Plugins can reveal it for deletion.
     if ($pluginRecords.get()[plugin.id]?.kind === 'bundled') {
-      console.info(`[plugins] ${origin} skipped — "${plugin.id}" already ships bundled with the app`)
+      console.info(`[plugins] ${origin} skipped - "${plugin.id}" already ships bundled with the app`)
       publishPlugin({
         id: `${plugin.id}:disk-shadowed`,
         name: `${plugin.name ?? plugin.id} (stale disk copy)`,
-        description: `Shadowed by the bundled "${plugin.id}" plugin — this folder is no longer used and can be deleted.`,
+        description: `Shadowed by the bundled "${plugin.id}" plugin - this folder is no longer used and can be deleted.`,
         kind: options.kind ?? 'disk',
         file: options.file,
         status: 'disabled'
@@ -544,7 +544,7 @@ async function readPluginSourceText(file: string): Promise<string> {
 
   if (result.truncated) {
     throw new PluginSourceOversizeError(
-      "plugin.js exceeds this shell's 512 KiB read limit — update Factr-I Desktop to load larger plugins"
+      "plugin.js exceeds this shell's 512 KiB read limit - update Factr-I Desktop to load larger plugins"
     )
   }
 
@@ -796,7 +796,7 @@ export async function uninstallDiskPlugin(pluginId: string): Promise<{ ok: boole
   const remove = window.factrDesktop?.removeDesktopPlugin
 
   if (!remove) {
-    return { ok: false, error: 'this Factr-I Desktop build cannot remove desktop plugins — delete the folder by hand' }
+    return { ok: false, error: 'this Factr-I Desktop build cannot remove desktop plugins - delete the folder by hand' }
   }
 
   const result = await remove({ name: record.origin })

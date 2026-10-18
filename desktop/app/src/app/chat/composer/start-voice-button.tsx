@@ -33,7 +33,7 @@ export function StartVoiceButton({
 
   return (
     <span className="flex items-center">
-      <Tip label={engine ? `${label} — ${engine}` : label} placement="control">
+      <Tip label={engine ? `${label} - ${engine}` : label} placement="control">
         <Button
           aria-label={label}
           className={cn(PRIMARY_ICON_BTN, engine && 'rounded-r-none')}

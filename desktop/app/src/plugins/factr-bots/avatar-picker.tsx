@@ -161,7 +161,7 @@ export function AvatarPicker({ shape, color, image, onShape, onColor, onImage, g
                         width: 44,
                         height: 44
                       }}
-                      title={k || 'Auto — the name decides'}
+                      title={k || 'Auto - the name decides'}
                     >
                       {k ? (
                         <BotFace
@@ -200,7 +200,7 @@ export function AvatarPicker({ shape, color, image, onShape, onColor, onImage, g
                   </Button>
                 </div>
                 <div className="text-center text-[0.625rem] text-(--ui-text-quaternary)">
-                  {locked ? 'Face locked — renaming won\u2019t change it.' : 'Face follows the name.'}
+                  {locked ? 'Face locked - renaming won\u2019t change it.' : 'Face follows the name.'}
                 </div>
                 <Button
                   className="text-(--ui-text-tertiary)"

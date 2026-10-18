@@ -538,7 +538,7 @@ export function RunHistory() {
               className="mt-3 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
               role="status"
             >
-              This run finished without any model calls — the reply may be empty or skipped.
+              This run finished without any model calls - the reply may be empty or skipped.
             </p>
           )}
           {isWedged(run) && (

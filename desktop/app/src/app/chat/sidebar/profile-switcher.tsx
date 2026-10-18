@@ -1291,7 +1291,7 @@ function ProfileSquare({
                     type="button"
                     {...attributes}
                     {...listeners}
-                    aria-label={remoteHost ? `${label} — ${p.remoteOverride.badge(remoteHost)}` : label}
+                    aria-label={remoteHost ? `${label} - ${p.remoteOverride.badge(remoteHost)}` : label}
                     aria-pressed={active}
                     // Hold-to-recolor rides alongside the dnd pointer listener (call
                     // it first so drag tracking still arms), then a timer opens the

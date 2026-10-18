@@ -230,7 +230,7 @@ export function HandoffCard({ attrs, locked }: CardProps) {
         {failed
           ? (error ?? 'The first build could not be started. Retry to check its session.')
           : settled
-            ? `${title} was started — find it in your sessions`
+            ? `${title} was started - find it in your sessions`
             : `Opening ${title}\u2026`}
       </span>
       {state?.phase === 'error' && (

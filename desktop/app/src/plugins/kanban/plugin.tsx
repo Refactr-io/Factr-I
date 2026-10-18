@@ -81,7 +81,7 @@ function KanbanCount() {
 const plugin: FactrPlugin = {
   id: 'kanban',
   name: 'Kanban',
-  description: 'Multi-agent task board — board page, sidebar entry, and a live in-flight count in the status bar.',
+  description: 'Multi-agent task board - board page, sidebar entry, and a live in-flight count in the status bar.',
   defaultEnabled: false,
   register(ctx) {
     ctx.i18n.register(KANBAN_LOCALES)

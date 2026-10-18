@@ -182,7 +182,7 @@ describe('turn arc', () => {
     const failed = feed(room, 'Untyped failure').find(event => event.kind === 'failed' && event.member === 'builder')
     const label = room.activity.groupActivityLabel(failed!, 'Untyped failure')
 
-    expect(label.startsWith('builder hit an error — No LLM provider configured for ')).toBe(true)
+    expect(label.startsWith('builder hit an error - No LLM provider configured for ')).toBe(true)
     expect(label).not.toContain('sk-live-0123456789abcdef')
     expect(label).not.toContain('runMemberTurn')
     expect(Object.values(room.data.$botAttention.get())[0]?.reason).toBe('missing_config')
@@ -231,7 +231,7 @@ describe('turn arc', () => {
 
     expect(failed?.reason).toBe(room.activity.GROUP_SLOT_WAIT_REASON)
     expect(room.activity.groupActivityLabel(failed!, 'Slot wait')).toBe(
-      "builder couldn't start — too many bots running"
+      "builder couldn't start - too many bots running"
     )
     expect(room.data.$botAttention.get()).toEqual({})
   })

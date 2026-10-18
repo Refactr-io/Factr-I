@@ -61,10 +61,10 @@ const DRIVEN: readonly string[] = ['click', 'hover', 'press', 'type']
  *  from them would report every one of them as a failure. */
 const CLICKS: readonly string[] = ['click', 'type']
 
-const NOTHING_OPEN = 'No live page is open in the in-app browser — open one with open_preview first.'
+const NOTHING_OPEN = 'No live page is open in the in-app browser - open one with open_preview first.'
 
 const NAVIGATED =
-  'The page stopped answering right after — it is probably navigating. Call elements to see where you landed.'
+  'The page stopped answering right after - it is probably navigating. Call elements to see where you landed.'
 
 /** A fingerprint of the overlay's source, so the guest page can tell that the
  *  code it is running has changed underneath it.
@@ -464,7 +464,7 @@ async function driveScroll(
   const anchor = trip.result as PreviewActResult & { page?: number; span?: number }
 
   if (!anchor.span) {
-    return { ...anchor, acted: 'scrolled the page', note: 'The page has nothing to scroll — it all fits already.' }
+    return { ...anchor, acted: 'scrolled the page', note: 'The page has nothing to scroll - it all fits already.' }
   }
 
   // A person does not move the mouse to scroll; the wheel turns wherever their
@@ -503,7 +503,7 @@ export async function actOnActivePreview(
 
     // Navigation is fire-and-forget through the webview; the new document has
     // its own refs, so the agent has to re-inventory either way.
-    return { acted: nav, note: 'Page is loading — call elements to see what is on it.', success: true }
+    return { acted: nav, note: 'Page is loading - call elements to see what is on it.', success: true }
   }
 
   const run = activePreviewScriptRunner()

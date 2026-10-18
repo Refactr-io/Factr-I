@@ -438,7 +438,7 @@ export function actInPageCore(
 
     return answer({
       ...looked,
-      note: empty ? 'No interactive elements found — the page may still be loading.' : undefined
+      note: empty ? 'No interactive elements found - the page may still be loading.' : undefined
     })
   }
 
@@ -571,7 +571,7 @@ export function actInPageCore(
         ;(el as HTMLInputElement).value = text
       }
     } else if (el.tagName === 'SELECT') {
-      return fail(describe(el) + ' is a dropdown — click it and click the option you want.')
+      return fail(describe(el) + ' is a dropdown - click it and click the option you want.')
     } else {
       return fail(describe(el) + ' is not a text field.')
     }

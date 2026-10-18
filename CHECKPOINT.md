@@ -29,3 +29,14 @@
 - Re-read parent advice after validation: no STOP and no i18n-specific correction.
 - Next: replace English em dashes in actual UI text only; preserve comments, non-English translations, model prompts and test data.
 
+
+## Milestone 2: English punctuation (validated)
+- Replaced 158 visible English em dashes in 157 string/JSX-text spans across 58 src files. Includes English Bot Mode/Kanban bundles, settings, chat/status text, and user-visible error/tool feedback. en.ts already contains no literal, escaped or HTML-entity em dash.
+- Left non-English plugin bundles, comments (including injected JS/CSS comments), regex punctuation handling, debug console output and internal model prompts untouched. No engine code or prompt changes.
+- `npm run typecheck`: passed all three tsc projects.
+- ESLint on all 58 touched source files: exit 0; 12 existing TS warnings (padding and hook dependencies) plus one ignored Radio JS warning. Forced `eslint --no-ignore src/plugins/radio/plugin.js`: seven existing errors; running the committed HEAD content through the same ESLint stdin command reproduces all seven at identical lines. No lint configuration or unrelated code changed.
+- Extended check: `npm run test:ui -- src/i18n <24 adjacent test files> --maxWorkers=2`: 454 passed, four failures limited to old punctuation expectations in session-tile.test.ts and group-activity.test.ts. Updated exactly four assertion strings; no fixtures or test inputs changed.
+- `npm run test:ui -- src/i18n src/app/chat/session-tile.test.ts src/plugins/factr-bots/group-activity.test.ts`: all 63 tests passed in six files after assertion updates. The other 454 tests had already passed; no implementation changes since that run.
+- ESLint on the two edited assertion files: passed. `git diff --check`: passed.
+- Asserted every diff against milestone 1 using Python SequenceMatcher: exactly 162 replacements, each a literal/escaped em dash to a hyphen, across 60 files; no other byte-level edits.
+- Re-read parent advice: no STOP or i18n-specific correction. Next: normalize product naming and document genuinely ambiguous descriptors.

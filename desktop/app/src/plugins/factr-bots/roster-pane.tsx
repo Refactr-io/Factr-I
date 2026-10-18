@@ -413,7 +413,7 @@ export function BotsPane() {
 
   const staleNotice =
     error && !live && roster.length
-      ? 'Roster refresh failed — showing the last good list.' +
+      ? 'Roster refresh failed - showing the last good list.' +
         (gatewayUp ? '' : ' Waiting for the gateway to reconnect…')
       : null
 

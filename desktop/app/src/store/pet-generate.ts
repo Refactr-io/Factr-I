@@ -427,7 +427,7 @@ export async function generateDrafts(request: GatewayRequest, options: GenerateO
     $petGenDrafts.set(result.drafts)
     $petGenSelected.set(result.drafts[0]?.index ?? 0)
     $petGenStatus.set('ready')
-    notifyPetGenDone('Pet drafts ready', 'Your pet looks finished — pick one to hatch.', 'success')
+    notifyPetGenDone('Pet drafts ready', 'Your pet looks finished - pick one to hatch.', 'success')
 
     return true
   } catch (e) {

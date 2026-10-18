@@ -54,7 +54,7 @@ export async function runPreviewTour(action: TourAction): Promise<TourResult> {
   const run = activePreviewScriptRunner()
 
   if (!run) {
-    return { error: 'No live page is open in the preview pane — open one first.', success: false }
+    return { error: 'No live page is open in the preview pane - open one first.', success: false }
   }
 
   const raw = await run(buildTourScript(action))

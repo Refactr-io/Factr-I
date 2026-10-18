@@ -297,7 +297,7 @@ export async function toggleWakeWord(request: WakeRequester = gatewayRequester):
     ...state,
     // First arm may lazy-install the detection engine — say so instead of
     // freezing a silent disabled button for the duration.
-    notice: state.listening ? '' : 'arming — first use may take a minute while the engine installs',
+    notice: state.listening ? '' : 'arming - first use may take a minute while the engine installs',
     pending: true
   })
 

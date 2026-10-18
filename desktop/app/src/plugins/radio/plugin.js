@@ -28,7 +28,7 @@ const EN = {
   searchError: 'Station search is unavailable. Your presets still work.', searching: 'Searching stations',
   directory: 'Search powered by Radio Browser', note: 'Live radio · next switches stations',
   streamError: 'This stream could not connect. Try again or choose another station.',
-  close: 'Close radio', nowPlaying: 'Now playing', elsewhere: 'Paused — playing in another window',
+  close: 'Close radio', nowPlaying: 'Now playing', elsewhere: 'Paused - playing in another window',
   'chillsynthDescription': 'Soft focus · warm synths', 'nightrideDescription': 'Synthwave · after hours',
   'darksynthDescription': 'Dark electronics · high energy', 'spacesynthDescription': 'Cosmic synths · retro futures',
   'paradise-mainDescription': 'Eclectic · human selected', 'paradise-mellowDescription': 'A gentler pace'
@@ -518,7 +518,7 @@ function Signal({ player, ctx }) {
           children: [jsx('span', { children: credit.artist }), jsx(icons.ExternalLink, { style: { width: 10, height: 10 }, 'aria-hidden': true })]
         })
       }) }) : jsx('span', { className: 'factr-radio-track-text', children: credit.artist })),
-      credit.artist && jsx('span', { className: 'factr-radio-track-separator', 'aria-hidden': true, children: '—' }),
+      credit.artist && jsx('span', { className: 'factr-radio-track-separator', 'aria-hidden': true, children: '-' }),
       jsx(Tip, { label: text || undefined, children: jsx('span', { className: 'factr-radio-track-text', children: credit.artist ? credit.title : text }) })
     ] })
   ] })
