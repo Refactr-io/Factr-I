@@ -448,6 +448,13 @@ impl Conn {
                 }
             }
         }
+        // Fresh headless sessions expose custom_title, while prompt.submit checks title for auto-naming.
+        // Keep the canonical title so the callback still recognizes this Bot Chat after the first prompt.
+        if is_chat && own() != "default" {
+            if let Some(info) = self.known.lock().await.get_mut(id) {
+                info["title"] = json!("Bot Chat");
+            }
+        }
         Ok(())
     }
 

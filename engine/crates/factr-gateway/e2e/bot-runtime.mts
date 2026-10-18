@@ -48,7 +48,7 @@ const model = http.createServer(async (req, res) => {
   const entry = { user, body, at: Date.now() };
   seen.push(entry);
   const lastTool = [...messages].reverse().find(m => m.role === "tool");
-  const calls = (user.includes("NATIVE_ASK") || user.includes("NATIVE_PEER")) && !lastTool;
+  const calls = (user.includes("NATIVE_ASK") || user.includes("NATIVE_PEER") || user.includes("NATIVE_HEADLESS")) && !lastTool;
   if (user.includes("SLOW_DELIVERY")) await sleep(3000);
   const text = calls
     ? ""
@@ -89,7 +89,7 @@ const model = http.createServer(async (req, res) => {
                 function: {
                   name: "message_agent",
                   arguments: JSON.stringify({
-                    target: user.includes("NATIVE_PEER") ? "spark/researcher" : "b",
+                    target: user.includes("NATIVE_PEER") ? "spark/researcher" : user.includes("NATIVE_HEADLESS") ? "a" : "b",
                     message: "SLOW_DELIVERY native ping",
                   }),
                 },
@@ -370,6 +370,18 @@ try {
   }
   assert.ok(!(childRows.subagents || []).some(c => c.status === 'running'), JSON.stringify(childRows));
   console.log('ok: Stop cancels two real delegated children');
+  const headless = await b.run({ prompt: "NATIVE_HEADLESS", surface: "bot", title: "Bot Chat", session_key: "headless-title-regression", timeout_s: 30 });
+  assert.equal(headless.ok, true, JSON.stringify(headless));
+  const headlessCall = [...seen].reverse().find(s => s.user.includes("NATIVE_HEADLESS") && s.body.messages.some(m => m.role === "tool"));
+  assert.ok(headlessCall && JSON.stringify(headlessCall.body.messages).includes('queued'), "headless Bot Chat can queue native message_agent");
+  assert.ok(!JSON.stringify(headlessCall.body.messages).includes('disabled in this session'));
+  const storedHeadless = JSON.parse(fs.readFileSync(path.join(home, "sessions", `${headless.session_id}.json`), "utf8"));
+  assert.equal(storedHeadless.custom_title || storedHeadless.title, 'Bot Chat');
+  for (const file of fs.readdirSync(path.join(cfg, 'bot_relay/outbox'))) {
+    const pending = JSON.parse(fs.readFileSync(path.join(cfg, 'bot_relay/outbox', file), 'utf8'));
+    if (pending.sender_session === headless.session_id) fs.unlinkSync(path.join(cfg, 'bot_relay/outbox', file));
+  }
+  console.log("ok: first headless Bot Chat retains its title and queues native messaging");
   console.log("stage: native handoff");
   await primary.call("prompt.submit", {
     session_id: chat.session_id,
