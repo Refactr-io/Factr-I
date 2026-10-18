@@ -29,6 +29,7 @@ const scratch = fs.mkdtempSync(path.join(process.env.SCRATCH || os.tmpdir(), 'bo
 const cfg = path.join(scratch, 'config')
 const shared = path.join(scratch, 'shared-engine-home')
 const MODEL = 'deliver-check:latest'
+const engines = new Set()
 let failures = 0
 const check = (cond, msg) => {
   console.log(cond ? 'ok  ' : 'FAIL', msg)
@@ -105,6 +106,8 @@ async function start(bot, modelName = MODEL, home = shared) {
   const runtime = fs.mkdtempSync('/tmp/bcd-')
   const env = { ...process.env, HOME: path.join(scratch, bot), FACTR_HOME: home, FACTR_CONFIG_HOME: cfg, FACTR_RUNTIME_DIR: runtime, FACTR_DASHBOARD_SESSION_TOKEN: token, OLLAMA_HOST: '127.0.0.1:1' }
   const child = spawn(BIN, ['--profile', bot, '--provider', 'openai-compatible', '--model', modelName, 'serve', '--host', '127.0.0.1', '--port', '0'], { env, cwd: path.join(scratch, bot), stdio: ['ignore', 'pipe', 'pipe'] })
+  engines.add(child)
+  child.once('exit', () => engines.delete(child))
   let stderr = ''
   child.stderr.on('data', d => { stderr += d })
   const port = await new Promise((resolve, reject) => {
@@ -131,7 +134,10 @@ async function start(bot, modelName = MODEL, home = shared) {
     const rpc = (method, params = {}) => {
       const id = `e${next++}`
       ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
-      return new Promise(resolve => pending.set(id, resolve))
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error(`${bot}: ${method} timed out`)) }, 130_000)
+        pending.set(id, frame => { clearTimeout(timer); resolve(frame) })
+      })
     }
     return { rpc, events, close: () => ws.close() }
   }
@@ -213,14 +219,26 @@ try {
   // plain session.create (+ claim), never `ensure`. The first request the model gets must already offer message_agent.
   const freshHome = path.join(scratch, 'fresh-engine-home')
   seed('f', modelUrl, MODEL, 8192, freshHome)
-  fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'config.yaml'), `mcp_servers:\n  factr_teammates:\n    command: ${process.execPath}\n    args: ['${stub}']\n`)
+  const python = process.env.FACTR_BACKEND_PYTHON
+  const backend = process.env.FACTR_BACKEND_PYTHONPATH
+  fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Fresh Bot\n')
+  fs.writeFileSync(path.join(cfg, 'profiles', 'f', 'config.yaml'), python && backend
+    ? `mcp_servers:\n  factr_teammates:\n    command: ${JSON.stringify(python)}\n    args: ['-m', 'tools.message_agent_mcp']\n    env:\n      PYTHONPATH: ${JSON.stringify(backend)}\n    timeout_secs: 900\n`
+    : `mcp_servers:\n  factr_teammates:\n    command: ${process.execPath}\n    args: ['${stub}']\n`)
   const f = await start('f', MODEL, freshHome)
   check(!fs.existsSync(path.join(freshHome, 'mcp-schema-cache.json')), 'fresh store: nothing cached before the first chat')
   const firstChat = await ok(f, 'session.create', { title: 'Bot Chat', hidden: true, follow_profile_config: true })
+  await ok(f, 'session.title', { session_id: firstChat.session_id, title: 'Bot Chat' })
+  await ok(f, 'bot.chat.claim', { profile: 'f', session_id: firstChat.session_id })
+  // New Bot mounts its fresh chat before submitting the intro on the creation connection.
+  const firstWindow = await f.open()
+  await ok(firstWindow, 'session.resume', { session_id: firstChat.session_id })
   await ok(f, 'prompt.submit', { session_id: firstChat.session_id, text: 'first words in a fresh install' })
   for (let i = 0; i < 100 && !seen.some(x => x.user.includes('first words in a fresh install')); i++) await sleep(100)
   const firstRequest = seen.find(x => x.user.includes('first words in a fresh install'))
   check(firstRequest?.tools?.some(t => /message_agent/.test(t)), `the bot's very first session offers message_agent (tools: ${(firstRequest?.tools || []).join(', ').slice(0, 200)})`)
+  check(firstWindow.events.some(e => e.type === 'message.complete' && e.session_id === firstChat.session_id), 'the mounted window sees the creation-time intro complete')
+  firstWindow.close()
   await f.stop()
   const chatA = await ensureChat(a, 'a')
   check(chatA !== chatB, 'two engines, two Bot Chats, one shared store')
@@ -325,6 +343,11 @@ try {
   console.error('ERROR', e)
   failures++
 } finally {
+  for (const child of engines) child.kill('SIGTERM')
+  await Promise.all([...engines].map(child => new Promise(resolve => {
+    child.once('exit', resolve)
+    setTimeout(() => { child.kill('SIGKILL'); resolve() }, 5000).unref()
+  })))
   model.close()
   fs.rmSync(scratch, { recursive: true, force: true })
 }
