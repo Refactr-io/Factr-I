@@ -21,7 +21,7 @@ The first build compiles the Rust engine (minutes). Cargo registry and `target/`
 
 | Item | Value |
 |---|---|
-| User | `bot`, uid/gid 1000, no sudo. On a Linux host the profile folder must be writable by uid 1000 (Docker Desktop maps ownership). |
+| User | `bot`, uid/gid 1000, no sudo, on Docker Desktop. On native Linux the coordinator uses the regular host uid/gid and puts HOME/workspace inside the mounted profile; running Factr-I as root is refused. |
 | `FACTR_BOT` (env, required) | Profile name, `[A-Za-z0-9_-]{1,64}`. The entrypoint exits 64 on anything else. |
 | `FACTR_ENGINE_TOKEN` (env, required) | Engine session token, at least 32 characters (the engine refuses shorter). The entrypoint unsets it and feeds it to the engine on stdin via `--token-stdin`, the mechanism the desktop app uses for its bundled engine (`electron/engine-token.ts`). The `factr` process has it in neither environment nor argv. Caveat: PID 1's initial environ and `docker inspect` still show it; the blast radius is the bot's own engine only. |
 | `FACTR_ENGINE_PORT` (env, default 8642) | The port the engine listens on (`--host 0.0.0.0 --port $FACTR_ENGINE_PORT --allow-remote`). The engine rejects any `Host` header whose port is not its listen port (403, or WebSocket close 4403), so publish it as the same number: `-e FACTR_ENGINE_PORT=P -p 127.0.0.1:P:P` with a free `P`. The image `HEALTHCHECK` follows the variable. |
@@ -61,7 +61,9 @@ docker run -d --name bots-<bot> --network bots-factr-net \
 computer/tests/test_computer_image.sh        # builds the image if missing; BUILD=1 rebuilds; SKIP_OLLAMA=1 skips (f)
 ```
 
-Starts bots on throwaway profile folders under `/Users/rameelmalik/factri-bots-scratch/img/` (override with `SCRATCH=`), as containers `bots-test-a` to `bots-test-d` on `bots-factr-net`. Checks health and token enforcement on `127.0.0.1:P`, separate filesystems, separate PID and network namespaces with no cross-bot reach, the engine-home and local-model forwards, a read-only engine home, persistence across stop/start, the Bot Desktop starting inside the container, and (when Ollama with `qwen3.8:27b` runs on the host, `OLLAMA_MODEL=` to change) one real model turn through the engine. Skips when Docker is not reachable. Removes only what it created, by exact name; the network is removed only if the test created it.
+Starts bots on throwaway profile folders under `${TMPDIR:-/tmp}/bots-image/run-<pid>` (override with `SCRATCH=`), as uniquely suffixed `bots-test-a-<pid>` through `bots-test-d-<pid>` containers on `bots-factr-net`. It runs at most one pair at a time. Checks health and token enforcement on `127.0.0.1:P`, separate filesystems, separate PID and network namespaces with no cross-bot reach, the engine-home and local-model forwards, a read-only engine home, persistence across stop/start, the Bot Desktop starting inside the container, and (when Ollama with `qwen3.8:27b` runs on the host, `OLLAMA_MODEL=` to change) one real model turn through the engine. Skips when Docker is not reachable. Removes only what it created, by exact name; the network is removed only if the test created it.
+
+For the confined host fallback and its platform limits, see [LOCAL-SANDBOX.md](LOCAL-SANDBOX.md).
 
 ## Known limitation: dev server origin (dev builds only)
 
