@@ -17,7 +17,7 @@ import { parseMarkdownIntoBlocks } from '@assistant-ui/react-streamdown'
  *    the cache on the theory that re-lexing them was cheap — the lex is, but
  *    the churn it caused was not (measured: ~105 self-renders of Streamdown
  *    across five idle tiles in six seconds, cascading into 800 Block renders
- *    with nothing streaming). Every length is cached now.
+ *    with nothing streaming). Cache every length within the text budget below.
  * 2. Streaming-append cache — when the new text starts with a recently parsed
  *    text (the token-append case), the previous parse's blocks are reused up
  *    to a settled boundary and only the suffix is lexed. The boundary drops
@@ -36,7 +36,11 @@ import { parseMarkdownIntoBlocks } from '@assistant-ui/react-streamdown'
  */
 
 const EXACT_CACHE_MAX = 256
+// Entry count alone retained hundreds of full streaming snapshots after a
+// message unmounted. Bound each cache's text too, without clipping the reply.
+const CACHE_TEXT_MAX = 1024 * 1024
 const exactCache = new Map<string, string[]>()
+let exactCacheText = 0
 
 // Streaming messages grow monotonically, and only a handful stream at once
 // (main reply + reasoning part, maybe a tile). A tiny ring is enough; each
@@ -46,7 +50,7 @@ const APPEND_CACHE_MIN_LENGTH = 2048
 const appendCache: { blocks: string[]; text: string }[] = []
 
 function rememberAppend(text: string, blocks: string[]): void {
-  if (text.length < APPEND_CACHE_MIN_LENGTH) {
+  if (text.length < APPEND_CACHE_MIN_LENGTH || text.length > CACHE_TEXT_MAX) {
     return
   }
 
@@ -59,7 +63,10 @@ function rememberAppend(text: string, blocks: string[]): void {
 
   appendCache.push({ blocks, text })
 
-  if (appendCache.length > APPEND_CACHE_MAX) {
+  while (
+    appendCache.length > APPEND_CACHE_MAX ||
+    appendCache.reduce((sum, entry) => sum + entry.text.length, 0) > CACHE_TEXT_MAX
+  ) {
     appendCache.shift()
   }
 }
@@ -128,10 +135,18 @@ export function parseMarkdownIntoBlocksCached(markdown: string): string[] {
   const blocks = lexIncrementally(markdown) ?? parseMarkdownIntoBlocks(markdown)
 
   rememberAppend(markdown, blocks)
-  exactCache.set(markdown, blocks)
 
-  if (exactCache.size > EXACT_CACHE_MAX) {
-    exactCache.delete(exactCache.keys().next().value as string)
+  if (markdown.length > CACHE_TEXT_MAX) {
+    return blocks
+  }
+
+  exactCache.set(markdown, blocks)
+  exactCacheText += markdown.length
+
+  while (exactCache.size > EXACT_CACHE_MAX || exactCacheText > CACHE_TEXT_MAX) {
+    const oldest = exactCache.keys().next().value as string
+    exactCache.delete(oldest)
+    exactCacheText -= oldest.length
   }
 
   return blocks

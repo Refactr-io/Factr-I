@@ -68,6 +68,30 @@ function mulberry32(seed: number) {
 const LONG_CORPUS = Array.from({ length: 6 }, () => CORPUS).join('\n')
 
 describe('parseMarkdownIntoBlocksCached', () => {
+  it('releases older large replies before the entry-count limit is reached', () => {
+    const original = `cache-pressure-original\n\n${'large paragraph '.repeat(6500)}`
+    const first = parseMarkdownIntoBlocksCached(original)
+    expect(parseMarkdownIntoBlocksCached(original)).toBe(first)
+
+    for (let index = 0; index < 16; index++) {
+      parseMarkdownIntoBlocksCached(`cache-pressure-${index}\n\n${'another large paragraph '.repeat(4500)}`)
+    }
+
+    const reloaded = parseMarkdownIntoBlocksCached(original)
+    expect(reloaded).not.toBe(first)
+    expect(reloaded).toEqual(parseMarkdownIntoBlocks(original))
+  })
+
+  it('renders an oversized document completely without retaining it in the cache', () => {
+    const text = `oversized-document\n\n${'still visible text\n\n'.repeat(60000)}`
+    const first = parseMarkdownIntoBlocksCached(text)
+    const next = parseMarkdownIntoBlocksCached(text)
+
+    expect(first.join('')).toBe(text)
+    expect(next).toEqual(first)
+    expect(next).not.toBe(first)
+  })
+
   it('matches a full lex at every random streaming cut (property)', () => {
     for (let seed = 1; seed <= 5; seed++) {
       const rand = mulberry32(seed)

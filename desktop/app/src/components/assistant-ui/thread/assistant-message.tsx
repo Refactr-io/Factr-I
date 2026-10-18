@@ -160,22 +160,28 @@ export const AssistantMessage: FC<AssistantMessageProps> = props => {
 
 /** The compact stand-in a settled inter-agent reply collapses to (Grok-bots
  *  parity — the transcript shows the event; the text is one click away). */
-const InterAgentCollapsedNotice: FC<{ sender: string }> = ({ sender }) => (
-  <div className="flex max-w-[min(86%,44rem)] flex-col gap-0.5 self-center px-2 py-0.5 text-[0.6875rem] leading-5 text-muted-foreground/90">
-    <span className="flex items-center justify-center gap-1.5">
-      <Codicon className="shrink-0 text-muted-foreground/90" name="arrow-small-right" size="0.8125rem" />
-      <span className="wrap-anywhere">Replied to {sender}</span>
-    </span>
-    <details className="self-center">
-      <summary className="cursor-pointer select-none text-center text-muted-foreground/90 hover:text-muted-foreground/90">
-        show reply
-      </summary>
-      <div className="mt-1 max-w-[36rem] rounded-lg border border-(--ui-stroke-tertiary) px-3 py-2 text-left text-[0.75rem] leading-5 text-foreground/85">
-        {MESSAGE_PARTS}
-      </div>
-    </details>
-  </div>
-)
+const InterAgentCollapsedNotice: FC<{ sender: string }> = ({ sender }) => {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="flex max-w-[min(86%,44rem)] flex-col gap-0.5 self-center px-2 py-0.5 text-[0.6875rem] leading-5 text-muted-foreground/90">
+      <span className="flex items-center justify-center gap-1.5">
+        <Codicon className="shrink-0 text-muted-foreground/90" name="arrow-small-right" size="0.8125rem" />
+        <span className="wrap-anywhere">Replied to {sender}</span>
+      </span>
+      <details className="self-center" onToggle={event => setOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer select-none text-center text-muted-foreground/90 hover:text-muted-foreground/90">
+          show reply
+        </summary>
+        {open && (
+          <div className="mt-1 max-w-[36rem] rounded-lg border border-(--ui-stroke-tertiary) px-3 py-2 text-left text-[0.75rem] leading-5 text-foreground/85">
+            {MESSAGE_PARTS}
+          </div>
+        )}
+      </details>
+    </div>
+  )
+}
 
 /**
  * An assistant reply that answers an inter-agent delivery. Owns the only
