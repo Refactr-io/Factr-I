@@ -869,7 +869,7 @@ export const host = {
     const bridge = window.factrDesktop?.connections
 
     if (!bridge) {
-      throw new Error('This Desktop build has no connection registry. Update Factr-I Desktop.')
+      throw new Error('This Desktop build has no connection registry. Update Factr-I.')
     }
 
     const registryPayload = await bridge.list()
@@ -886,7 +886,7 @@ export const host = {
     const roster = window.factrDesktop?.getAgentRoster
 
     if (!roster) {
-      throw new Error('This Desktop build cannot enumerate multi-source agents. Update Factr-I Desktop.')
+      throw new Error('This Desktop build cannot enumerate multi-source agents. Update Factr-I.')
     }
 
     return roster()
@@ -1301,7 +1301,7 @@ export const host = {
       const openTab = $newSessionTabAction.get()
 
       if (!openTab) {
-        notify({ kind: 'error', message: 'Update Factr-I Desktop to open another Bot chat.' })
+        notify({ kind: 'error', message: 'Update Factr-I to open another Bot chat.' })
 
         return
       }
@@ -1398,7 +1398,7 @@ export const host = {
     const getProfileRoutes = desktop?.getProfileRoutes
 
     if (!getProfileRoutes) {
-      throw new Error('Factr-I Desktop connection routing unavailable')
+      throw new Error('Factr-I connection routing unavailable')
     }
 
     let profiles = $profiles.get()

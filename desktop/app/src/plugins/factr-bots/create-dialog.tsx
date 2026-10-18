@@ -832,12 +832,12 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                   // — a message rather than rendering `undefined` as a
                   // component, which throws.
                   <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                    Skills need a newer Factr Desktop.
+                    Skills need a newer Factr-I.
                   </div>
                 )
               ) : capsFailed ? (
                 <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                  Capability catalog needs a newer gateway (restart it after updating Factr).
+                  Capability catalog needs a newer gateway (restart it after updating Factr-I).
                 </div>
               ) : !caps ? (
                 <div className="flex justify-center py-4">

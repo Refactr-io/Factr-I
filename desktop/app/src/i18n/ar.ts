@@ -1350,7 +1350,7 @@ export const ar = defineLocale({
       },
       settings: {
         title: 'الإعدادات',
-        detail: 'تكوين Factr-I desktop'
+        detail: 'تكوين Factr-I'
       },
       capabilities: {
         title: 'المهارات والأدوات',

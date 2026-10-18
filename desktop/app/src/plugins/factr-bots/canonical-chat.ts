@@ -85,7 +85,7 @@ async function openStoredBotChat(
   summary: CanonicalChatRow
 ): Promise<string> {
   if (!storedId || typeof host.openSession !== 'function') {
-    throw new Error('This Factr-I Desktop version cannot open stored sessions')
+    throw new Error('This Factr-I version cannot open stored sessions')
   }
 
   const { bot, name, route } = botOwner(owner)
@@ -594,7 +594,7 @@ export async function prepareBotSource(bot: RosterRow) {
   if (route && typeof host.requestProfile !== 'function') {
     throw new Error(
       getPluginCtx()?.i18n?.t('bot.remoteConnectionsUnsupported') ??
-        'Update Factr-I Desktop to chat with bots on other connections.'
+        'Update Factr-I to chat with bots on other connections.'
     )
   }
 

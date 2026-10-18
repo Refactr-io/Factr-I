@@ -1771,7 +1771,7 @@ export const ru = defineLocale({
     },
     nav: {
       newChat: { title: 'Новый сеанс', detail: 'Начать новый сеанс' },
-      settings: { title: 'Настройки', detail: 'Настройка Factr-I desktop' },
+      settings: { title: 'Настройки', detail: 'Настройка Factr-I' },
       capabilities: { title: 'Возможности', detail: 'Навыки, инструменты и MCP-серверы' },
       messaging: { title: 'Сообщения', detail: 'Настройка Telegram, Slack, Discord и других' },
       artifacts: { title: 'Артефакты', detail: 'Просмотр сгенерированных результатов' }
