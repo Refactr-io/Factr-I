@@ -15,6 +15,7 @@ import {
   resumeComputer,
   chooseBotBackend,
   computerImageReady,
+  computerHostArgs,
   computerStatus,
   computeSpec,
   configureBotComputers,
@@ -22,6 +23,8 @@ import {
   deriveBotToken,
   destroyComputer,
   dockerAvailable,
+  dockerBinaryCandidates,
+  refreshComputerRuntime,
   enabledCronJobs,
   ensureComputer,
   isBotProfile,
@@ -178,6 +181,36 @@ describe('profile name validation', () => {
     await expect(destroyComputer('default')).rejects.toThrow(/Invalid/)
     await expect(computerStatus('X')).rejects.toThrow(/Invalid/)
     expect(calls).toEqual([])
+  })
+})
+
+describe('runtime discovery after setup', () => {
+  it.each(['darwin', 'linux', 'win32'])('generates native Docker candidates on %s without requiring a refreshed PATH', platform => {
+    const candidates = dockerBinaryCandidates(platform, { PATH: '', ProgramFiles: 'D:\\Programs' })
+    expect(candidates).toContain(platform === 'win32' ? 'D:\\Programs\\Docker\\Docker\\resources\\bin\\docker.exe'
+      : platform === 'darwin' ? '/Applications/Docker.app/Contents/Resources/bin/docker' : '/usr/bin/docker')
+    expect(candidates).not.toContain('')
+  })
+  it('a successful setup clears cached unavailable status immediately', async () => {
+    let ready = false
+    configure({ run: args => args[0] === 'version' && !ready ? Promise.reject(new Error('not running')) : fakeRun(args) })
+    expect(await dockerAvailable()).toBe(false)
+    ready = true
+    expect(await dockerAvailable()).toBe(false)
+    refreshComputerRuntime()
+    expect(await dockerAvailable()).toBe(true)
+  })
+})
+
+describe('native container filesystem identity', () => {
+  it.each(['darwin', 'win32'])('keeps the non-root image user with Docker Desktop on %s', platform => {
+    expect(computerHostArgs('scout', platform, 501, 20)).toEqual([])
+  })
+  it('uses the Linux host uid/gid and a writable home/workspace inside the profile mount', () => {
+    expect(computerHostArgs('scout', 'linux', 1001, 1002)).toEqual([
+      '--user', '1001:1002', '-e', 'HOME=/data/profiles/scout/home', '--workdir', '/data/profiles/scout/workspace'
+    ])
+    expect(() => computerHostArgs('scout', 'linux', 0, 0)).toThrow('regular user')
   })
 })
 
@@ -789,6 +822,12 @@ describe('scheduled bots', () => {
 })
 
 describe('listComputers', () => {
+  it('includes isolated host bots, including unstarted targets, without probing or spawning Docker', () => {
+    for (const profile of ['scout', 'writer']) fs.writeFileSync(path.join(home, 'profiles', profile, 'profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Test bot\n')
+    configure({ hostRunning: profile => profile === 'scout' })
+    expect(listComputers()).toEqual([{ profile: 'scout', running: true }, { profile: 'writer', running: false }])
+    expect(calls).toEqual([])
+  })
   it('lists bots with a computer marker and whether each runs, without touching docker', async () => {
     configure()
     fs.writeFileSync(path.join(home, 'profiles', 'scout', '.computer'), '{}')
@@ -801,6 +840,20 @@ describe('listComputers', () => {
       { profile: 'writer', running: true }
     ])
     expect(calls).toEqual([])
+  })
+})
+
+describe('scheduled local sandbox startup', () => {
+  it('starts a managed scheduled bot without Docker, leaving the idle roster asleep', async () => {
+    fs.writeFileSync(path.join(home, 'profiles/scout/profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Scout\n')
+    fs.mkdirSync(path.join(home, 'profiles/scout/cron'))
+    fs.writeFileSync(path.join(home, 'profiles/scout/cron/jobs.json'), JSON.stringify({ jobs: [{ enabled: true }] }))
+    const started: string[] = []
+    configure({ run: () => Promise.reject(new Error('Docker unavailable')), hostRunning: () => false,
+      startBot: async profile => { started.push(profile) } })
+    await reconcileComputers(['scout', 'writer'])
+    expect(started).toEqual(['scout'])
+    expect(dockerCalls('create')).toEqual([])
   })
 })
 

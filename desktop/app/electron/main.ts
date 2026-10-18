@@ -88,15 +88,19 @@ import {
   isWslEnvironment,
   resolveLinuxPasswordStore
 } from './bootstrap-platform'
+import { prepareBotSandbox } from './bot-local-sandbox'
 import { decideBootstrapRepair } from './bootstrap-repair-guard'
 import { runBootstrap } from './bootstrap-runner'
 import {
   botBackendFor,
+  dockerBinaryCandidates,
+  refreshComputerRuntime,
   pauseComputer,
   resumeComputer,
   computerStatus as botComputerStatus,
   computerActive,
   configureBotComputers,
+  enabledCronJobs,
   destroyComputer,
   ensureComputer,
   isBotProfile,
@@ -11637,37 +11641,47 @@ async function runPoolBackendStart(
   assertPoolEntryStillOwned(poolKey, entry)
 
   const tokenLaunch = engineTokenLaunch(backend.kind, token)
+  if (backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)) {
+    entry.hasScheduledJobs = () => enabledCronJobs(profile) > 0
+  }
 
+  const env = {
+    ...process.env,
+    FACTR_CONFIG_HOME,
+    ...backend.env,
+    ...profileRuntimeEnv,
+    // Pin the gateway's tool/terminal cwd to the same directory we chose for
+    // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
+    // can still point at the install dir even when spawn cwd is home.
+    FACTR_DESKTOP_CWD: factrCwd,
+    TERMINAL_CWD: factrCwd,
+    ...tokenLaunch.env,
+    // Marks this dashboard backend as desktop-spawned so it runs the cron
+    // scheduler tick loop (the gateway isn't running under the app).
+    FACTR_DESKTOP: '1',
+    // Exact parent identity lets the backend self-exit after an unclean
+    // Desktop death without mistaking a reused PID for its owner. If the
+    // optional marker probe fails, retain legacy PID-only tracking.
+    ...parentIdentityEnv,
+    FACTR_WEB_DIST: webDist,
+    ...(readyFile ? { FACTR_DESKTOP_READY_FILE: readyFile } : {})
+  }
+  const sandbox = backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)
+    ? prepareBotSandbox({ profile, configHome: FACTR_CONFIG_HOME, command: backend.command,
+        args: [...backend.args, ...tokenLaunch.args], env,
+        readRoots: [path.dirname(backend.command), path.join(process.resourcesPath, 'backend-python'),
+          ...[path.join(FACTR_CONFIG_HOME, 'node')].filter(directoryExists)] })
+    : null
   const child = spawnOwnedBackend(
-    backend.command,
-    [...backend.args, ...tokenLaunch.args],
-    hiddenWindowsChildOptions({
-      cwd: factrCwd,
-      env: {
-        ...process.env,
-        FACTR_CONFIG_HOME,
-        ...backend.env,
-        ...profileRuntimeEnv,
-        // Pin the gateway's tool/terminal cwd to the same directory we chose for
-        // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
-        // can still point at the install dir even when spawn cwd is home.
-        FACTR_DESKTOP_CWD: factrCwd,
-        TERMINAL_CWD: factrCwd,
-        ...tokenLaunch.env,
-        // Marks this dashboard backend as desktop-spawned so it runs the cron
-        // scheduler tick loop (the gateway isn't running under the app).
-        FACTR_DESKTOP: '1',
-        // Exact parent identity lets the backend self-exit after an unclean
-        // Desktop death without mistaking a reused PID for its owner. If the
-        // optional marker probe fails, retain legacy PID-only tracking.
-        ...parentIdentityEnv,
-        FACTR_WEB_DIST: webDist,
-        ...(readyFile ? { FACTR_DESKTOP_READY_FILE: readyFile } : {})
-      },
-      shell: backend.shell,
-      stdio: tokenLaunch.stdio
-    })
+    sandbox?.command || backend.command,
+    sandbox?.args || [...backend.args, ...tokenLaunch.args],
+    hiddenWindowsChildOptions({ cwd: sandbox?.cwd || factrCwd, env: sandbox?.env || env, shell: backend.shell, stdio: tokenLaunch.stdio,
+      ...(sandbox && !IS_WINDOWS ? { detached: true } : {}) })
   )
+  if (sandbox) {
+    child.once('exit', sandbox.cleanup)
+    child.once('error', sandbox.cleanup)
+  }
 
   tokenLaunch.deliver(child)
 
@@ -11847,6 +11861,13 @@ configureBotComputers({
   masterSecret: botComputersMasterSecret,
   waitReady: (baseUrl, token) => waitForFactr(baseUrl, token),
   maxRunning: () => poolMaxBackends(),
+  ...(IS_PACKAGED ? { hostRunning: profile => localProfilePoolKeys(profile).some(key => {
+    const child = backendPool.get(key)?.process
+    return child && child.exitCode === null && child.signalCode === null
+  }), startBot: async profile => {
+    try { return await ensureBackend(profile, { spawnPriority: 'background' }) }
+    catch (error) { rememberLog(`Scheduled bot "${profile}" could not start: ${String(error)}`); throw error }
+  } } : {}),
   // Where a new bot's credentials are seeded from (one-time copy): the engine home, as the engine resolves it.
   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   hostEngineHome: process.env.FACTR_HOME || path.join(app.getPath('home'), '.factr', 'engine'),
@@ -14702,6 +14723,7 @@ ipcMain.handle('factr:bot-relay:tick', () => {
 })
 function botSetupExecutable(name: string): string | undefined {
   if (name === 'Docker.app') return fs.existsSync('/Applications/Docker.app') ? '/Applications/Docker.app' : undefined
+  if (name === 'docker' || name === 'docker.exe') return dockerBinaryCandidates(process.platform, process.env).find(fileExists)
   const candidates = [
     ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, name)),
     ...(process.platform === 'darwin' ? ['/opt/homebrew/bin', '/usr/local/bin'].map(dir => path.join(dir, name)) : [])
@@ -14724,7 +14746,11 @@ const botDockerSetup = createDockerSetup({
   openExternal: url => shell.openExternal(url)
 })
 ipcMain.handle('factr:bot-computer:runtime-status', () => botDockerSetup.status())
-ipcMain.handle('factr:bot-computer:setup', () => botDockerSetup.setup())
+ipcMain.handle('factr:bot-computer:setup', async () => {
+  const status = await botDockerSetup.setup()
+  refreshComputerRuntime()
+  return status
+})
 ipcMain.handle('factr:bot-computer:list', async () => {
   try {
     return { ok: true, computers: listComputers() }

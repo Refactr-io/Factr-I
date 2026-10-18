@@ -6,6 +6,7 @@ export interface PoolRetireEntry {
   kind?: string
   lastActiveAt?: null | number
   process?: unknown
+  hasScheduledJobs?: () => boolean
 }
 
 export interface PoolRetirerDeps<E extends PoolRetireEntry> {
@@ -26,7 +27,7 @@ export function selectRetirementCandidates<K, E extends PoolRetireEntry>(
   return [...entries]
     .filter(
       ([key, entry]) =>
-        Boolean(entry.process) && (entry.kind === 'factr' || entry.activeTurn !== true) && !exclude.has(key)
+        Boolean(entry.process) && !entry.hasScheduledJobs?.() && (entry.kind === 'factr' || entry.activeTurn !== true) && !exclude.has(key)
     )
     .sort((a, b) => (a[1].lastActiveAt || 0) - (b[1].lastActiveAt || 0))
 }
@@ -75,7 +76,7 @@ export function createPoolRetirer<E extends PoolRetireEntry>(deps: PoolRetirerDe
 
   async function retireEntry(key: string, entry: E, needed: () => boolean): Promise<boolean> {
     const eligible = () =>
-      !disposed && deps.pool.get(key) === entry && (entry.kind === 'factr' || entry.activeTurn !== true) && needed()
+      !disposed && deps.pool.get(key) === entry && !entry.hasScheduledJobs?.() && (entry.kind === 'factr' || entry.activeTurn !== true) && needed()
 
     if (!entry.process || !eligible()) {
       return false

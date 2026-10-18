@@ -61,11 +61,15 @@ export const BOT_COMPUTER = {
 /** Same shape as DESKTOP_PROFILE_NAME_RE (desktop-profile.ts); also a legal docker name suffix. */
 const PROFILE_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
-const DOCKER_PATHS = [
-  '/usr/local/bin/docker',
-  '/opt/homebrew/bin/docker',
-  '/Applications/Docker.app/Contents/Resources/bin/docker'
-]
+export function dockerBinaryCandidates(platform: string, env: NodeJS.ProcessEnv): string[] {
+  const p = platform === 'win32' ? path.win32 : path.posix
+  const exe = platform === 'win32' ? 'docker.exe' : 'docker'
+  return [env.FACTR_DOCKER_BINARY,
+    ...(env.PATH || '').split(platform === 'win32' ? ';' : ':').filter(Boolean).map(dir => p.join(dir, exe)),
+    ...(platform === 'win32' ? [p.join(env.ProgramFiles || 'C:\\Program Files', 'Docker', 'Docker', 'resources', 'bin', exe)]
+      : platform === 'darwin' ? ['/usr/local/bin/docker', '/opt/homebrew/bin/docker', '/Applications/Docker.app/Contents/Resources/bin/docker']
+        : ['/usr/local/bin/docker', '/usr/bin/docker'])].filter((value): value is string => Boolean(value))
+}
 
 export type ComputerState = 'off' | 'starting' | 'on' | 'no-docker' | 'error'
 
@@ -103,6 +107,9 @@ export interface BotComputerDeps {
   maxRunning?: () => number
   /** A computer stopped on its own (idle or cap): drop its pool entry so the renderer re-dials. */
   onStopped?: (profile: string) => void
+  /** Packaged local bot engines have separate relay spools just like containers. Never starts an engine. */
+  hostRunning?: (profile: string) => boolean
+  startBot?: (profile: string) => Promise<unknown>
   imageTag?: string
   /** Test seam: a different container name prefix, so real-Docker tests never share names with the app's computers. */
   namePrefix?: string
@@ -253,8 +260,9 @@ export function listComputers(): { profile: string; running: boolean }[] {
   }
 
   return names
-    .filter(name => PROFILE_RE.test(name) && fs.existsSync(path.join(root, name, BOT_COMPUTER.marker)))
-    .map(profile => ({ profile, running: computerActive(profile) }))
+    .filter(name => PROFILE_RE.test(name) && (fs.existsSync(path.join(root, name, BOT_COMPUTER.marker)) ||
+      (deps?.hostRunning && isBotProfile(cfg().configHome, name))))
+    .map(profile => ({ profile, running: computerActive(profile) || Boolean(deps?.hostRunning?.(profile)) }))
 }
 
 /**
@@ -296,19 +304,10 @@ export function deriveBotToken(profile: string, secret: string = cfg().masterSec
 }
 
 function findDockerBinary(): string | null {
-  if (dockerBin !== undefined) {
+  if (dockerBin && fs.existsSync(dockerBin)) {
     return dockerBin
   }
-
-  const exe = process.platform === 'win32' ? 'docker.exe' : 'docker'
-
-  const candidates = [
-    process.env.FACTR_DOCKER_BINARY,
-    ...(process.env.PATH || '').split(path.delimiter).map(dir => dir && path.join(dir, exe)),
-    ...DOCKER_PATHS
-  ]
-
-  dockerBin = candidates.find(candidate => candidate && fs.existsSync(candidate)) || null
+  dockerBin = dockerBinaryCandidates(process.platform, process.env).find(candidate => fs.existsSync(candidate)) || null
 
   return dockerBin
 }
@@ -338,6 +337,13 @@ const defaultRun: DockerRun = (args, opts = {}) =>
   })
 
 export const docker: DockerRun = (args, opts) => (deps?.run || defaultRun)(args, opts)
+
+/** Installation/start can change both CLI discovery and daemon readiness while the app remains open. */
+export function refreshComputerRuntime() {
+  dockerBin = undefined
+  availability = null
+  imageCheck = null
+}
 
 async function probeDocker() {
   if (availability && now() - availability.at < 5_000) {
@@ -520,6 +526,16 @@ export function createArgs(
   return ['create', ...runFlags(profile, image, hostDir, port, extra, timeZone, computeSpec(profile, image, hostDir, extra, timeZone))]
 }
 
+/** Native Linux bind mounts keep host ownership; Docker Desktop maps it on macOS and Windows. */
+export function computerHostArgs(profile: string, platform: string = process.platform, uid = process.getuid?.(), gid = process.getgid?.()): string[] {
+  if (platform !== 'linux') return []
+  if (!uid || !gid || !Number.isSafeInteger(uid) || !Number.isSafeInteger(gid)) {
+    throw new Error('Run Factr-I as a regular user to use a bot computer on Linux.')
+  }
+  const root = `${BOT_COMPUTER.mountRoot}/${validateBotProfile(profile)}`
+  return ['--user', `${uid}:${gid}`, '-e', `HOME=${root}/home`, '--workdir', `${root}/workspace`]
+}
+
 /**
  * Hash of every run flag but the port (which is picked per create). Stored as the `factr.spec` label, so a changed
  * limit, mount, env or network is visible on an existing container without comparing flags.
@@ -569,7 +585,7 @@ function runFlags(
     '-e', BOT_COMPUTER.envToken,
     // A localhost model provider (Ollama :11434, LM Studio :1234) works unchanged: the image's entrypoint forwards
     // those ports to host.docker.internal.
-    // ponytail: Linux hosts need --user <host uid> for the bind mount; Docker Desktop (Mac/Windows) maps ownership.
+    ...computerHostArgs(profile),
     ...extra,
     image
   ]
@@ -671,6 +687,9 @@ export async function ensureComputer(profile: string): Promise<ComputerHandle> {
         // Never recreate a deleted profile folder: a missing folder means the bot is gone.
         if (!fs.existsSync(hostDir)) {
           throw new Error(`Profile folder for "${profile}" does not exist.`)
+        }
+        if (process.platform === 'linux') {
+          for (const dir of ['home', 'workspace']) fs.mkdirSync(path.join(hostDir, dir), { recursive: true, mode: 0o700 })
         }
 
         // No image, no create: the caller falls back to a host engine (routing) or shows the error (start).
@@ -850,11 +869,13 @@ export async function computerStatus(profile: string): Promise<ComputerStatus> {
  * ONLY containers with the `factr.bot` label AND the `bots-` name prefix are ever considered.
  */
 export async function reconcileComputers(existingProfiles: Iterable<string>): Promise<string[]> {
+  const profiles = [...existingProfiles]
   if (!(await dockerAvailable())) {
+    await startScheduledComputers(profiles)
     return []
   }
 
-  const keep = new Set(existingProfiles)
+  const keep = new Set(profiles)
   const removed: string[] = []
 
   const out = await docker([
@@ -909,6 +930,16 @@ export async function startScheduledComputers(profiles: Iterable<string>): Promi
   const started: string[] = []
 
   for (const profile of profiles) {
+    if (PROFILE_RE.test(profile) && profile !== 'default' && !fs.existsSync(markerPath(profile)) &&
+        deps?.startBot && isBotProfile(cfg().configHome, profile) && !deps.hostRunning?.(profile) && enabledCronJobs(profile) > 0) {
+      try {
+        await deps.startBot(profile)
+        started.push(profile)
+      } catch {
+        // The ordinary bounded pool queue and its diagnostics still apply to host bots.
+      }
+      continue
+    }
     if (
       PROFILE_RE.test(profile) &&
       profile !== 'default' &&
