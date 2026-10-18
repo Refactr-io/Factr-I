@@ -147,6 +147,19 @@ try {
   const both = (await result(x, 'session.list', { limit: 100 })).sessions.filter(r => r.title === 'Bot Chat').map(r => r.id).sort()
   check(both.length === 2 && both.includes(idX) && both.includes(idY), 'shared engine home: the store really holds both chats (a title scan could not tell them apart)')
 
+  // The roster asks ONE engine (the primary) about every host bot, so no bot engine has to start: with the same shared
+  // home, a fourth engine ("p", standing in for the primary) answers for x and y without being either of them.
+  seed('p', shared)
+  const p = await start('p', shared)
+  const one = await result(p, 'bot.chat.get', { profile: 'x' })
+  check(one.canonical_session?.id === idX, "primary: get {profile:'x'} returns x's chat")
+  const many = await result(p, 'bot.chat.get_many', { profiles: ['x', 'y', 'nobody'] })
+  check(many.chats.x?.id === idX && many.chats.y?.id === idY && many.chats.nobody === null, 'primary: get_many answers x, y and null for an unregistered profile in one call')
+  check((await result(p, 'bot.chat.get')).canonical_session === null, "primary: its own Bot Chat is still none (reading others' never creates or adopts)")
+  const asked = await result(p, 'bot.chat.ensure', { profile: 'x' })
+  check(asked.created === true && asked.canonical_session.id !== idX, "primary: ensure ignores the profile param and acts for its own profile only")
+  await p.stop()
+
   // The desktop's own create flow (session.create + session.title) registers its chat with `claim`; the first wins.
   const z = await start('z', shared)
   const mk = async () => (await result(z, 'session.create', { title: 'Bot Chat' })).session_id
