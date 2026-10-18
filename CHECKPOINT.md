@@ -51,3 +51,10 @@
 - `git diff --check`: passed. Reviewed entire naming diff against message consumers and preserved descriptive/technical names.
 - Existing jsdom canvas warnings in broader tests are non-fatal; no native canvas dependency added for this wording task.
 - Re-read parent advice: no STOP or i18n correction. Next: final source/diff review, QA notes, report copy and local documentation commit.
+
+## Milestone 3 follow-up: shared gateway error (validated)
+- Final adjacent-source search found one additional Factr Desktop name in desktop/shared/src/websocket-url.ts, surfaced by all desktop WebSocket consumers. Changed only that error string to Factr-I.
+- Read helper, callers and existing app gateway-ws-url tests. Graph coverage has no recorded issue for this file in the related index; source checked locally because the index is for another worktree.
+- Shared `npm run typecheck` and `../node_modules/.bin/eslint src/websocket-url.ts`: passed.
+- App `npm run test:ui -- src/i18n src/lib/gateway-ws-url.test.ts`: passed 56 tests in five files.
+- No source change in the helper's auth/ticket behavior. Final check also found a few Electron UI copy leftovers; handle those before the final report.
