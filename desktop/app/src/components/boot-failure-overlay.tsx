@@ -2,10 +2,10 @@ import { useStore } from '@nanostores/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { type ComponentProps, lazy, type ReactNode, Suspense, useEffect, useState } from 'react'
 
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { DialogPortalContainerContext } from '@/components/ui/dialog-portal-context'
 import { ErrorIcon } from '@/components/ui/error-state'
+import { Loader } from '@/components/ui/loader'
 import { LogView } from '@/components/ui/log-view'
 import type { DesktopConnectionConfig } from '@/global'
 import { useI18n } from '@/i18n'
@@ -332,7 +332,7 @@ export function BootFailureOverlay() {
             {copy.back}
           </button>
           <div className="min-h-0 flex-1 pt-4">
-            <Suspense fallback={<AgentOrb className="mx-auto my-16 flex" state="breathing" />}>
+            <Suspense fallback={<Loader className="mx-auto my-16 flex" />}>
               <GatewaySettings embedded />
             </Suspense>
           </div>

@@ -2,11 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { ModelPickerDialog } from '@/components/model-picker'
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { BrandLogo, providerMarkId } from '@/components/ui/brand-logo'
 import { Button } from '@/components/ui/button'
 import { ErrorIcon } from '@/components/ui/error-state'
 import { Input } from '@/components/ui/input'
+import { Loader } from '@/components/ui/loader'
 import { getGlobalModelOptions } from '@/factr'
 import { useI18n } from '@/i18n'
 import { Check, ChevronDown, ExternalLink, Loader2 } from '@/lib/icons'
@@ -373,7 +373,7 @@ export function DocsLink({ children, href }: { children: React.ReactNode; href: 
 export function Status({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2.5 py-1 text-sm text-muted-foreground" role="status">
-      <AgentOrb state="connecting" />
+      <Loader />
       {children}
     </div>
   )

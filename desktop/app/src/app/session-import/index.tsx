@@ -2,11 +2,11 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useEffect, useRef, useState } from 'react'
 
 import { MarkdownTextContent } from '@/components/assistant-ui/markdown-text'
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
+import { Loader } from '@/components/ui/loader'
 import { SearchField } from '@/components/ui/search-field'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { useI18n } from '@/i18n'
@@ -179,9 +179,7 @@ export function SessionImportView({ owner, onClose, onOpenSession }: SessionImpo
               )}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-5">
-              {sessions.isPending && (
-                <AgentOrb ariaLabel={copy.scanning} className="mx-auto my-12 flex" size={64} state="searching" />
-              )}
+              {sessions.isPending && <Loader ariaLabel={copy.scanning} className="mx-auto my-12 flex" />}
               {sessions.isError && (
                 <ErrorState className="p-5" description={copy.scanHelp} title={copy.scanError}>
                   <Button onClick={() => void sessions.refetch()} variant="secondary">
@@ -272,14 +270,7 @@ export function SessionImportView({ owner, onClose, onOpenSession }: SessionImpo
                   </p>
                 </div>
                 <div aria-live="polite" className="min-h-0 flex-1 overflow-y-auto px-8 pb-8" key={current.id}>
-                  {preview.isPending && (
-                    <AgentOrb
-                      ariaLabel={copy.previewLoading}
-                      className="mx-auto my-12 flex"
-                      size={64}
-                      state="breathing"
-                    />
-                  )}
+                  {preview.isPending && <Loader ariaLabel={copy.previewLoading} className="mx-auto my-12 flex" />}
                   {preview.isError && (
                     <ErrorState description={copy.previewHelp} title={copy.previewError}>
                       <Button onClick={() => void preview.refetch()} variant="secondary">

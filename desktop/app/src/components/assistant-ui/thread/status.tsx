@@ -8,8 +8,8 @@ import { toolPresentVerb } from '@/components/assistant-ui/tool/run-summary'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { SCAFFOLD_LABEL_CLASS } from '@/components/chat/scaffold-row'
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Codicon } from '@/components/ui/codicon'
+import { Loader } from '@/components/ui/loader'
 import { getLocalModelsStatus } from '@/factr'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -227,7 +227,7 @@ export const CenteredThreadSpinner: FC = () => {
       className="pointer-events-none absolute inset-0 z-1 grid place-items-center"
       role="status"
     >
-      <AgentOrb size={64} state="breathing" />
+      <Loader />
     </div>
   )
 }
@@ -244,12 +244,14 @@ export const ResponseLoadingIndicator: FC = () => {
 
   return (
     <StatusRow data-slot="aui_response-loading" label={hint || t.assistant.thread.loadingResponse}>
-      <AgentOrb />
+      <Loader />
       {hint ? (
         <WaitHint hint={hint} />
       ) : localLoad ? (
         <ProgressHint label={t.assistant.thread.loadingLocalModel(localLoad.model)} percent={localLoad.percent} />
-      ) : null}
+      ) : (
+        <span className="loader__label">{t.assistant.thread.loadingResponse}</span>
+      )}
       <ActivityTimerText seconds={elapsed} />
     </StatusRow>
   )
@@ -352,12 +354,14 @@ export const TurnActivityIndicator: FC = () => {
 
   return (
     <StatusRow data-slot="aui_turn-activity" label={hint || 'Factr-I is working'}>
-      <AgentOrb />
+      <Loader />
       {hint ? (
         <WaitHint hint={hint} />
       ) : localLoad ? (
         <ProgressHint label={t.assistant.thread.loadingLocalModel(localLoad.model)} percent={localLoad.percent} />
-      ) : null}
+      ) : (
+        <span className="loader__label">{t.assistant.thread.loadingResponse}</span>
+      )}
       <ActivityTimerText seconds={elapsed} />
     </StatusRow>
   )

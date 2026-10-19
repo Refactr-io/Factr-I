@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { useOnboardingChatActive } from '@/components/onboarding-chat/assembly'
-import { AgentOrb } from '@/components/ui/agent-orb'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
@@ -49,7 +49,7 @@ export function ChatSwapOverlay({ profile }: { profile: string | null }) {
       <div className="flex items-center gap-2 bg-[color-mix(in_srgb,var(--dt-card)_92%,transparent)] px-4 py-2 font-mono text-[0.8125rem] text-foreground shadow-composer">
         {/* Waking another profile's backend: the connecting orb, frozen (still
             mounted) while the overlay fades out once the swap is done. */}
-        <AgentOrb paused={!profile} state="connecting" />
+        <Loader paused={!profile} />
         {t.composer.wakingProfile(label ?? '')}
       </div>
     </div>
@@ -73,7 +73,7 @@ export function ChatSyncBadge({ profile }: { profile: string | null }) {
       aria-live="polite"
       className="pointer-events-none absolute right-3 top-2 z-30 flex items-center gap-1.5 rounded-sm border border-border/50 bg-[color-mix(in_srgb,var(--dt-card)_92%,transparent)] px-2 py-0.5 font-mono text-[0.6875rem] text-muted-foreground shadow-composer"
     >
-      <AgentOrb className="-my-1" state="connecting" />
+      <Loader className="-my-1" />
       {t.desktop.hydrationSyncing(profile)}
     </div>
   )

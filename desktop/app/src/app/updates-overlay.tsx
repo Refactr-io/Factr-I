@@ -2,7 +2,6 @@ import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
 import { BrandMark } from '@/components/brand-mark'
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { writeClipboardText } from '@/components/ui/copy-button'
 import {
@@ -13,6 +12,7 @@ import {
   preventCloseButtonAutoFocus
 } from '@/components/ui/dialog'
 import { ErrorIcon, ErrorState } from '@/components/ui/error-state'
+import { Loader } from '@/components/ui/loader'
 import { Progress } from '@/components/ui/progress'
 import type { DesktopUpdateBlocker, DesktopUpdateCommit, DesktopUpdateStage, DesktopUpdateStatus } from '@/global'
 import { useI18n } from '@/i18n'
@@ -196,7 +196,7 @@ function IdleView({
   const u = t.updates
 
   if (!status && checking) {
-    return <CenteredStatus icon={<AgentOrb ariaLabel={u.checking} size={64} state="searching" />} title={u.checking} />
+    return <CenteredStatus icon={<Loader ariaLabel={u.checking} />} title={u.checking} />
   }
 
   if (!status) {
@@ -445,7 +445,7 @@ function ApplyingView({ apply, isBackend }: { apply: UpdateApplyState; isBackend
   return (
     <div className="grid gap-5 px-6 pb-6 pt-7">
       <div className="flex flex-col items-center gap-3 text-center">
-        <AgentOrb ariaLabel={label} size={64} state="working" />
+        <Loader ariaLabel={label} />
 
         <DialogTitle className="text-center text-xl">{label}</DialogTitle>
         <DialogDescription className="text-center text-sm">{body}</DialogDescription>

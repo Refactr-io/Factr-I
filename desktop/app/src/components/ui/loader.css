@@ -1,0 +1,65 @@
+.loader {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  vertical-align: middle;
+}
+
+.loader__mark {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.loader__pixel {
+  opacity: 0.15;
+  animation: pixel-on 650ms ease-in-out infinite;
+}
+
+.loader__label {
+  color: var(--ui-text-secondary);
+  background-image: linear-gradient(90deg, var(--ui-text-secondary) 35%, var(--ui-text-primary) 50%, var(--ui-text-secondary) 65%);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-text 1.4s linear infinite;
+}
+
+.loader[data-paused='true'] *,
+.loader__mark[data-paused='true'] *,
+:root[data-renderer-animations-paused] .loader__mark *,
+:root[data-renderer-animations-paused] .loader * {
+  animation-play-state: paused;
+}
+
+.loader__mark,
+.loader__mark *,
+[data-selectable-text='true'] .loader__mark * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@keyframes pixel-on {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 1; }
+}
+
+@keyframes shimmer-text {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader__pixel,
+  .loader__label {
+    animation: none;
+  }
+
+  .loader__label {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
