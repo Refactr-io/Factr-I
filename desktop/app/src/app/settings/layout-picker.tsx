@@ -113,6 +113,7 @@ export function LayoutPicker() {
         }
         description={a.layoutDesc}
         title={a.layoutTitle}
+        wide
       />
       <ToggleRow
         checked={flipped}
