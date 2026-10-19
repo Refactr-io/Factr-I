@@ -3,6 +3,7 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  account: { profile: name => `Profile: ${name}`, picture: 'Profile picture', uploadPicture: 'Upload picture', removePicture: 'Remove picture', pictureInvalid: 'Use a PNG, JPEG or WebP image under 256 KB.' },
   activity: {
     title: 'Activity', runs: 'Runs', usage: 'Usage', system: 'System', engine: 'Engine', profile: 'Profile',
     openSession: 'Open session', budgetExceeded: 'Daily spending is over the soft limit.',

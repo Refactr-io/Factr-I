@@ -67,9 +67,13 @@ import { useProfilePrewarm } from './use-profile-prewarm'
 export interface ProfileSwitcherTriggerState {
   /** The active profile's own avatar glyph (solid colour, no gradient). */
   glyph: React.ReactNode
+  connectionId: null | string
   label: string
   /** The active profile's name (empty while viewing all). */
   name: string
+  /** Display label of the active profile (or the all-profiles label). */
+  title: string
+  tone: null | string
 }
 
 export function ProfileSwitcher({
@@ -184,8 +188,11 @@ export function ProfileSwitcher({
                     name={active.name}
                   />
                 ),
+              connectionId: activeConnectionId,
               label: `${p.title}: ${triggerLabel}`,
-              name: showAll ? '' : (active?.name ?? '')
+              name: showAll ? '' : (active?.name ?? ''),
+              title: triggerLabel,
+              tone: active ? resolveProfileColor(active.name, colors) : null
             })
           ) : (
             <Button

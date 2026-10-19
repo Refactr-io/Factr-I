@@ -3,11 +3,11 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { findGroupOfPane } from '@/components/pane-shell/tree/model'
 import { $layoutTree, activateTreePane } from '@/components/pane-shell/tree/store'
+import { ProfilePicture } from '@/components/ui/profile-picture'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { Activity, Bot, Home, HomeFilled, RAIL_ICON_PROPS } from '@/lib/icons'
-import { profileShortLabel } from '@/lib/profile-short-label'
 import { cn } from '@/lib/utils'
 import { SIDEBAR_RAIL_WIDTH } from '@/store/layout'
 import { $selectedStoredSessionId } from '@/store/session'
@@ -178,13 +178,13 @@ export function SidebarRail() {
         <ProfileSwitcher
           contentAlign="end"
           contentSide="right"
-          renderTrigger={({ label, name }) => (
+          renderTrigger={({ connectionId, label, name, tone }) => (
             <button
               aria-label={label}
-              className="grid size-7 place-items-center rounded-full bg-(--ui-control-active-background) text-xs font-medium text-foreground transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-bg-tertiary) active:scale-[0.97]"
+              className="grid size-8 place-items-center rounded-md transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
               type="button"
             >
-              {profileShortLabel(name || 'default')}
+              <ProfilePicture connectionId={connectionId} name={name || 'default'} tone={tone} />
             </button>
           )}
           wrapperClassName="inline-flex"

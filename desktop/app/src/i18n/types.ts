@@ -60,6 +60,14 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  account: {
+    profile: (name: string) => string
+    picture: string
+    uploadPicture: string
+    removePicture: string
+    pictureInvalid: string
+  }
+
   activity: {
     title: string
     runs: string

@@ -113,6 +113,7 @@ import {
   watchSessionTiles,
   WorkspaceTabMenu
 } from '../chat/session-tile'
+import { AccountRow } from '../chat/sidebar/account-row'
 import { SidebarBrandRow } from '../chat/sidebar/brand-row'
 import { SidebarRail } from '../chat/sidebar/rail'
 import { AppContextMenu } from '../context-menu/app-context-menu'
@@ -201,7 +202,8 @@ registry.registerMany([
       dock: { pane: 'workspace', pos: 'left' },
       revealAliases: ['chat-sidebar'],
       zoneChrome: {
-        lead: () => <SidebarBrandRow />
+        lead: () => <SidebarBrandRow />,
+        foot: () => <AccountRow />
       },
       // Standing chrome: no close gestures at all — the tab is shown/hidden
       // (zone menu Show/Hide rows + the auto-registered ⌘K toggle below).

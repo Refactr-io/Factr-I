@@ -6,6 +6,7 @@ import { CodeEditor } from '@/components/chat/code-editor'
 import { PageLoader } from '@/components/page-loader'
 import { Button } from '@/components/ui/button'
 import { ProfileGlyph } from '@/components/ui/profile-glyph'
+import { ProfilePicture } from '@/components/ui/profile-picture'
 import { getProfileSoul, type ProfileInfo, updateProfileSoul } from '@/factr'
 import { useI18n } from '@/i18n'
 import { displayPath } from '@/lib/display-path'
@@ -14,6 +15,7 @@ import { resolveProfileColor } from '@/lib/profile-color'
 import { normalize } from '@/lib/text'
 import { notify, notifyError } from '@/store/notifications'
 import { $profileColors, profileLabel, refreshProfiles } from '@/store/profile'
+import { $profilePictures, profilePictureKey, readProfilePicture, setProfilePicture, validProfilePicture } from '@/store/profile-pictures'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import {
@@ -223,6 +225,39 @@ function ProfileRow({
   )
 }
 
+function PictureControl({ profile }: { profile: ProfileInfo }) {
+  const { t } = useI18n()
+  const a = t.account
+  const colors = useStore($profileColors)
+  const pictures = useStore($profilePictures)
+  const input = useRef<HTMLInputElement>(null)
+  const key = profilePictureKey(null, profile.name)
+  const has = Boolean(validProfilePicture(pictures[key]))
+
+  async function pick(file: File | undefined) {
+    if (!file) {
+      return
+    }
+
+    try {
+      setProfilePicture(key, await readProfilePicture(file))
+    } catch {
+      notifyError(new Error(a.pictureInvalid), a.picture)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <ProfilePicture className="size-10 text-sm" connectionId={null} name={profile.name} tone={resolveProfileColor(profile.name, colors)} />
+      <div className="flex items-center gap-2">
+        <Button onClick={() => input.current?.click()} size="sm" variant="outline">{a.uploadPicture}</Button>
+        {has && <Button onClick={() => setProfilePicture(key, null)} size="sm" variant="ghost">{a.removePicture}</Button>}
+      </div>
+      <input accept="image/png,image/jpeg,image/webp" aria-label={a.picture} className="hidden" onChange={event => { void pick(event.target.files?.[0]); event.target.value = '' }} ref={input} type="file" />
+    </div>
+  )
+}
+
 function ProfileDetail({ profile }: { profile: ProfileInfo }) {
   const { t } = useI18n()
   const p = t.profiles
@@ -230,6 +265,7 @@ function ProfileDetail({ profile }: { profile: ProfileInfo }) {
   return (
     <PanelDetail>
       <header className="space-y-3">
+        <PictureControl profile={profile} />
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[0.875rem] font-semibold tracking-tight text-foreground">{profileLabel(profile)}</h3>
