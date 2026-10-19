@@ -30,11 +30,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Cpu,
   Download,
   Egg,
   GitBranch,
   Globe,
+  History,
   type IconComponent,
   Info,
   KeyRound,
@@ -791,7 +791,7 @@ function CommandPaletteBody({ onExited }: { onExited: () => void }) {
             run: go(CRON_ROUTE)
           },
           { action: 'nav.profiles', icon: Users, id: 'nav-profiles', label: t.profiles.title, run: go(PROFILES_ROUTE) },
-          { action: 'nav.agents', icon: Cpu, id: 'nav-agents', label: t.agents.title, run: go(AGENTS_ROUTE) },
+          { action: 'nav.agents', icon: History, id: 'nav-agents', label: t.agents.title, run: go(AGENTS_ROUTE) },
           {
             icon: Starmap,
             id: 'nav-starmap',

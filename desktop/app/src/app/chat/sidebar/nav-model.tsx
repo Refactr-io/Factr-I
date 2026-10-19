@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
 import { useContributions } from '@/contrib/react/use-contributions'
-import { Apps, AppsFilled, CalendarEvent, CalendarEventFilled, Files, FilesFilled, ListCheck, ListCheckFilled, MessageCircle, MessageCircleFilled } from '@/lib/icons'
+import { Apps, AppsFilled, CalendarEvent, CalendarEventFilled, Files, FilesFilled, History, MessageCircle, MessageCircleFilled } from '@/lib/icons'
 import { $interfaceMode, shownInMode } from '@/store/interface-mode'
 
 import {
@@ -66,8 +66,9 @@ export const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'agents',
     label: '',
-    icon: ListCheck,
-    filledIcon: ListCheckFilled,
+    icon: History,
+    // History has no filled form: the selected state is the tile fill plus a slightly heavier stroke.
+    filledIcon: props => <History {...props} stroke={2.25} />,
     route: AGENTS_ROUTE,
     keybindActionId: 'nav.agents',
     tier: 'advanced'

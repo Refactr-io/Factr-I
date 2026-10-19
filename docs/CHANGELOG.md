@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.0.10 (unreleased)
+
+- Scrollbars fade after scrolling, the sidebar scrollbar sits at the panel edge, and Run history uses a history icon.
+
 ## v0.0.9 (2026-10-16)
 
 - ChatGPT / Codex sign-in is one click: the browser opens, you approve, and Factr-I picks the login up on its own
