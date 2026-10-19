@@ -4,7 +4,9 @@ import {
   applyTerminalFontFamily,
   DEFAULT_TERMINAL_FONT_FAMILY,
   prepareTerminalFontFamily,
-  resolveTerminalFontFamily
+  resolveTerminalFontFamily,
+  terminalTypography,
+  warmTerminalFontFamily
 } from './terminal-font'
 
 describe('terminal font resolution', () => {
@@ -80,5 +82,35 @@ describe('terminal font lifecycle', () => {
 
     expect(term.options.fontFamily).toBe('newer')
     expect(term.refresh).not.toHaveBeenCalled()
+  })
+})
+
+describe('terminal typography', () => {
+  it('reads calibrated CSS sizes for both terminal kinds and warms real bold/italic faces', async () => {
+    const root = document.documentElement
+    root.style.setProperty('--terminal-font-size', '13')
+    root.style.setProperty('--terminal-line-height', '1.4')
+
+    try {
+      expect(terminalTypography()).toEqual({
+        fontSize: 13,
+        fontWeight: 400,
+        fontWeightBold: 600,
+        letterSpacing: 0,
+        lineHeight: 1.4
+      })
+
+      const load = vi.fn().mockResolvedValue([])
+      await warmTerminalFontFamily(DEFAULT_TERMINAL_FONT_FAMILY, { load })
+      expect(load.mock.calls.map(([descriptor]) => descriptor)).toEqual(
+        ['400', '600', 'italic 400', 'italic 600'].map(face => `${face} 13px ${DEFAULT_TERMINAL_FONT_FAMILY}`)
+      )
+
+      root.style.setProperty('--terminal-font-size', '15')
+      expect(terminalTypography().fontSize).toBe(15)
+    } finally {
+      root.style.removeProperty('--terminal-font-size')
+      root.style.removeProperty('--terminal-line-height')
+    }
   })
 })

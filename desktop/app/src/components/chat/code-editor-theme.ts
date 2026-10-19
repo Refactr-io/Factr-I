@@ -69,8 +69,8 @@ function makeHighlightStyle(p: GithubPalette): HighlightStyle {
     { color: p.fg, tag: [t.operator, t.punctuation, t.separator, t.bracket, t.angleBracket, t.derefOperator] },
     { color: p.comment, tag: [t.meta, t.processingInstruction] },
     { color: p.constant, tag: [t.link, t.url], textDecoration: 'underline' },
-    { color: p.constant, fontWeight: 'bold', tag: [t.heading] },
-    { fontWeight: 'bold', tag: [t.strong] },
+    { color: p.constant, fontWeight: '600', tag: [t.heading] },
+    { fontWeight: '600', tag: [t.strong] },
     { fontStyle: 'italic', tag: [t.emphasis] },
     { color: p.keyword, tag: [t.deleted, t.invalid] }
   ])

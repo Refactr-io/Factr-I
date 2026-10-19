@@ -101,11 +101,11 @@ function baseName(filePath: string): string {
 // shifts the file. CM's base stylesheet targets some of these with two-class
 // selectors (e.g. `.cm-lineNumbers .cm-gutterElement`) that out-specify a bare
 // `.cm-gutterElement` rule, so we match that specificity to win. SourceView
-// reference: font var(--font-mono)/0.75rem/400, 1.25rem rows, gutter w-9 + pr-2
+// reference: font var(--font-mono)/13px/400, 1.25rem rows, gutter w-9 + pr-2
 // (muted/55), code 0.625rem line inset.
 const MONO_FONT = 'var(--font-mono)'
-const ROW_HEIGHT = '1.25rem'
-const CODE_SIZE = '0.75rem'
+const ROW_HEIGHT = 'var(--code-line-height)'
+const CODE_SIZE = 'var(--code-font-size)'
 const GUTTER_COLOR = 'color-mix(in oklab, var(--muted-foreground) 55%, transparent)'
 
 const LAYOUT_THEME = EditorView.theme({

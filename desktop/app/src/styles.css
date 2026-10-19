@@ -167,6 +167,56 @@
   unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
 
+@utility type-body {
+  font: var(--type-body);
+  letter-spacing: var(--tracking-body);
+}
+
+@utility type-chat {
+  font: var(--type-chat);
+  letter-spacing: var(--tracking-chat);
+}
+
+@utility type-sidebar {
+  font: var(--type-sidebar);
+  letter-spacing: var(--tracking-sidebar);
+}
+
+@utility type-section-label {
+  font: var(--type-section-label);
+  letter-spacing: var(--tracking-section-label);
+}
+
+@utility type-dialog-title {
+  font: var(--type-dialog-title);
+  letter-spacing: var(--tracking-dialog-title);
+}
+
+@utility type-settings-heading {
+  font: var(--type-settings-heading);
+  letter-spacing: var(--tracking-settings-heading);
+}
+
+@utility type-button {
+  font: var(--type-button);
+  letter-spacing: var(--tracking-button);
+}
+
+@utility type-input {
+  font: var(--type-input);
+  letter-spacing: var(--tracking-input);
+}
+
+@utility type-code {
+  font: var(--type-code);
+  letter-spacing: var(--tracking-code);
+}
+
+@utility type-caption {
+  font: var(--type-caption);
+  letter-spacing: var(--tracking-caption);
+}
+
 @theme inline {
   --color-background: var(--dt-background);
   --color-foreground: var(--dt-foreground);
@@ -193,6 +243,7 @@
 
   --font-sans: var(--dt-font-sans);
   --font-mono: var(--dt-font-mono);
+  --font-weight-bold: var(--weight-heading);
 
   --spacing-mul: var(--dt-spacing-mul, 1);
 
@@ -526,13 +577,12 @@
     --dt-font-sans:
       'Pretendard', 'Segoe WPC', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif,
       'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
-    /* Key caps always use the native UI face — never theme typography overrides. */
-    --dt-font-kbd: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+    --dt-font-kbd: var(--dt-font-sans);
     --dt-font-mono:
       'IBM Plex Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace,
       'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
     --dt-base-size: 1rem;
-    --dt-line-height: 1.4286;
+    --dt-line-height: 1.428571;
     --dt-letter-spacing: 0;
     --dt-spacing-mul: 1;
 
@@ -550,13 +600,40 @@
 
     --composer-shell-pad-block-end: 0.125rem;
     --message-text-indent: 0;
-    /* One type scale, measured from Claude Code's desktop app at 100% zoom (previous UI face): body and
-       bubble 14/20, UI 13/18, caption and tool lines 12/16. Tracking 0. */
-    --conversation-text-font-size: 0.875rem;
+    /* Dense desktop roles. Keep root geometry at 16px; tune reading roles here.
+       Pretendard Std has a weight axis, no optical-size axis. */
+    --weight-body: 400;
+    --weight-label: 500;
+    --weight-heading: 600;
+    --conversation-text-font-size: 0.9375rem;
     --conversation-tool-font-size: 0.75rem;
     --conversation-caption-font-size: 0.75rem;
-    --conversation-line-height: 1.25rem;
+    --conversation-line-height: 1.375rem;
     --conversation-caption-line-height: 1rem;
+    --code-font-size: 0.8125rem;
+    --code-line-height: 1.25rem;
+    --terminal-font-size: 13;
+    --terminal-line-height: 1.4;
+    --type-body: var(--weight-body) 0.875rem/1.25rem var(--dt-font-sans);
+    --type-chat: var(--weight-body) var(--conversation-text-font-size)/var(--conversation-line-height) var(--dt-font-sans);
+    --type-sidebar: var(--weight-body) 0.84375rem/1.25rem var(--dt-font-sans);
+    --type-section-label: var(--weight-label) 0.8125rem/1.125rem var(--dt-font-sans);
+    --type-dialog-title: var(--weight-heading) 1rem/1.375rem var(--dt-font-sans);
+    --type-settings-heading: var(--weight-heading) 1.5625rem/1.875rem var(--dt-font-sans);
+    --type-button: var(--weight-label) 0.8125rem/1.125rem var(--dt-font-sans);
+    --type-input: var(--weight-body) 0.875rem/1.25rem var(--dt-font-sans);
+    --type-code: var(--weight-body) var(--code-font-size)/var(--code-line-height) var(--dt-font-mono);
+    --type-caption: var(--weight-body) var(--conversation-caption-font-size)/var(--conversation-caption-line-height) var(--dt-font-sans);
+    --tracking-body: 0;
+    --tracking-chat: 0;
+    --tracking-sidebar: 0;
+    --tracking-section-label: 0.01em;
+    --tracking-dialog-title: -0.01em;
+    --tracking-settings-heading: -0.012em;
+    --tracking-button: 0.0025em;
+    --tracking-input: 0;
+    --tracking-code: 0;
+    --tracking-caption: 0.004em;
     --conversation-turn-gap: 0.375rem;
     /* Gap between top-level turn blocks (prose ↔ tools ↔ thinking) — enough air
        that scaffolding reads as separate from the reply, not crammed into it. */
@@ -846,10 +923,9 @@
     margin: 0;
     background: var(--ui-chat-surface-background);
     color: var(--dt-foreground);
-    font-family: var(--dt-font-sans);
-    font-size: 0.8125rem;
-    line-height: var(--dt-line-height, 1.55);
-    letter-spacing: var(--dt-letter-spacing, 0);
+    font: var(--type-body);
+    font-optical-sizing: auto;
+    letter-spacing: var(--tracking-body);
     -webkit-user-select: none;
     user-select: none;
     -webkit-font-smoothing: antialiased;
@@ -1679,7 +1755,7 @@ body.guest-pointer-lock :is(webview, iframe) {
 
 [data-slot='aui_user-message-root'],
 [data-slot='aui_edit-composer-root'] {
-  --human-msg-line-height: 1.4286;
+  --human-msg-line-height: calc(var(--conversation-line-height) / var(--conversation-text-font-size));
   font-size: var(--conversation-text-font-size);
 }
 
@@ -1821,7 +1897,7 @@ body.guest-pointer-lock :is(webview, iframe) {
    wordmark rendered in body text. */
 .wordmark {
   font-family: var(--font-sans);
-  font-weight: 700;
+  font-weight: var(--weight-heading);
   line-height: 0.9;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3988,4 +4064,19 @@ input[type='range'].ui-range:focus-visible::-webkit-slider-thumb {
 :root.dark {
   --ui-control-on: #0a84ff;
   --ui-segment-thumb: color-mix(in srgb, var(--dt-foreground) 16%, var(--ui-bg-editor));
+}
+
+/* Shared code defaults cover streamed, highlighted and plain fallbacks alike. */
+:where(pre, code, kbd, samp) {
+  font-family: var(--dt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:where(strong, b) {
+  font-weight: var(--weight-heading);
+}
+
+:where(.aui-md, [data-slot='group-chat-message-content']) :not(pre) > code {
+  font-size: var(--code-font-size);
+  letter-spacing: var(--tracking-code);
 }

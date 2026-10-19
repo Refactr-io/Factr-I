@@ -472,8 +472,8 @@ const HEADING_SIZES: Record<'h1' | 'h2' | 'h3' | 'h4', string> = {
 }
 
 const MARKDOWN_CONTAINER_CLASS_NAME = cn(
-  'aui-md prose w-full max-w-none overflow-hidden text-[length:var(--conversation-text-font-size)] leading-(--dt-line-height) text-foreground',
-  'prose-p:leading-(--dt-line-height) prose-li:leading-(--dt-line-height)',
+  'aui-md prose w-full max-w-none overflow-hidden text-[length:var(--conversation-text-font-size)] leading-(--conversation-line-height) text-foreground',
+  'prose-p:leading-(--conversation-line-height) prose-li:leading-(--conversation-line-height)',
   'prose-headings:text-foreground prose-strong:text-foreground',
   // Typography styles `pre` as a dark slab: light text (`--tw-prose-pre-code`,
   // gray-200) on a dark bg. We strip its bg for our own light code card but its
@@ -483,7 +483,7 @@ const MARKDOWN_CONTAINER_CLASS_NAME = cn(
   'prose-pre:text-foreground',
   'prose-a:break-words prose-p:[overflow-wrap:anywhere]',
   'prose-li:marker:text-muted-foreground/90',
-  'prose-code:rounded-sm prose-code:px-[0.1875rem] prose-code:py-px prose-code:font-mono prose-code:text-[13px] prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
+  'prose-code:rounded-sm prose-code:px-[0.1875rem] prose-code:py-px prose-code:font-mono prose-code:text-[length:var(--code-font-size)] prose-code:font-normal prose-code:before:content-none prose-code:after:content-none',
   '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&>*+*]:mt-(--paragraph-gap)'
 )
 
@@ -495,7 +495,7 @@ function HugeTextFallback({ containerClassName, text }: { containerClassName?: s
   return (
     <div
       className={cn(
-        'aui-md w-full max-w-none overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) font-mono text-[0.6875rem] leading-relaxed text-foreground/90',
+        'aui-md w-full max-w-none overflow-hidden rounded-lg border border-(--ui-stroke-tertiary) type-code text-foreground/90',
         containerClassName
       )}
     >
@@ -533,7 +533,7 @@ function MarkdownParagraph({
 
   // Vertical rhythm is owned by styles.css (`--paragraph-gap`), which must
   // out-specify Tailwind Typography's `prose` margins — so no `my-*` here.
-  const paragraphClass = cn('wrap-anywhere leading-(--dt-line-height)', className)
+  const paragraphClass = cn('wrap-anywhere leading-(--conversation-line-height)', className)
 
   // A paragraph that is one directive renders as the card alone; one that
   // ends in a directive renders as its sentence followed by the card.
@@ -661,7 +661,7 @@ function MarkdownTextSurface({
           <ol className={cn('my-1 gap-0', className)} dir="auto" {...props} />
         ),
         li: ({ children, className, ...props }: ComponentProps<'li'>) => (
-          <li className={cn('leading-(--dt-line-height)', className)} {...props}>
+          <li className={cn('leading-(--conversation-line-height)', className)} {...props}>
             {decorateText ? decorateText(children) : children}
           </li>
         ),

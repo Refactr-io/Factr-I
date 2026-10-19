@@ -87,7 +87,7 @@ export function SectionHeading({
   }
 
   return (
-    <div className="settings-heading mb-2 flex items-center gap-2 px-1 pt-6 text-[length:var(--conversation-text-font-size)] font-medium first:pt-2">
+    <div className="settings-heading mb-2 flex items-center gap-2 px-1 pt-6 type-section-label first:pt-2">
       {showTitle && (
         <>
           <Icon className="size-4 shrink-0 text-muted-foreground" />

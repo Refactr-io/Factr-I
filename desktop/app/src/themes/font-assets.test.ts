@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 import { describe, expect, it } from 'vitest'
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '../..')

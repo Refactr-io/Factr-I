@@ -27,7 +27,7 @@ import {
   terminalTheme
 } from './selection'
 import { registerTerminalContextMenu } from './terminal-context-menu'
-import { prepareTerminalFontFamily } from './terminal-font'
+import { prepareTerminalFontFamily, terminalTypography } from './terminal-font'
 import { closeTerminal, updateTerminalRestoreCwd, updateTerminalReviveBuffer } from './terminals'
 import { useTerminalFontController } from './use-terminal-font'
 
@@ -520,13 +520,7 @@ export function useTerminalSession({
       convertEol: true,
       cursorBlink: true,
       fontFamily: latestFontFamilyRef.current,
-      fontSize: 11,
-      // VS Code's terminal renders 'normal'/'bold' (400/700); we were using Medium
-      // (500) as the base, which reads a touch heavy at this size.
-      fontWeight: 'normal',
-      fontWeightBold: 'bold',
-      letterSpacing: 0,
-      lineHeight: 1.12,
+      ...terminalTypography(),
       // OSC 8 hyperlinks (gh, cargo, npm, ls --hyperlink) activate through this
       // handler; without it xterm shows a raw confirm() and then a window.open
       // Electron denies.

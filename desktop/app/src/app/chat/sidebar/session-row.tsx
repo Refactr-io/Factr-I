@@ -557,7 +557,7 @@ function SidebarSessionRowImpl({
                   <OverflowTip label={title} placement="row">
                     <SidebarRowLabel
                       className={cn(
-                        'hover-marquee text-[0.8125rem] font-medium text-(--ui-text-primary) group-data-[working=true]:text-foreground',
+                        'hover-marquee type-sidebar font-medium text-(--ui-text-primary) group-data-[working=true]:text-foreground',
                         SIDEBAR_TRUNCATED_LEADING
                       )}
                       onPointerEnter={armMarquee}

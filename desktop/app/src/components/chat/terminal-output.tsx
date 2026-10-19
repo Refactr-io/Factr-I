@@ -57,7 +57,7 @@ export function TerminalOutput({ className, text }: TerminalOutputProps) {
       data-selectable-text="true"
       ref={ref}
     >
-      <pre className="w-max min-w-full font-mono text-[0.625rem] leading-[0.85rem] whitespace-pre text-muted-foreground/90">
+      <pre className="w-max min-w-full type-code whitespace-pre text-muted-foreground/90">
         {text}
       </pre>
     </div>
