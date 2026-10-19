@@ -1,6 +1,7 @@
 .loader {
   display: inline-flex;
-  flex-shrink: 0;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -20,6 +21,8 @@
 }
 
 .loader__label {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   color: var(--ui-text-secondary);
   background-image: linear-gradient(90deg, var(--ui-text-secondary) 35%, var(--ui-text-primary) 50%, var(--ui-text-secondary) 65%);
   background-size: 200% 100%;

@@ -1,10 +1,12 @@
+import './connection-status.css'
+
 import { useStore } from '@nanostores/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { type ComponentProps, lazy, type ReactNode, Suspense, useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { DialogPortalContainerContext } from '@/components/ui/dialog-portal-context'
-import { ErrorIcon } from '@/components/ui/error-state'
+import { AgentOrb } from '@/components/ui/agent-orb'
 import { Loader } from '@/components/ui/loader'
 import { LogView } from '@/components/ui/log-view'
 import type { DesktopConnectionConfig } from '@/global'
@@ -53,7 +55,7 @@ function BootFailureModal({ children, title }: { children: ReactNode; title?: st
       <DialogPrimitive.Portal>
         <DialogPrimitive.Content aria-describedby={undefined} aria-modal="true" asChild ref={setContentNode}>
           <div
-            className="fixed inset-0 z-(--z-setup) flex items-center justify-center bg-(--ui-chat-surface-background) p-6"
+            className="connection-screen z-(--z-setup)"
             // Masks the whole app on boot failure — must stay filled under window
             // glass. Contract: `[data-glass-opaque]` in styles.css.
             data-glass-opaque=""
@@ -320,7 +322,7 @@ export function BootFailureOverlay() {
   if (view === 'connect') {
     return (
       <BootFailureModal title={copy.gatewaySettings}>
-        <div className="flex max-h-[86vh] w-full max-w-[46rem] flex-col overflow-hidden rounded-xl bg-(--ui-chat-bubble-background)">
+        <div className="boot-recovery flex max-h-[86vh] flex-col">
           {/* Subtle back affordance (projects/overlay idiom): muted → foreground
               on hover, no divider. */}
           <button
@@ -343,12 +345,12 @@ export function BootFailureOverlay() {
 
   return (
     <BootFailureModal>
-      <div className="w-full max-w-[40rem] overflow-hidden rounded-xl bg-(--ui-chat-bubble-background)">
-        <div className="flex items-start gap-3 px-5 py-4">
-          <ErrorIcon className="mt-0.5" size="1.25rem" />
+      <div className="boot-recovery">
+        <div className="flex flex-col items-center gap-4 px-5 py-6 text-center">
+          <AgentOrb paused />
           <div>
             <DialogPrimitive.Title asChild>
-              <h2 className="text-[0.875rem] font-semibold tracking-tight">
+              <h2 className="text-base font-medium">
                 {remoteReauth ? copy.remoteTitle : copy.title}
               </h2>
             </DialogPrimitive.Title>
@@ -359,7 +361,7 @@ export function BootFailureOverlay() {
         </div>
 
         <div className="grid gap-4 p-5 pt-0">
-          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive">
+          <div className="rounded-md bg-(--ui-bg-tertiary) px-4 py-3 text-sm leading-5 text-(--ui-text-primary)">
             {failureCopy.headline}
             {failureCopy.rawDetail ? (
               <details className="mt-2 text-muted-foreground">

@@ -341,6 +341,13 @@ export interface Translations {
   }
 
   boot: {
+    connection: {
+      startingEngine: string
+      preparingEngine: string
+      connectingEngine: string
+      loadingModel: string
+      reconnecting: string
+    }
     ready: string
     desktopBootFailedWithMessage: (message: string) => string
     steps: {
