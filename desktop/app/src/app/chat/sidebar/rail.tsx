@@ -7,13 +7,13 @@ import { ProfilePicture } from '@/components/ui/profile-picture'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { Activity, Bot, Home, HomeFilled, RAIL_ICON_PROPS } from '@/lib/icons'
+import { Bot, Command, Home, HomeFilled, RAIL_ICON_PROPS, Settings } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { SIDEBAR_RAIL_WIDTH } from '@/store/layout'
 import { $selectedStoredSessionId } from '@/store/session'
 import { $focusedSessionIsTile } from '@/store/session-states'
 
-import { appViewForPath, navigateToWorkspacePage, NEW_CHAT_ROUTE, sessionRoute } from '../../routes'
+import { appViewForPath, navigateToWorkspacePage, NEW_CHAT_ROUTE, sessionRoute, SETTINGS_ROUTE } from '../../routes'
 import { useOverlayRouting } from '../../shell/hooks/use-overlay-routing'
 import { TITLEBAR_HEIGHT } from '../../shell/titlebar'
 import type { SidebarNavItem } from '../../types'
@@ -25,9 +25,6 @@ import { UpdateIndicator } from './update-indicator'
 
 const RAIL_BUTTON =
   'grid size-9 place-items-center rounded-md text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] active:scale-[0.97] hover:bg-(--ui-control-hover-background) hover:text-foreground'
-
-// Single merge icon choice; Tabler history is the alternate.
-const ACTIVITY_ICON = Activity
 
 const RAIL_ACTIVE = 'bg-(--ui-control-active-background) text-foreground'
 
@@ -165,6 +162,15 @@ export function SidebarRail() {
       ))}
       <div className="mt-auto flex flex-col items-center gap-2 pb-2">
         <UpdateIndicator />
+        <RailButton
+          active={view === 'settings' || pathname.startsWith(SETTINGS_ROUTE)}
+          label={t.sidebar.nav.settings}
+          onClick={() => navigate(SETTINGS_ROUTE)}
+          tip={<TipKeybindLabel actionId="nav.settings" text={t.sidebar.nav.settings} />}
+          tour="nav-settings"
+        >
+          <Settings {...RAIL_ICON_PROPS} />
+        </RailButton>
         {/* The way into every other surface (was the status bar's ⌘). */}
         <RailButton
           active={commandCenterOpen}
@@ -173,7 +179,7 @@ export function SidebarRail() {
           tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterLabel} />}
           tour="rail-command-center"
         >
-          <ACTIVITY_ICON {...RAIL_ICON_PROPS} />
+          <Command {...RAIL_ICON_PROPS} />
         </RailButton>
         <ProfileSwitcher
           contentAlign="end"

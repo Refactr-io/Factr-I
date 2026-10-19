@@ -20,9 +20,9 @@ import { triggerHaptic } from '@/lib/haptics'
 import { FileDiff, Folder, Globe, ListDetails, MoreVertical, Terminal } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { toggleHud } from '@/store/hud'
-import { setFileBrowserOpen, togglePanesFlipped } from '@/store/layout'
+import { $fileBrowserOpen, setFileBrowserOpen, togglePanesFlipped } from '@/store/layout'
 import { openBrowserTab } from '@/store/preview'
-import { toggleReview } from '@/store/review'
+import { $reviewOpen, toggleReview } from '@/store/review'
 import { $sessionRailOpen, toggleSessionRail } from '@/store/session-rail'
 
 import { titlebarButtonClass } from './titlebar'
@@ -49,9 +49,11 @@ export function usePaneClusterTools(): TitlebarTool[] {
   useStore($hiddenTreePanes)
   useStore($dismissedPanes)
 
+  // Each card's own store is the truth for its toggle (the bindings keep the tree in step with it).
+  // The terminal collapses (store stays true behind a sibling tab or a minimized zone), so it reads the tree.
   const terminal = isPaneVisible('terminal')
-  const changes = isPaneVisible('review')
-  const files = isPaneVisible('files')
+  const changes = useStore($reviewOpen)
+  const files = useStore($fileBrowserOpen)
   const previews = visiblePreviews()
   const browser = previews.length > 0
 

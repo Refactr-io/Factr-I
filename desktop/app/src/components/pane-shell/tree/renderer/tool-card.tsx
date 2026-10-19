@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect } from 'react'
 
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
@@ -7,7 +7,7 @@ import { ArrowsMaximize, ArrowsMinimize, BottomPanel, PanelLeftIcon, PanelRightI
 import { cn } from '@/lib/utils'
 
 import { allPaneIds, findGroupOfPane, isToolCardPane, type LayoutNode } from '../model'
-import { $maximizedPane, toggleMaximizedPane } from '../pane-maximize'
+import { $maximizedPane, restoreMaximizedPane, toggleMaximizedPane } from '../pane-maximize'
 import { $layoutTree, moveTreePane } from '../store'
 
 export { isToolCardPane }
@@ -46,6 +46,25 @@ export function ToolCardHeader({ onClose, paneId, title }: { onClose: () => void
   const { t } = useI18n()
   const c = t.titlebar.toolCard
   const maximized = useStore($maximizedPane) === paneId
+
+  // Escape puts a filled pane back, except where a program inside the pane (the terminal) owns the key.
+  useEffect(() => {
+    if (!maximized) {
+      return
+    }
+
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+
+      if (event.key === 'Escape' && !event.defaultPrevented && !target?.closest('.xterm, input, textarea, [contenteditable="true"]')) {
+        restoreMaximizedPane()
+      }
+    }
+
+    window.addEventListener('keydown', onKey)
+
+    return () => window.removeEventListener('keydown', onKey)
+  }, [maximized])
 
   const dockAround = (pos: (typeof DOCKS)[number]['pos']) => {
     const tree = $layoutTree.get()

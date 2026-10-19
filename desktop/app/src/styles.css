@@ -1112,6 +1112,21 @@
   display: none;
 }
 
+/* Inside a tool card the card header already names the pane; any label left in the body reads as plain
+   sentence-case text, not tracked caps with a dither dot. */
+[data-tool-card] [data-panel-label] {
+  padding-left: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ui-text-secondary);
+}
+
+[data-tool-card] [data-panel-label] > .dither {
+  display: none;
+}
+
 :root:not([style*='--theme-asset-bg:']) .theme-default-filler {
   display: block;
 }

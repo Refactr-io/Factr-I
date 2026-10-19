@@ -18,6 +18,7 @@ import {
 
 import { beginSashDrag, endSashDrag } from '@/components/pane-shell/geometry'
 import { useContributions } from '@/contrib/react/use-contributions'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { guardGuestPointers } from '@/lib/guest-pointer-guard'
 import { rafCoalesce } from '@/lib/raf-coalesce'
 import { cn } from '@/lib/utils'
@@ -80,6 +81,17 @@ const SLIDE_SHUT: CSSProperties = {
   transition: `flex-basis ${SLIDE_MS}ms ${SLIDE_EASE}, visibility 0s linear ${SLIDE_MS}ms`,
   visibility: 'hidden'
 }
+
+// Tool cards ease in and out on the same curve: the slot's basis (a column's width) and grow (a card's share of the
+// column's height) transition, so the chat squeezes smoothly instead of jumping. A shut card keeps its slot at zero
+// size and turns hidden once the motion lands. Reduced motion drops the transition and keeps the end states.
+const cardMotion = (reduce: boolean, shut: boolean): CSSProperties => ({
+  ...SLIDE_CLIP,
+  ...(shut ? { flex: '0 0 0px', minHeight: 0, minWidth: 0, visibility: 'hidden' } : null),
+  transition: reduce
+    ? 'none'
+    : `flex-basis ${SLIDE_MS}ms ${SLIDE_EASE}, flex-grow ${SLIDE_MS}ms ${SLIDE_EASE}, visibility 0s linear ${shut ? SLIDE_MS : 0}ms`
+})
 
 /** The single group id a subtree resolves to, or null when it holds several
  *  zones — the sash can only collapse a boundary that IS exactly one zone. */
@@ -148,6 +160,7 @@ export function TreeSplit({
   const overrides = useSubtreeOverrides(useMemo(() => allPaneIds(node), [node]))
   const collapsedSides = useStore($collapsedTreeSides)
   const fillPane = useStore($maximizedPane)
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const horizontal = node.orientation === 'row'
   const axis = node.orientation
 
@@ -828,7 +841,9 @@ export function TreeSplit({
               collapsed && slideTrack
                 ? SLIDE_SHUT
                 : collapsed
-                  ? { display: 'none' }
+                  ? isCardZone(child)
+                    ? cardMotion(reduceMotion, true)
+                    : { display: 'none' }
                   : minimized
                     ? { flex: `0 0 ${horizontal ? MINIMIZED_TRACK : 'auto'}` }
                     : {
@@ -838,7 +853,7 @@ export function TreeSplit({
                         // everything else splits the leftover by weight. In an
                         // all-fixed run an UNCAPPED last track grows into the
                         // leftover; capped sidebars stay at their declared size.
-                        ...(slideTrack ? SLIDE_OPEN : null),
+                        ...(slideTrack ? SLIDE_OPEN : isCardZone(child) ? cardMotion(reduceMotion, false) : null),
                         flex: track ? `${absorbs ? 1 : 0} 1 ${track}` : `${grow(i)} ${grow(i)} 0px`,
                         // Pane-declared clamps apply along THIS split's axis only
                         // (a rail's width clamp shouldn't constrain its height).

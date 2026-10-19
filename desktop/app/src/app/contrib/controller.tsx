@@ -15,6 +15,7 @@ import { OnboardingChatDirective } from '@/components/onboarding-chat/directive'
 import { allPaneIds } from '@/components/pane-shell/tree/model'
 import { LayoutTreeRoot } from '@/components/pane-shell/tree/renderer'
 import {
+  $hiddenStripTabs,
   $layoutTree,
   bindPaneVisibility,
   bindToolPaneCollapse,
@@ -31,6 +32,7 @@ import {
   resetLayoutTree,
   revealTreePane,
   setStripTabHidden,
+  setTreePaneHidden,
   targetZoneTabStripVisible,
   togglePaneVisible,
   toggleTargetZoneTabStrip,
@@ -108,7 +110,6 @@ import {
   watchSessionTiles,
   WorkspaceTabMenu
 } from '../chat/session-tile'
-import { AccountRow } from '../chat/sidebar/account-row'
 import { SidebarBrandRow } from '../chat/sidebar/brand-row'
 import { SidebarRail } from '../chat/sidebar/rail'
 import { AppContextMenu } from '../context-menu/app-context-menu'
@@ -197,8 +198,7 @@ registry.registerMany([
       dock: { pane: 'workspace', pos: 'left' },
       revealAliases: ['chat-sidebar'],
       zoneChrome: {
-        lead: () => <SidebarBrandRow />,
-        foot: () => <AccountRow />
+        lead: () => <SidebarBrandRow />
       },
       // Standing chrome: no close gestures at all — the tab is shown/hidden
       // (zone menu Show/Hide rows + the auto-registered ⌘K toggle below).
@@ -577,10 +577,21 @@ bindPaneVisibility(
 )
 
 // Tool cards: Terminal, Files, Changes and the Browser are separate cards toggled from the pane cluster in the chat
-// header. They no longer hide in a shared tab strip, so clear the strip-hide record older builds left on them.
-for (const id of ['files', 'terminal', 'review']) {
-  queueMicrotask(() => setStripTabHidden(id, false))
-}
+// header. They no longer hide in a shared tab strip, so drop the strip-hide record older builds left on them, and let
+// each card's own store decide whether it is open (clearing the record would otherwise unhide all three).
+queueMicrotask(() => {
+  const record = $hiddenStripTabs.get()
+  const stale = ['files', 'terminal', 'review'].filter(id => record.has(id))
+
+  if (stale.length === 0) {
+    return
+  }
+
+  $hiddenStripTabs.set(new Set([...record].filter(id => !stale.includes(id))))
+  setTreePaneHidden('files', !$fileBrowserOpen.get())
+  setTreePaneHidden('review', !$reviewOpen.get())
+  setTreePaneHidden('terminal', !$terminalTakeover.get())
+})
 
 // First launch: every tool card starts closed (a saved open/closed choice is kept). One-shot per interface mode.
 const $rightSidebarFirstRunDone = modeLayout.atom<boolean>('factr.rightSidebarClosedFirstRun.v1', () => false, Codecs.json<boolean>())

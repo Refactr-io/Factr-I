@@ -507,7 +507,7 @@ export function TreeGroup({
       data-window-top={topEdge || undefined}
       // Advertises the visible tab strip so panes can drop their own
       // self-naming labels (see [data-pane-self-label] in styles.css).
-      data-zone-header={headerVisible || undefined}
+      data-zone-header={headerVisible || cardHeader || undefined}
       // The zone menu opens from the strip, the rail, the edit veil and the
       // body. Only the strip can name a chip, so resolve the target HERE for
       // every one of them — otherwise a right-click off the strip reused the
