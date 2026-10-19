@@ -1471,6 +1471,7 @@ mod tests {
 
     #[test]
     fn passing_gate_records_skipped_count_on_the_guard_span_without_nudging() {
+        let _env = crate::storage::lock_test_env();
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = seen.clone();
         factr_base::obs_sink::install(move |s| sink.lock().unwrap().push(s));
@@ -2142,6 +2143,7 @@ mod tests {
 
     #[test]
     fn turn_end_span_reports_how_the_turn_ended() {
+        let _env = crate::storage::lock_test_env();
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = seen.clone();
         factr_base::obs_sink::install(move |s| sink.lock().unwrap().push(s));

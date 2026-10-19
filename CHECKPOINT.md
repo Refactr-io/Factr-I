@@ -144,3 +144,8 @@
 - First validation command incorrectly used libtest --skip with crate names, so it did not exclude app-core. It stopped on the still-unfixed turn_end_span_reports_how_the_turn_ended recorder race before reaching base. This is additional evidence for the recorder fix, not an MCP regression.
 - Corrected validation: isolated fix-mcp-02, cargo test --workspace --exclude factr-app-core --exclude factr-gateway --locked --lib -- --test-threads=64: exit 0 (129.9s including feature-selection rebuild); base 1366 passed, 3 ignored. Includes both previously failing MCP OAuth transport and hook rewrite. All selected workspace libraries passed. git diff --check passes.
 - Advice reread: no STOP or new answer. Next: serialize recorder installers with their existing test locks.
+
+## Flaky milestone 4: recorder installers synchronized
+- Added existing test locks to both stop-nudge recorder tests, gateway learning apply-span test and gateway headless learning test. All app-core test recorder installers now share storage::lock_test_env (fallback rig callers already held it); all three gateway test installers share gateway ENV_LOCK (undo already held it). Production Gateway::bind installer is not called by these unit tests.
+- Validation: isolated fix-recorder, cargo test --workspace --locked --lib -- span --test-threads=64: exit 0 (16.7s including rebuild), all matching span tests pass. Existing assertions still check emitted spans and privacy/counts. git diff --check passes.
+- Advice reread: unchanged, no STOP. Next: per-test approval config isolation and bounded message waits.

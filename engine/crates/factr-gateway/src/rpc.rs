@@ -4914,6 +4914,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_headless_run_is_never_auto_reviewed_and_no_model_is_called() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let (mut config, home) = test_config("headless-learn");
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
