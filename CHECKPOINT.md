@@ -133,3 +133,8 @@
 - Confirmed test causes: fixture assumes HOME is outside /tmp; two stop-nudge tests replace the recorder outside the lock held by fallback tests; MCP OAuth test mutates FACTR_CONFIG_HOME without the shared lock, colliding with locked hook tests; approval tests share config and one saves cargo publish into the permanent allowlist while another expects its prompt. No production bug established.
 - Advice read again: no STOP or task-specific correction. Asked parent in QUESTIONS-flaky.md about smallest approval config isolation guard versus subprocesses; proceeding with existing ENV_LOCK and test-local RAII restoration.
 - Next: separate validated fixes for fixture, MCP env lock, recorder lock and approval config/receives. Five consecutive clean full suites after the final fix.
+
+## Flaky milestone 2: risky-delete fixture fixed
+- The bash test now holds the existing environment lock and creates its unique disposable target under CARGO_MANIFEST_DIR, not mutable HOME. Its three behavioral assertions are unchanged: first attempt held, blind retry held, justified command executes. No production changes.
+- Validation: isolated run fix-fixture, cargo test --workspace --locked -p factr-app-core --lib tool::bash::tests:: -- --test-threads=64: exit 0, 47 passed (12.1s including rebuild). The --workspace selector runs the filter across workspace libraries; only app-core matched. git diff --check passes.
+- Advice reread: unchanged, no STOP. Next: serialize the MCP OAuth environment mutation.
