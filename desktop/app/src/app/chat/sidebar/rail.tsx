@@ -3,11 +3,10 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { findGroupOfPane } from '@/components/pane-shell/tree/model'
 import { $layoutTree, activateTreePane } from '@/components/pane-shell/tree/store'
-import { Codicon } from '@/components/ui/codicon'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { Activity, Home, HomeFilled } from '@/lib/icons'
+import { Activity, Bot, Home, HomeFilled, RAIL_ICON_PROPS } from '@/lib/icons'
 import { profileShortLabel } from '@/lib/profile-short-label'
 import { cn } from '@/lib/utils'
 import { SIDEBAR_RAIL_WIDTH } from '@/store/layout'
@@ -126,7 +125,7 @@ export function SidebarRail() {
           onClick={openSessions}
           tour="rail-nav-sessions"
         >
-          {activeId === 'sessions' && !pageActive ? <HomeFilled className="size-[1.125rem]" /> : <Home className="size-[1.125rem]" />}
+          {activeId === 'sessions' && !pageActive ? <HomeFilled {...RAIL_ICON_PROPS} /> : <Home {...RAIL_ICON_PROPS} />}
         </RailButton>
       )}
       {items.map(item => {
@@ -146,9 +145,9 @@ export function SidebarRail() {
             tour={`rail-nav-${item.id}`}
           >
             {isNavItemActive(item, view, pathname) && item.filledIcon ? (
-              <item.filledIcon className="size-[1.125rem]" />
+              <item.filledIcon {...RAIL_ICON_PROPS} />
             ) : (
-              <item.icon className="size-[1.125rem]" />
+              <item.icon {...RAIL_ICON_PROPS} />
             )}
           </RailButton>
         )
@@ -161,7 +160,7 @@ export function SidebarRail() {
           onClick={() => activate(pane.id)}
           tour={`rail-pane-${pane.id}`}
         >
-          <Codicon name="robot" size="1rem" />
+          <Bot {...RAIL_ICON_PROPS} />
         </RailButton>
       ))}
       <div className="mt-auto flex flex-col items-center gap-2 pb-2">
@@ -174,7 +173,7 @@ export function SidebarRail() {
           tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterLabel} />}
           tour="rail-command-center"
         >
-          <ACTIVITY_ICON className="size-[1.125rem]" />
+          <ACTIVITY_ICON {...RAIL_ICON_PROPS} />
         </RailButton>
         <ProfileSwitcher
           contentAlign="end"

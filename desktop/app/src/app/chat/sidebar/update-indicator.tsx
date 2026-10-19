@@ -2,7 +2,7 @@ import { useStore } from '@nanostores/react'
 
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { CircleArrowDownFilled, CircleArrowUp, Loader } from '@/lib/icons'
+import { CircleArrowDownFilled, CircleArrowUp, Loader, RAIL_ICON_PROPS } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { $autoDownload, installDownloadedUpdate, startDownloadNow } from '@/store/update-download'
 import { $turnActive, $updateIndicator } from '@/store/update-indicator'
@@ -60,11 +60,11 @@ export function UpdateIndicator() {
       >
         {phase === 'downloading' ? (
           // A slow, steady turn (static under reduced motion): quiet progress, no glow.
-          <Loader className="size-4 motion-safe:animate-[spin_1.6s_linear_infinite]" />
+          <Loader {...RAIL_ICON_PROPS} className="motion-safe:animate-[spin_1.6s_linear_infinite]" />
         ) : phase === 'ready' ? (
-          <CircleArrowDownFilled className="size-4 text-foreground" />
+          <CircleArrowDownFilled {...RAIL_ICON_PROPS} className="text-foreground" />
         ) : (
-          <CircleArrowUp className="size-4" />
+          <CircleArrowUp {...RAIL_ICON_PROPS} />
         )}
         {phase !== 'downloading' && (
           <span aria-hidden="true" className="absolute right-1 top-1 size-1.5 rounded-full bg-(--ui-accent)" />
