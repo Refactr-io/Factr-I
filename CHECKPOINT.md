@@ -94,3 +94,14 @@
 - Repeated all affected backend suites after the fixture fix: 85 passed, exit 0 (52.50s), /private/tmp/integration-check-chijm0n_/output.log. Includes the full 22-case Python UI golden comparison.
 - All required integration checks now pass at their documented scopes. Gateway ignored test is observability::tests::measure_overhead (manual release measurement); no benchmarks were run.
 - No architectural advice fork was needed. Parent guidance remains continue, no STOP. Next: final detailed source/design review, report, cleanup and report copy.
+
+## Final report, review and cleanup
+
+- Bots merge committed as 8fc57953; parent advice re-read afterward, no STOP. All four requested branch tips are ancestors in the specified first-parent merge order. Every integration commit has the required co-author trailer.
+- Re-read the entire supplied design law, checking identity/type, color/atmosphere, icons/marks, surfaces/glass/shadows, ornaments, page compositions, clipping/gutters/centering, responsive alignment, motion/reduced motion/visible defaults, labels/copy, interactions and specificity. Integration retains the existing application design; no new marketing composition or visual system. New source remains visible without optional chunks; sidebar spacing and scrollbar motion are explicit. Pixel contrast/centering/clipping, actual pointer controls and platform behavior remain unverified under the explicit no-GUI instruction. Detailed boundaries and exact scenarios are in REPORT.md and NEEDS-GUI-QA.md. No visual certification claimed.
+- REPORT.md includes merge order/conflict decisions, all validation results, resolved failures, exact chronological command/log ledger, inherited half-done upstream scope and resume commands. Copied verbatim and byte-compared to integration-REPORT.md in the authorized handoff directory.
+- Removed only generated worktree target/, desktop/app/dist/ and tsconfig.e2e.tsbuildinfo after checking no tracked files, external directory symlinks or own engine/backend processes. Dependencies and isolated logs/cache/runner retained for QA. No Docker resources created, no benchmark run.
+- Root README, package versions, Cargo.lock and non-gateway engine crates match the starting commit. Complete diff whitespace check passes. Report-inclusive name gate passes with zero hits. Final source milestone checks: UI8217, Electron2484 (19 skipped), gateway414 (1 manual measurement ignored), backend85.
+- No remaining integration blocker or open architectural question. Manual/release limits are retained, including desktop-owned group rounds, Windows/native-Linux QA, real credential/provider paths, inherited browser/pet issues and the full GUI matrix. No push.
+
+- Post-cleanup disk: 71 GiB free. Final report copy verified byte-for-byte.
