@@ -1,3 +1,9 @@
+# Factr-I flaky engine tests checkpoint
+
+Status: complete. Five separate test-only fixes committed locally, followed by five consecutive full workspace passes at 64 threads. Source frozen at 5cb83a59. Final results and resume commands: [REPORT.md](REPORT.md).
+
+The earlier integration record and this task's chronological milestones are retained below.
+
 # Factr-I 0.0.10 integration checkpoint
 
 ## Setup and scope
@@ -163,3 +169,18 @@
 - Added six matching unmark_headless calls to the five approval scenarios that previously leaked marks (goal, cron-run, a, b, s); the other mark sites already unmark. No production changes.
 - Validation: identical two-test ordered reproduction after fix, fix-headless-pair: both passed, exit 0 in 10.2s including rebuild. fix-headless-approvals: all 25 approval tests pass at 64 threads, exit 0. git diff --check passes.
 - Advice reread: unchanged, no STOP. Restart clean streak at after-02. Production-prefix assertion passed for five files, with bash_tests.rs included only under cfg(all(test, not(windows))). Corrected earlier gateway unit count from a combined-crate figure to the measured 386 unit passes plus integration tests.
+
+## Final proof in progress
+- Clean run 1/5: after-02, cargo test --workspace --locked --no-fail-fast -- --test-threads=64: exit 0, 192.3s. All unit/integration/doc targets passed. Four more consecutive runs remain; source frozen at 5cb83a59.
+- Clean run 2/5: after-03, same full command and fresh isolation: exit 0, 145.6s. All unit/integration/doc targets passed.
+- Clean run 3/5: after-04, same full command and fresh isolation: exit 0, 143.4s. All unit/integration/doc targets passed.
+- Clean run 4/5: after-05, same full command and fresh isolation: exit 0, 144.5s. All unit/integration/doc targets passed.
+- Clean run 5/5: after-06, same full command and fresh isolation: exit 0, 145.0s. All unit/integration/doc targets passed.
+
+## Flaky milestone 7: final proof, report and cleanup complete
+- after-02 through after-06 are five consecutive zero-exit full workspace runs, all at 64 threads with --locked and --no-fail-fast. Durations: 192.3s, 145.6s, 143.4s, 144.5s, 145.0s. Every run completed all 147 unit/integration/doc targets; app-core 1108 passed/4 ignored, base 1366/3, gateway 387/1. No new skip or retry was introduced.
+- Independently checked the final five TSV rows, each command and exit, each log for failures, all 147 target counts and the three main unit results. Evidence: verified-proof.json. Source-prefix assertions and git diff --check passed. All six existing local milestone commits have the required trailer.
+- Parent advice reread: unchanged, no STOP. QUESTIONS-flaky.md remains advice-only and did not block work.
+- Report written and copied byte-identically to handoff/flaky-REPORT.md. Previous root integration report archived under the evidence root and retained in Git history. No UI changes; no GUI/platform expansion beyond the authorized Mac CLI scope.
+- Cleanup verified no running engine/target executables, then removed only task-owned target, isolated Cargo cache and per-run scratch. Free space 56.6 -> 70.7 GiB. Logs/runners/results remain under /private/tmp/factri-flaky-l0nrzadt. Exact evidence in cleanup.json.
+- Nothing half-done or blocked. Windows/Linux, alternate features, packaged app and GUI QA not run. Historical DirectoryNotEmpty and old CI ledger failure not reproduced here. No production engine, dependency, version, workflow or ignore change; no push or remote change.
