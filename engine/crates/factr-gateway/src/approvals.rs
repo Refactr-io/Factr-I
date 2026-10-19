@@ -813,6 +813,51 @@ fn parent_of(id: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    // Approval tests save permanent grants, so locking alone would still leak config between tests.
+    struct TestConfig {
+        home: std::path::PathBuf,
+        before: Option<std::ffi::OsString>,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl TestConfig {
+        fn new() -> Self {
+            let lock = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let home = std::env::temp_dir().join(format!("approvals-{}-{}", std::process::id(), rand::random::<u64>()));
+            std::fs::create_dir(&home).unwrap();
+            let before = std::env::var_os("FACTR_CONFIG_HOME");
+            // SAFETY: held until restoration in Drop, like the other config tests.
+            unsafe { std::env::set_var("FACTR_CONFIG_HOME", &home) };
+            Self { home, before, _lock: lock }
+        }
+    }
+
+    impl Drop for TestConfig {
+        fn drop(&mut self) {
+            match self.before.take() {
+                Some(value) => unsafe { std::env::set_var("FACTR_CONFIG_HOME", value) },
+                None => unsafe { std::env::remove_var("FACTR_CONFIG_HOME") },
+            }
+            let _ = std::fs::remove_dir_all(&self.home);
+        }
+    }
+
+    async fn next_message(rx: &mut mpsc::Receiver<Message>) -> Message {
+        tokio::time::timeout(Duration::from_secs(10), rx.recv()).await.expect("approval message within 10s").expect("approval channel open")
+    }
+
+    #[test]
+    fn permanent_grants_stay_in_their_test_config_home() {
+        let first = TestConfig::new();
+        assert!(allow_permanently(&first.home, "cargo publish", None));
+        assert!(allowlisted(&first.home, "cargo publish", None));
+        let first_home = first.home.clone();
+        drop(first);
+        let second = TestConfig::new();
+        assert_ne!(first_home, second.home);
+        assert!(!allowlisted(&second.home, "cargo publish", None));
+    }
+
     #[test]
     fn the_hook_asks_the_person_for_anything_destructive() {
         use super::gate::{Decision, decide};
@@ -1013,7 +1058,7 @@ mod tests {
     async fn a_delete_in_home_prompts_the_window_with_the_broad_folder_reason() {
         use factr_base::hooks::ApprovalHook;
         // Other tests point HOME elsewhere for a moment, under this lock.
-        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _config = TestConfig::new();
         let Some(home) = test_home() else { return };
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "s").await;
@@ -1026,7 +1071,7 @@ mod tests {
                 HubGate(hub).approve(&call).await
             })
         };
-        let Message::Text(frame) = rx.recv().await.unwrap() else { panic!() };
+        let Message::Text(frame) = next_message(&mut rx).await else { panic!() };
         let frame: Value = serde_json::from_str(&frame).unwrap();
         assert_eq!(frame["method"], "approval");
         assert_eq!(frame["params"]["description"], gate::BROAD_FOLDER_DELETE, "{frame}");
@@ -1050,7 +1095,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_delegate_childs_prompt_goes_to_the_window_of_its_root_session() {
-        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _config = TestConfig::new();
         let dir = std::env::temp_dir().join(format!("approvals-child-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let before = std::env::var_os("FACTR_HOME");
@@ -1065,7 +1110,7 @@ mod tests {
             let (hub, child_id) = (hub.clone(), child.id.clone());
             async move { hub.decide(&child_id, "bash", "rm -rf build", "r").await }
         });
-        let Message::Text(frame) = window.recv().await.unwrap() else { panic!() };
+        let Message::Text(frame) = next_message(&mut window).await else { panic!() };
         let frame: Value = serde_json::from_str(&frame).unwrap();
         assert_eq!(frame["params"]["session_id"], root.id.as_str(), "keyed to the session the window shows");
         assert_eq!(frame["params"].get("unattended"), None, "a person is asked, not parked");
@@ -1080,11 +1125,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_late_once_approval_is_spent_by_the_resumed_prompt_and_no_window_for_the_chat_parks() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "elsewhere").await;
         // A window showing a different chat is not asked: the prompt is denied at once and parked.
         assert_eq!(hub.decide("goal", "bash", "rm -rf build", "r").await, "deny");
-        let Message::Text(frame) = rx.recv().await.unwrap() else { panic!() };
+        let Message::Text(frame) = next_message(&mut rx).await else { panic!() };
         let frame: Value = serde_json::from_str(&frame).unwrap();
         assert_eq!(frame["params"]["unattended"], true);
         // The user's late `once` covers the resumed goal's next attempt, once, with no prompt.
@@ -1106,14 +1152,15 @@ mod tests {
 
     #[tokio::test]
     async fn closing_the_window_showing_a_prompt_parks_it_instead_of_timing_out() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (win, mut rx) = client(&hub, "chat").await;
         let asker = { let hub = hub.clone(); tokio::spawn(async move { hub.decide("chat", "bash", "rm -rf build", "r").await }) };
-        let prompt = request_id(rx.recv().await.unwrap());
+        let prompt = request_id(next_message(&mut rx).await);
         hub.remove(win.id).await;
         assert_eq!(tokio::time::timeout(Duration::from_secs(5), asker).await.unwrap().unwrap(), "deny");
         let (_w2, mut rx2) = client(&hub, "other").await; // a later window is replayed the parked prompt
-        let Message::Text(frame) = rx2.recv().await.unwrap() else { panic!() };
+        let Message::Text(frame) = next_message(&mut rx2).await else { panic!() };
         let frame: Value = serde_json::from_str(&frame).unwrap();
         assert_eq!(frame["params"]["unattended"], true);
         assert_ne!(frame["id"].as_str().unwrap(), prompt);
@@ -1123,16 +1170,18 @@ mod tests {
 
     #[tokio::test]
     async fn no_desktop_means_deny() {
+        let _config = TestConfig::new();
         assert_eq!(Arc::new(Hub::default()).decide("s", "bash", "rm -rf x", "r").await, "deny");
     }
 
     #[tokio::test]
     async fn the_user_decides_and_session_grants_stick() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "s").await;
         let h = hub.clone();
         let asked = tokio::spawn(async move { h.decide("s", "bash", "rm -rf build", "r").await });
-        let id = request_id(rx.recv().await.unwrap());
+        let id = request_id(next_message(&mut rx).await);
         assert!(hub.answer(&id, "session").await);
         assert_eq!(asked.await.unwrap(), "session");
         // Granted for the session: no second prompt.
@@ -1141,31 +1190,32 @@ mod tests {
         let (_c3, mut rx3) = client(&hub, "u").await;
         let h = hub.clone();
         let asked = tokio::spawn(async move { h.decide("u", "bash", "cargo publish", "r").await });
-        let id = request_id(rx3.recv().await.unwrap());
+        let id = request_id(next_message(&mut rx3).await);
         assert!(hub.answer(&id, "always").await);
         assert_eq!(asked.await.unwrap(), "always");
         assert_eq!(hub.decide("u", "bash", "cargo publish", "r").await, "always");
         let h = hub.clone();
         let other = tokio::spawn(async move { h.decide("u", "bash", "git push --force", "r").await });
-        let id = request_id(rx3.recv().await.unwrap());
+        let id = request_id(next_message(&mut rx3).await);
         assert!(hub.answer(&id, "deny").await);
         assert_eq!(other.await.unwrap(), "deny", "an always grant must not allow other commands");
         // Another session still asks, and a denial is final.
         let (_c2, mut rx2) = client(&hub, "t").await;
         let h = hub.clone();
         let asked = tokio::spawn(async move { h.decide("t", "bash", "rm -rf x", "r").await });
-        let id = request_id(rx2.recv().await.unwrap());
+        let id = request_id(next_message(&mut rx2).await);
         assert!(hub.answer(&id, "deny").await);
         assert_eq!(asked.await.unwrap(), "deny");
     }
 
     #[tokio::test]
     async fn a_session_grant_covers_only_its_own_risk_category() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "s").await;
         let h = hub.clone();
         let asked = tokio::spawn(async move { h.decide("s", "bash", "rm -rf build", "r").await });
-        assert!(hub.answer(&request_id(rx.recv().await.unwrap()), "session").await);
+        assert!(hub.answer(&request_id(next_message(&mut rx).await), "session").await);
         assert_eq!(asked.await.unwrap(), "session");
         assert_eq!(hub.decide("s", "bash", "rm -rf dist", "r").await, "session", "same kind of command");
         // A different kind of risk (paths piped into a delete) asks again, and so does a plain command.
@@ -1174,13 +1224,14 @@ mod tests {
             let h = hub.clone();
             let cmd = command.to_string();
             let asked = tokio::spawn(async move { h.decide("s", "bash", &cmd, "r").await });
-            assert!(hub.answer(&request_id(rx.recv().await.unwrap()), "deny").await, "{command} must prompt");
+            assert!(hub.answer(&request_id(next_message(&mut rx).await), "deny").await, "{command} must prompt");
             assert_eq!(asked.await.unwrap(), "deny");
         }
     }
 
     #[tokio::test]
     async fn the_51st_parked_approval_evicts_the_oldest_and_says_so() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "other").await;
         hub.mark_headless("cron-run", "cron").await;
@@ -1205,12 +1256,13 @@ mod tests {
 
     #[tokio::test]
     async fn unattended_denial_is_parked_for_the_desktop_and_a_late_approval_lets_the_next_run_through() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "other").await;
         hub.mark_headless("cron-run", "cron").await;
         // Nobody waits: the run is denied at once, and the desktop gets the prompt anyway.
         assert_eq!(hub.decide("cron-run", "bash", "rm -rf build", "r").await, "deny");
-        let Message::Text(frame) = rx.recv().await.unwrap() else { panic!() };
+        let Message::Text(frame) = next_message(&mut rx).await else { panic!() };
         let frame: Value = serde_json::from_str(&frame).unwrap();
         assert_eq!(frame["params"]["unattended"], true);
         assert_eq!(frame["params"]["command"], "rm -rf build");
@@ -1219,7 +1271,7 @@ mod tests {
         assert!(rx.try_recv().is_err());
         assert_eq!(hub.pending_for("cron-run").await.len(), 1);
         let (_late, mut late_rx) = client(&hub, "x").await;
-        assert_eq!(request_id(late_rx.recv().await.unwrap()), frame["id"].as_str().unwrap());
+        assert_eq!(request_id(next_message(&mut late_rx).await), frame["id"].as_str().unwrap());
         // The user approves it once: the next unattended run passes, exactly once.
         assert!(hub.answer(frame["id"].as_str().unwrap(), "once").await);
         for _ in 0..50 {
@@ -1234,6 +1286,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_session_grant_belongs_to_its_session_not_the_process() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         hub.mark_headless("a", "cron").await;
         hub.mark_headless("b", "cron").await;
@@ -1282,7 +1335,7 @@ mod tests {
 
     #[tokio::test]
     async fn late_always_lands_in_factr_config_and_parked_prompts_survive_a_restart() {
-        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _config = TestConfig::new();
         let home = std::env::temp_dir().join(format!("approvals-restart-{}", std::process::id()));
         std::fs::create_dir_all(&home).unwrap();
         // The engine store lives in its own dir; FACTR_CONFIG_HOME only holds Factr's files.
@@ -1299,7 +1352,7 @@ mod tests {
         hub.set_store(factr_learn::entries::EntryStore::open(&engine).unwrap().into()).await;
         assert_eq!(hub.pending_for("s1").await.len(), 1);
         let (_c, mut rx) = client(&hub, "x").await;
-        let mut ids = vec![request_id(rx.recv().await.unwrap()), request_id(rx.recv().await.unwrap())];
+        let mut ids = vec![request_id(next_message(&mut rx).await), request_id(next_message(&mut rx).await)];
         ids.sort();
         assert_eq!(ids, ["approval-0", "approval-1"]);
         // New prompts do not reuse a restored id.
@@ -1355,6 +1408,7 @@ mod tests {
 
     #[tokio::test]
     async fn headless_runs_may_tidy_their_own_working_directory_only() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         hub.mark_headless("s", "bot").await;
         let cwd = std::env::temp_dir().join(format!("factr-wd-{}", std::process::id()));
@@ -1372,6 +1426,7 @@ mod tests {
 
     #[tokio::test]
     async fn headless_sessions_never_wait_on_a_prompt_and_ordinary_sessions_still_ask_afterwards() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "s").await;
         hub.mark_headless("s", "bot").await;
@@ -1380,18 +1435,19 @@ mod tests {
         while rx.try_recv().is_ok() {}
         let h = hub.clone();
         let asked = tokio::spawn(async move { h.decide("s", "bash", "rm -rf x", "r").await });
-        let id = request_id(rx.recv().await.unwrap());
+        let id = request_id(next_message(&mut rx).await);
         assert!(hub.answer(&id, "once").await);
         assert_eq!(asked.await.unwrap(), "once");
     }
 
     #[tokio::test]
     async fn unknown_choices_are_denials_and_respond_resolves_by_session() {
+        let _config = TestConfig::new();
         let hub = Arc::new(Hub::default());
         let (_c, mut rx) = client(&hub, "s").await;
         let h = hub.clone();
         let asked = tokio::spawn(async move { h.decide("s", "bash", "x", "r").await });
-        rx.recv().await.unwrap();
+        next_message(&mut rx).await;
         assert_eq!(hub.answer_session("s", None, "yes-please").await, 1);
         assert_eq!(asked.await.unwrap(), "deny");
         assert_eq!(hub.answer_session("s", None, "once").await, 0, "nothing left pending");
@@ -1431,6 +1487,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_hub_gate_asks_the_window_and_denies_when_declined_or_nobody_is_there() {
+        let _config = TestConfig::new();
         use factr_base::hooks::ApprovalHook;
         let hub = Arc::new(Hub::default());
         let gate = HubGate(hub.clone());
@@ -1449,7 +1506,7 @@ mod tests {
                 HubGate(hub).approve(&call("bash", &input)).await
             })
         };
-        let id = request_id(rx.recv().await.unwrap());
+        let id = request_id(next_message(&mut rx).await);
         assert!(hub.answer(&id, "once").await);
         assert!(asked.await.unwrap().is_ok());
         // A bridge call that acts outside the session asks the same way, and a decline denies it.
@@ -1458,7 +1515,7 @@ mod tests {
             let hub = hub.clone();
             tokio::spawn(async move { HubGate(hub).approve(&call("factr", &send)).await })
         };
-        let id = request_id(rx.recv().await.unwrap());
+        let id = request_id(next_message(&mut rx).await);
         assert!(hub.answer(&id, "deny").await);
         assert!(asked.await.unwrap().is_err());
     }

@@ -149,3 +149,10 @@
 - Added existing test locks to both stop-nudge recorder tests, gateway learning apply-span test and gateway headless learning test. All app-core test recorder installers now share storage::lock_test_env (fallback rig callers already held it); all three gateway test installers share gateway ENV_LOCK (undo already held it). Production Gateway::bind installer is not called by these unit tests.
 - Validation: isolated fix-recorder, cargo test --workspace --locked --lib -- span --test-threads=64: exit 0 (16.7s including rebuild), all matching span tests pass. Existing assertions still check emitted spans and privacy/counts. git diff --check passes.
 - Advice reread: unchanged, no STOP. Next: per-test approval config isolation and bounded message waits.
+
+## Flaky milestone 5: approval config and wait isolation
+- All 15 async approval scenarios now hold the existing gateway ENV_LOCK and have their own unique config home, restored on drop. This follows the existing SplitHomes pattern in settings tests, using installed rand and stdlib only; no dependency, config or production change. Permanent grants no longer reach another test.
+- The test-local next_message helper bounds all 19 approval channel receives at 10 seconds instead of waiting forever. Added a regression proving an always grant is present in one fixture and absent from a subsequent fixture.
+- Validation: isolated fix-approvals, cargo test --workspace --locked --lib -- approvals::tests --test-threads=64: exit 0 (10.1s including rebuild), all matching approval tests passed, including the previously hung risk-category test and new isolation regression. git diff --check passes.
+- Advice reread: unchanged, no STOP. Parent question remains unanswered; continued as authorized.
+- Next: five consecutive full workspace runs at 64 threads, including all integration/doc targets. No new test skips, retries or production changes.
