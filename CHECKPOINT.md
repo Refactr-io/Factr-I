@@ -127,7 +127,7 @@
 
 ## Flaky milestone 1: pre-fix reproduction complete
 - before-01: full workspace attempt, 16 threads, fail-fast; exit 101 in 212.4s. App-core risky-delete fixture failed; Cargo stopped before base/gateway.
-- before-02: full workspace, --no-fail-fast, 16 threads; exit 101 in 213.7s. Same fixture failed; all other targets including gateway 414/414 passed.
+- before-02: full workspace, --no-fail-fast, 16 threads; exit 101 in 213.7s. Same fixture failed; all other targets including gateway 386 unit tests (1 ignored) and all gateway integration tests passed.
 - before-03: full workspace, --no-fail-fast, 64 threads; exit 101. Risky-delete fixture, passing_gate_records_skipped_count_on_the_guard_span_without_nudging, streamable_http_uses_factr_oauth_token_for_discovery_and_calls and a_pre_tool_hook_can_rewrite_the_arguments_and_the_gate_reports_it failed. Gateway a_session_grant_covers_only_its_own_risk_category hung with every other gateway unit test finished. Stopped ONLY that child binary via SIGTERM after 114s (PID/parent/path verified); Cargo continued all remaining targets.
 - Measured rates: workspace attempts failed 3/3; risky-delete fixture 3/3; stop-nudge recorder assertion 1/3; MCP OAuth and hook-rewrite 1/2 executions each; approval hang 1/2 gateway executions. Do not conflate fail-fast-unreached tests with passes.
 - Confirmed test causes: fixture assumes HOME is outside /tmp; two stop-nudge tests replace the recorder outside the lock held by fallback tests; MCP OAuth test mutates FACTR_CONFIG_HOME without the shared lock, colliding with locked hook tests; approval tests share config and one saves cargo publish into the permanent allowlist while another expects its prompt. No production bug established.
@@ -156,3 +156,10 @@
 - Validation: isolated fix-approvals, cargo test --workspace --locked --lib -- approvals::tests --test-threads=64: exit 0 (10.1s including rebuild), all matching approval tests passed, including the previously hung risk-category test and new isolation regression. git diff --check passes.
 - Advice reread: unchanged, no STOP. Parent question remains unanswered; continued as authorized.
 - Next: five consecutive full workspace runs at 64 threads, including all integration/doc targets. No new test skips, retries or production changes.
+
+## Flaky milestone 6: leaked headless marks fixed
+- after-01 (first full proof attempt) failed only gateway the_turn_snapshot_is_lazy_and_undo_restores_from_it; exit 101 in 185.6s. This does NOT count toward the five clean runs. App-core/base and remaining targets passed.
+- Root cause: headless_runs_may_tidy_their_own_working_directory_only left global session s marked headless; Store::enabled_for correctly disables checkpoints for that later reused ID. Reproduced deterministically with two libtest filters and one thread: before-headless-pair, exit 101 in 0.5s. This is test-state leakage, not a production checkpoint bug.
+- Added six matching unmark_headless calls to the five approval scenarios that previously leaked marks (goal, cron-run, a, b, s); the other mark sites already unmark. No production changes.
+- Validation: identical two-test ordered reproduction after fix, fix-headless-pair: both passed, exit 0 in 10.2s including rebuild. fix-headless-approvals: all 25 approval tests pass at 64 threads, exit 0. git diff --check passes.
+- Advice reread: unchanged, no STOP. Restart clean streak at after-02. Production-prefix assertion passed for five files, with bash_tests.rs included only under cfg(all(test, not(windows))). Corrected earlier gateway unit count from a combined-crate figure to the measured 386 unit passes plus integration tests.

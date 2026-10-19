@@ -1148,6 +1148,7 @@ mod tests {
         // A later unattended attempt gets no leftover grant.
         hub.mark_headless("goal", "cron").await;
         assert_eq!(hub.decide("goal", "bash", "rm -rf build", "r").await, "deny");
+        hub.unmark_headless("goal").await;
     }
 
     #[tokio::test]
@@ -1252,6 +1253,7 @@ mod tests {
         assert!(!parked.iter().any(|p| p["command"] == "rm -rf dir0"), "the oldest made room");
         assert!(parked.iter().any(|p| p["command"] == format!("rm -rf dir{MAX_PARKED}")), "the newest is kept");
         assert_eq!(notes, 1);
+        hub.unmark_headless("cron-run").await;
     }
 
     #[tokio::test]
@@ -1282,6 +1284,7 @@ mod tests {
         }
         assert_eq!(hub.decide("cron-run", "bash", "rm -rf build", "r").await, "once");
         assert_eq!(hub.decide("cron-run", "bash", "rm -rf build", "r").await, "deny");
+        hub.unmark_headless("cron-run").await;
     }
 
     #[tokio::test]
@@ -1293,6 +1296,8 @@ mod tests {
         hub.sticky_grants.lock().await.insert(("a".into(), "rm -rf build".into()));
         assert_eq!(hub.decide("a", "bash", "rm -rf build", "r").await, "once");
         assert_eq!(hub.decide("b", "bash", "rm -rf build", "r").await, "deny");
+        hub.unmark_headless("a").await;
+        hub.unmark_headless("b").await;
     }
 
     #[test]
@@ -1421,6 +1426,7 @@ mod tests {
             assert_eq!(hub.decide_in("s", "bash", cmd, "r", Some(&cwd)).await, "deny", "{cmd}");
         }
         assert_eq!(hub.decide("s", "bash", "rm -rf x", "r").await, "deny", "no cwd known: unchanged");
+        hub.unmark_headless("s").await;
         let _ = std::fs::remove_dir_all(cwd);
     }
 
