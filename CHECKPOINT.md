@@ -188,3 +188,24 @@
 - npm run typecheck: renderer, Electron and E2E tsc --noEmit all pass, exit 0 (19.56s), typecheck.log. Touched-file ESLint: exit 0, zero warnings/errors (0.97s), lint-final.log. Two new test spacing warnings from the initial lint were corrected.
 - Test commands use an allowlisted environment with fresh /private/tmp/bc-run-* HOME, FACTR_HOME, FACTR_CONFIG_HOME, TMPDIR and FACTR_DESKTOP_USER_DATA_DIR for each command. Logs/runner/command ledger: /private/tmp/bc-xx9sync2.
 - Parent advice re-read: no STOP or bots-create-specific correction. Next: commit this validated fix, run the full UI and Electron projects (includes bots, routing and pool tests), document manual QA without driving the GUI, finalize report and cleanup.
+
+### Bots-create broad validation in progress
+
+- Milestone 1 committed locally as 33d1fdc with the required co-author trailer; no push.
+- Full Electron project: exit 0 (35.68s), 231 files / 2484 tests passed; 3 files / 19 tests skipped by existing opt-in/platform conditions. Includes local sandbox, backend routing, primary pin and all pool suites. Full log: /private/tmp/bc-xx9sync2/electron-full.log. Installed the worktree-local Electron runtime only for Node imports (electron-runtime.log, exit 0); no packaged app or GUI launched.
+- Full UI project still running. Added exact parent QA scenarios to NEEDS-GUI-QA.md for normal/lazy second-create, failed primary request, remote target and native platform checks.
+- Design-law re-check: every visual requirement is inapplicable to this dispatch-only patch. Verified programmatically that the source from the first rendered Dialog return to EOF is byte-identical to HEAD^; no JSX, typography, spacing, color, icon, clipping, motion or interaction markup changed. Automated creation/error controls are exercised via Testing Library; no pointer/screenshot certification is claimed.
+
+## Bots-create milestone 2 validated: full desktop checks
+
+- Full UI: exit 0 (242.64s), all 987 files / 8231 tests passed, including every bots plugin and renderer routing test. Log: /private/tmp/bc-xx9sync2/ui-full.log. Full Electron remains green (231 files / 2484 tests passed, existing 19 skips detailed above). No retries or test skips added.
+- Final touched-file lint: exit 0, no warnings/errors (1.06s), lint-release.log. Only follow-up production edit after the validated fix is a comment correcting the old description of the default create target.
+- Final REPORT.md records root cause, fix, pre-fix failure, final checks, limits and repeat commands. Replaced the inherited prior-task report; previous report remains in git history. NEEDS-GUI-QA.md preserves existing notes and appends this task's exact scenarios.
+- Cleanup: removed only task-created TypeScript build-info, isolated test scratch and npm/Electron download homes. Full logs/runner/ledger retained under /private/tmp/bc-xx9sync2; lockfile-installed node_modules retained to support review. No Rust target, Docker resource, app process, push, version edit or credential access.
+- No implementation remains half-done and no blocker needs the user. GUI/packaged, real-provider and Windows/native-Linux manual QA remain unclaimed. No repair/migration of previously misplaced profiles.
+- Next: re-read parent advice, verify final whitespace/scope and report copy, commit documentation locally with required trailer, confirm clean branch.
+
+### Bots-create final handoff
+
+- Parent guidance re-read after the full checks: no STOP or task-specific correction. Final scope assertion passes: exactly the dialog routing helper, its existing regression test file, CHECKPOINT.md, REPORT.md and appended NEEDS-GUI-QA.md. Rendered JSX suffix is unchanged; report has no em dashes. Whitespace check passes.
+- REPORT.md copied byte-for-byte to the requested handoff/bots-create-REPORT.md and verified. Post-cleanup disk: 61 GiB free. No blocker or further automated check remains. Final documentation is being committed locally; no push.

@@ -142,7 +142,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
   const [noSkills, setNoSkills] = useState(false)
   const [shareAuth, setShareAuth] = useState(true)
   const [advTab, setAdvTab] = useState('general')
-  // Where the profile is created: '' = the active gateway (unchanged default),
+  // Where the profile is created: '' = the current connection,
   // else a registry connection id — the profiles.create lands on THAT
   // machine's backend via host.requestProfile, no gateway switch. Only
   // rendered when the desktop has a multi-connection registry.

@@ -127,3 +127,15 @@ The resumed runner created a fresh, ad-hoc-signed disposable QA copy with HOME, 
 Priority macOS click case: create Alpha with Docker off and the deterministic stub; one intro must render in Alpha's private engine. Open default, reopen Alpha, close/relaunch and reopen Alpha again. Exactly one canonical chat and intro must remain. Attach image/file/PDF and answer clarify/approval on Alpha; these RPCs must reach Alpha, while roster warming must not start every bot. Read the Sandbox status and provider-sharing copy at normal zoom, narrow width and increased text size; check contrast, focus, clipping, centering and keyboard access. Rename an active room while a clarify poll is held, answer it, and verify the reply follows the renamed room without restoring the old name. Disband during an in-flight reply: no room or attention card may reappear.
 
 The real Linux sandbox harness was repeated in this resumed run: non-root mount/PID/private-temp/symlink boundaries, real engine native shell/file action and bundled Python cron endpoint all passed; the single bots- container was removed on exit. This remains nested Linux evidence, not a native Linux desktop/Wayland or real Windows result.
+
+## Bots-create routing regression (2026-10-19)
+
+Not executed in this run: the task explicitly prohibits GUI driving and starting the packaged app. Parent QA should run the following with fresh isolated HOME, FACTR_HOME, FACTR_CONFIG_HOME and Electron userData under /private/tmp (or equivalent platform temp), a stub model, FACTR_BOT_COMPUTERS unset and no Docker. Do not use personal credentials.
+
+1. Open Bots, choose New bot, enter alpha and Create. Wait for Alpha's chat/intro and Sandbox label. Confirm <config>/profiles/alpha exists.
+2. With Alpha still focused, choose New bot, enter beta and Create. Confirm Beta appears, opens and answers, <config>/profiles/beta exists, and <config>/profiles/alpha/.local-computer/config/profiles/beta does not exist. Check logs for no missing-profile or failed-to-open errors.
+3. Repeat from a fresh setup, but open Beta's Advanced > Capabilities first to materialize the lazy draft. Then Create. Expect one Beta profile under the primary config home and one intro.
+4. With Alpha focused, make the root backend unavailable and attempt Beta. Expect a visible backend error with the dialog remaining open, no success toast, no Beta session and no Beta profile nested in Alpha's sandbox. Restore the root backend and retry.
+5. With Alpha focused, explicitly choose a remote create target. Confirm creation stays on that selected machine. Local profiles/config/skills/session behavior should otherwise be unchanged.
+
+Run the no-Docker local scenario on macOS and native Linux where sandboxing is available. On Windows use the supported sandbox runtime, with the same isolated-directory assertions. Those platform GUI checks are pending; automated UI and Electron suites are reported separately in REPORT.md.
