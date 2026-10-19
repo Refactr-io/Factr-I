@@ -12,7 +12,7 @@ import {
   STARMAP_ROUTE
 } from '@/app/routes'
 
-const SECTIONS = ['sessions', 'system', 'usage'] as const
+const SECTIONS = ['runs', 'system', 'sessions', 'usage', 'maintenance'] as const
 
 export function useOverlayRouting() {
   const location = useLocation()

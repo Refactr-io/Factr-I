@@ -7,7 +7,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { Command, Home, HomeFilled } from '@/lib/icons'
+import { Activity, Home, HomeFilled } from '@/lib/icons'
 import { profileShortLabel } from '@/lib/profile-short-label'
 import { cn } from '@/lib/utils'
 import { SIDEBAR_RAIL_WIDTH } from '@/store/layout'
@@ -26,6 +26,9 @@ import { UpdateIndicator } from './update-indicator'
 
 const RAIL_BUTTON =
   'grid size-9 place-items-center rounded-md text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] active:scale-[0.97] hover:bg-(--ui-control-hover-background) hover:text-foreground'
+
+// Single merge icon choice; Tabler history is the alternate.
+const ACTIVITY_ICON = Activity
 
 const RAIL_ACTIVE = 'bg-(--ui-control-active-background) text-foreground'
 
@@ -97,9 +100,7 @@ export function SidebarRail() {
   const labelFor = (item: SidebarNavItem) => t.sidebar.nav[item.id] ?? item.label
   const { commandCenterOpen, toggleCommandCenter } = useOverlayRouting()
 
-  const commandCenterLabel = commandCenterOpen
-    ? t.shell.statusbar.closeCommandCenter
-    : t.shell.statusbar.openCommandCenter
+  const commandCenterLabel = t.activity.title
 
   const openSessions = () => {
     activate('sessions')
@@ -170,10 +171,10 @@ export function SidebarRail() {
           active={commandCenterOpen}
           label={commandCenterLabel}
           onClick={toggleCommandCenter}
-          tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterOpen ? commandCenterLabel : t.commandCenter.railTip} />}
+          tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterLabel} />}
           tour="rail-command-center"
         >
-          <Command className="size-[1.125rem]" />
+          <ACTIVITY_ICON className="size-[1.125rem]" />
         </RailButton>
         <ProfileSwitcher
           contentAlign="end"
