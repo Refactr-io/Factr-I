@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react'
 
-import { AgentOrb } from '@/components/ui/agent-orb'
+import { Loader } from '@/components/ui/loader'
 import { cn } from '@/lib/utils'
 
 interface PageLoaderProps extends Omit<ComponentProps<'div'>, 'children'> {
@@ -21,7 +21,7 @@ export function PageLoader({
       className={cn('grid h-full place-items-center', className)}
       role={role}
     >
-      <AgentOrb size={64} state="breathing" />
+      <Loader />
     </div>
   )
 }

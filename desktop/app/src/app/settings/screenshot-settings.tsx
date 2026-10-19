@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { ErrorIcon } from '@/components/ui/error-state'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 
 import type { ScreenshotStatus } from '../../../electron/command-screenshot-types'
@@ -129,7 +129,7 @@ export function ScreenshotSettings() {
         <ListRow
           action={
             busy ? (
-              <AgentOrb ariaLabel={s.checking} state="searching" />
+              <Loader ariaLabel={s.checking} />
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 {permission && (

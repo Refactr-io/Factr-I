@@ -32,13 +32,13 @@ import {
   SCAFFOLD_META_CLASS,
   ScaffoldRow
 } from '@/components/chat/scaffold-row'
-import { AgentOrb, orbStateForTool } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
 import { FadeText } from '@/components/ui/fade-text'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
+import { Loader } from '@/components/ui/loader'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { useI18n } from '@/i18n'
 import { mcpTargets } from '@/lib/connector-tools'
@@ -195,9 +195,9 @@ export function technicalTrace(args: unknown, result: unknown): string {
   return clampForDisplay(parts.join('\n\n'))
 }
 
-function statusGlyph(status: ToolStatus, copy: ToolStatusCopy, toolName?: string): ReactNode {
+function statusGlyph(status: ToolStatus, copy: ToolStatusCopy): ReactNode {
   if (status === 'running') {
-    return <AgentOrb ariaLabel={copy.statusRunning} state={orbStateForTool(toolName)} />
+    return <Loader ariaLabel={copy.statusRunning} />
   }
 
   if (status === 'error') {
@@ -239,7 +239,7 @@ function ToolGlyph({
   toolName?: string
 }) {
   const node = status ? (
-    statusGlyph(status, copy, toolName)
+    statusGlyph(status, copy)
   ) : filePath ? (
     <FileTypeIcon className="text-(--ui-text-tertiary)" path={filePath} size="0.875rem" />
   ) : icon ? (

@@ -312,6 +312,13 @@ export const en: Translations = {
   },
 
   boot: {
+    connection: {
+      startingEngine: 'Starting engine',
+      preparingEngine: 'Preparing engine',
+      connectingEngine: 'Connecting to engine',
+      loadingModel: 'Loading model',
+      reconnecting: 'Reconnecting to engine'
+    },
     ready: 'Factr-I is ready',
     desktopBootFailedWithMessage: message => `Desktop boot failed: ${message}`,
     steps: {

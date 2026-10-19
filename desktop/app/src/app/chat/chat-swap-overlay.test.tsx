@@ -25,14 +25,14 @@ describe('ChatSwapOverlay', () => {
   it('keeps the last profile name through the fade-out, with the orb frozen', () => {
     const { container, rerender } = render(<ChatSwapOverlay profile="turqoise" />)
 
-    expect(container.querySelector('[data-slot="agent-orb"]')?.hasAttribute('data-paused')).toBe(false)
+    expect(container.querySelector('[data-slot="loader"]')?.hasAttribute('data-paused')).toBe(false)
 
     rerender(<ChatSwapOverlay profile={null} />)
 
     // Label held so the overlay doesn't blank while it fades.
     expect(screen.getByText(/turqoise/)).toBeTruthy()
     // ...and the spinner stops, the way clearing the interval used to stop it.
-    expect(container.querySelector('[data-slot="agent-orb"]')?.getAttribute('data-paused')).toBe('true')
+    expect(container.querySelector('[data-slot="loader"]')?.getAttribute('data-paused')).toBe('true')
 
     // After the fade the text is gone from the DOM, not just transparent.
     act(() => {

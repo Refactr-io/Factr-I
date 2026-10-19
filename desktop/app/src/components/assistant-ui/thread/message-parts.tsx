@@ -23,7 +23,7 @@ import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { GeneratedImage } from '@/components/chat/generated-image-result'
 import { SCAFFOLD_LABEL_CLASS, SCAFFOLD_META_CLASS, ScaffoldRow } from '@/components/chat/scaffold-row'
 import { useOnboardingChatActive } from '@/components/onboarding-chat/assembly'
-import { AgentOrb } from '@/components/ui/agent-orb'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 import { mcpTargets, toolLabels } from '@/lib/connector-tools'
 import { generatedImageFromResult } from '@/lib/generated-images'
@@ -279,7 +279,7 @@ const ThinkingDisclosure: FC<{
         }
       >
         <span className={cn(SCAFFOLD_LABEL_CLASS, pending && 'shimmer')}>{thoughtLabel}</span>
-        {pending && <AgentOrb state="solving" />}
+        {pending && <Loader />}
       </ScaffoldRow>
       {open && (
         <div

@@ -3977,25 +3977,21 @@ svg.tabler-icon {
   stroke-linejoin: round;
 }
 
-/* A working label (thinking, running a tool) is a quiet opacity pulse: no gradient sweep, no glow, no ring. */
+/* Share the supplied label shimmer across existing tool and thinking rows. */
 .shimmer {
-  animation: working-pulse 1.8s ease-in-out infinite;
-}
-
-@keyframes working-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.55;
-  }
+  color: var(--ui-text-secondary);
+  background-image: linear-gradient(90deg, var(--ui-text-secondary) 35%, var(--ui-text-primary) 50%, var(--ui-text-secondary) 65%);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-text 1.4s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .shimmer {
     animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
   }
 }
 

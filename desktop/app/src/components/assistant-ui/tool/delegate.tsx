@@ -7,9 +7,9 @@ import { useSessionView } from '@/app/chat/session-view'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
 import { ActivityTimerText } from '@/components/chat/activity-timer-text'
 import { SCAFFOLD_GLYPH_CLASS, SCAFFOLD_LABEL_CLASS, SCAFFOLD_META_CLASS } from '@/components/chat/scaffold-row'
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Codicon } from '@/components/ui/codicon'
 import { FadeText } from '@/components/ui/fade-text'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
 import { displayModelName } from '@/lib/model-status-label'
@@ -35,7 +35,7 @@ const TICKER_DEPTH = 6
 
 function statusGlyph(status: DelegateRowStatus, label: string): ReactNode {
   if (isDelegateRowLive(status)) {
-    return <AgentOrb ariaLabel={label} state="weaving" />
+    return <Loader ariaLabel={label} />
   }
 
   if (status === 'failed' || status === 'interrupted') {

@@ -1,7 +1,6 @@
 import { cn } from '@/lib/utils'
 
 import { formatElapsed } from './activity-timer'
-import { StableText } from './stable-text'
 
 interface ActivityTimerTextProps {
   seconds: number
@@ -10,16 +9,16 @@ interface ActivityTimerTextProps {
 
 export function ActivityTimerText({ seconds, className }: ActivityTimerTextProps) {
   return (
-    <StableText
+    <span
+      aria-hidden="true"
       className={cn(
-        // Tinted with --dt-midground (very low alpha) so the timer reads
-        // as part of the same "live signal" cluster as the dither block /
-        // arc-border / working-session dot, instead of being neutral chrome.
-        'shrink-0 text-[0.5625rem] leading-none tracking-[0.02em] text-midground/55',
+        'inline-block shrink-0 font-sans text-xs leading-4 text-(--ui-text-secondary) tabular-nums',
         className
       )}
+      // Reserve the same slot before 3s and across seconds/minutes boundaries.
+      style={{ inlineSize: '8ch', visibility: seconds < 3 ? 'hidden' : 'visible' }}
     >
       {formatElapsed(seconds)}
-    </StableText>
+    </span>
   )
 }

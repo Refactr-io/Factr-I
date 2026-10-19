@@ -81,9 +81,6 @@ import {
   IconLink as LinkIcon,
   IconListCheck as ListCheck,
   IconListCheckFilled as ListCheckFilled,
-  IconLoader as Loader,
-  IconLoader2 as Loader2,
-  IconLoader2 as Loader2Icon,
   IconLock as Lock,
   IconLogin as LogIn,
   IconLogs as Logs,
@@ -150,9 +147,11 @@ import {
   IconBolt as Zap,
   IconBoltFilled as ZapFilled,
   IconZoomIn as ZoomIn,
-  IconZoomOut as ZoomOut,
+  IconZoomOut as ZoomOut
 } from '@tabler/icons-react'
 
+// Legacy loading icon names share the pixel mark, including SVG props and refs.
+import { LoaderMark as Loader, LoaderMark as Loader2, LoaderMark as Loader2Icon } from '@/components/ui/loader-mark'
 
 export {
   Activity,
@@ -311,8 +310,6 @@ export {
 
 import type { Icon as IconComponent } from '@tabler/icons-react'
 export type { IconComponent }
-
-
 
 /**
  * Named icon-size scale — the single source of truth for SVG icon dimensions,
