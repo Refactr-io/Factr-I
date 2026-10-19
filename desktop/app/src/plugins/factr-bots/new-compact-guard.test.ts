@@ -23,6 +23,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { RosterRow } from './types'
 
+vi.mock('./relay', () => ({ refreshBotRelayRosters: vi.fn(async () => undefined) }))
+
 vi.mock('@factr/plugin-sdk', () => ({
   BOT_CHAT_SESSION_HYDRATION_TIMEOUT_MS: 15_000,
   host: {}

@@ -23,6 +23,8 @@ const { hostMock, persistMock, requestForBotMock, saveBotMetaMock } = vi.hoisted
   saveBotMetaMock: vi.fn()
 }))
 
+vi.mock('./relay', () => ({ refreshBotRelayRosters: vi.fn(async () => undefined) }))
+
 vi.mock('@factr/plugin-sdk', () => ({
   BOT_CHAT_SESSION_HYDRATION_TIMEOUT_MS: 15_000,
   host: hostMock

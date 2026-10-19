@@ -1235,6 +1235,64 @@ describe('bot computers are relay connections', () => {
   const profilesList = (call: RelayCall) =>
     call.method === 'profiles.list' ? { profiles: [{ name: 'default' }, { name: 'scout' }, { name: 'writer' }] } : {}
 
+  it('refreshes a running Alpha immediately when Beta is created, without waking Beta', async () => {
+    let profiles = [{ name: 'default' }, { name: 'alpha' }]
+    setComputers([{ profile: 'alpha', running: true }])
+    const calls = respondWith(call => (call.method === 'profiles.list' ? { profiles } : {}))
+    const relay = await loadRelay()
+    relay.startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    calls.length = 0
+
+    profiles = [...profiles, { name: 'beta' }]
+    setComputers([
+      { profile: 'alpha', running: true },
+      { profile: 'beta', running: false }
+    ])
+    await relay.refreshBotRelayRosters()
+
+    const push = calls.find(call => call.method === 'bot_relay.roster.sync' && call.profile === 'alpha')
+    expect(push?.params.agents).toEqual(
+      expect.arrayContaining([expect.objectContaining({ profile: 'beta', connection_id: 'computer-beta' })])
+    )
+    expect((push?.params.agents as { profile: string }[]).some(row => row.profile === 'alpha')).toBe(false)
+    expect(calls.some(call => call.profile === 'beta')).toBe(false)
+    relay.stopBotRelay()
+  })
+
+  it('waits for an in-flight roster push and then fetches the newly created bot', async () => {
+    let profiles = [{ name: 'default' }, { name: 'alpha' }]
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    let reads = 0
+
+    setComputers([{ profile: 'alpha', running: true }])
+    const calls = respondWith(async call => {
+      if (call.method !== 'profiles.list') { return {} }
+
+      const snapshot = profiles
+
+      if (++reads === 1) { await held }
+
+      return { profiles: snapshot }
+    })
+    const relay = await loadRelay()
+
+    relay.startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    profiles = [...profiles, { name: 'beta' }]
+    setComputers([{ profile: 'alpha', running: true }, { profile: 'beta', running: false }])
+    const refreshed = relay.refreshBotRelayRosters()
+    release()
+    await refreshed
+    expect(reads).toBe(2)
+    const pushes = calls.filter(call => call.method === 'bot_relay.roster.sync' && call.profile === 'alpha')
+    expect(pushes.at(-1)?.params.agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ profile: 'beta', connection_id: 'computer-beta' })
+    ]))
+    relay.stopBotRelay()
+  })
+
   it('pushes rosters only to live connections, with each computer as its own connection and never its own row', async () => {
     setComputers([
       { profile: 'scout', running: true },

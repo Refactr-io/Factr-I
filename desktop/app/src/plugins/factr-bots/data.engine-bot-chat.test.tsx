@@ -27,6 +27,8 @@ const { hostMock, invalidateMock } = vi.hoisted(() => ({
   invalidateMock: vi.fn()
 }))
 
+vi.mock('./relay', () => ({ refreshBotRelayRosters: vi.fn(async () => undefined) }))
+
 vi.mock('@factr/plugin-sdk', async () => {
   const { atom } = await import('nanostores')
   const { useQuery } = await import('@tanstack/react-query')

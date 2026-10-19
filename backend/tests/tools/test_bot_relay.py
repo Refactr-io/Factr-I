@@ -706,3 +706,10 @@ def test_delivery_env_carries_only_the_given_author(monkeypatch):
     assert "FACTR_SESSION_ID" not in env
     assert "FACTR_SESSION_PROFILE" not in env
     assert env["FACTR_SESSION_STALL_TIMEOUT"] == "97"
+
+
+def test_native_roster_golden_matches_python(tmp_path):
+    fixture = Path(__file__).resolve().parents[3] / "engine/crates/factr-gateway/tests/fixtures/bot_roster.json"
+    golden = json.loads(fixture.read_text())
+    assert bot_relay.write_remote_roster(tmp_path, golden["input"]) == len(golden["agents"])
+    assert bot_relay.read_remote_roster(tmp_path) == golden["agents"]

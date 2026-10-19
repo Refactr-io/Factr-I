@@ -108,6 +108,8 @@ async function start(profile: string) {
 
 try {
   const alpha = await start('alpha'), beta = await start('beta')
+  const roster = [{ profile: 'beta', handle: 'beta', title: 'Beta', description: 'Research', connection_id: 'computer-beta', online: true }]
+  assert.equal((await alpha.rpc('bot_relay.roster.sync', { agents: roster })).count, 1, 'cold Alpha accepts a later-created Beta without a Python drain')
   victim = beta.child
   const run = (prompt: string) => alpha.api('/api/agent/run', { prompt, surface: 'bot', title: 'Bot Chat', session_key: prompt, timeout_s: 30 })
   const canonical = (await alpha.rpc('bot.chat.ensure', { profile: 'alpha' })).canonical_session.id
@@ -128,10 +130,11 @@ try {
   assert.equal(beta.child.exitCode, null)
   assert.equal(beta.child.signalCode, null)
   assert.ok(!seen.some(body => body.tools?.some(t => t.function?.name === 'repl')), 'nested REPL is disabled')
-  await alpha.rpc('bot_relay.outbox.drain')
-  await alpha.rpc('bot_relay.roster.sync', { agents: [{ profile: 'beta', handle: 'beta', connection_id: 'computer-beta', online: true }] })
   const handed = await run('LOCAL_HANDOFF')
   assert.equal(handed.ok, true, JSON.stringify(handed))
+  const first = seen.find(body => JSON.stringify(body.messages).includes('LOCAL_HANDOFF'))
+  assert.ok(JSON.stringify(first.messages).includes('@beta@computer-beta: Beta Research'), 'the next turn sees Beta in its live reminder')
+  assert.ok(!JSON.stringify(first.messages).includes('- @alpha'), 'the reminder excludes Alpha itself')
   const outbox = path.join(alpha.root, 'bot_relay/outbox')
   const envelope = JSON.parse(fs.readFileSync(path.join(outbox, fs.readdirSync(outbox).find(p => p.endsWith('.json'))!), 'utf8'))
   assert.equal(envelope.target_profile, 'beta')

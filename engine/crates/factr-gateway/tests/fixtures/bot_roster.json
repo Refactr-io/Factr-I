@@ -1,0 +1,72 @@
+{
+  "input": [
+    {
+      "profile": " beta ",
+      "handle": "@beta",
+      "connection_id": "computer-beta",
+      "connection_label": " Beta computer ",
+      "title": " Beta ",
+      "description": "Research\n  and  writing",
+      "online": true
+    },
+    {
+      "profile": "default",
+      "connection_id": "local"
+    },
+    {
+      "profile": "beta",
+      "handle": "duplicate",
+      "connection_id": "computer-beta"
+    },
+    {
+      "profile": "UPPER_1",
+      "connection_id": "Remote-1",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "connection_label": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "description": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "online": "yes"
+    },
+    {
+      "profile": "../escape",
+      "connection_id": "local"
+    },
+    {
+      "profile": "beta",
+      "connection_id": ""
+    },
+    {
+      "profile": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "connection_id": "local"
+    },
+    null,
+    42,
+    []
+  ],
+  "agents": [
+    {
+      "profile": "UPPER_1",
+      "handle": "UPPER_1",
+      "connection_id": "Remote-1",
+      "connection_label": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "title": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "description": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+      "profile": "beta",
+      "handle": "beta",
+      "connection_id": "computer-beta",
+      "connection_label": "Beta computer",
+      "title": "Beta",
+      "description": "Research and writing",
+      "online": true
+    },
+    {
+      "profile": "default",
+      "handle": "factr",
+      "connection_id": "local",
+      "connection_label": "",
+      "title": "",
+      "description": ""
+    }
+  ]
+}

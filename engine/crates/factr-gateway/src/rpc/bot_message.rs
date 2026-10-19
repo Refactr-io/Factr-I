@@ -111,6 +111,35 @@ fn remote(base: &Path) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// Persist the same roster the Python relay and native tool/reminder read, even before Python starts.
+pub(super) fn sync_roster(p: &Value) -> Result<Value, RpcError> {
+    let mut rows = std::collections::BTreeMap::new();
+    for row in p["agents"].as_array().into_iter().flatten() {
+        let text = |key: &str| row[key].as_str().unwrap_or("").trim();
+        let profile = text("profile");
+        let connection = text("connection_id");
+        let handle = text("handle").trim_start_matches('@');
+        let handle = if handle.is_empty() { self::handle(profile) } else { handle };
+        if ![profile, connection, handle].iter().all(|s| valid(&s.to_ascii_lowercase())) {
+            continue;
+        }
+        let mut normalized = json!({
+            "profile": profile, "handle": handle, "connection_id": connection,
+            "connection_label": text("connection_label").chars().take(80).collect::<String>(),
+            "title": text("title").chars().take(120).collect::<String>(),
+            "description": text("description").split_whitespace().collect::<Vec<_>>().join(" ").chars().take(160).collect::<String>()
+        });
+        if row["online"].is_boolean() {
+            normalized["online"] = row["online"].clone();
+        }
+        rows.entry((connection.to_string(), profile.to_string())).or_insert(normalized);
+    }
+    let agents: Vec<_> = rows.into_values().collect();
+    atomic(&root().join("bot_relay/roster.json"), &json!({"updated_at":chrono::Utc::now().timestamp(), "agents":agents}))
+        .map_err(|e| RpcError { code: 5090, message: e.to_string(), data: None })?;
+    Ok(json!({"count":agents.len()}))
+}
+
 // The relay owns claims/TTL and writes durable reply files even when the Desktop disconnects.
 // Watch those same files, rather than spawning a Python waiter for every message.
 pub(crate) fn start(config: Arc<Config>, hub: Arc<Hub>, observer: Arc<Observer>) {
@@ -284,6 +313,8 @@ fn resolve<'a>(raw: &str, local: &'a [Value], peers: &'a [Value]) -> Result<&'a 
             "No teammate named '{raw}'. Teammates: {}",
             local
                 .iter()
+                .chain(peers.iter().copied())
+                .filter(|r| r["profile"] != own() || r["connection_id"] != "local")
                 .map(|r| format!("@{}", r["handle"].as_str().unwrap_or("")))
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -556,6 +587,70 @@ impl Conn {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn running_sandbox_learns_a_teammate_created_after_startup() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                for (key, value) in &self.0 {
+                    match value {
+                        Some(value) => unsafe { std::env::set_var(key, value) },
+                        None => unsafe { std::env::remove_var(key) },
+                    }
+                }
+            }
+        }
+        let _restore = Restore(["FACTR_CONFIG_HOME", "FACTR_PROFILE"].map(|k| (k, std::env::var_os(k))).to_vec());
+        let base = std::env::temp_dir().join(format!("bots-roster-{:x}", rand::random::<u64>()));
+        let alpha = base.join("profiles/alpha");
+        std::fs::create_dir_all(&alpha).unwrap();
+        std::fs::write(alpha.join("profile.yaml"), "ui_meta:\n  factr-bots:\n    title: Alpha\n").unwrap();
+        // SAFETY: env is only touched under ENV_LOCK and restored on drop.
+        unsafe {
+            std::env::set_var("FACTR_CONFIG_HOME", &alpha);
+            std::env::set_var("FACTR_PROFILE", "alpha");
+        }
+        let conn = super::super::tests::test_conn("late-roster");
+        assert!(queue(&root(), "alpha", "chat", &json!({"target":"beta","message":"hi"})).is_err());
+        // Beta is created on the owner after Alpha starts; no sibling directory is exposed to Alpha.
+        let row = json!({"profile":"beta","handle":"beta","title":"Beta","description":"Research","connection_id":"computer-beta"});
+        let result = conn.dispatch("bot_relay.roster.sync", &json!({"agents":[row]})).await.unwrap();
+        assert_eq!(result["count"], 1, "a native roster push must not be discarded before Python starts");
+        let ack = queue(&root(), "alpha", "chat", &json!({"target":"beta","message":"hi"})).unwrap();
+        let file = base.join("bot_relay/outbox").join(format!("{}.json", ack["delivery_id"].as_str().unwrap()));
+        let envelope: Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+        assert_eq!(envelope["target_connection"], "computer-beta");
+        assert_eq!(envelope["target_profile"], "beta");
+        assert_eq!(envelope["message"], "Message from 🤖 Alpha (@alpha): hi");
+        let missing = queue(&root(), "alpha", "chat", &json!({"target":"missing","message":"hi"})).unwrap_err().to_string();
+        assert!(missing.contains("@beta"), "{missing}");
+        assert!(!missing.contains("@alpha"), "self is not a teammate: {missing}");
+        let prompt = reminder(None, true).unwrap();
+        assert!(prompt.contains("@beta@computer-beta: Beta Research"), "{prompt}");
+        assert!(!prompt.contains("- @alpha"), "self is not a teammate: {prompt}");
+        assert!(!base.join("profiles/beta").exists(), "no sibling profile access is needed");
+        conn.dispatch("bot_relay.roster.sync", &json!({"agents":[]})).await.unwrap();
+        assert!(queue(&root(), "alpha", "chat", &json!({"target":"beta","message":"gone"})).is_err());
+        assert!(!reminder(None, true).unwrap().contains("@beta"));
+        // Warm Python must not switch the writer back to a different path.
+        *conn.forward_stub.lock().unwrap() = Some(Arc::new(|_, _| panic!("roster sync must remain native")));
+        let golden: Value = serde_json::from_str(include_str!("../../tests/fixtures/bot_roster.json")).unwrap();
+        let count = conn.dispatch("bot_relay.roster.sync", &json!({"agents":golden["input"]})).await.unwrap();
+        assert_eq!(count["count"], golden["agents"].as_array().unwrap().len());
+        assert_eq!(remote(&root()), *golden["agents"].as_array().unwrap());
+        let persisted: Value = serde_json::from_slice(&std::fs::read(base.join("bot_relay/roster.json")).unwrap()).unwrap();
+        assert!(persisted["updated_at"].as_i64().unwrap() > 0);
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(base.join("bot_relay/roster.json")).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        std::fs::remove_dir_all(base.join("bot_relay")).unwrap();
+        std::fs::write(base.join("bot_relay"), "not a directory").unwrap();
+        assert_eq!(conn.dispatch("bot_relay.roster.sync", &json!({})).await.unwrap_err().code, 5090);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
     #[test]
     fn exact_profile_wins_and_ambiguous_friendly_names_are_refused() {
         let rows = vec![

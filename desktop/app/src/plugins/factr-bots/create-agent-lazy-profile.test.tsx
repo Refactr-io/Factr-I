@@ -43,6 +43,7 @@ const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   requestProfile: vi.fn(async (_route: unknown, _method: string, _params: Record<string, unknown>) => ({})),
   saveBotMeta: vi.fn(),
+  refreshBotRelayRosters: vi.fn(async () => undefined),
   skillsView: [] as CapabilitiesViewProps[]
 }))
 
@@ -87,6 +88,7 @@ vi.mock('@factr/plugin-sdk', async importOriginal => {
   return mocked
 })
 
+vi.mock('./relay', () => ({ refreshBotRelayRosters: mocks.refreshBotRelayRosters }))
 vi.mock('./canonical-chat', () => ({ createCanonicalChat: mocks.createCanonicalChat }))
 vi.mock('./profile-ops', () => ({ deleteBot: mocks.deleteBot }))
 vi.mock('./data', async importOriginal => {
@@ -226,6 +228,10 @@ describe('materializing the draft profile', () => {
         await waitFor(() => expect(mocks.createCanonicalChat).toHaveBeenCalledWith(name, { kickoff: true }))
       }
 
+      expect(mocks.refreshBotRelayRosters).toHaveBeenCalledTimes(2)
+      expect(mocks.refreshBotRelayRosters.mock.invocationCallOrder[1]).toBeLessThan(
+        mocks.createCanonicalChat.mock.invocationCallOrder[1]
+      )
       expect(destinations).toEqual([configHome, configHome])
       expect(fs.existsSync(path.join(configHome, 'profiles/beta'))).toBe(true)
       expect(fs.existsSync(path.join(sandboxConfig, 'profiles/beta'))).toBe(false)
