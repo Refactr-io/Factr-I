@@ -254,6 +254,24 @@ export async function ensureGroupChatSession(
     // after that the room is migrated and every other thread mints its own.
     const legacy = hasThreadScopedGroupSession(sessions, memberKey) ? null : sessions[memberKey] || null
 
+    try {
+      const owned = await requestForBot<{ session_id?: string; stored_session_id?: string }>(
+        member, 'bot.group.ensure', { profile: member.name, title, session_id: typeof known === 'string' ? known : typeof legacy === 'string' ? legacy : undefined }, GROUP_SESSION_CREATE_OPTIONS
+      )
+      if (owned?.session_id) {
+        if (!binding.isLive()) { return { runtime: null } }
+        const stored = owned.stored_session_id || owned.session_id
+        updateGroupChat(group, current => ({
+          ...current,
+          sessions: { ...(current.sessions || {}), [key]: stored },
+          sessionOwners: { ...(current.sessionOwners || {}), [key]: groupSessionOwner(member) }
+        }))
+        return { runtime: owned.session_id, stored }
+      }
+    } catch (error: any) {
+      if (error?.code !== -32601 && !/unknown method|method not found|not supported/i.test(String(error?.message || error))) { throw error }
+    }
+
     // Try resuming what we know (stored sid first, then title lookup).
     //
     // FAIL CLOSED on a transient lookup failure — mirrors the sibling fix in
@@ -502,12 +520,12 @@ async function retainGroupTurnRoute(member: GroupMember): Promise<() => void> {
     return noop
   }
 
-  if (!route || typeof host.retainProfile !== 'function') {
+  if (typeof host.retainProfile !== 'function') {
     return noop
   }
 
   try {
-    const release = await host.retainProfile(route, { spawnPriority: 'foreground' })
+    const release = await host.retainProfile(route || member.name, { spawnPriority: 'foreground' })
 
     return typeof release === 'function' ? release : noop
   } catch {

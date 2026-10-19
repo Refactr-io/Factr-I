@@ -231,7 +231,11 @@ function useReconcileRosterOwner(
 export function BotsPane() {
   const { t } = useI18n()
   const b = useBots()
-  const { data, error, isLoading, refetch } = useRoster()
+  const rosterQuery = useRoster()
+  const { data, isLoading, refetch } = rosterQuery
+  // A refetch after a failure puts a data-less query back to "pending" and clears `error`, but keeps the last
+  // failure as `failureReason`. Keep showing that failure (with Retry) rather than flashing back to the loader.
+  const error = rosterQuery.error ?? rosterQuery.failureReason
   const gatewayState = useValue(host.state.gateway)
   const gatewayUp = gatewayState === 'open'
 
@@ -276,10 +280,12 @@ export function BotsPane() {
   const selectedRosterKey = useValue($selectedRosterKey)
 
   // The socket opening (boot, SSH reconnect, sleep/wake) is the signal to
-  // retry immediately instead of waiting out the poll interval.
+  // retry immediately instead of waiting out the poll interval. Never cancel a fetch already in flight: a socket
+  // that opens and drops again (a bot engine refusing the connection) would otherwise restart the retry cycle on
+  // every open and the list would stay on its loader instead of reaching the error state.
   useEffect(() => {
     if (gatewayUp) {
-      void refetch()
+      void refetch({ cancelRefetch: false })
     }
   }, [gatewayUp, refetch])
   const allMeta = useValue($botMeta)

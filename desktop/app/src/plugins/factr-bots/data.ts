@@ -8,10 +8,12 @@
 
 import { atom, host, queryClient, useQuery, useValue } from '@factr/plugin-sdk'
 
+import { cachedEngineBotChat, rememberEngineBotChat } from './engine-bot-chat'
 import { botsText } from './i18n'
 import { displayName } from './labels'
 import {
   aliasIdentityFor,
+  backendTargetProfile,
   beginAliasRouteIndex,
   botConnectionRoute,
   botRosterMeta,
@@ -40,6 +42,21 @@ export const ROSTER_KEY = [ID, 'roster']
 // flap) leaves the Bots sidebar on a spinner with no error card. The 5s
 // refetchInterval and the gateway-open effect already recover drops.
 const ROSTER_QUERY_RETRY = 2
+
+/** A roster fetch that never settles (gateway socket closed or never opened, a bot engine that refuses the
+ *  connection) keeps the query in its loading state forever and the Bots list on a spinner, retries included.
+ *  Bound each attempt so it turns into an error the pane renders with a Retry action. */
+export const ROSTER_FETCH_TIMEOUT_MS = 10_000
+
+export function withTimeout<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const limit = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(message), { timedOut: true })), ms)
+  })
+
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer))
+}
 
 export const BOT_META_V1_KEY = 'bot-meta'
 const BOT_META_V2_KEY = 'bot-meta-v2'
@@ -663,27 +680,124 @@ const ROOT_PROFILE_ROUTE = Object.freeze({
  *  falls back to the active gateway, which is what every other case uses. */
 async function requestRosterList(
   activeBot: { name: string },
-  activeConnectionId: null | string | undefined
+  activeConnectionId: null | string | undefined,
+  method = 'profiles.list',
+  params: Record<string, unknown> = {}
 ): Promise<RosterSnapshot> {
   if (activeBot.name !== 'default' && String(activeConnectionId || '').trim() === 'local') {
     try {
       return await requestForBot<RosterSnapshot>(
         { name: 'default', route: ROOT_PROFILE_ROUTE, sourceScoped: true },
-        'profiles.list',
-        {}
+        method,
+        params
       )
     } catch {
       /* root backend unreachable: the active gateway still answers for itself */
     }
   }
 
-  return requestForBot<RosterSnapshot>(activeBot, 'profiles.list', {})
+  return requestForBot<RosterSnapshot>(activeBot, method, params)
+}
+
+/** The primary engine's answer for a batch of local bots (`bot.chat.get_many`), profile -> chat or null.
+ *  `undefined` when the primary cannot answer (an older engine). */
+async function primaryBotChats(
+  activeConnectionId: null | string | undefined,
+  profiles: string[]
+): Promise<Record<string, CanonicalSession | null> | undefined> {
+  const activeBot = { name: String(host.state.profile?.get?.() || 'default').trim() || 'default' }
+
+  try {
+    const res = (await requestRosterList(activeBot, activeConnectionId, 'bot.chat.get_many', {
+      profiles
+    })) as unknown as { chats?: Record<string, CanonicalSession | null> }
+
+    return res?.chats && typeof res.chats === 'object' ? res.chats : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const ENGINE_CHAT_TTL_MS = 30_000
+let engineChatFlight = false
+
+/** Rows whose bot lives on this host (routed to the local connection, or not routed at all). The primary engine shares
+ *  their engine home, so it can name their Bot Chat from the shared registry without any bot engine being started;
+ *  the question carries the profile name, so it does not matter which engine the request reaches. Remote rows are
+ *  left to the open path. */
+const askablePrimaryRow = (row: RosterRow | undefined) => {
+  if (!row?.name || row.ghost || row.sourceReachable === false || row.remoteSource) {
+    return false
+  }
+
+  const route = botConnectionRoute(row)
+
+  return !route || route.connectionId === 'local'
+}
+
+const profileOf = (row: RosterRow) => backendTargetProfile(botConnectionRoute(row), row.name)
+
+/** Give each local routed row what the primary engine's shared registry says about its Bot Chat (`bot.chat.get_many`:
+ *  one background call for every stale row, answered from the shared pointers, so NO bot engine is spawned for the
+ *  roster). A chat the engine names replaces what the primary read from its state.db; "unknown" keeps that value.
+ *  Bots that keep their own engine home (containers) learn their chat when opened. Never blocks the roster: the roster
+ *  refetches when an answer arrives. */
+function withEngineBotChats(
+  snapshot: RosterSnapshot,
+  ask: (profiles: string[]) => Promise<Record<string, CanonicalSession | null> | undefined>,
+  now = Date.now()
+): RosterSnapshot {
+  const rows = snapshot?.profiles
+
+  if (!Array.isArray(rows) || !rows.some(askablePrimaryRow)) {
+    return snapshot
+  }
+
+  const stale = rows.filter(row => askablePrimaryRow(row) && !((cachedEngineBotChat(row)?.at ?? 0) + ENGINE_CHAT_TTL_MS > now))
+
+  if (stale.length && !engineChatFlight) {
+    engineChatFlight = true
+
+    void ask([...new Set(stale.map(profileOf))])
+      .then(answers => {
+        let learned = false
+
+        for (const row of stale) {
+          learned = rememberEngineBotChat(row, answers?.[profileOf(row)] ?? null) || learned
+        }
+
+        if (learned) {
+          void queryClient.invalidateQueries({ queryKey: ROSTER_KEY })
+        }
+      })
+      .finally(() => {
+        engineChatFlight = false
+      })
+  }
+
+  const profiles = rows.map(row => {
+    const known = askablePrimaryRow(row) ? cachedEngineBotChat(row)?.chat : null
+
+    return known ? { ...row, canonical_session: known } : row
+  })
+
+  return { ...snapshot, profiles }
 }
 
 /** One roster snapshot for `activeConnectionId` — the pane's query and the
  *  composer's cold-cache warm-up (`warmRoster`) share it, so both see the same
  *  cross-connection rows. */
-async function fetchRosterSnapshot(activeConnectionId: null | string | undefined): Promise<RosterSnapshot> {
+function fetchRosterSnapshot(activeConnectionId: null | string | undefined): Promise<RosterSnapshot> {
+  return withTimeout(
+    fetchRosterSnapshotUnbounded(activeConnectionId).then(snapshot =>
+      withEngineBotChats(snapshot, profiles => primaryBotChats(activeConnectionId, profiles))
+    ),
+    ROSTER_FETCH_TIMEOUT_MS,
+    'The gateway did not answer in time'
+  )
+}
+
+async function fetchRosterSnapshotUnbounded(activeConnectionId: null | string | undefined): Promise<RosterSnapshot> {
   // Stamp the ISSUE time on the snapshot: mergeServerMeta compares it
   // against each bot's last local meta write, and a fetch issued before
   // a write can only carry pre-write ui_meta. (Issue time is the
@@ -770,7 +884,9 @@ export function useRoster() {
     queryFn: () => fetchRosterSnapshot(activeConnectionId),
     refetchInterval: 5000,
     staleTime: 5000,
-    retry: ROSTER_QUERY_RETRY,
+    // A timeout already spent the whole budget: surface the error now (the 5s refetchInterval and the pane's Retry
+    // keep trying) instead of holding the loader through three more waits.
+    retry: (count, error) => count < ROSTER_QUERY_RETRY && !(error as { timedOut?: boolean })?.timedOut,
     retryDelay: attempt => Math.min(15000, 1000 * 2 ** attempt)
   })
 }

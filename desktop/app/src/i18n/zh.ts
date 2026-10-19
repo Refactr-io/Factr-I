@@ -2664,6 +2664,7 @@ export const zh = defineLocale({
     failedLoad: '加载定时任务失败',
     failedUpdate: '更新定时任务失败',
     failedTrigger: '触发定时任务失败',
+    runNow: '立即运行',
     failedDelete: '删除定时任务失败',
     failedSave: '保存定时任务失败',
     editTitle: '编辑定时任务',

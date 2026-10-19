@@ -509,7 +509,7 @@ describe('Factr REST helpers', () => {
     expect(api).toHaveBeenCalledWith({
       connectionId: 'source-a',
       method: 'DELETE',
-      path: '/api/profiles/backend-worker',
+      path: '/api/profiles/backend-worker?feature=1',
       priority: 'foreground',
       profile: 'backend-worker'
     })

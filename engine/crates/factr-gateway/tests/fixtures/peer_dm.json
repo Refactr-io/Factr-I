@@ -1,0 +1,14 @@
+[
+  {
+    "url": "http://peer/p/researcher/api/sessions?limit=200&title=Bot+Chat&include_hidden=1",
+    "method": "GET",
+    "body": null
+  },
+  {
+    "url": "http://peer/p/researcher/api/sessions/hidden-chat/chat",
+    "method": "POST",
+    "body": {
+      "message": "Message from 🤖 factr (@factr): hi"
+    }
+  }
+]

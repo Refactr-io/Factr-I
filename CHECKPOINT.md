@@ -57,3 +57,40 @@
 
 - cargo test -p factr-gateway --locked opencode -- --test-threads=1: 4 passed, exit 0 (49.19s including compile). Log /private/tmp/integration-check-bzypci49/output.log.
 - All milestone checks pass after the import-order correction. Next: bots last, retaining both native UI reads and OpenCode registrations/contracts.
+
+## Milestone 4 validation in progress: bots merge
+
+- Only conflicts: CHECKPOINT.md and NEEDS-GUI-QA.md (both add/add). This checkpoint retains integration history; the original bots checkpoint/report are archived in /private/tmp/integration-tool-state. NEEDS-GUI-QA.md concatenates the integration/Rust list and the complete original bots matrix, preserving both.
+- Shared gateway lib.rs/rpc.rs registrations and generated contracts auto-merged. Inspected dispatch hooks, OpenCode registration, native UI route, feature reconnection and pet predicate. Contract generator --check passes after combined merge. Renderer and Electron TypeScript both pass.
+- Sibling graph lacks the new bots modules; structural search and coverage attempted for every merged path, current exact source/diffs used for shared hooks and new module entry points. No claim of current whole-worktree graph coverage.
+- Inherited lint: 77 errors, mostly braces/import ordering, plus unused test import and two redundant escapes. Applied only required error fixes, leaving spacing and hook warnings visible. One retired name in a source comment changed to compatible peer gateways. No runtime naming/schema change.
+- Full UI/Electron run, full serial gateway tests and affected backend tests running.
+- Runner correction: TMPDIR initially inherited the system temporary folder, so some test-created scratch used the OS temp location. New invocations pin TMPDIR/TMP/TEMP beneath each fresh /private/tmp isolation root. HOME/FACTR/userData were isolated throughout; no credential access.
+
+### Combined validation findings
+
+- Full serial gateway suite: 414 passed, 1 ignored, exit 0 (142.54s); /private/tmp/integration-check-svbvvkdl/output.log.
+- Full touched-file ESLint: exit 0, zero errors; 176 inherited warnings (175 spacing, one hook-dependency warning) remain deliberately outside behavior changes. Full name gate rerun: OK, zero hits.
+- Backend affected suites: 83 passed, 1 failed. Failure was a stale test assuming every CLI prefix is Python -m, while this machine resolves a standalone executable. The runner itself was mocked and no real child ran. Parameterized that test over both supported prefixes and kept profile validation, alias mapping and exact transport/cap assertions. Rerun in progress. No runtime change.
+- Corrected graph coverage batch limit: original 140-path call was rejected; split into 100+40 paths. Generation remains sibling-only; new modules missing and create-dialog parser ranges require direct source, inspected where relevant.
+- Building the integrated test-profile engine next for real feature-idle reconnect and canonical bot smoke, never the packaged app.
+
+- Backend transport fixture rerun: 26 passed, exit 0, both Python and standalone prefixes. Other 59 affected backend tests passed in the initial run.
+- Full desktop run hit the unchanged updater slow-launch test at the default five-second test deadline (5.156s). Source fixture deliberately sleeps four seconds, then performs shell polling/process checks. Isolated unchanged file passed all 24 tests, slow case 4.844s. Set only that test deadline to 15s, preserving all product assertions and the script deadline. Full Electron rerun started; no updater runtime change.
+
+- Full UI project: all 987 files / 8217 cases passed in the combined run. The command failed only in Electron: the five-second updater deadline above and two suites unable to import the skipped Electron binary. The next Electron run passed all 2460 loaded tests but still lacked those two imports. Installing the worktree-local Electron binary to complete those checks, without launching it. Initial installer command used the wrong workspace path and failed harmlessly; corrected to app/node_modules/electron/install.js.
+- Integrated engine canonical registry smoke: all checks pass (13.56s). Persistent feature socket reconnects across two actual Python idle exits: pass (27.70s). Both use synthetic isolated state. Renderer production bundle: pass (17.82s). E2E TypeScript config: pass.
+
+### Final desktop checks
+
+- Full Electron after local dependency setup: 231 files passed, 3 skipped; 2484 tests passed, 19 skipped, exit 0 (33.94s), /private/tmp/integration-check-6vo_3goy/output.log. Skips: 8 opt-in real Docker tests, 1 opt-in live retirement test, 10 WSLg process tests on macOS. No skipped check counted green.
+- Full UI: 987 files / 8217 passed in the combined run; its failures were exclusively Electron and are resolved by the final Electron run. Post-lint affected rerun: 140 passed / 8 opt-in Docker skipped.
+- Final renderer, Electron and E2E TypeScript all pass. Combined touched-file ESLint exits 0 with 187 inherited warnings (186 spacing, one hook dependency). No warnings suppressed in the final lint.
+- Final contract generation check, shell/JS syntax, full naming gate and complete diff whitespace check pass. Removed one imported trailing blank line from computer/README.md; root README is unchanged.
+- Confirmed the full bots GUI-QA document is preserved verbatim as the suffix of NEEDS-GUI-QA.md. No non-gateway engine crate source changed. Disk before cleanup: 67 GiB. No engine process from this target remains.
+
+## Milestone 4 validated
+
+- Repeated all affected backend suites after the fixture fix: 85 passed, exit 0 (52.50s), /private/tmp/integration-check-chijm0n_/output.log. Includes the full 22-case Python UI golden comparison.
+- All required integration checks now pass at their documented scopes. Gateway ignored test is observability::tests::measure_overhead (manual release measurement); no benchmarks were run.
+- No architectural advice fork was needed. Parent guidance remains continue, no STOP. Next: final detailed source/design review, report, cleanup and report copy.

@@ -34,6 +34,12 @@ export interface HostBackendCollapseOptions {
    * not swallow it — and the spawn guard below must not refuse it.
    */
   unscopableRequest?: boolean
+  /**
+   * The primary backend is the packaged Rust engine: ONE profile per process, and `session.create` ignores a
+   * `profile` param (engine/crates/factr-gateway/src/rpc.rs). It cannot multiplex, so a non-primary local profile
+   * must get a backend of its own (a bot computer, or a per-profile engine).
+   */
+  singleProfilePrimary?: boolean
 }
 
 /**
@@ -42,7 +48,7 @@ export interface HostBackendCollapseOptions {
  * route, never meant a local child in the first place.
  */
 export function sharesHostBackend(opts: HostBackendCollapseOptions = {}): boolean {
-  if (opts.isolated || opts.unscopableRequest) {
+  if (opts.isolated || opts.unscopableRequest || opts.singleProfilePrimary) {
     return false
   }
 

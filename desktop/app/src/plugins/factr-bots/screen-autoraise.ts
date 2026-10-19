@@ -31,7 +31,7 @@ import type { RosterRow } from './types'
 
 /** Tools whose first call means the bot is now using its screen. Browser tools count:
  *  on a Bot Screen host the headed Chromium is on that desktop. */
-const SCREEN_TOOL_PREFIXES = ['computer_use', 'browser_']
+const SCREEN_TOOL_PREFIXES = ['computer_use', 'browser_', 'request_takeover']
 
 export const AUTO_RAISE_COOLDOWN_MS = 30_000
 

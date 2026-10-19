@@ -512,7 +512,7 @@
     },
     {
       "name": "cron.manage",
-      "summary": "List/add/remove/pause/resume cron jobs in the (optionally profile-scoped) cron store.",
+      "summary": "List/add/remove/pause/resume/run cron jobs in the (optionally profile-scoped) cron store.",
       "params": [
         {
           "name": "params",
@@ -4780,6 +4780,30 @@
             ],
             "default": null,
             "title": "From Connection"
+          },
+          "hops": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Hops"
+          },
+          "envelope_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Envelope Id"
           }
         },
         "required": [
@@ -4795,6 +4819,18 @@
           "reply": {
             "title": "Reply",
             "type": "string"
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pending"
           }
         },
         "required": [
@@ -7841,7 +7877,8 @@
           "add",
           "remove",
           "pause",
-          "resume"
+          "resume",
+          "run"
         ],
         "title": "CronAction",
         "type": "string"
@@ -8847,6 +8884,11 @@
           "reason": {
             "default": "",
             "title": "Reason",
+            "type": "string"
+          },
+          "request": {
+            "default": "",
+            "title": "Request",
             "type": "string"
           }
         },
@@ -22304,6 +22346,18 @@
           "message": {
             "title": "Message",
             "type": "string"
+          },
+          "hops": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Hops"
           }
         },
         "required": [

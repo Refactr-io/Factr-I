@@ -589,6 +589,10 @@ export interface ProfileRouteOptions {
   ownEntry?: boolean
   /** `FACTR_DESKTOP_ISOLATED_BACKEND=1`: opt out of the host singleton. */
   isolatedBackend?: boolean
+  /** The primary backend is the packaged single-profile Rust engine (cannot multiplex profiles). */
+  primarySingleProfile?: boolean
+  /** This profile has a running (or starting) bot computer: it owns the profile's state.db. */
+  botComputerRunning?: boolean
   requestMethod?: null | string
   requestPath?: null | string
 }
@@ -654,6 +658,16 @@ const LOCAL_PRIMARY_SCOPED_ROUTES = new Set([
   'PUT /api/dashboard/font',
   'GET /api/dashboard/plugins'
 ])
+
+function isProfilesPath(rawPath: null | string | undefined): boolean {
+  try {
+    const pathname = new URL(String(rawPath || ''), 'https://example.invalid').pathname
+
+    return pathname === '/api/profiles' || pathname.startsWith('/api/profiles/')
+  } catch {
+    return false
+  }
+}
 
 function localPrimaryRequestScope(opts: ProfileRouteOptions): boolean | null {
   const rawPath = String(opts.requestPath || '')
@@ -784,7 +798,9 @@ export function unscopableMutatingRequest(opts: ProfileRouteOptions = {}): boole
  *     socket with a `profile` param, never a second socket to the same
  *     process (#120005). The two ways out are
  *     `FACTR_DESKTOP_ISOLATED_BACKEND=1`, which gives this app a private
- *     backend, and a MUTATING request the server cannot scope at all — that
+ *     backend, a primary that is the packaged Rust engine (one profile per
+ *     process, ignores the `profile` param, so every bot would run as the
+ *     default profile), and a MUTATING request the server cannot scope at all — that
  *     one keeps a pooled backend whose FACTR_CONFIG_HOME does the scoping, so a
  *     destructive call can never fall through to the primary's home.
  *
@@ -844,6 +860,14 @@ function resolveProfileBackendRoute(profile, opts: ProfileRouteOptions = {}): Pr
     return { backend: 'pool', descriptorProfile: null, scopePath: false }
   }
 
+  // A running bot computer is the only writer of that profile's SQLite, and a host-side read of the same files is
+  // not safe (the WAL -shm is shared memory, not coherent across the VM boundary; readers can write it). Every
+  // request for the bot goes to its own engine. Only the `/api/profiles` family stays on the primary: those
+  // handlers aggregate across profiles or touch profile.yaml/config, never state.db.
+  if (opts.botComputerRunning && !isProfilesPath(opts.requestPath)) {
+    return { backend: 'pool', descriptorProfile: null, scopePath: false }
+  }
+
   const localScope = localPrimaryRequestScope(opts)
 
   if (localScope !== null) {
@@ -859,7 +883,13 @@ function resolveProfileBackendRoute(profile, opts: ProfileRouteOptions = {}): Pr
   //    a `factr serve` child of its own — UNLESS this request mutates state
   //    the server cannot scope, in which case the pooled backend's own
   //    FACTR_CONFIG_HOME is the only scope left and it keeps one.
-  if (sharesHostBackend({ isolated: opts.isolatedBackend, unscopableRequest: unscopableMutatingRequest(opts) })) {
+  if (
+    sharesHostBackend({
+      isolated: opts.isolatedBackend,
+      unscopableRequest: unscopableMutatingRequest(opts),
+      singleProfilePrimary: opts.primarySingleProfile
+    })
+  ) {
     return { backend: 'primary', descriptorProfile: scopedProfile, scopePath: true }
   }
 

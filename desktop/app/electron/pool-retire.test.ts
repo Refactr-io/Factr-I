@@ -83,3 +83,24 @@ test('candidate selection excludes processless descriptors, renderer-leased work
     ['old', 'fresh']
   )
 })
+
+test('scheduled host bots are protected, including a job enabled while prepare was pending', async () => {
+  for (const enableDuringPrepare of [false, true]) {
+    let scheduled = !enableDuringPrepare
+    const entry = { kind: 'factr', process: {}, lastActiveAt: 1, hasScheduledJobs: () => scheduled }
+    const cancelled: string[] = [], stopped: string[] = []
+    const retirer = createPoolRetirer({
+      pool: new Map([['scheduled', entry]]), coordinator: new LocalBackendSpawnCoordinator(3),
+      prepare: async () => { scheduled = true; return 'permit' }, commit: async () => true,
+      cancel: async key => { cancelled.push(key) }, stopBackend: async key => { stopped.push(key) }
+    })
+    try {
+      assert.equal(await retirer.retireIdle('scheduled', 0), false)
+      assert.deepEqual(await retirer.evictTo(0, 0), [])
+      assert.deepEqual(stopped, [])
+      assert.deepEqual(cancelled, enableDuringPrepare ? ['scheduled'] : [])
+      scheduled = false
+      assert.equal(selectRetirementCandidates([['scheduled', entry]], new Set()).length, 1)
+    } finally { retirer.dispose() }
+  }
+})

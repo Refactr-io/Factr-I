@@ -2319,6 +2319,7 @@ export interface Translations {
     failedLoad: string
     failedUpdate: string
     failedTrigger: string
+    runNow: string
     failedDelete: string
     failedSave: string
     editTitle: string

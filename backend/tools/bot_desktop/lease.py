@@ -52,6 +52,9 @@ class Lease:
     since: float = field(default_factory=time.time)
     reason: str = ""
     epoch: int = 0
+    # The agent's pending ask ("log in to X"): set by request_takeover while the agent holds, shown by the
+    # Screen pane, becomes the takeover reason when a human acquires, and clears on acquire/release.
+    request: str = ""
 
     def as_dict(self) -> Dict[str, object]:
         return asdict(self)
@@ -191,7 +194,19 @@ def acquire(viewer_id: str, *, profile_key: Optional[str] = None, reason: str = 
         # The agent's ask ("please log in to X") stays as the takeover reason: the human needs it
         # on screen WHILE they act, not only before they clicked Take over.
         lease.holder, lease.viewer_id, lease.since = HUMAN, viewer_id, time.time()
-        lease.reason = reason or ""
+        lease.reason = reason or lease.request
+        lease.request = ""
+        return True
+    return _transition(profile_key, _m)
+
+
+def request_takeover(reason: str, *, profile_key: Optional[str] = None) -> Lease:
+    """The agent asks the human to take over (a login, 2FA, CAPTCHA). Only recorded while the agent holds;
+    the epoch bump is what makes the cross-process lease watcher broadcast it to the Screen pane."""
+    def _m(lease: Lease) -> bool:
+        if lease.holder == HUMAN or lease.request == reason:
+            return False
+        lease.request = reason
         return True
     return _transition(profile_key, _m)
 
@@ -216,7 +231,7 @@ def release(viewer_id: Optional[str] = None, *, profile_key: Optional[str] = Non
             # Already the agent's. Bumping the epoch here would make a legitimately admitted in-flight
             # agent action (a double-clicked Hand back, a stray CLI stop) look overtaken and get voided.
             return False
-        lease.holder, lease.viewer_id, lease.since, lease.reason = AGENT, None, time.time(), ""
+        lease.holder, lease.viewer_id, lease.since, lease.reason, lease.request = AGENT, None, time.time(), "", ""
         return True
     return _transition(profile_key, _m)
 

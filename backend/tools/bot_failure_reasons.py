@@ -19,6 +19,10 @@ QUEUED_EXPIRED = "queued_expired"
 DELIVERY_TIMEOUT = "delivery_timeout"
 AGENT_BLOCKED = "agent_blocked"
 CANCELLED = "cancelled"
+# The target bot runs in its own container; local delivery would be a second SQLite writer (tools/bot_relay.py).
+HAS_COMPUTER = "has_computer"
+# A relayed message chain already crossed MAX_RELAY_HOPS bots (tools/bot_relay.py): a loop cap.
+HOP_LIMIT = "hop_limit"
 
 # agent-side
 PROVIDER_AUTH_OR_ACCESS = "provider_auth_or_access"
@@ -31,7 +35,7 @@ MODEL_UNAVAILABLE = "model_unavailable"
 UNKNOWN = "unknown"
 
 ALL_REASONS = frozenset({
-    RUNTIME_OFFLINE, QUEUED_EXPIRED, DELIVERY_TIMEOUT, AGENT_BLOCKED, CANCELLED,
+    RUNTIME_OFFLINE, QUEUED_EXPIRED, DELIVERY_TIMEOUT, AGENT_BLOCKED, CANCELLED, HAS_COMPUTER, HOP_LIMIT,
     PROVIDER_AUTH_OR_ACCESS, PROVIDER_QUOTA_LIMIT, PROVIDER_RATE_LIMIT,
     PROVIDER_SERVER_ERROR, CONTEXT_OVERFLOW, MISSING_CONFIG, MODEL_UNAVAILABLE, UNKNOWN,
 })

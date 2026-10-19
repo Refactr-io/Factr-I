@@ -14,8 +14,9 @@
 
 import { Button, Codicon, EmptyState, GlyphSpinner, host, Tip, useValue } from '@factr/plugin-sdk'
 import type { RpcEvent } from '@factr/plugin-sdk'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
+import { type BotComputer, formatMemory, formatUptime, useBotComputer, useComputerViewHold } from './computer'
 import { useBots } from './i18n'
 import {
   type DisplayLease,
@@ -144,6 +145,22 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
       offStatus()
     }
   }, [bot, refresh, status?.profile_key])
+
+  const computer = useBotComputer(bot)
+  useComputerViewHold(bot)
+
+  // The computer starting, stopping or dying changes which engine answers `display.*`: re-ask.
+  useEffect(() => {
+    if (computer) {
+      void refresh()
+    }
+  }, [computer?.state, refresh]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startComputer = useCallback(async () => {
+    await computer?.start()
+    setConn('idle')
+    void refresh()
+  }, [computer, refresh])
 
   const detach = useCallback((handBack = false) => {
     attachGeneration.current += 1
@@ -363,6 +380,19 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
     [bot, viewer?.id]
   )
 
+  // A bot whose computer is not up has no desktop to show: say why, with the one action.
+  // Also when the display reads "not running" while the computer itself is off or failed: that is one problem
+  // (Start computer), not two buttons and a stale "backend retired" error from a bot engine that is gone.
+  if (
+    computer &&
+    computer.state !== 'on' &&
+    (computer.state === 'starting' ||
+      state?.unavailable ||
+      (status && (!status.supported || (!status.running && computer.state !== 'no-docker'))))
+  ) {
+    return <ComputerGate computer={computer} onStart={() => void startComputer()} />
+  }
+
   if (state?.unavailable) {
     return <EmptyState description={t.screen.portalUnavailable} title={t.screen.unavailableTitle} />
   }
@@ -376,18 +406,26 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
   }
 
   if (status && !status.running) {
+    const on = computer?.state === 'on'
+
+    // With the computer on, the line under the title is its uptime and memory, and Stop sits left of Start screen.
     return (
-      <div className="grid min-h-48 place-items-center p-6 text-center">
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-sm font-medium">{t.screen.stoppedTitle}</div>
-          <div className="text-xs text-muted-foreground">{status.blocker ?? t.screen.stoppedBody}</div>
-          <Button disabled={busy || Boolean(status.blocker)} onClick={() => void start()} size="sm">
-            {busy ? <GlyphSpinner /> : <Codicon name="play" />}
-            {t.screen.start}
-          </Button>
-          {error ? <div className="text-xs text-red-500">{error}</div> : null}
-        </div>
-      </div>
+      <PaneGate
+        actions={
+          <>
+            {on && computer ? <StopButton computer={computer} /> : null}
+            <Button disabled={busy || Boolean(status.blocker)} onClick={() => void start()} size="sm">
+              {busy ? <GlyphSpinner /> : <Codicon name="player-play-filled" size="0.875rem" />}
+              {t.screen.start}
+            </Button>
+          </>
+        }
+        line={on && computer ? <OnText computer={computer} /> : (status.blocker ?? t.screen.stoppedBody)}
+        title={t.screen.stoppedTitle}
+      >
+        {computer && !on ? <ComputerLine computer={computer} onStart={() => void startComputer()} /> : null}
+        {error ? <div className="text-xs text-red-500">{error}</div> : null}
+      </PaneGate>
     )
   }
 
@@ -395,7 +433,7 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1.5 text-xs">
         <Codicon name="device-desktop" />
         <span className="font-medium">{t.screen.title}</span>
         {status?.display ? (
@@ -403,14 +441,15 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
             {status.display} · {status.geometry}
           </span>
         ) : null}
+        {computer ? <ComputerLine computer={computer} onStart={() => void startComputer()} /> : null}
         <span className="grow" />
-        {lease?.holder === 'human' && lease.reason ? (
-          // Why control was taken stays readable while the human acts.
+        {(lease?.holder === 'human' ? lease.reason : lease?.request) ? (
+          // The bot's ask (request_takeover) while it waits, and why control was taken once the human acts.
           <span
             className="max-w-[40%] truncate rounded bg-amber-500/15 px-2 py-0.5 text-amber-600 dark:text-amber-400"
-            title={lease.reason}
+            title={lease?.holder === 'human' ? lease.reason : lease?.request}
           >
-            <Codicon name="bell" /> {lease.reason}
+            <Codicon name="bell" /> {lease?.holder === 'human' ? lease.reason : lease?.request}
           </span>
         ) : null}
         {iHold ? (
@@ -478,6 +517,181 @@ export function BotScreenPane({ bot }: { bot: RosterRow }) {
         {conn === 'error' && error ? (
           <div className="absolute inset-x-0 bottom-0 bg-red-950/80 px-3 py-1.5 text-xs text-red-200">{error}</div>
         ) : null}
+      </div>
+    </div>
+  )
+}
+
+/** "On for 12 min, 640 MB of 2 GB". */
+function OnText({ computer }: { computer: BotComputer }) {
+  const { memLimitBytes, memUsedBytes, startedAt } = computer.status
+
+  return (
+    <>
+      {useBots().computer.onLine(
+        formatUptime(startedAt),
+        memUsedBytes ? formatMemory(memUsedBytes) : null,
+        memLimitBytes ? formatMemory(memLimitBytes) : null
+      )}
+    </>
+  )
+}
+
+function StopButton({ computer }: { computer: BotComputer }) {
+  const t = useBots().computer
+  const [busy, setBusy] = useState(false)
+
+  const stop = async () => {
+    setBusy(true)
+
+    try {
+      await computer.stop()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Button disabled={busy} onClick={() => void stop()} size="sm" variant="ghost">
+      {busy ? <GlyphSpinner /> : <Codicon name="player-stop-filled" size="0.875rem" />}
+      {t.stop}
+    </Button>
+  )
+}
+
+/** One quiet line about the computer with its Start or Stop action (the live header). */
+function ComputerLine({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
+  const t = useBots().computer
+
+  if (computer.state === 'on') {
+    return (
+      <>
+        <span className="whitespace-nowrap text-(--ui-text-secondary)">
+          <OnText computer={computer} />
+        </span>
+        <StopButton computer={computer} />
+      </>
+    )
+  }
+
+  if (computer.state === 'starting') {
+    return (
+      <span className="inline-flex items-center gap-2 text-(--ui-text-secondary)">
+        <GlyphSpinner /> {t.starting}
+      </span>
+    )
+  }
+
+  if (computer.state === 'no-docker') {
+    return null
+  }
+
+  return (
+    <>
+      <span className="text-(--ui-text-secondary)">{computer.state === 'error' ? t.failedTitle : t.offTitle}</span>
+      <Button onClick={onStart} size="sm" variant="ghost">
+        <Codicon name="player-play-filled" size="0.875rem" />
+        {t.start}
+      </Button>
+    </>
+  )
+}
+
+const DOCKER_URL = 'https://www.docker.com/products/docker-desktop/'
+
+/** The pane when there is no running computer to show: why, and the one thing to do. */
+export function ComputerGate({ computer, onStart }: { computer: BotComputer; onStart: () => void }) {
+  const t = useBots().computer
+  const { error, reason } = computer.status
+  const mac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
+  const open = (url: string) => void window.factrDesktop?.openExternal?.(url)
+  const [settingUp, setSettingUp] = useState(false)
+  const [setupMessage, setSetupMessage] = useState<string | undefined>()
+  const setup = async () => {
+    if (settingUp) { return }
+    const api = window.factrDesktop?.botComputer
+    if (!api?.setup) {
+      if (mac && reason === 'not-running') { void api?.openDocker?.() }
+      else {open(DOCKER_URL)}
+      return
+    }
+    setSettingUp(true)
+    setSetupMessage(undefined)
+    try {
+      const result = await api.setup()
+      if (result.state === 'ready') { onStart() }
+      else {setSetupMessage(result.message)}
+    } catch (error) {
+      setSetupMessage(error instanceof Error ? error.message : String(error))
+    } finally { setSettingUp(false) }
+  }
+
+  const view = (() => {
+    if (computer.state === 'starting') {
+      return { body: t.startingBody, title: t.starting }
+    }
+
+    if (computer.state === 'no-docker') {
+      return reason === 'not-installed'
+        ? { action: { label: t.getDocker, run: () => void setup() }, body: t.dockerNotInstalledBody, title: t.dockerNotInstalled }
+        : {
+            action: mac
+              ? { label: t.openDocker, run: () => void setup() }
+              : { label: t.getDocker, run: () => void setup() },
+            body: t.dockerNotRunningBody,
+            title: t.dockerNotRunning
+          }
+    }
+
+    return {
+      action: { label: t.start, run: onStart },
+      body: computer.state === 'error' ? error : t.offBody,
+      title: computer.state === 'error' ? t.failedTitle : t.offTitle
+    }
+  })()
+
+  return (
+    <PaneGate
+      actions={
+        'action' in view && view.action ? (
+          <Button disabled={settingUp} onClick={view.action.run} size="sm">
+            {view.action.label}
+          </Button>
+        ) : null
+      }
+      line={setupMessage || view.body}
+      spinner={settingUp || computer.state === 'starting'}
+      title={settingUp ? t.starting : view.title}
+    />
+  )
+}
+
+/** The one centred block every "nothing to show yet" state uses: title, a quiet line, then the actions in one row. */
+function PaneGate({
+  actions,
+  children,
+  line,
+  spinner,
+  title
+}: {
+  actions?: ReactNode
+  children?: ReactNode
+  line?: ReactNode
+  spinner?: boolean
+  title: ReactNode
+}) {
+  return (
+    <div className="grid min-h-48 place-items-center p-6 text-center">
+      <div className="flex flex-col items-center gap-2">
+        <div className="inline-flex items-center gap-2 text-[length:var(--conversation-text-font-size)] leading-5 font-medium">
+          {spinner ? <GlyphSpinner className="text-[0.875rem]" /> : null}
+          {title}
+        </div>
+        {line ? (
+          <div className="max-w-80 text-[0.8125rem] leading-[1.125rem] text-(--ui-text-secondary)">{line}</div>
+        ) : null}
+        {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+        {children}
       </div>
     </div>
   )

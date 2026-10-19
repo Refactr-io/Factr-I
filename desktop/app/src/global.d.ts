@@ -1,6 +1,7 @@
 import type { GatewayWsUrlResult } from '@factr/shared'
 import type { TranslucencyState } from '@factr/shared/translucency'
 
+import type { ComputerStatus } from '../electron/bot-computers'
 import type { ScreenshotApi } from '../electron/command-screenshot-types'
 import type { HudModifierApi } from '../electron/hud-modifier-types'
 import type { FactrNotification } from '../electron/notification-types'
@@ -16,6 +17,8 @@ import type {
 import type { QuickEntryStatePush, QuickEntryStatus, QuickEntrySubmitPayload } from './store/quick-entry'
 
 export {}
+
+type BotComputerResult = { ok: true; status: ComputerStatus } | { ok: false; error: string }
 
 declare global {
   interface Window {
@@ -60,6 +63,23 @@ declare global {
       // Pool sizing (Settings → Advanced): device-local, live-applied by the
       // main process. get resolves the limits currently in force; set applies
       // (and persists) new ones, evicting/reaping to converge immediately.
+      // Bot computers: one hardened Docker container per bot, started on demand and stopped when idle (30 min).
+      // The bot relay's local door: stamps the heartbeat the Python tools read and counts mail waiting in the outbox.
+      botRelay?: { tick: () => Promise<{ ok: boolean; pending: number }> }
+      botComputer?: {
+        runtimeStatus?: () => Promise<{ state: 'not-installed' | 'installed-not-running' | 'starting' | 'ready' | 'error'; message?: string }>
+        setup?: () => Promise<{ state: 'not-installed' | 'installed-not-running' | 'starting' | 'ready' | 'error'; message?: string }>
+        // Every bot that has a computer and whether it runs; never starts one. The bot relay uses it.
+        list: () => Promise<{ ok: true; computers: { profile: string; running: boolean }[] } | { ok: false; error: string }>
+        status: (profile: string) => Promise<BotComputerResult>
+        // Starts the bot's computer (stopping any host engine for it first) and resolves when its engine is healthy.
+        start: (profile: string) => Promise<BotComputerResult>
+        stop: (profile: string) => Promise<BotComputerResult>
+        // Keep the computer awake while its screen is open ('view') or a turn runs ('turn').
+        hold: (profile: string, reason: 'turn' | 'view', on: boolean) => Promise<{ ok: boolean; error?: string }>
+        // Opens Docker Desktop (macOS only, only /Applications/Docker.app); openExternal refuses a bare app path.
+        openDocker: () => Promise<{ ok: boolean; error?: string }>
+      }
       getPoolLimits: () => Promise<PoolLimits>
       setPoolLimits: (limits: { maxBackends?: number; idleMs?: number }) => Promise<{
         ok: boolean

@@ -35,7 +35,7 @@ _FACTR_CORE_TOOLS = [
     "kanban_comment", "kanban_create", "kanban_link",
     "kanban_unblock",
     "kanban_attach", "kanban_attach_url", "kanban_attachments",
-    "computer_use",
+    "computer_use", "request_takeover",  # request_takeover: only offered where a Bot Desktop can run
     # Service-gated connector account status and authorization links.
     "manage_connections",
 ]

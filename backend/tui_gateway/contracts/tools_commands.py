@@ -418,6 +418,7 @@ class CronAction(WireEnum):
     remove = "remove"
     pause = "pause"
     resume = "resume"
+    run = "run"
 
 
 class CronManageParams(Params):
@@ -503,7 +504,7 @@ class CronManageResult(_Open):
 
 
 method("cron.manage", params=CronManageParams, result=CronManageResult,
-       doc="List/add/remove/pause/resume cron jobs in the (optionally profile-scoped) cron store.")
+       doc="List/add/remove/pause/resume/run cron jobs in the (optionally profile-scoped) cron store.")
 
 
 # ── browser.manage ────────────────────────────────────────────────────────────────────────────

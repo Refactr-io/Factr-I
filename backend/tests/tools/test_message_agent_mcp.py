@@ -27,24 +27,43 @@ def root(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_server_entry_lands_only_in_bot_profiles_never_default(root):
+def test_server_entry_lands_in_bots_and_default_when_bot_mode_is_managed(root):
     a, b, plain = _profile(root, "alice"), _profile(root, "bob"), _profile(root, "plain", bot=False)
-    default_before = (root / "config.yaml").read_text()
-    assert mcp.ensure_teammate_mcp(root) == 2
-    for d in (a, b):
+    assert mcp.ensure_teammate_mcp(root) == 3
+    for d in (root, a, b):
         servers = yaml.safe_load((d / "config.yaml").read_text())["mcp_servers"]
         assert servers[bot_relay.TEAMMATES_MCP_SERVER]["args"] == ["-m", "tools.message_agent_mcp"]
-        assert yaml.safe_load((d / "config.yaml").read_text())["model"] == {"default": "x"}
+        assert yaml.safe_load((d / "config.yaml").read_text())["model"] == {"default": "root" if d == root else "x"}
     assert "mcp_servers" not in (plain / "config.yaml").read_text()
-    assert (root / "config.yaml").read_text() == default_before
     assert mcp.ensure_teammate_mcp(root) == 0  # idempotent
+
+
+def test_install_without_bot_roster_keeps_default_unchanged(root):
+    _profile(root, "plain", bot=False)
+    before = (root / "config.yaml").read_text()
+    assert mcp.ensure_teammate_mcp(root) == 0
+    assert (root / "config.yaml").read_text() == before
+
+
+def test_managed_install_can_create_missing_default_config(root):
+    _profile(root, "alice")
+    (root / "config.yaml").unlink()
+    assert mcp.ensure_teammate_mcp(root) == 2
+    assert mcp.SERVER_NAME in yaml.safe_load((root / "config.yaml").read_text())["mcp_servers"]
+
+
+def test_new_managed_bot_without_config_gets_teammate_server(root):
+    alice = _profile(root, "alice")
+    (alice / "config.yaml").unlink()
+    assert mcp.ensure_teammate_mcp(root) == 2
+    assert mcp.SERVER_NAME in yaml.safe_load((alice / "config.yaml").read_text())["mcp_servers"]
 
 
 def test_packaged_entry_uses_engine_expanded_variables(monkeypatch):
     monkeypatch.setenv("FACTR_BACKEND_PYTHON", "/app/py")
     e = mcp.desired_server_entry()
     assert e["command"] == "${FACTR_BACKEND_PYTHON}" and e["env"]["PYTHONPATH"] == "${FACTR_BACKEND_PYTHONPATH}"
-    assert e["timeout_secs"] >= 600
+    assert e["timeout_secs"] == 10  # initialize and tools/list must never wait for a delivery budget
 
 
 def test_python_loop_skips_the_engine_side_server(root, monkeypatch):

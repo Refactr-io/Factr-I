@@ -2,11 +2,11 @@
 
 ## v0.0.10 (unreleased)
 
+- Bots keep a canonical chat on their own engine, queue attributed messages and replies, and route scheduled output back to that chat. Startup errors are bounded and visible, and idle engine retirement waits for the process to exit.
+- Bot computers support Docker setup, persistent Start/Stop, scheduled work and private local sandbox fallbacks where supported. Local fallback requires the app to remain open; group-room rounds still run in the app.
 - When OpenCode is installed, onboarding and the model picker offer to connect its Zen sign-in, with explicit consent and a key-entry fallback.
-
 - Settings and eligible Scheduled jobs reads use the native backend without starting Python. Enabled pets still load from their configured profile.
 - Markdown caches have source-size limits, closed inter-agent replies release their content, math loads on demand, and muted haptics skip audio warm-up. Pane title updates preserve drafts and local state.
-
 - Scrollbars fade after scrolling, the sidebar scrollbar sits at the panel edge, and Run history uses a history icon.
 
 ## v0.0.9 (2026-10-16)

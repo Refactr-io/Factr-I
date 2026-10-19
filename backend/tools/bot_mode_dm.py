@@ -184,10 +184,11 @@ def _resolve_local_name(target: str, roster: list[str], root: Path | None = None
     return next(iter(hits)) if len(hits) == 1 else None
 
 
-def _err(message: str, *, roster: list[str] | None = None, peers: list[str] | None = None) -> str:
+def _err(message: str, *, roster: list[str] | None = None, peers: list[str] | None = None,
+         reason: str | None = None) -> str:
     from tools.bot_failure_reasons import classify_agent_error
 
-    payload: dict[str, Any] = {"error": message, "reason": classify_agent_error(message)}
+    payload: dict[str, Any] = {"error": message, "reason": reason or classify_agent_error(message)}
     if roster is not None:
         payload["teammates"] = roster
     if peers is not None:
@@ -279,12 +280,27 @@ def message_agent_tool(target: str = "", message: str = "", task_id: Optional[st
         return _roster_err(f"No teammate named '{raw_target}' on this install, on a connected "
                            "machine, or on a registered peer. Pick a name from the roster "
                            "(roles are listed in your system prompt).")
+    from tools.bot_failure_reasons import HAS_COMPUTER
+    from tools.bot_relay import HAS_COMPUTER_MESSAGE, computer_connection_id, has_computer, local_target, relay_alive
+    if not has_computer(roster_homes[resolved]) and relay_alive(root):
+        # The Desktop relay is running: the message becomes a real turn in the teammate's own Bot Chat, on its own
+        # engine (`bot.chat.deliver`), instead of a Python CLI turn in a session its Bot Chat never shows.
+        relayed = _try_relay_delivery(root, resolved, content, me, match=local_target(resolved, _handle(resolved)),
+                                      **delivery)
+        if relayed is not None:
+            return relayed
+    if has_computer(roster_homes[resolved]):
+        # A host CLI turn would be a second SQLite writer next to the container: deliver through the Desktop relay,
+        # which treats the bot's computer as its own connection.
+        relayed = _try_relay_delivery(root, f"{resolved}@{computer_connection_id(resolved)}", content, me, **delivery)
+        return relayed if relayed is not None else _err(f"@{_handle(resolved)}: {HAS_COMPUTER_MESSAGE}.",
+                                                       reason=HAS_COMPUTER)
     return _start_delivery([*bot_cli_prefix(), "-p", resolved, *BOT_CHAT_TURN_ARGS], content, f"@{_handle(resolved)}",
                            stdin_file=False, profile_home=roster_homes[resolved], author=author, **delivery)
 
 
 def _try_relay_delivery(root: Path, raw_target: str, content: str, me: str, *,
-                        task_id: Optional[str], agent: Any) -> Optional[str]:
+                        task_id: Optional[str], agent: Any, match: Optional[dict] = None) -> Optional[str]:
     """Cross-connection delivery via the Desktop relay; None when the target doesn't
     resolve against the relay roster. The envelope is queued on disk for the Desktop
     to drain; a background waiter is spawned immediately so the relayed reply wakes
@@ -296,8 +312,8 @@ def _try_relay_delivery(root: Path, raw_target: str, content: str, me: str, *,
             resolve_remote_target, waiter_command,
         )
 
-        roster = read_remote_roster(root)
-        match = resolve_remote_target(raw_target, roster) if roster else None
+        roster = read_remote_roster(root) if match is None else []
+        match = match or (resolve_remote_target(raw_target, roster) if roster else None)
         if match is None:
             return None
         if match == "ambiguous":
@@ -559,9 +575,9 @@ def _run_delivery(argv: list[str], dm_file: str, *, stdin_file: bool,
             if record is not None:
                 return _wait_live_dm(record["profile_home"], record["delivery_id"], dm_file=dm_file)
     try:
-        from tools.bot_relay import delivery_env
+        from tools.bot_relay import current_relay_hops, delivery_env
 
-        env = delivery_env(author, profile_home if not stdin_file else None)
+        env = delivery_env(author, profile_home if not stdin_file else None, hops=current_relay_hops())
         with _delivery_lock(argv, stdin_file=stdin_file):
             if not stdin_file:
                 return _run_local_turn(argv, dm_file, env=env)

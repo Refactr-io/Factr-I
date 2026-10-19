@@ -74,3 +74,20 @@ def test_cron_manage_unknown_profile_errors(tmp_path, monkeypatch):
 
     assert "error" in resp, resp
     assert resp["error"]["code"] == 4064
+
+
+def test_cron_manage_run_fires_the_named_job_now(monkeypatch):
+    """`run` is the bot Routines pane's "Run now": it reaches cronjob(action='run', job_id=<name>)."""
+    import tools.cronjob_tools as cronjob_tools
+
+    seen = {}
+
+    def fake(**kwargs):
+        seen.update(kwargs)
+        return json.dumps({"claimed": True, "dispatched": True})
+
+    monkeypatch.setattr(cronjob_tools, "cronjob", fake)
+    resp = server.handle_request({"id": "3", "method": "cron.manage", "params": {"action": "run", "name": "job-1"}})
+
+    assert resp["result"] == {"claimed": True, "dispatched": True}
+    assert seen == {"action": "run", "job_id": "job-1"}

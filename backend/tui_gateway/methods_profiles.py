@@ -365,13 +365,16 @@ def _inherit_launch_model(path) -> bool:
     # A custom `providers:` gateway travels with the model it backs (same seed as the CLI path). It is
     # written BEFORE the pin: the pin validates the pick inside the new profile, and an empty profile
     # rejects a provider it has not been told about ("Unknown provider").
-    custom = _lazy("factr_backend.profiles", "launch_model_seed")(launch_cfg).get("providers")
-    if custom:
-        from factr_backend.config import load_config, save_config
-        with _factr_home_scope(path):
-            cfg = load_config()
+    seed = _lazy("factr_backend.profiles", "launch_model_seed")(launch_cfg)
+    custom = seed.get("providers")
+    from factr_backend.config import load_config, save_config
+    with _factr_home_scope(path):
+        cfg = load_config()
+        # The endpoint and context are part of the selected model, not just its two labels.
+        cfg["model"] = {**seed["model"], **dst_model}
+        if custom:
             cfg["providers"] = {**(cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {}), **custom}
-            save_config(cfg)
+        save_config(cfg)
     _pin_profile_model(path, str(model_cfg["provider"]), str(model_cfg["default"]))
     return True
 

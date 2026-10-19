@@ -45,9 +45,11 @@ impl Conn {
     /// opens a link whose frames end up here again, a cycle the compiler cannot size.
     pub(super) fn follow_child(self: Arc<Self>, parent: String, child: String, args: Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
         Box::pin(async move {
+            if bot_stop::cancelled(&child) { return; }
             let row = Child { parent: parent.clone(), goal: goal_of(&args), started: Instant::now(), running: true, turn: false, tools: 0, usage: json!({}), text: String::new() };
             let start = payload(&child, &row, "running");
             self.children.lock().await.insert(child.clone(), row);
+            if bot_stop::cancelled(&child) { self.finish_child(&child,"interrupted","Stopped with the parent task").await; return; }
             self.emit("subagent.start", Some(&parent), start).await;
             // Events from here on are the child's own. A child that already finished before the attach
             // has none: its stored answer is the outcome.
@@ -70,6 +72,7 @@ impl Conn {
     /// Take the follow-worthy events of a followed child out of `outs` (they become `subagent.*`),
     /// and hand back the rest (an approval the child waits on is still the user's to answer).
     pub(super) async fn child_events(&self, child: &str, outs: Vec<Out>) -> Vec<Out> {
+        if bot_stop::cancelled(child) { self.finish_child(child,"interrupted","Stopped with the parent task").await; return Vec::new(); }
         let mut rest = Vec::new();
         for out in outs {
             let Out::Event { ty, payload: event, .. } = &out else {
@@ -122,7 +125,7 @@ impl Conn {
         rest
     }
 
-    async fn finish_child(&self, child: &str, status: &str, summary: &str) {
+    pub(super) async fn finish_child(&self, child: &str, status: &str, summary: &str) {
         let mut children = self.children.lock().await;
         let Some(c) = children.get_mut(child) else { return };
         if !c.running {

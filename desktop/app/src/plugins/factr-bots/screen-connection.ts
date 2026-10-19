@@ -155,19 +155,19 @@ export async function resolveScreenWsUrl(bot: RosterRow, ticket: string): Promis
 
   const route = resolved.route
 
-  // The /api/ws credential authenticated the RPC that minted the display ticket;
-  // the bridge authenticates on the ticket alone, so the gateway credential is
-  // dropped rather than spending a second one-shot ticket.
+  // The one-shot `?ticket=` the gateway URL may carry is dropped (the display ticket is the bridge's own). The
+  // reusable `?token=` stays: a bot's Factr-I engine (its container) authenticates every WebSocket upgrade on it
+  // before proxying, so a bare display ticket got 401 and the screen never connected. The engine also only starts
+  // the Python feature runtime that owns the bridge for an explicit `feature=1`.
   const url = new URL(
     await resolveSiblingWsUrl(
       { connectionId: route?.connectionId ?? null, profile: route?.profile ?? bot.name },
-      '/api/display/ws',
-      {
-        stripGatewayCredential: true
-      }
+      '/api/display/ws'
     )
   )
 
+  url.searchParams.delete('ticket')
+  url.searchParams.set('feature', '1')
   url.searchParams.set('display_ticket', ticket)
 
   return url.toString()

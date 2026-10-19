@@ -77,11 +77,7 @@ export function renderRosterContent({
           {staleNotice}
         </div>
       ) : null}
-      {(isLoading || initialRosterLoading) && !roster.length ? (
-        <div className="flex flex-1 items-center justify-center">
-          <GlyphSpinner className="text-(--ui-text-tertiary)" spinner="breathe" />
-        </div>
-      ) : error && !roster.length ? (
+      {error && !roster.length ? (
         <div className="grid gap-2 px-3 py-4 text-xs text-(--ui-text-tertiary)">
           <div>
             {gatewayUp
@@ -91,6 +87,10 @@ export function renderRosterContent({
           <Button className="justify-self-start" onClick={() => void refetch()} size="sm" variant="secondary">
             {b.roster.retryNow}
           </Button>
+        </div>
+      ) : (isLoading || initialRosterLoading) && !roster.length ? (
+        <div className="flex flex-1 items-center justify-center">
+          <GlyphSpinner className="text-(--ui-text-tertiary)" spinner="breathe" />
         </div>
       ) : roster.length === 0 ? (
         <PanelEmpty description={b.roster.emptyDesc} icon="hubot" title={b.roster.emptyTitle} />
