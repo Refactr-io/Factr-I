@@ -17,9 +17,9 @@ use tokio::sync::{Mutex, Notify};
 
 /// Factr can take a while on a cold start (it measured ~1.6 s warm here).
 const START_TIMEOUT: Duration = Duration::from_secs(120);
-/// The Python backend costs hundreds of MB resident and starts in about 2 s, so it stops after 3 idle
-/// minutes. An enabled messaging platform, or a cron job that runs more often than this, keeps it up.
-pub const IDLE_STOP_AFTER: Duration = Duration::from_secs(3 * 60);
+/// The Python backend costs hundreds of MB resident and starts in about 1.7 s (measured cold: 1.55-1.79 s), so it
+/// stops after 1 idle minute. An enabled messaging platform, or a cron job that runs more often than this, keeps it up.
+pub const IDLE_STOP_AFTER: Duration = Duration::from_secs(60);
 
 pub fn idle_stop_after() -> Duration {
     std::env::var("FACTR_FEATURE_IDLE_MS")

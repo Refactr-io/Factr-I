@@ -1,0 +1,322 @@
+{
+  "pristine": {},
+  "configured": {
+    "files": {
+      "config.yaml": "model:\n  default: gpt-5.5\n  provider: openai-codex\nauxiliary:\n  vision:\n    provider: openrouter\n    model: google/gemini-3-flash\nmoa:\n  default_preset: default\n  presets:\n    default:\n      reference_models:\n        - {provider: openrouter, model: deepseek/deepseek-v4-pro}\n      aggregator: {provider: openrouter, model: anthropic/claude-opus-4.8}\ndisplay:\n  language: en\n"
+    },
+    "fallback": [
+      "model_moa"
+    ]
+  },
+  "profile_empty": {
+    "files": {
+      "config.yaml": "model: {default: root-model, provider: ollama}\n",
+      "profiles/scribe/config.yaml": "model: {default: named-model, provider: ollama}\n"
+    },
+    "query": "profile=",
+    "routes": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "profile_current": {
+    "files": {
+      "config.yaml": "model: {default: root-model, provider: ollama}\n",
+      "profiles/scribe/config.yaml": "model: {default: named-model, provider: ollama}\n"
+    },
+    "query": "profile=current",
+    "routes": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "profile_default": {
+    "files": {
+      "config.yaml": "model: {default: root-model, provider: ollama}\n",
+      "profiles/scribe/config.yaml": "model: {default: named-model, provider: ollama}\n"
+    },
+    "query": "profile=default",
+    "routes": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "profile_named": {
+    "files": {
+      "config.yaml": "model: {default: root-model, provider: ollama}\n",
+      "profiles/scribe/config.yaml": "model: {default: named-model, provider: ollama}\n"
+    },
+    "query": "profile=scribe",
+    "routes": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "profile_missing": {
+    "files": {
+      "config.yaml": "model: {default: root-model, provider: ollama}\n",
+      "profiles/scribe/config.yaml": "model: {default: named-model, provider: ollama}\n"
+    },
+    "query": "profile=missing",
+    "routes": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "profile_invalid": {
+    "files": {
+      "config.yaml": "model: {default: root-model, provider: ollama}\n",
+      "profiles/scribe/config.yaml": "model: {default: named-model, provider: ollama}\n"
+    },
+    "query": "profile=..%2Fbad",
+    "routes": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "named_engine_default": {
+    "home": "profiles/scribe",
+    "files": {
+      "config.yaml": "model: {default: root-model, provider: ollama}\n",
+      "profiles/scribe/config.yaml": "model: {default: named-model, provider: ollama}\n"
+    },
+    "query": "profile=default",
+    "routes": [
+      "model_auxiliary",
+      "pairing",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "model_auxiliary",
+      "pairing",
+      "cron_delivery_targets"
+    ]
+  },
+  "jobs_all": {
+    "query": "profile=all",
+    "routes": [
+      "cron_jobs"
+    ]
+  },
+  "managed": {
+    "files": {
+      "managed/config.yaml": "model: {default: managed-model, provider: ollama}\n"
+    },
+    "managed": "managed",
+    "fallback": [
+      "schema",
+      "model_auxiliary",
+      "model_moa",
+      "elevenlabs_voices",
+      "pairing",
+      "cron_jobs",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "plugins": {
+    "files": {
+      "plugins/example/plugin.yaml": "name: example\nversion: 1.0.0\n"
+    },
+    "routes": [
+      "schema",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "schema",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "root_plugins_named_engine": {
+    "home": "profiles/scribe",
+    "files": {
+      "config.yaml": "{}\n",
+      "profiles/scribe/config.yaml": "{}\n",
+      "plugins/example/plugin.yaml": "name: example\nversion: 1.0.0\n"
+    },
+    "routes": [
+      "schema",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "schema",
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "command_voice_top": {
+    "files": {
+      "config.yaml": "tts:\n  local_speaker:\n    type: command\n    command: echo\nstt:\n  local_listener:\n    type: command\n    command: echo\n"
+    },
+    "routes": [
+      "schema"
+    ],
+    "fallback": [
+      "schema"
+    ]
+  },
+  "command_voice_nested": {
+    "files": {
+      "config.yaml": "tts:\n  providers:\n    local_speaker:\n      command: echo\nstt:\n  providers:\n    local_listener:\n      command: echo\n"
+    },
+    "routes": [
+      "schema"
+    ],
+    "fallback": [
+      "schema"
+    ]
+  },
+  "jobs_empty": {
+    "files": {
+      "cron/jobs.json": "{\"jobs\": []}"
+    },
+    "routes": [
+      "cron_jobs"
+    ],
+    "fallback": [
+      "cron_jobs"
+    ]
+  },
+  "jobs_present": {
+    "files": {
+      "cron/jobs.json": "{\"jobs\": [{\"id\": \"fixture-job\", \"name\": \"Paused fixture job\", \"prompt\": \"Test only\", \"schedule\": {\"kind\": \"interval\", \"minutes\": 60}, \"enabled\": false, \"state\": \"paused\", \"next_run_at\": null, \"created_at\": \"2026-01-01T00:00:00+00:00\"}]}"
+    },
+    "routes": [
+      "cron_jobs"
+    ],
+    "fallback": [
+      "cron_jobs"
+    ]
+  },
+  "jobs_named": {
+    "files": {
+      "config.yaml": "{}\n",
+      "profiles/scribe/config.yaml": "{}\n",
+      "profiles/scribe/cron/jobs.json": "{\"jobs\": [{\"id\": \"fixture-job\", \"name\": \"Paused fixture job\", \"prompt\": \"Test only\", \"schedule\": {\"kind\": \"interval\", \"minutes\": 60}, \"enabled\": false, \"state\": \"paused\", \"next_run_at\": null, \"created_at\": \"2026-01-01T00:00:00+00:00\"}]}"
+    },
+    "routes": [
+      "cron_jobs"
+    ],
+    "fallback": [
+      "cron_jobs"
+    ]
+  },
+  "pairing_current": {
+    "files": {
+      "platforms/pairing/telegram-approved.json": "{\"123\": {\"user_name\": \"Fixture User\", \"approved_at\": 1700000000}}",
+      "platforms/pairing/telegram-pending.json": "{\"fixture-request\": {\"user_id\": \"456\", \"user_name\": \"Pending User\", \"created_at\": 1800000000, \"hash\": \"fixture-hash\", \"salt\": \"fixture-salt\"}}"
+    },
+    "routes": [
+      "pairing"
+    ],
+    "fallback": [
+      "pairing"
+    ]
+  },
+  "pairing_legacy": {
+    "files": {
+      "pairing/telegram-approved.json": "{\"123\": {\"user_name\": \"Fixture User\", \"approved_at\": 1700000000}}",
+      "pairing/telegram-pending.json": "{\"fixture-request\": {\"user_id\": \"456\", \"user_name\": \"Pending User\", \"created_at\": 1800000000, \"hash\": \"fixture-hash\", \"salt\": \"fixture-salt\"}}"
+    },
+    "routes": [
+      "pairing"
+    ],
+    "fallback": [
+      "pairing"
+    ]
+  },
+  "blueprints_platform": {
+    "files": {
+      "config.yaml": "platforms:\n  telegram:\n    enabled: true\n    token: fixture-only\n"
+    },
+    "routes": [
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ],
+    "fallback": [
+      "cron_blueprints",
+      "cron_delivery_targets"
+    ]
+  },
+  "aux_alias": {
+    "files": {
+      "config.yaml": "model:\n  default: fixture-model\n  provider: ollama\nauxiliary:\n  vision:\n    provider: main\n    reasoning_effort: high\n"
+    },
+    "routes": [
+      "model_auxiliary"
+    ]
+  }
+}

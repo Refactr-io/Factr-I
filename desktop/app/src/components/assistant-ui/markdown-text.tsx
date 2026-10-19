@@ -19,7 +19,6 @@ import { ErrorBoundary } from '@/components/error-boundary'
 import { detectArtifact } from '@/lib/artifact-detect'
 import { renderMediaTags } from '@/lib/chat-messages/parts'
 import { normalizeExternalUrl, openExternalLink, PrettyLink } from '@/lib/external-link'
-import { createMemoizedMathPlugin } from '@/lib/katex-memo'
 import { parseMarkdownIntoBlocksCached } from '@/lib/markdown-blocks'
 import { preprocessMarkdown } from '@/lib/markdown-preprocess'
 import {
@@ -39,6 +38,7 @@ import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { previewTargetFromMarkdownHref } from '@/lib/preview-targets'
 import { sessionRefFromMarkdownHref } from '@/lib/session-refs'
 import { isDirectiveInProgress } from '@/lib/transcript-directives'
+import { useMathPlugin } from '@/lib/use-math-plugin'
 import { cn } from '@/lib/utils'
 
 import { ArtifactCard } from './artifact-card'
@@ -49,51 +49,43 @@ import { paragraphPlainText, TranscriptDirectiveLeaf, useResolvedParagraph } fro
 
 const onboardingEnabled = isOnboardingEnabled()
 
-// Math rendering plugin (KaTeX). Configured once at module scope — the
-// plugin is stateless beyond its internal cache so re-creating per-render
-// would needlessly thrash. We use a memoizing wrapper around rehype-katex
-// (see lib/katex-memo.ts) so that during streaming we re-katex only the
-// equations whose source actually changed since the last token. With the
-// stock @streamdown/math plugin every equation re-renders on every token,
-// which throttles UI updates badly for math-heavy responses; the memoized
-// plugin keeps the steady-state work proportional to "new equations
-// arriving" rather than "equations × tokens-per-second".
-//
-// `singleDollarTextMath: true` enables `$x^2$` for inline math (de-facto
-// LLM convention). The default false-setting only accepts `$$...$$`.
-const mathPlugin = createMemoizedMathPlugin({ singleDollarTextMath: true })
-
 // `@streamdown/code` statically imports ALL of shiki (every grammar + theme —
 // the single largest chunk in the renderer), so it must never sit on the
-// entry graph. Load it on first markdown mount and swap it into the plugin
+// entry graph. Load it when a message first carries a fence and swap it into the plugin
 // table when it lands; until then fenced code renders through the
 // `SyntaxHighlighter` override's plain path (same output Shiki's own
 // `delay` fallback shows), so nothing flashes or reflows unexpectedly.
 type CodePlugin = typeof streamdownCode
 let codePluginCache: CodePlugin | null = null
 
-function useCodePlugin(): CodePlugin | null {
+// Only a message that carries a fenced block asks for it: the bundle is ~18 MB of JS (~150 MB of renderer RSS
+// once parsed), which a plain-text reply never needs. Once loaded it is shared by every message.
+const hasFence = (text: string) => text.includes('```') || text.includes('~~~')
+
+function useCodePlugin(needed: boolean): CodePlugin | null {
   const [plugin, setPlugin] = useState(codePluginCache)
 
   useEffect(() => {
-    if (plugin) {
+    if (plugin || !needed) {
       return
     }
 
     let cancelled = false
 
-    void import('@streamdown/code').then(({ code }) => {
-      codePluginCache = code
+    void import('@streamdown/code')
+      .then(({ code }) => {
+        codePluginCache = code
 
-      if (!cancelled) {
-        setPlugin(code)
-      }
-    })
+        if (!cancelled) {
+          setPlugin(code)
+        }
+      })
+      .catch(() => undefined)
 
     return () => {
       cancelled = true
     }
-  }, [plugin])
+  }, [plugin, needed])
 
   return plugin
 }
@@ -596,8 +588,9 @@ function MarkdownTextSurface({
   // render as code cards. The expensive Shiki pass is deferred by
   // `SyntaxHighlighter` below when `isStreaming` is true, and the code plugin
   // itself arrives async (useCodePlugin) so shiki never blocks cold start.
-  const code = useCodePlugin()
-  const plugins = useMemo(() => (code ? { math: mathPlugin, code } : { math: mathPlugin }), [code])
+  const code = useCodePlugin(hasFence(text))
+  const math = useMathPlugin(text)
+  const plugins = useMemo(() => ({ ...(math ? { math } : {}), ...(code ? { code } : {}) }), [code, math])
 
   const components = useMemo(
     () =>

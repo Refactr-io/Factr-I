@@ -1,0 +1,29 @@
+{
+ "cron_jobs": {
+  "body": [
+   {
+    "created_at": "2026-01-01T00:00:00+00:00",
+    "enabled": false,
+    "factr_home": "<fixture>/profiles/scribe",
+    "id": "fixture-job",
+    "is_default_profile": false,
+    "latest_execution": null,
+    "name": "Paused fixture job",
+    "next_run_at": null,
+    "profile": "scribe",
+    "profile_name": "scribe",
+    "prompt": "Test only",
+    "schedule": {
+     "kind": "interval",
+     "minutes": 60
+    },
+    "schedule_display": "?",
+    "scheduler_heartbeat_age_s": null,
+    "skill": null,
+    "skills": [],
+    "state": "paused"
+   }
+  ],
+  "status": 200
+ }
+}

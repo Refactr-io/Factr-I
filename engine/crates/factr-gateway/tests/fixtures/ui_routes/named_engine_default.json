@@ -1,0 +1,133 @@
+{
+ "cron_delivery_targets": {
+  "body": {
+   "targets": [
+    {
+     "home_env_var": null,
+     "home_target_set": true,
+     "id": "local",
+     "name": "Local (save only)"
+    },
+    {
+     "home_env_var": null,
+     "home_target_set": true,
+     "id": "bot-chat:default",
+     "name": "Bot Chat (default)"
+    },
+    {
+     "home_env_var": null,
+     "home_target_set": true,
+     "id": "bot-chat:scribe",
+     "name": "Bot Chat (scribe)"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "model_auxiliary": {
+  "body": {
+   "main": {
+    "model": "root-model",
+    "provider": "ollama"
+   },
+   "tasks": [
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "vision"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "compression"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "skills_hub"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "approval"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "mcp"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "title_generation"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "review"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "triage_specifier"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "kanban_decomposer"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "profile_describer"
+    },
+    {
+     "base_url": "",
+     "local_endpoint": false,
+     "model": "",
+     "provider": "auto",
+     "reasoning_effort": null,
+     "task": "curator"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "pairing": {
+  "body": {
+   "approved": [],
+   "pending": []
+  },
+  "status": 200
+ }
+}

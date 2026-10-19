@@ -1,0 +1,24 @@
+{
+ "pairing": {
+  "body": {
+   "approved": [
+    {
+     "approved_at": 1700000000,
+     "platform": "telegram",
+     "user_id": "123",
+     "user_name": "Fixture User"
+    }
+   ],
+   "pending": [
+    {
+     "age_minutes": 1,
+     "platform": "telegram",
+     "request_id": "fixture-request",
+     "user_id": "456",
+     "user_name": "Pending User"
+    }
+   ]
+  },
+  "status": 200
+ }
+}

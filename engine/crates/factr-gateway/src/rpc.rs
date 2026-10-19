@@ -2923,7 +2923,12 @@ impl Conn {
             // Launch-time reads of Python-owned state: stubbed until Python is up for something else.
             _ => {
                 if let Some(stub) = crate::boot_stubs::answer(method, p) {
-                    if !self.backend_running().await {
+                    let local = if matches!(method, "pet.info" | "pet.info.meta") {
+                        crate::boot_stubs::pet_disabled(method, p)
+                    } else {
+                        !self.backend_running().await
+                    };
+                    if local {
                         return Ok(stub);
                     }
                 }
@@ -4933,6 +4938,53 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(!marker.exists(), "no backend process was launched for the catalog");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn pet_polls_forward_enabled_named_and_managed_scopes_even_before_backend_start() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = ["FACTR_CONFIG_HOME", "FACTR_MANAGED_DIR"].map(|k| (k, std::env::var_os(k)));
+        let dir = std::env::temp_dir().join(format!("pet-routing-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("profiles/scribe")).unwrap();
+        unsafe {
+            std::env::set_var("FACTR_CONFIG_HOME", &dir);
+            std::env::remove_var("FACTR_MANAGED_DIR");
+        }
+        let conn = test_conn_with_backend("pet-routing", "/usr/bin/false");
+        for method in ["pet.info", "pet.info.meta"] {
+            std::fs::write(dir.join("config.yaml"), "display: {pet: {enabled: true}}\n").unwrap();
+            assert!(conn.dispatch(method, &json!({})).await.is_err(), "an enabled pet must wake Python");
+        }
+        // The stub represents an already-running feature service; its answer identifies forwarding.
+        *conn.forward_stub.lock().unwrap() = Some(Arc::new(|_, _| Ok(json!({"forwarded": true}))));
+        std::fs::write(dir.join("config.yaml"), "display: {pet: {enabled: false}}\n").unwrap();
+        std::fs::write(dir.join("profiles/scribe/config.yaml"), "display: {pet: {enabled: true}}\n").unwrap();
+        for method in ["pet.info", "pet.info.meta"] {
+            assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"enabled": false}));
+            assert_eq!(conn.dispatch(method, &json!({"profile": "scribe"})).await.unwrap(), json!({"forwarded": true}));
+            for profile in ["SCRIBE", "Default", "missing", "factr", ".factr", "_invalid"] {
+                assert_eq!(conn.dispatch(method, &json!({"profile": profile})).await.unwrap(), json!({"forwarded": true}));
+            }
+            assert_eq!(conn.dispatch(method, &json!({"profile": 123})).await.unwrap(), json!({"forwarded": true}));
+            assert_eq!(conn.dispatch(method, &json!({"session_id": "s1"})).await.unwrap(), json!({"forwarded": true}));
+            unsafe { std::env::set_var("FACTR_CONFIG_HOME", dir.join("profiles/scribe")) };
+            assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"forwarded": true}));
+            assert_eq!(conn.dispatch(method, &json!({"profile": "default"})).await.unwrap(), json!({"enabled": false}));
+            unsafe {
+                std::env::set_var("FACTR_CONFIG_HOME", &dir);
+                std::env::set_var("FACTR_MANAGED_DIR", dir.join("managed"));
+            }
+            assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"forwarded": true}));
+            unsafe { std::env::remove_var("FACTR_MANAGED_DIR") };
+        }
+        for (key, value) in before {
+            match value {
+                Some(v) => unsafe { std::env::set_var(key, v) },
+                None => unsafe { std::env::remove_var(key) },
+            }
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     /// The requests the packaged desktop sends within the first seconds of launch (traced with

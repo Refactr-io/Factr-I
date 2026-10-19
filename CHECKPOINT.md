@@ -32,3 +32,16 @@
 - Logs: /private/tmp/integration-check-{yo6timy_,4uqpx171,0mx3w8s9,r7610r54,otnb3h2n,el27panl}/output.log.
 - Design-law source review: imported scrollbar/icon changes preserve the existing interface. Pointer/visual checks deferred to GUI QA as expressly requested.
 - Next: merge Rust RAM and preserve its QA notes.
+
+## Milestone 2 validation in progress
+
+- Rust RAM source merged without conflicts. CHECKPOINT.md add/add keeps this integration record; original branch checkpoint/report archived under /private/tmp/integration-tool-state (branch history also preserves them). Root NEEDS-GUI-QA.md is preserved.
+- New pane-mirror test lacked the minWidth now required by this base. Added only minWidth to its fixture. Targeted renderer suite: 8 files, 58 passed; fixture rerun: 1 passed. TypeScript rerun exits 0 after the fix. All 17 touched renderer files pass ESLint. Electron pool smoke: 2 passed.
+- First naming gate caught only personal paths in duplicated archive notes; moved those notes outside the source tree. Full naming gate rerun: OK, zero hits. No gate suppression or product rename.
+- Gateway full serial tests and real Python golden parity check running. Isolated backend venv installed from locked dev export, no shared environment changed.
+
+### Milestone 2 validated
+
+- cargo test -p factr-gateway --locked -- --test-threads=1: exit 0, all suites pass (229.78s, including cold compile). Exact log: /private/tmp/integration-check-dwkkrgl8/output.log.
+- backend .venv/bin/python -m pytest tests/factr_backend/test_ui_route_goldens.py -q: 1 passed, validates all 22 Python cases plus embedded JSON; /private/tmp/integration-check-mf7sei4h/output.log.
+- Fixture compatibility fix, changelog and scrollbar QA notes included. No engine core or README changes. Next: OpenCode merge.
