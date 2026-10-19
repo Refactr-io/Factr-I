@@ -310,10 +310,8 @@ SOFTWARE.
 The fonts in `desktop/app/src/fonts/` are licensed under the SIL Open Font
 License, Version 1.1. The full text accompanies each family:
 
-- JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors
-  (https://github.com/JetBrains/JetBrainsMono): `desktop/app/src/fonts/OFL-JetBrainsMono.txt`
-- Arimo, Copyright 2020 The Arimo Project Authors
-  (https://github.com/googlefonts/arimo): `desktop/app/src/fonts/arimo/OFL.txt`
+- Pretendard Std Variable and IBM Plex Mono: full license text in the sections below and in
+  `desktop/app/src/fonts/{pretendard,ibm-plex-mono}/OFL.txt`
 
 ## Other bundled material
 
