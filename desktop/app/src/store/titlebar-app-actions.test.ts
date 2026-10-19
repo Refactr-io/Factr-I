@@ -16,9 +16,10 @@ describe('titlebarAppActionsClusterCounts', () => {
   })
 
   it('releases the space of every tool Simple mode hides, on both sides', () => {
-    // Back, forward and the sidebar toggle (3) + what Simple keeps of the app actions; nothing fixed on the right.
-    expect(titlebarAppActionsClusterCounts('right', 0, 0, 'simple')).toEqual({ left: 3, right: 2 })
-    expect(titlebarAppActionsClusterCounts('left', 0, 0, 'simple')).toEqual({ left: 5, right: 0 })
+    // Back, forward and the sidebar toggle (3); settings moved to the account row and the pane cluster lives in the
+    // chat header, so the top bar carries no fixed app actions on either side.
+    expect(titlebarAppActionsClusterCounts('right', 0, 0, 'simple')).toEqual({ left: 3, right: 0 })
+    expect(titlebarAppActionsClusterCounts('left', 0, 0, 'simple')).toEqual({ left: 3, right: 0 })
   })
 })
 

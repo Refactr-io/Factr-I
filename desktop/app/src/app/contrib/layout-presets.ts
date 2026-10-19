@@ -5,20 +5,23 @@ import { registerBundledPresets } from '@/components/pane-shell/tree/presets'
 // Layout presets — CHAT (main) always dominates.
 // ---------------------------------------------------------------------------
 
-// The REAL default: sessions left, chat main, and ONE right sidebar whose tab strip carries Terminal,
-// Files and Changes (the review pane), with Browser stacking in beside them when it is opened. Every tool
-// is one click away; the sidebar's toggle shows or hides the whole thing.
+// The REAL default: sessions left, chat main, and a column of tool CARDS on the right. Terminal, Files, Changes and
+// (docked above Files when it is opened) the Browser are separate cards, each toggled from the pane cluster in the chat
+// header. A card that is closed is hidden and its siblings absorb the space; when none is open the chat has the whole
+// width. Every tool is one click away and several can be open together.
 //
 // Preview tiles are DYNAMIC panes (like session tiles), so no preset names one: they're registered by
-// watchPreviewTiles as tabs open. A Browser tab stacks into this sidebar; a file peek still opens its own
-// pane beside it.
+// watchPreviewTiles as tabs open and dock above the Files card.
+export const TOOLS_COLUMN = split(
+  'column',
+  [group(['terminal'], { id: 'grp-terminal' }), group(['files'], { id: 'grp-files' }), group(['review'], { id: 'grp-review' })],
+  [1, 1, 1],
+  'spl-tools'
+)
+
 export const DEFAULT_TREE = split(
   'row',
-  [
-    group(['sessions'], { id: 'grp-sessions' }),
-    group(['workspace'], { id: 'grp-main' }),
-    group(['terminal', 'files', 'review'], { id: 'grp-right' })
-  ],
+  [group(['sessions'], { id: 'grp-sessions' }), group(['workspace'], { id: 'grp-main' }), TOOLS_COLUMN],
   [1, 3.4, 1.25],
   'spl-root'
 )
@@ -32,16 +35,8 @@ const FOCUS_TREE = split(
   [1, 4.6]
 )
 
-// Basic is sessions and chat with the tooling RESTING in one right sidebar: a single zone whose
-// tab strip carries Terminal, Files and Changes (and Browser, which stacks in when opened), so every
-// tool is one click away instead of its own toggle. The toggle shows or hides the whole sidebar.
-// A tree that simply omitted the tools was a lie — applying it adopts every missing pane back in as
-// workspace tabs, which is Focus.
-export const BASIC_TREE = split(
-  'row',
-  [group(['sessions']), group(['workspace']), group(['terminal', 'files', 'review'], { id: 'grp-right' })],
-  [1, 3.4, 1.25]
-)
+// Basic is the same arrangement as Default: sessions, chat and the tool cards (all closed until opened).
+export const BASIC_TREE = DEFAULT_TREE
 
 const BASIC_RESTING = ['terminal', 'files', 'review'] as const
 

@@ -16,6 +16,8 @@ import { type RefObject, useLayoutEffect, useState, useSyncExternalStore } from 
 import { $layoutTree } from '@/components/pane-shell/tree/store'
 import { $connection } from '@/store/session'
 
+import { $maximizedPane } from './tree/pane-maximize'
+
 // ---------------------------------------------------------------------------
 // Rects
 // ---------------------------------------------------------------------------
@@ -227,8 +229,19 @@ export function publishWorkspaceGeometry(): () => void {
     }
 
     const r = el.getBoundingClientRect()
-    const left = Math.round(r.left)
-    const right = Math.round(window.innerWidth - r.right)
+    let left = Math.round(r.left)
+    let right = Math.round(window.innerWidth - r.right)
+
+    // The main zone steps aside while a pane is in Fill (display:none, zero size): the chat header then spans from
+    // the sessions list's edge to the window edge.
+    if (r.width === 0 && r.height === 0) {
+      const filled = [...document.querySelectorAll<HTMLElement>('[data-tree-group]:has([data-tool-card])')]
+        .map(group => group.getBoundingClientRect())
+        .find(box => box.width > 0)
+
+      left = filled ? Math.round(filled.left) : 0
+      right = filled ? Math.round(window.innerWidth - filled.right) : 0
+    }
 
     // Skip unchanged writes: a sash drag fires the RO every frame, and each
     // :root custom-property set dirties style for everything that reads them.
@@ -252,8 +265,16 @@ export function publishWorkspaceGeometry(): () => void {
   window.addEventListener('resize', measure)
   measure()
 
+  // Fill moves the workspace edges while the cards animate: re-measure as the motion settles.
+  const unsubFill = $maximizedPane.listen(() => {
+    for (const delay of [0, 120, 320]) {
+      window.setTimeout(measure, delay)
+    }
+  })
+
   return () => {
     unsubTree()
+    unsubFill()
     onSashDragEnd = null
     window.removeEventListener('resize', measure)
     ro.disconnect()

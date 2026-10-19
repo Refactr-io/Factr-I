@@ -9,8 +9,11 @@ import { MemoryRouter } from 'react-router'
 import { DEFAULT_TREE, registerLayoutPresets } from '@/app/contrib/layout-presets'
 import { TitlebarControls } from '@/app/shell/titlebar-controls'
 import { findGroupOfPane } from '@/components/pane-shell/tree/model'
+import * as model from '@/components/pane-shell/tree/model'
+import * as presets from '@/components/pane-shell/tree/presets'
 import { applyLayoutPreset } from '@/components/pane-shell/tree/presets'
 import { LayoutTreeRoot } from '@/components/pane-shell/tree/renderer'
+import * as treeStore from '@/components/pane-shell/tree/store'
 import {
   $layoutTree,
   bindPaneVisibility,
@@ -67,6 +70,9 @@ for (const [id, title, placement] of [
     )
   })
 }
+
+// QA handle: the same module instances the fixture renders from (a dynamic import would load a second copy).
+Object.assign(window, { __shell: { model, presets, treeStore } })
 
 registerLayoutPresets()
 declareDefaultTree(DEFAULT_TREE)

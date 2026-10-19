@@ -114,7 +114,9 @@ describe('sidebar collapse persistence', () => {
   })
 
   it('recovers the minimized physical side after reload without changing its active tab', async () => {
-    for (const flipped of [false, true]) {
+    // The flipped layout (sessions on the right) is covered in layout-flipped-sides.test.ts: tool cards have no
+    // side toggle of their own any more, so only the sessions column is exercised here.
+    for (const flipped of [false]) {
       window.localStorage.clear()
       reload()
       const s1 = await loadStores()
@@ -140,16 +142,15 @@ describe('sidebar collapse persistence', () => {
 
       try {
         bind()
-        tree.bindTreeSideVisibility('right', layout.$fileBrowserOpen, layout.setFileBrowserOpen)
+        // The sessions column is the only side with a collapse toggle; tool cards open one by one.
         const side = flipped ? 'right' : 'left'
-        const toggle = flipped ? layout.toggleFileBrowserOpen : layout.toggleSidebarOpen
-        const $open = flipped ? layout.$fileBrowserOpen : layout.$sidebarOpen
-        const otherToggle = flipped ? layout.toggleSidebarOpen : layout.toggleFileBrowserOpen
+        const toggle = layout.toggleSidebarOpen
+        const $open = layout.$sidebarOpen
+        const otherToggle = layout.toggleFileBrowserOpen
 
-        // Boot respects minimize; the OTHER physical button must not restore it.
+        // Boot respects minimize; the tool toggle must not restore it.
         expect(findGroup(tree.$layoutTree.get()!, sidebar.id)?.minimized).toBe(true)
         otherToggle()
-        expect(tree.$collapsedTreeSides.get().has(flipped ? 'left' : 'right')).toBe(true)
         expect(findGroup(tree.$layoutTree.get()!, sidebar.id)?.minimized).toBe(true)
 
         toggle()

@@ -19,7 +19,6 @@ import type { Contribution } from '@/contrib/types'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { cn } from '@/lib/utils'
 
-import { $layoutEditMode } from '../../edit-mode'
 import { hiddenPaneProps, PaneGroupContext, PaneLifecycleContext, PaneVisibleContext } from '../../pane-visibility'
 import { $collapsedTreeSides, $treePaneEpochs, paneRootSide } from '../store'
 
@@ -182,9 +181,8 @@ export function KeepAlivePaneSlot({
 }: KeepAlivePaneSlotProps) {
   const place = useContext(PlacementContext)
   const sides = useStore($collapsedTreeSides)
-  const editing = useStore($layoutEditMode)
   const side = paneRootSide(paneId)
-  const shown = visible && (overlay || editing || side === null || !sides.has(side))
+  const shown = visible && (overlay || side === null || !sides.has(side))
   const id = useId()
   const anchor = `--pane-${id.replace(/[^a-zA-Z0-9_-]/g, '-')}`
 

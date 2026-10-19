@@ -23,9 +23,9 @@ import { rafCoalesce } from '@/lib/raf-coalesce'
 import { cn } from '@/lib/utils'
 import { $paneStates, type PaneStateSnapshot, setPaneHeightOverride, setPaneWidthOverride } from '@/store/panes'
 
-import { $layoutEditMode, $layoutEditRevealsHidden } from '../../edit-mode'
 import type { LayoutNode, SplitNode } from '../model'
 import { allPaneIds } from '../model'
+import { $maximizedPane } from '../pane-maximize'
 import {
   $collapsedTreeSides,
   $hiddenTreePanes,
@@ -39,6 +39,7 @@ import {
   setTreeSplitWeights
 } from '../store'
 
+import { isCardZone } from './tool-card'
 import {
   allFixedAbsorberIndex,
   COLLAPSED_ZONE_PX,
@@ -145,9 +146,8 @@ export function TreeSplit({
   // pointermove, but only the splits whose subtree actually resized should
   // re-render — not every split in the tree.
   const overrides = useSubtreeOverrides(useMemo(() => allPaneIds(node), [node]))
-  const editMode = useStore($layoutEditMode)
-  const revealsHidden = useStore($layoutEditRevealsHidden)
   const collapsedSides = useStore($collapsedTreeSides)
+  const fillPane = useStore($maximizedPane)
   const horizontal = node.orientation === 'row'
   const axis = node.orientation
 
@@ -176,10 +176,14 @@ export function TreeSplit({
   // review/preview closed) visible so they're rearrangeable — only truly-absent
   // (unregistered) or narrow-collapsed panes stay gone. Restores itself on exit
   // (render-only).
+  // FILL: one pane covers the workspace; everything but it and the sessions list steps aside (still mounted).
   const paneGone = (id: string) =>
-    !paneFor(id) || (!revealsHidden && hiddenPanes.has(id)) || (narrow && Boolean(paneChrome(paneFor(id)).collapsible))
+    !paneFor(id) ||
+    (fillPane
+      ? id !== fillPane && id !== 'sessions'
+      : hiddenPanes.has(id) || (narrow && Boolean(paneChrome(paneFor(id)).collapsible)))
 
-  const trackCtx: TrackContext = { paneFor, paneGone, overrides }
+  const trackCtx: TrackContext = { fillPane, paneFor, paneGone, overrides }
 
   // Chrome-toggle collapse: a subtree whose every pane is gone renders
   // display:none (content stays MOUNTED — toggling back is instant), and its
@@ -188,7 +192,7 @@ export function TreeSplit({
   // EMPTY zones only exist in editor-authored trees (normalize prunes them on
   // every structural op) — they take space in edit mode as drop targets.
   const isEmptyZone = (child: LayoutNode) => child.type === 'group' && child.panes.length === 0
-  const isCollapsed = (child: LayoutNode) => subtreeGone(child, trackCtx) || (isEmptyZone(child) && !editMode)
+  const isCollapsed = (child: LayoutNode) => subtreeGone(child, trackCtx) || isEmptyZone(child)
 
   // Min/max clamps come from a direct GROUP child's panes (the same clamps
   // the app's Pane props express). Floors apply to every zone; caps only when
@@ -607,8 +611,6 @@ export function TreeSplit({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       axis,
-      editMode,
-      revealsHidden,
       horizontal,
       node.children,
       node.id,
@@ -696,8 +698,6 @@ export function TreeSplit({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       axis,
-      editMode,
-      revealsHidden,
       horizontal,
       node.children,
       node.id,
@@ -719,7 +719,7 @@ export function TreeSplit({
   // In edit mode sides stay visible.
   // `rootRow` covers both a row root (Default, Focus) and a row nested inside
   // a column root (Terminal deck, Quad) — wherever the side columns live.
-  const semanticSides = rootRow && horizontal && collapsedSides.size > 0 && !editMode
+  const semanticSides = rootRow && horizontal && collapsedSides.size > 0
 
   const sideGone = (i: number) => {
     if (!semanticSides) {
@@ -854,6 +854,7 @@ export function TreeSplit({
             {partner >= 0 && (
               <Sash
                 disabled={minimized || tracks[partner].minimized}
+                hairline={!isCardZone(child) && !isCardZone(node.children[partner])}
                 horizontal={horizontal}
                 onDoubleClick={() => resetBoundary(partner, i)}
                 onPointerDown={e => startSash(partner, i, e)}
@@ -905,11 +906,14 @@ export function TreeSplit({
 
 function Sash({
   disabled,
+  hairline = true,
   horizontal,
   onDoubleClick,
   onPointerDown
 }: {
   disabled?: boolean
+  /** Draw the persistent 1px seam. Tool cards float with a gutter around them and need no line beside them. */
+  hairline?: boolean
   horizontal: boolean
   onDoubleClick?: () => void
   onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void
@@ -935,15 +939,17 @@ function Sash({
           is the titlebar divider's continuation, so it wears the same token at
           full strength and reads as one line from the window top down; a
           horizontal seam stays a faint --ui-stroke-secondary. */}
-      <span
-        className={cn(
-          'absolute transition-opacity duration-100 group-hover:opacity-100',
-          horizontal
-            ? 'inset-y-0 left-[1px] w-px bg-(--ui-stroke-tertiary)'
-            : 'inset-x-0 top-[1px] h-px bg-(--ui-stroke-secondary) opacity-10'
-        )}
-        data-sash-line=""
-      />
+      {hairline && (
+        <span
+          className={cn(
+            'absolute transition-opacity duration-100 group-hover:opacity-100',
+            horizontal
+              ? 'inset-y-0 left-[1px] w-px bg-(--ui-stroke-tertiary)'
+              : 'inset-x-0 top-[1px] h-px bg-(--ui-stroke-secondary) opacity-10'
+          )}
+          data-sash-line=""
+        />
+      )}
       {!disabled && (
         <span
           className={cn(

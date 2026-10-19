@@ -507,6 +507,16 @@ export const en: Translations = {
     dismiss: 'Dismiss'
   },
 
+  sessionRail: {
+    changes: 'Changes',
+    context: 'Context',
+    environment: 'Environment',
+    noChanges: 'No changes in this folder.',
+    noFolder: 'This chat is not in a folder yet.',
+    openChanges: count => `Review ${count} changed ${count === 1 ? 'file' : 'files'}`,
+    percentUsed: percent => `${percent}% used`,
+    title: 'Session'
+  },
   titlebar: {
     hideSidebar: 'Hide sidebar',
     back: 'Back',
@@ -526,7 +536,24 @@ export const en: Translations = {
     exitHud: 'Exit HUD mode',
     resetHudLayout: 'Reset HUD size and position',
     layoutEditor: 'Layout editor',
-    layoutEditorTitle: mod => `Layout editor: ${mod}-click resets the layout`
+    layoutEditorTitle: mod => `Layout editor: ${mod}-click resets the layout`,
+    paneSession: 'Session',
+    paneTerminal: 'Terminal',
+    paneChanges: 'Changes',
+    paneBrowser: 'Browser',
+    paneFiles: 'Files',
+    paneMore: 'More',
+    resetLayout: 'Reset layout',
+    toolCard: {
+      close: 'Close',
+      dockBottom: 'Dock below chat',
+      dockLeft: 'Dock left of chat',
+      dockRight: 'Dock right of chat',
+      dockTop: 'Dock above chat',
+      fill: 'Fill the window',
+      move: 'Move',
+      restore: 'Restore size'
+    }
   },
 
   keybinds: {

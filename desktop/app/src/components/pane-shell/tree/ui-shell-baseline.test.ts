@@ -69,8 +69,8 @@ function arrangement(node: LayoutNode): unknown {
 }
 
 it.each([
-  ['default', { row: [['sessions'], ['workspace'], ['terminal', 'files', 'review']] }],
-  ['basic', { row: [['sessions'], ['workspace'], ['terminal', 'files', 'review']] }],
+  ['default', { row: [['sessions'], ['workspace'], { column: [['terminal'], ['files'], ['review']] }] }],
+  ['basic', { row: [['sessions'], ['workspace'], { column: [['terminal'], ['files'], ['review']] }] }],
   ['focus', { row: [['sessions'], { column: [['workspace', 'files', 'review'], ['terminal']] }] }],
   ['terminal-deck', { column: [{ row: [['sessions'], ['workspace'], ['files', 'review']] }, ['terminal']] }],
   ['quad', { column: [{ row: [['sessions', 'files'], ['workspace']] }, { row: [['terminal'], ['review']] }] }]

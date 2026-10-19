@@ -164,6 +164,8 @@ export function resolveCssPx(container: HTMLElement, css: number | string, horiz
 
 /** Everything fixed-track resolution needs about the current view state. */
 export interface TrackContext {
+  /** A pane in FILL: the main-is-the-floor rule is suspended while it covers the workspace. */
+  fillPane?: null | string
   paneFor: (id: string) => Contribution | undefined
   paneGone: (id: string) => boolean
   overrides: Record<string, { widthOverride?: number; heightOverride?: number }>
@@ -321,7 +323,15 @@ export function subtreeGone(node: LayoutNode, ctx: TrackContext): boolean {
     return false
   }
 
-  return !ids.some(id => paneChrome(ctx.paneFor(id)).placement === 'main')
+  // The floor is the workspace itself (the uncloseable main pane), not every tile that happens to dock beside it:
+  // a Browser or file-preview card must be able to fold away when it is closed.
+  return ctx.fillPane
+    ? true
+    : !ids.some(id => {
+        const chrome = paneChrome(ctx.paneFor(id))
+
+        return chrome.placement === 'main' && chrome.uncloseable
+      })
 }
 
 /**

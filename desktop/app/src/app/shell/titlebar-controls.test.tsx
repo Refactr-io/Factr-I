@@ -187,22 +187,27 @@ describe('TitlebarControls fixed clusters', () => {
   })
 })
 
-describe('titlebar app-action cluster', () => {
+describe('chat header pane cluster', () => {
   afterEach(() => {
     setTitlebarAppActionsSide('right')
     cleanup()
   })
 
-  it('moves settings, layout, and HUD to the left when the appearance setting says left', () => {
-    setTitlebarAppActionsSide('left')
+  it('carries the pane buttons in Claude order and keeps settings, layout and HUD off the top bar', () => {
     renderControls('/')
 
     const left = screen.getByLabelText('Window controls')
-    const right = screen.getByLabelText('App controls')
+    const cluster = screen.getByLabelText('App controls')
 
-    expect(within(left).getByLabelText('Open settings')).toBeTruthy()
-    expect(within(left).getByLabelText('Layout editor')).toBeTruthy()
-    expect(within(left).getByLabelText('HUD mode')).toBeTruthy()
-    expect(within(right).queryByLabelText('Open settings')).toBeNull()
+    const labels = within(cluster)
+      .getAllByRole('button')
+      .map(button => button.getAttribute('aria-label'))
+
+    expect(labels).toEqual(['Session', 'Terminal', 'Changes', 'Browser', 'Files', 'More'])
+
+    for (const gone of ['Open settings', 'Layout editor', 'HUD mode', 'Hide right sidebar', 'Show right sidebar']) {
+      expect(within(left).queryByLabelText(gone)).toBeNull()
+      expect(within(cluster).queryByLabelText(gone)).toBeNull()
+    }
   })
 })

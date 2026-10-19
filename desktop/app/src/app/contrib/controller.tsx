@@ -12,7 +12,6 @@ import { AskDirective } from '@/components/assistant-ui/ask-directive'
 import { InlinePreviewDirective } from '@/components/assistant-ui/inline-preview-directive'
 import { IdleMount } from '@/components/idle-mount'
 import { OnboardingChatDirective } from '@/components/onboarding-chat/directive'
-import { $layoutEditMode, toggleLayoutEditMode } from '@/components/pane-shell/edit-mode'
 import { allPaneIds } from '@/components/pane-shell/tree/model'
 import { LayoutTreeRoot } from '@/components/pane-shell/tree/renderer'
 import {
@@ -22,10 +21,8 @@ import {
   declareDefaultTree,
   dismissTreePane,
   hadSavedSideState,
-  hideOnDemandTools,
   isPaneVisible,
   markCollapsePane,
-  markOnDemandPane,
   paneRootSide,
   registerLayoutResetHandler,
   registerPaneCloser,
@@ -59,13 +56,12 @@ import {
   Users,
   Zap
 } from '@/lib/icons'
-import { type KeybindContribution, KEYBINDS_AREA } from '@/lib/keybinds/actions'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { Codecs } from '@/lib/persisted'
 import { TRANSCRIPT_DIRECTIVE_AREA, type TranscriptDirectiveContribution } from '@/lib/transcript-directives'
 import { setYoloEnabled } from '@/lib/yolo-session'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
-import { $interfaceMode, $showsAdvancedChrome, modeLayout, setModeContext, toggleSimpleMode } from '@/store/interface-mode'
+import { $interfaceMode, modeLayout, setModeContext, toggleSimpleMode } from '@/store/interface-mode'
 import {
   $fileBrowserOpen,
   $sidebarOpen,
@@ -81,7 +77,6 @@ import {
   SIDEBAR_MIN_WIDTH,
   sidebarSide
 } from '@/store/layout'
-import { ensureBrowserTab } from '@/store/preview'
 import { $profiles } from '@/store/profile'
 import { $profileRailVisible } from '@/store/profile-rail-prefs'
 import { runExportProfileFlow, runImportProfileFlow } from '@/store/profile-share'
@@ -225,7 +220,7 @@ registry.registerMany([
       placement: 'main',
       // The titlebar shows the active chat's title; the sidebar switches chats.
       hideTabStrip: true,
-      minWidth: '22vw',
+      minWidth: 'clamp(26rem, 38vw, 40rem)',
       tabDrag: workspaceTabDrag,
       tabWrap: wrapWorkspaceTab,
       uncloseable: true
@@ -250,8 +245,8 @@ registry.registerMany([
       maxHeight: '80vh',
       // Wide enough for a shell when it sits as a tab in the right sidebar (the zone is as wide as its widest tab).
       width: '26rem',
-      // Where it lands when a saved layout lacks it: a tab beside Files, in the right sidebar, never in the chat.
-      dock: { pane: 'files', pos: 'center', enforce: true },
+      // Where it lands when a saved layout lacks it: its own card above Files in the tool column, never in the chat.
+      dock: { pane: 'files', pos: 'top' },
       lifecycleKeepAlive: true,
       headerTrailing: () => <TerminalNewButton />,
       tabTitle: () => <LocalizedTabTitle select={t => t.sidebar.terminal} />,
@@ -286,6 +281,8 @@ registry.registerMany([
     data: {
       placement: 'right',
       collapsible: true,
+      // Its own card below Files when a saved layout lacks it.
+      dock: { pane: 'files', pos: 'bottom' },
       revealAliases: [REVIEW_PANE_ID],
       width: FILE_BROWSER_DEFAULT_WIDTH,
       minWidth: FILE_BROWSER_MIN_WIDTH,
@@ -309,28 +306,6 @@ registry.registerMany([
   // Titlebar center stays empty on purpose: session title lives in tabs +
   // sidebar; place/cwd lives in the sidebar project tree. Center is drag
   // chrome (plugins can still contribute to titleBar.center if needed).
-  // Layout edit mode registers through the SAME declarative surfaces plugins
-  // use: a rebindable keybind (collision-checked in the panel) + a ⌘K row
-  // whose hotkey hint tracks the live binding.
-  {
-    id: 'layout.editMode',
-    area: KEYBINDS_AREA,
-    data: {
-      id: 'layout.editMode',
-      label: 'Toggle layout edit mode',
-      defaults: ['mod+shift+\\'],
-      run: toggleLayoutEditMode
-    } satisfies KeybindContribution
-  },
-  paletteToggle({
-    id: 'layout.editMode',
-    label: 'Toggle layout edit mode',
-    action: 'layout.editMode',
-    icon: LayoutDashboard,
-    keywords: ['layout', 'zones', 'panes', 'edit', 'rearrange'],
-    get: () => $layoutEditMode.get(),
-    set: enabled => $layoutEditMode.set(enabled)
-  }),
   // The agent's write -> see loop: rescan <factr home>/desktop-plugins
   // without relaunching (same-id reloads dispose the previous incarnation).
   {
@@ -545,7 +520,7 @@ const syncWorkspaceTitle = () => {
           ? () => <Slot area={WORKSPACE_PAGE_HEADER_AREA} />
           : undefined,
       placement: 'main',
-      minWidth: '22vw',
+      minWidth: 'clamp(26rem, 38vw, 40rem)',
       tabDrag: workspaceTabDrag,
       tabWrap: wrapWorkspaceTab,
       uncloseable: true
@@ -601,41 +576,19 @@ bindPaneVisibility(
   () => setFileBrowserOpen(true)
 )
 
-// The right sidebar opens on a Browser; Files, Terminal and Changes are tools opened from its Tools page (or
-// their shortcuts) and put away again with their ✕, which leaves the sidebar itself open.
+// Tool cards: Terminal, Files, Changes and the Browser are separate cards toggled from the pane cluster in the chat
+// header. They no longer hide in a shared tab strip, so clear the strip-hide record older builds left on them.
 for (const id of ['files', 'terminal', 'review']) {
-  markOnDemandPane(id)
+  queueMicrotask(() => setStripTabHidden(id, false))
 }
 
-const $toolsOnDemand = modeLayout.atom<boolean>('factr.sidebarToolsOnDemand.v1', () => false, Codecs.json<boolean>())
-
-// One-shot per interface mode: fresh and already-saved layouts alike start with the three tools out of the
-// strip. Deferred a microtask because persistence skips writes while a mode restore is running.
-const applyToolsOnDemand = () =>
-  queueMicrotask(() => {
-    if (!$toolsOnDemand.get()) {
-      hideOnDemandTools()
-      $toolsOnDemand.set(true)
-    }
-  })
-
-applyToolsOnDemand()
-
-// First launch: the right sidebar starts closed (a saved open/closed choice is kept). One-shot per interface mode.
+// First launch: every tool card starts closed (a saved open/closed choice is kept). One-shot per interface mode.
 const $rightSidebarFirstRunDone = modeLayout.atom<boolean>('factr.rightSidebarClosedFirstRun.v1', () => false, Codecs.json<boolean>())
 
 queueMicrotask(() => {
   $rightSidebarFirstRunDone.set(
     applyRightSidebarFirstRunDefault(hadSavedSideState(), $rightSidebarFirstRunDone.get())
   )
-})
-// The Browser is the sidebar's resting tab, so it exists whether or not the sidebar is open right now.
-queueMicrotask(() => !isBrowserWindow() && !isHudWindow() && ensureBrowserTab())
-modeLayout.onRestore(applyToolsOnDemand)
-$fileBrowserOpen.listen(open => {
-  if (open) {
-    ensureBrowserTab()
-  }
 })
 // ⌘G — the review sidebar appears/disappears (and comes to the front).
 bindPaneVisibility(
@@ -653,7 +606,8 @@ bindToolPaneCollapse(
   $terminalTakeover,
   () => setTerminalTakeover(false),
   () => setTerminalTakeover(true),
-  $showsAdvancedChrome
+  // Closed means hidden: tool cards leave no rail behind.
+  atom(false)
 )
 // Without the statusbar, the rail is the only way to switch profiles or gateways.
 $profiles.subscribe(profiles => setModeContext({ profileCount: profiles.length }))

@@ -12,6 +12,18 @@ export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar' | 'ru'
 
 /** One error-card entry: a short title and one plain sentence. Either may
  *  take the failing provider's display name (falls back to "the AI service"). */
+/** The session rail (environment, context, changes) opened from the chat header. */
+export interface SessionRailStrings {
+  changes: string
+  context: string
+  environment: string
+  noChanges: string
+  noFolder: string
+  openChanges: (count: number) => string
+  percentUsed: (percent: number) => string
+  title: string
+}
+
 export interface ErrorCardCopy {
   title: string | ((provider: string) => string)
   body: string | ((provider: string) => string)
@@ -547,6 +559,7 @@ export interface Translations {
     dismiss: string
   }
 
+  sessionRail: SessionRailStrings
   titlebar: {
     hideSidebar: string
     back: string
@@ -567,6 +580,23 @@ export interface Translations {
     resetHudLayout: string
     layoutEditor: string
     layoutEditorTitle: (modifier: string) => string
+    paneSession: string
+    paneTerminal: string
+    paneChanges: string
+    paneBrowser: string
+    paneFiles: string
+    paneMore: string
+    resetLayout: string
+    toolCard: {
+      close: string
+      dockBottom: string
+      dockLeft: string
+      dockRight: string
+      dockTop: string
+      fill: string
+      move: string
+      restore: string
+    }
   }
 
   keybinds: {

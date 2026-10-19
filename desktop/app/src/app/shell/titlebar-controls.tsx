@@ -11,9 +11,7 @@ import {
 } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
-import { hudTargetSessionId } from '@/app/hud/handoff'
-import { toggleLayoutEditMode } from '@/components/pane-shell/edit-mode'
-import { resetLayoutTree } from '@/components/pane-shell/tree/store'
+import { $maximizedPane } from '@/components/pane-shell/tree/pane-maximize'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
@@ -22,32 +20,23 @@ import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { NEW_SESSION_TITLE, sessionTitle } from '@/lib/chat-runtime'
 import { triggerHaptic } from '@/lib/haptics'
-import { formatModifierToken } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
-import { toggleHud } from '@/store/hud'
 import { $interfaceMode, shownInMode, type Tiered } from '@/store/interface-mode'
-import {
-  $fileBrowserOpen,
-  $panesFlipped,
-  $sidebarOpen,
-  toggleFileBrowserOpen,
-  togglePanesFlipped,
-  toggleSidebarOpen
-} from '@/store/layout'
+import { $panesFlipped, $sidebarOpen, toggleSidebarOpen } from '@/store/layout'
 import { $sessionTitleOverrides } from '@/store/read-only-sessions'
 import { $sessions, sessionMatchesStoredId } from '@/store/session'
 import { $unreadSessionCount } from '@/store/session-dot-state'
 import { $focusedSessionIsTile, $focusedStoredSessionId } from '@/store/session-states'
-import { $titlebarAppActionsSide, TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-app-actions'
+import { TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-app-actions'
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
+import { PaneClusterMore, usePaneClusterTools } from './pane-cluster'
+import { SessionRail } from './session-rail'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   TITLEBAR_HEIGHT,
-  TITLEBAR_ICON_BADGE_SCALE,
   titlebarButtonClass,
-  titlebarIconSizeCss,
   titlebarToolClusterClass
 } from './titlebar'
 import { TitlebarIcon } from './titlebar-icon'
@@ -80,30 +69,7 @@ export type SetTitlebarToolGroup = (id: string, tools: readonly TitlebarTool[], 
 interface TitlebarControlsProps extends ComponentProps<'div'> {
   leftTools?: readonly TitlebarTool[]
   tools?: readonly TitlebarTool[]
-  onOpenSettings: () => void
-}
-
-/**
- * The layout button's glyph. Morphs into its composite reset form — the
- * layout icon wearing a small counter-clockwise arrow badge ("layout, back
- * to how it was") — ONLY while the pointer is on the button AND ⌘/Ctrl is
- * held: hover gates via CSS (`group/tool` on the button), the modifier via
- * the window listener. Pressing the modifier elsewhere changes nothing.
- */
-function LayoutGlyph({ modHeld }: { modHeld: boolean }) {
-  return (
-    <>
-      <span className={cn('inline-flex', modHeld && 'group-hover/tool:hidden')}>
-        <TitlebarIcon name="layout" />
-      </span>
-      <span className={cn('relative hidden', modHeld && 'group-hover/tool:inline-flex')}>
-        <TitlebarIcon name="layout" />
-        <span className="absolute -bottom-1 -right-1.5 grid place-items-center rounded-full bg-(--ui-bg-chrome) p-px">
-          <TitlebarIcon className="-scale-x-100" name="refresh" size={titlebarIconSizeCss(TITLEBAR_ICON_BADGE_SCALE)} />
-        </span>
-      </span>
-    </>
-  )
+  onOpenSettings?: () => void
 }
 
 /** Overlay count on a titlebar glyph. Hidden when count is 0/undefined. */
@@ -124,45 +90,20 @@ function withCountBadge(icon: ReactNode, count: number | undefined): ReactNode {
   )
 }
 
-/** Live ⌘/Ctrl tracking — mod-click affordances telegraph themselves (the
- *  layout button morphs into its reset form while the modifier is down). */
-function useModifierHeld(): boolean {
-  const [held, setHeld] = useState(false)
-
-  useEffect(() => {
-    const sync = (event: KeyboardEvent) => setHeld(event.metaKey || event.ctrlKey)
-    const clear = () => setHeld(false)
-
-    window.addEventListener('keydown', sync)
-    window.addEventListener('keyup', sync)
-    window.addEventListener('blur', clear)
-
-    return () => {
-      window.removeEventListener('keydown', sync)
-      window.removeEventListener('keyup', sync)
-      window.removeEventListener('blur', clear)
-    }
-  }, [])
-
-  return held
-}
-
-export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }: TitlebarControlsProps) {
+export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControlsProps) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
-  const modHeld = useModifierHeld()
-  const fileBrowserOpen = useStore($fileBrowserOpen)
   const panesFlipped = useStore($panesFlipped)
   const sidebarOpen = useStore($sidebarOpen)
   const unreadCount = useStore($unreadSessionCount)
-  const appActionsSide = useStore($titlebarAppActionsSide)
   const interfaceMode = useStore($interfaceMode)
   const unreadBadge = unreadCount > 0 ? unreadCount : undefined
   const unreadHint = unreadBadge ? ` · ${t.titlebar.unreadSessions(unreadBadge)}` : ''
   // One filter for every cluster: a tool's own `hidden`, then the mode's tier.
   const shown = shownInMode(interfaceMode)
   const visibleTool = (tool: TitlebarTool) => !tool.hidden && shown(tool)
+  const clusterTools = usePaneClusterTools()
 
   // `titleBar.*` slot content is mount-scoped — a page's <Contribute> registers
   // only while that surface is up — so a non-empty area means a page is
@@ -171,16 +112,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const titleBarRight = useContributions('titleBar.right')
   const pageOwnsTitlebar = titleBarLeft.length + titleBarRight.length > 0
 
-  // POSITIONAL toggles: each button shows/hides everything on its physical
-  // side of the main zone (the layout tree collapses the whole side), so they
-  // stay correct through flips and rearranges. $sidebarOpen ≙ left side,
-  // $fileBrowserOpen ≙ right side. Never an active highlight — plain
-  // show/hide affordances.
-  const leftEdge = { open: sidebarOpen, toggle: toggleSidebarOpen }
-  const rightEdge = { open: fileBrowserOpen, toggle: toggleFileBrowserOpen }
-  const leftLabel = leftEdge.open ? t.titlebar.hideSidebar : t.titlebar.showSidebar
-  const rightLabel = rightEdge.open ? t.titlebar.hideRightSidebar : t.titlebar.showRightSidebar
-
+  const leftLabel = sidebarOpen ? t.titlebar.hideSidebar : t.titlebar.showSidebar
   const history = useNavHistory()
 
   const backTool: TitlebarTool = {
@@ -208,87 +140,9 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
     label: `${leftLabel}${panesFlipped ? '' : unreadHint}`,
     onSelect: () => {
       triggerHaptic('tap')
-      leftEdge.toggle()
+      toggleSidebarOpen()
     }
   }
-
-  const flipTool: TitlebarTool = {
-    ...TITLEBAR_FIXED_TOOLS['flip-panes'],
-    actionId: 'view.flipPanes',
-    icon: <TitlebarIcon name="arrow-swap" />,
-    id: 'flip-panes',
-    label: t.titlebar.swapSidebarSides,
-    onSelect: () => {
-      triggerHaptic('tap')
-      togglePanesFlipped()
-    }
-  }
-
-  const rightSidebarTool: TitlebarTool = {
-    ...TITLEBAR_FIXED_TOOLS['right-sidebar'],
-    actionId: 'view.toggleRightSidebar',
-    badge: panesFlipped ? unreadBadge : undefined,
-    icon: <TitlebarIcon name="layout-sidebar-right" />,
-    id: 'right-sidebar',
-    label: `${rightLabel}${panesFlipped ? unreadHint : ''}`,
-    onSelect: () => {
-      triggerHaptic('tap')
-      rightEdge.toggle()
-    },
-    tour: 'right-pane-toggle'
-  }
-
-  // Static system tools — always pinned to the screen's right edge so the
-  // left titlebar stays free for tabs (#107351).
-  const systemTools: TitlebarTool[] = [
-    {
-      ...TITLEBAR_FIXED_TOOLS.settings,
-      actionId: 'nav.settings',
-      icon: <TitlebarIcon name="settings-gear" />,
-      id: 'settings',
-      label: t.titlebar.openSettings,
-      onSelect: () => {
-        triggerHaptic('open')
-        onOpenSettings()
-      }
-    },
-    {
-      ...TITLEBAR_FIXED_TOOLS.layout,
-      className: 'group/tool',
-      // Hover + held ⌘/Ctrl morphs the glyph into its reset form (see
-      // LayoutGlyph) — the mod-click telegraphs itself before it happens.
-      icon: <LayoutGlyph modHeld={modHeld} />,
-      id: 'layout',
-      label: t.titlebar.layoutEditor,
-      onSelect: event => {
-        if (event?.metaKey || event?.ctrlKey) {
-          triggerHaptic('warning')
-          resetLayoutTree()
-
-          return
-        }
-
-        triggerHaptic('open')
-        toggleLayoutEditMode()
-      },
-      title: t.titlebar.layoutEditorTitle(formatModifierToken('mod'))
-    },
-    {
-      ...TITLEBAR_FIXED_TOOLS.hud,
-      // No `title`: TitlebarToolButton passes `title` to TipKeybindLabel as a
-      // text OVERRIDE, so a long sentence there replaces the short label and
-      // crowds the ⌘⇧H hint off the tooltip. Label only — the hint is appended
-      // from the action registry, same as every other tool here.
-      actionId: 'view.toggleHud',
-      icon: <TitlebarIcon name="comment-discussion" />,
-      id: 'hud',
-      label: t.titlebar.enterHud,
-      onSelect: () => {
-        triggerHaptic('open')
-        toggleHud(hudTargetSessionId())
-      }
-    }
-  ]
 
   const view = appViewForPath(location.pathname)
 
@@ -340,19 +194,11 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
     )
   }
 
-  const visibleLeftTools = (
-    appActionsSide === 'left'
-      ? [backTool, forwardTool, sidebarTool, ...systemTools, ...leftTools]
-      : [backTool, forwardTool, sidebarTool, ...leftTools]
-  ).filter(visibleTool)
-
-  const visibleSystemTools = appActionsSide === 'right' ? systemTools.filter(visibleTool) : []
+  const visibleLeftTools = [backTool, forwardTool, sidebarTool, ...leftTools].filter(visibleTool)
   const visiblePaneTools = tools.filter(visibleTool)
-  const visibleRightFixedTools = [flipTool, rightSidebarTool].filter(visibleTool)
 
   return (
     <>
-      <TitlebarChatTitle />
       <TitlebarPartitionDashes />
       <div aria-label={t.shell.windowControls} className={leftClusterClass} data-titlebar-cluster="left">
         {visibleLeftTools.map(tool => (
@@ -362,114 +208,19 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         <Slot area="titleBar.center" />
       </div>
 
-      {visiblePaneTools.length > 0 && (
-        <div
-          aria-label={t.shell.appControls}
-          className={cn(
-            titlebarToolClusterClass,
-            'top-[calc(var(--titlebar-controls-top)+var(--right-rail-top-inset,0px))] right-[calc(var(--titlebar-tools-right)+var(--shell-preview-toolbar-gap,0))]'
-          )}
-        >
-          {visiblePaneTools.map(tool => (
-            <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
-          ))}
-        </div>
-      )}
-
-      <div
-        aria-label={t.shell.appControls}
-        className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
-        data-titlebar-cluster="right"
-      >
-        {visibleSystemTools.map(tool => (
+      <TitlebarChatHeader flipped={panesFlipped}>
+        {visiblePaneTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}
-        {visibleRightFixedTools.map(tool => (
+        {clusterTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}
+        <PaneClusterMore />
         <Slot area="titleBar.right" />
-      </div>
+      </TitlebarChatHeader>
+      <SessionRail />
     </>
   )
-}
-
-/** Keeps the titlebar chat title on the sessions/main partition, live. The
- *  sessions slot's right edge IS the partition, so a ResizeObserver on it tracks
- *  the fold transition frame by frame and sash drags with no timer of its own;
- *  the title also never starts inside the back/forward/toggle cluster, which
- *  slides in fullscreen (its own transition is followed frame by frame too). Values
- *  are written straight to the nodes: no React renders while it animates. */
-function usePartitionTracker(ref: RefObject<HTMLDivElement | null>, enabled: boolean) {
-  const sidebarOpen = useStore($sidebarOpen)
-
-  useEffect(() => {
-    const node = ref.current
-    const slot = document.querySelector('[data-zone-panel]')?.closest('[data-tree-split] > div') as HTMLElement | null
-    const cluster = document.querySelector('[data-titlebar-cluster="left"]') as HTMLElement | null
-
-    if (!node || !enabled) {
-      return
-    }
-
-    const title = node.querySelector('[data-titlebar-chat-title-text]') as HTMLElement | null
-
-    const place = () => {
-      // No sessions slot (flipped or hidden layouts): start at the block edge.
-      // Unrounded: the sash hairline sits on the slot's exact (often fractional)
-      // edge, and the divider must land on the same device pixels to read as
-      // that line's top.
-      const x = slot
-        ? slot.getBoundingClientRect().right
-        : (document.querySelector('[data-shell-block]')?.getBoundingClientRect().left ?? 0)
-
-      node.style.left = `${x}px`
-
-      if (title) {
-        const clusterRight = cluster ? cluster.getBoundingClientRect().right : 0
-
-        title.style.paddingLeft = `${Math.max(16, Math.round(clusterRight + 12 - x))}px`
-      }
-    }
-
-    place()
-
-    let frame = 0
-
-    const follow = () => {
-      place()
-      frame = window.requestAnimationFrame(follow)
-    }
-
-    const start = () => {
-      window.cancelAnimationFrame(frame)
-      follow()
-    }
-
-    const stop = () => {
-      window.cancelAnimationFrame(frame)
-      place()
-    }
-
-    const observer = slot ? new ResizeObserver(place) : null
-
-    if (slot) {
-      observer?.observe(slot)
-    }
-
-    cluster?.addEventListener('transitionrun', start)
-    cluster?.addEventListener('transitionend', stop)
-    cluster?.addEventListener('transitioncancel', stop)
-    window.addEventListener('resize', place)
-
-    return () => {
-      window.cancelAnimationFrame(frame)
-      observer?.disconnect()
-      cluster?.removeEventListener('transitionrun', start)
-      cluster?.removeEventListener('transitionend', stop)
-      cluster?.removeEventListener('transitioncancel', stop)
-      window.removeEventListener('resize', place)
-    }
-  }, [enabled, sidebarOpen])
 }
 
 /** The active chat's title in the titlebar row, preceded by a 1px divider that
@@ -550,21 +301,88 @@ function TitlebarPartitionDashes() {
   )
 }
 
-function TitlebarChatTitle() {
+/** Keeps the title clear of the left cluster (back, forward, sidebar toggle) when the sidebar is folded and the
+ *  chat column slides under it. Everything else is pure CSS: the header is pinned to the main zone's edges. */
+function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolean) {
+  const sidebarOpen = useStore($sidebarOpen)
+
+  useEffect(() => {
+    const node = ref.current
+    const cluster = document.querySelector('[data-titlebar-cluster="left"]') as HTMLElement | null
+    const title = node?.querySelector('[data-titlebar-chat-title-text]') as HTMLElement | null
+
+    if (!node || !title || !cluster || !enabled) {
+      return
+    }
+
+    const place = () => {
+      const left = node.getBoundingClientRect().left
+      const clearance = cluster.getBoundingClientRect().right + 12 - left
+
+      title.style.paddingLeft = `${Math.max(16, Math.round(clearance))}px`
+    }
+
+    place()
+    const anchor = document.querySelector('[data-session-anchor="workspace"]')
+    const observer = new ResizeObserver(place)
+
+    if (anchor) {
+      observer.observe(anchor)
+    }
+
+    let frame = 0
+
+    const follow = () => {
+      place()
+      frame = window.requestAnimationFrame(follow)
+    }
+
+    const start = () => {
+      window.cancelAnimationFrame(frame)
+      follow()
+    }
+
+    const stop = () => {
+      window.cancelAnimationFrame(frame)
+      place()
+    }
+
+    cluster.addEventListener('transitionrun', start)
+    cluster.addEventListener('transitionend', stop)
+    cluster.addEventListener('transitioncancel', stop)
+    window.addEventListener('resize', place)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+      cluster.removeEventListener('transitionrun', start)
+      cluster.removeEventListener('transitionend', stop)
+      cluster.removeEventListener('transitioncancel', stop)
+      window.removeEventListener('resize', place)
+    }
+  }, [enabled, ref, sidebarOpen])
+}
+
+/**
+ * The chat column's header: the chat title and the pane cluster share one bar pinned to the main zone's edges
+ * (`--workspace-left` / `--workspace-right`, published by the pane tree). Sidebars folding, panes opening and
+ * sash drags move it with no per-frame measuring. Flipped layouts mirror the bar, so the cluster stays on the
+ * side where the tool panes are and the title never lands on the wrong edge.
+ */
+function TitlebarChatHeader({ children, flipped }: { children: ReactNode; flipped: boolean }) {
+  const { t } = useI18n()
   const { pathname } = useLocation()
   const sessions = useStore($sessions)
   const focusedId = useStore($focusedStoredSessionId)
   const titleOverrides = useStore($sessionTitleOverrides)
   const focusedIsTile = useStore($focusedSessionIsTile)
   const ref = useRef<HTMLDivElement>(null)
+  const filled = useStore($maximizedPane) !== null
 
-  const visible = focusedIsTile || appViewForPath(pathname) === 'chat'
+  // While a pane is in Fill the chat is out of the way, so its title is too.
+  const visible = !filled && (focusedIsTile || appViewForPath(pathname) === 'chat')
 
-  usePartitionTracker(ref, visible)
-
-  if (!visible) {
-    return null
-  }
+  useLeftClearance(ref, visible && !flipped)
 
   const session = focusedId ? sessions.find(s => sessionMatchesStoredId(s, focusedId)) : null
   // A session the list does not carry (a cron run) names itself from its resume reply.
@@ -572,20 +390,35 @@ function TitlebarChatTitle() {
 
   return (
     <div
-      className="pointer-events-none fixed top-0 z-70 flex items-center [-webkit-app-region:drag]"
-      data-titlebar-chat-title=""
+      className={cn(
+        'pointer-events-none fixed top-0 z-70 flex items-center [-webkit-app-region:drag]',
+        flipped ? 'flex-row-reverse' : 'flex-row'
+      )}
+      data-titlebar-chat-header=""
       ref={ref}
-      style={{
-        height: TITLEBAR_HEIGHT,
-        right: 'calc(var(--titlebar-tools-right, 0px) + var(--titlebar-tools-width, 0px) + 0.75rem)'
-      }}
+      style={{ height: TITLEBAR_HEIGHT, left: 'var(--workspace-left, 0px)', right: 'var(--workspace-right, 0px)' }}
     >
-      <span
-        className="min-w-0 truncate pl-4 text-[0.8125rem] font-medium text-foreground"
-        data-titlebar-chat-title-text=""
+      {visible ? (
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-foreground',
+            flipped ? 'pr-4 text-right' : 'pl-4'
+          )}
+          data-titlebar-chat-title=""
+          data-titlebar-chat-title-text=""
+        >
+          {title}
+        </span>
+      ) : (
+        <span className="flex-1" />
+      )}
+      <div
+        aria-label={t.shell.appControls}
+        className="pointer-events-auto flex shrink-0 flex-row items-center gap-0.5 px-2 select-none [-webkit-app-region:no-drag]"
+        data-titlebar-cluster="right"
       >
-        {title}
-      </span>
+        {children}
+      </div>
     </div>
   )
 }

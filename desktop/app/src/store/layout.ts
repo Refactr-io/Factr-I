@@ -3,10 +3,14 @@ import { atom, computed, type ReadableAtom, type WritableAtom } from 'nanostores
 import { SIDEBAR_COLLAPSE_MEDIA_QUERY } from '@/app/layout-constants'
 import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import {
+  closeTreePane,
+  isPaneVisible,
   restoreHiddenTreeSideTabs,
   restoreMinimizedTreeSide,
+  restoreTreePane,
   revealTreePane,
   setTreeSideCollapsed,
+  treePanesWithPrefix,
   type TreeSide
 } from '@/components/pane-shell/tree/store'
 import { matchesQuery } from '@/hooks/use-media-query'
@@ -588,15 +592,28 @@ export function toggleSidebarOpen() {
   }
 }
 
+/** ⌘J: one press puts every tool card away, the next brings back the ones that were open (Files when none were). */
 export function toggleFileBrowserOpen() {
   if (revealNarrowPane(FILE_BROWSER_PANE_ID, 'toggle')) {
     return
   }
 
-  const open = restoreMinimizedTreeSide(fileBrowserSide()) || !$fileBrowserOpen.get()
-  $fileBrowserOpen.set(open)
-  setTreeSideCollapsed(fileBrowserSide(), !open)
+  const visible = [...TOOL_CARD_IDS, ...treePanesWithPrefix(PREVIEW_CARD_PREFIX)].filter(isPaneVisible)
+
+  if (visible.length > 0) {
+    lastToolCards = visible
+    visible.forEach(closeTreePane)
+
+    return
+  }
+
+  restoreMinimizedTreeSide(fileBrowserSide())
+  lastToolCards.forEach(restoreTreePane)
 }
+
+const TOOL_CARD_IDS = ['terminal', 'files', 'review'] as const
+const PREVIEW_CARD_PREFIX = 'preview-tile:'
+let lastToolCards: string[] = ['files']
 
 /** First launch only: the right sidebar starts CLOSED. A install that already saved a side choice (it toggled the
  *  sidebar, or an earlier version saved one) keeps it; `applied` makes this a one-shot per interface mode. */
@@ -608,11 +625,12 @@ export function applyRightSidebarFirstRunDefault(hadSavedChoice: boolean, applie
   return true
 }
 
+/** The Files card on or off. It no longer owns a whole side: the other tool cards keep their own state. */
 export function setFileBrowserOpen(open: boolean) {
   $fileBrowserOpen.set(open)
-  setTreeSideCollapsed(fileBrowserSide(), !open)
 
   if (open) {
+    setTreeSideCollapsed(fileBrowserSide(), false)
     restoreMinimizedTreeSide(fileBrowserSide())
     restoreHiddenTreeSideTabs(fileBrowserSide())
   }
