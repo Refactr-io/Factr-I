@@ -162,3 +162,29 @@
 
 - Final report-inclusive name gate: exit 0, zero hits, 2.45s, /private/tmp/m2-wvbxqfgo/output.log. Full baseline-to-worktree whitespace check and production-prefix assertions pass. Final scope assertion matches exactly six Rust test files, two UI test fixtures and three documentation files.
 - Integration report body remains intact; final source-report appendix differs only in the documented three path substitutions. REPORT.md copied to handoff/merge2-REPORT.md and byte-compared successfully. All requested merge2 checks complete; no blocker or half-done work. No push.
+
+## Bots-create: scope and diagnosis (2026-10-19)
+
+- Read COMMON-RULES.md, ADVICE-FROM-PARENT.md and bots-create-handoff.md completely, plus RTK, Ponytail and Codebase Memory instructions. Branch fix/bots-second-create started clean. No graph tools are callable in this session, so Verify uses exact local source and caller searches; graph project/generation/coverage cannot be certified.
+- Root cause: SDK host.request reads the live $gateway; createCanonicalChat activates the created bot, so the next dialog's requestForTarget sends profiles.create to that bot's isolated config home. This is intended SDK session routing, not a primary pool ownership failure. data.ts already uses an explicit local default-profile route for roster reads after a bot activates.
+- Scope: reuse the same explicit source route in the dialog's shared requestForTarget for local management RPCs after bot focus; retain remote and legacy routing and session routing. Cover consecutive creates, actual isolated filesystem destinations, root-route failure, existing lazy/MCP/remote-target behavior. No engine, dependency, layout or version changes planned.
+- Disk: df -h / reports 63 GiB available. No builds requiring Rust or Docker. No credential files read. No GUI or packaged app permitted.
+- Next: add regression and record its pre-fix failure; apply smallest fix, run affected UI/Electron projects, tsc and touched-file lint, commit locally, finish REPORT.md and copy it to handoff/bots-create-REPORT.md.
+
+### Advice
+
+- Parent guidance has no STOP. No architectural change needed: follow the existing explicit root-profile routing pattern. Missing advice will be recorded in QUESTIONS-bots-create.md if needed, never used as a reason to stop.
+
+### Bots-create regression reproduced before the fix
+
+- No dependencies were installed initially (first command failed MODULE_NOT_FOUND). Ran isolated npm ci --ignore-scripts --no-audit --no-fund with the existing lockfile: 1191 packages installed, exit 0. No lockfile/dependency edit.
+- Pre-fix command from desktop/app: node ../node_modules/vitest/vitest.mjs run --project ui src/plugins/factr-bots/create-agent-lazy-profile.test.tsx --maxWorkers=1, through /private/tmp/bc-xx9sync2/run.py. Exit 1: exactly 3 new regressions failed, 7 existing tests passed. Both consecutive-create variants wrote Beta beneath Alpha's sandbox config; root-backend failure was ignored because the request went to the active bot. Log: /private/tmp/bc-xx9sync2/regression-before.log.
+- Applied the existing local-root pattern to the shared requestForTarget helper only. No pool/session/core routing change. Remote-target routing remains the first choice, legacy SDKs keep their existing path. A routed root error is propagated, never retried into the sandbox.
+- Next: focused green check, then local milestone commit and full affected checks.
+
+## Bots-create milestone 1 validated
+
+- Post-fix focused suite: all 10 tests pass, including consecutive Alpha/Beta creates through the button and lazy Capabilities path, filesystem destination assertions, visible root-route error with no sandbox fallback, and remote targeting while Alpha is focused. Final focused run: 6.99s, exit 0, /private/tmp/bc-xx9sync2/focused-final.log. Existing React act warnings remain in this test harness; no unhandled rejection or test failure.
+- npm run typecheck: renderer, Electron and E2E tsc --noEmit all pass, exit 0 (19.56s), typecheck.log. Touched-file ESLint: exit 0, zero warnings/errors (0.97s), lint-final.log. Two new test spacing warnings from the initial lint were corrected.
+- Test commands use an allowlisted environment with fresh /private/tmp/bc-run-* HOME, FACTR_HOME, FACTR_CONFIG_HOME, TMPDIR and FACTR_DESKTOP_USER_DATA_DIR for each command. Logs/runner/command ledger: /private/tmp/bc-xx9sync2.
+- Parent advice re-read: no STOP or bots-create-specific correction. Next: commit this validated fix, run the full UI and Electron projects (includes bots, routing and pool tests), document manual QA without driving the GUI, finalize report and cleanup.

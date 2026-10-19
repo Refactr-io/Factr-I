@@ -177,14 +177,20 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
     ? (connections || []).find(c => c.id === targetConnection)?.label || targetConnection
     : ''
 
-  /** Gateway RPC on the create target: the picked connection's default
-   *  backend for remote targets, the active gateway otherwise. */
+  // A focused local bot owns a sandbox, so profile management must use the
+  // root backend, just like roster reads. Keep remote and older SDK routing.
+  const localRootTarget =
+    activeConnectionId === 'local' &&
+    host.state.profile?.get?.() !== 'default' &&
+    typeof host.requestProfile === 'function'
+
+  /** Gateway RPC on the create target's root, independent of the focused bot. */
   const requestForTarget = <T,>(method: string, params: Record<string, unknown> = {}): Promise<T> =>
-    remoteTarget
+    remoteTarget || localRootTarget
       ? host.requestProfile(
           {
-            connectionId: targetConnection,
-            mode: 'remote',
+            connectionId: remoteTarget ? targetConnection : 'local',
+            mode: remoteTarget ? 'remote' : 'local',
             profile: 'default',
             targetProfile: 'default'
           },
