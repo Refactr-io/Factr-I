@@ -825,6 +825,7 @@ done
 
     #[tokio::test]
     async fn streamable_http_uses_factr_oauth_token_for_discovery_and_calls() {
+        let _env = crate::storage::lock_test_env();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test MCP");
         let address = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {

@@ -138,3 +138,9 @@
 - The bash test now holds the existing environment lock and creates its unique disposable target under CARGO_MANIFEST_DIR, not mutable HOME. Its three behavioral assertions are unchanged: first attempt held, blind retry held, justified command executes. No production changes.
 - Validation: isolated run fix-fixture, cargo test --workspace --locked -p factr-app-core --lib tool::bash::tests:: -- --test-threads=64: exit 0, 47 passed (12.1s including rebuild). The --workspace selector runs the filter across workspace libraries; only app-core matched. git diff --check passes.
 - Advice reread: unchanged, no STOP. Next: serialize the MCP OAuth environment mutation.
+
+## Flaky milestone 3: MCP config race fixed
+- Added the existing storage::lock_test_env guard to the HTTP OAuth MCP test for its whole fixture/connect/call/restore lifetime. This is the unguarded FACTR_CONFIG_HOME writer that collided with factr_hooks Home (which already uses the same lock). No production code changed.
+- First validation command incorrectly used libtest --skip with crate names, so it did not exclude app-core. It stopped on the still-unfixed turn_end_span_reports_how_the_turn_ended recorder race before reaching base. This is additional evidence for the recorder fix, not an MCP regression.
+- Corrected validation: isolated fix-mcp-02, cargo test --workspace --exclude factr-app-core --exclude factr-gateway --locked --lib -- --test-threads=64: exit 0 (129.9s including feature-selection rebuild); base 1366 passed, 3 ignored. Includes both previously failing MCP OAuth transport and hook rewrite. All selected workspace libraries passed. git diff --check passes.
+- Advice reread: no STOP or new answer. Next: serialize recorder installers with their existing test locks.
