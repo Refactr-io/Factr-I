@@ -103,6 +103,28 @@ export function KeyProviderRow({
   )
 }
 
+/** Shown only when OpenCode is installed on this machine; `adoptable` means it holds a signed-in Zen key. */
+export function OpenCodeProviderRow({
+  adoptable,
+  busy,
+  onClick
+}: {
+  adoptable: boolean
+  busy?: boolean
+  onClick: () => void
+}) {
+  const { t } = useI18n()
+
+  return (
+    <KeyProviderRow
+      lead={<Terminal className="size-4" />}
+      onClick={busy ? () => undefined : onClick}
+      pitch={adoptable ? t.onboarding.openCodePitch : t.onboarding.openCodePitchNoLogin}
+      title={t.onboarding.openCodeTitle}
+    />
+  )
+}
+
 export function FireworksProviderRow({ onClick }: { onClick: () => void }) {
   const { t } = useI18n()
 

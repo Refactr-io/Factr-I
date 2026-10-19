@@ -1084,6 +1084,32 @@ export async function saveOnboardingApiKey(
   }
 }
 
+/** One-click "use my OpenCode sign-in": the backend copies OpenCode's own Zen key into the app's secret store
+ *  (the value never reaches the UI), then the usual connect-and-pick-a-model step runs. */
+export async function connectOpenCode(ctx: OnboardingContext) {
+  ctx = { ...ctx }
+  flowProfile = ctx.profile
+
+  try {
+    await ctx.requestGateway('model.save_key', { slug: 'opencode', source: 'opencode', profile: ctx.profile })
+
+    let failure: null | string = null
+    await completeWithModelConfirm(
+      ctx,
+      'OpenCode Zen',
+      ['opencode'],
+      reason => {
+        failure = reason?.trim() || 'Factr-I could not finish setting up OpenCode Zen.'
+      },
+      true
+    )
+
+    return failure ? { ok: false, message: failure } : { ok: true }
+  } catch (error) {
+    return { ok: false, message: errMessage(error, 'Could not connect OpenCode Zen') }
+  }
+}
+
 // Configure a local / self-hosted OpenAI-compatible endpoint (vLLM, llama.cpp,
 // Ollama, …). Unlike API-key providers, a local endpoint is defined by its URL
 // and usually needs NO key. The runtime resolver reads model.base_url from

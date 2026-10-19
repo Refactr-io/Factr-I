@@ -2,6 +2,8 @@
 
 ## v0.0.10 (unreleased)
 
+- When OpenCode is installed, onboarding and the model picker offer to connect its Zen sign-in, with explicit consent and a key-entry fallback.
+
 - Settings and eligible Scheduled jobs reads use the native backend without starting Python. Enabled pets still load from their configured profile.
 - Markdown caches have source-size limits, closed inter-agent replies release their content, math loads on demand, and muted haptics skip audio warm-up. Pane title updates preserve drafts and local state.
 

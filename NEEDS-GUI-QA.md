@@ -4,6 +4,10 @@
 
 With an isolated development build, test the system scrollbar preferences (automatic and always visible), mouse and trackpad scrolling, hover, idle fade and reduced motion. The sidebar bar must sit at the panel edge without hiding text, shifting rows or blocking pointer/keyboard access. Check narrow panes, long labels and horizontal scrolling. Confirm Run history has a distinct history icon in the rail and command palette, selected and unselected. These pointer and pixel checks were not run during integration because GUI driving was prohibited.
 
+## Integration: OpenCode connection
+
+Use disposable test-account state in the QA home, never the user's existing sign-in. Check detection in onboarding and the model picker, both with and without a sign-in available. No sign-in must lead to key entry; explicit connection must refresh models and preserve the initiating profile/session. Check missing/expired sign-in, offline catalog refresh, repeated clicks, keyboard focus, readable errors and the private-deployment refusal. Confirm no secret appears in the renderer or logs. Repeat on Windows and Linux. Integration tested existing onboarding/model-picker behavior and native detection/parser tests, without exercising real credential adoption or live Zen inference.
+
 Use only an isolated QA copy, fresh HOME/FACTR_HOME/FACTR_CONFIG_HOME/userData/host-lock directories, and a loopback stub. Never launch the installed user app or read credential files. The retained copy is `/private/tmp/factri-rust-run/Factr-RAM-QA.app`; its bundle id is `net.refactr.factr.qa.rust-ram`. The retained harness parks it as an unfocused sliver. One app at a time.
 
 These are explicit limits of this RAM task. The automated checks below already cover ordinary chat, image attachment, @ menu, Settings, Scheduled jobs/New job, lazy math, disclosure images, user-driven browser navigation/tab switching, and pet RPCs with enabled/named/managed configurations.

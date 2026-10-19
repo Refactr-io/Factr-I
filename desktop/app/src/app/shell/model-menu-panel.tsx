@@ -1,5 +1,5 @@
 import type { ModelOptionsResult } from '@factr/shared'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
@@ -25,6 +25,39 @@ export function ModelMenuPanel(props: ModelMenuHostProps) {
   const [refreshing, setRefreshing] = useState(false)
   const queryClient = useQueryClient()
   const { activeSessionId, controller } = useModelMenuController(props)
+  const [connecting, setConnecting] = useState(false)
+
+  // Passive read of the catalog the menu itself loads: an installed-but-unconnected OpenCode shows up as a
+  // model-less `opencode` row, which becomes a one-click connect at the foot of the menu.
+  const catalog = useQuery<ModelOptionsResult>({
+    enabled: false,
+    queryKey: modelOptionsQueryKey(profile, activeSessionId, ownerConnectionId)
+  })
+
+  const detectedOpenCode = catalog.data?.providers.find(p => p.detected && p.slug === 'opencode')
+
+  const connectOpenCode = async () => {
+    if (connecting || !detectedOpenCode) {
+      return
+    }
+
+    if (!detectedOpenCode.adoptable) {
+      window.location.hash = '#/settings?tab=providers'
+
+      return
+    }
+
+    setConnecting(true)
+
+    try {
+      await requestGateway('model.save_key', { slug: 'opencode', source: 'opencode', profile })
+      await refreshModels()
+    } catch {
+      window.location.hash = '#/settings?tab=providers'
+    } finally {
+      setConnecting(false)
+    }
+  }
 
   // Explicit "Refresh Models": re-fetch the catalog with refresh:true so the
   // backend busts its 1h provider-model disk cache and re-pulls each provider's
@@ -64,17 +97,32 @@ export function ModelMenuPanel(props: ModelMenuHostProps) {
     <ModelCatalogMenu
       controller={controller}
       footer={
-        <DropdownMenuItem
-          className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
-          disabled={refreshing}
-          onSelect={event => {
-            event.preventDefault()
-            void refreshModels()
-          }}
-        >
-          <Codicon className={cn(refreshing && 'animate-spin')} name="sync" size="0.75rem" />
-          {copy.refreshModels}
-        </DropdownMenuItem>
+        <>
+          {detectedOpenCode ? (
+            <DropdownMenuItem
+              className={dropdownMenuRow}
+              disabled={connecting}
+              onSelect={event => {
+                event.preventDefault()
+                void connectOpenCode()
+              }}
+            >
+              <Codicon name="plug" size="0.75rem" />
+              {copy.connectOpenCode}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            className={cn(dropdownMenuRow, 'text-(--ui-text-tertiary)')}
+            disabled={refreshing}
+            onSelect={event => {
+              event.preventDefault()
+              void refreshModels()
+            }}
+          >
+            <Codicon className={cn(refreshing && 'animate-spin')} name="sync" size="0.75rem" />
+            {copy.refreshModels}
+          </DropdownMenuItem>
+        </>
       }
       gateway={gateway}
       hideRowOptions

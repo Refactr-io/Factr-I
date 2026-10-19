@@ -3076,6 +3076,9 @@ export interface Translations {
     connected: string
     featuredPitch: string
     fireworksPitch: string
+    openCodeTitle: string
+    openCodePitch: string
+    openCodePitchNoLogin: string
     localModelsTitle: string
     localModelsPitch: string
     openRouterPitch: string
@@ -3156,6 +3159,7 @@ export interface Translations {
       editModels: string
       connectProvider: string
       refreshModels: string
+      connectOpenCode: string
       fast: string
     }
     modelOptions: {

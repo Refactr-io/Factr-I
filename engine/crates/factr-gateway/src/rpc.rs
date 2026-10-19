@@ -85,6 +85,7 @@ fn default_new_chat_effort(provider: &str) -> Option<String> {
 pub(crate) fn put_config(home: &std::path::Path, config: &Value) -> Result<(), (bool, String)> {
     settings::put_config(home, config).map_err(|e| (e.code == 4002, e.message))
 }
+mod opencode;
 mod projects;
 mod provider_state;
 pub use provider_state::{any_provider_configured, runtime_provider_id, runtime_saved_provider};
@@ -1556,6 +1557,18 @@ impl Conn {
                 };
                 let models = listed.as_ref().and_then(|r| r["models"].as_array()).map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
                 Ok(model_options(&self.config, models, p["include_unconfigured"] == true))
+            }
+            // "Use my OpenCode sign-in": approve OpenCode's own auth.json as a credential source (the engine reads it in
+            // place, the key never moves). Any other save_key goes to the backend as before.
+            "model.save_key" if p["source"] == "opencode" => {
+                if crate::deployment::is_private() {
+                    return Err(RpcError { code: -32000, message: crate::deployment::PRIVATE_MSG.into(), data: None });
+                }
+                opencode::adopt().map_err(|message| RpcError { code: 4007, message, data: None })?;
+                crate::reload_if_credentials_moved(&self.config).await;
+                let options = model_options(&self.config, Vec::new(), false);
+                let row = options["providers"].as_array().and_then(|r| r.iter().find(|r| r["slug"] == "opencode")).cloned();
+                Ok(json!({ "provider": row.unwrap_or_else(|| json!({ "slug": "opencode", "name": "OpenCode Zen", "models": [], "total_models": 0, "authenticated": true })) }))
             }
             "session.active_list" => {
                 let stored = super::session_infos(&self.config, 1000, false)

@@ -198,6 +198,9 @@ class ModelOptionProvider(OpenModel):
     capabilities: dict[str, ModelCapabilities] | None = None
     pricing: dict[str, ModelPricing] | None = None
     pricing_pending: bool | None = None
+    detected: bool | None = None  # an installed OpenCode, not yet connected (``models`` stays empty)
+    adoptable: bool | None = None  # OpenCode holds a signed-in key the user can adopt in one click
+    free_models: list[str] | None = None
 
 
 class ModelOptionsResult(Result):

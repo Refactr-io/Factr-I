@@ -45,3 +45,15 @@
 - cargo test -p factr-gateway --locked -- --test-threads=1: exit 0, all suites pass (229.78s, including cold compile). Exact log: /private/tmp/integration-check-dwkkrgl8/output.log.
 - backend .venv/bin/python -m pytest tests/factr_backend/test_ui_route_goldens.py -q: 1 passed, validates all 22 Python cases plus embedded JSON; /private/tmp/integration-check-mf7sei4h/output.log.
 - Fixture compatibility fix, changelog and scrollbar QA notes included. No engine core or README changes. Next: OpenCode merge.
+
+## Milestone 3: OpenCode validation in progress
+
+- No conflicts; additive RPC module, provider catalog and both onboarding/model-menu entry points preserved. Exact source reviewed because the sibling graph lacks this module; coverage checked for all 14 changed paths.
+- TypeScript exit 0. Onboarding/model-picker UI: 12 files, 79 passed. Electron pool smoke: 2 passed. Contract generator --check: exit 0, all three generated artifacts current. Name gate: OK, zero hits.
+- ESLint found one unsorted imported name in onboarding/index.tsx; fixed that import only. All six touched renderer files pass the rerun. No credentials read or adoption attempted. OpenCode native tests running.
+- Added exact OpenCode/manual-platform scenarios to NEEDS-GUI-QA.md and its entry to the unreleased changelog.
+
+### Milestone 3 validated
+
+- cargo test -p factr-gateway --locked opencode -- --test-threads=1: 4 passed, exit 0 (49.19s including compile). Log /private/tmp/integration-check-bzypci49/output.log.
+- All milestone checks pass after the import-order correction. Next: bots last, retaining both native UI reads and OpenCode registrations/contracts.
