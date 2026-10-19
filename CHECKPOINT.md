@@ -107,3 +107,29 @@
 - Post-cleanup disk: 71 GiB free. Final report copy verified byte-for-byte.
 
 ## Parent: merged feat/0.0.10-i18n (wording and translation leftovers); its checkpoint/report are in handoff/i18n-REPORT.md
+
+
+# Flaky engine tests task (2026-10-19)
+
+## Scope and setup
+- Read COMMON-RULES.md, ADVICE-FROM-PARENT.md and flaky-handoff.md completely, in order. Task is test-only; unrelated parent bots/RAM remaining-work notes do not widen it. No push, GUI, benchmark, production behavior change or credential-file access.
+- Clean starting commit 11e5b0ee, branch fix/flaky-engine-tests. Initial disk availability 71 GiB. Single Cargo target: engine/target; one build at a time.
+- Isolated runner: /private/tmp/factri-flaky-l0nrzadt/run.py. Every invocation creates fresh HOME, FACTR_HOME, FACTR_CONFIG_HOME, TMPDIR, XDG_CONFIG_HOME and Electron userData directories. Environment allowlisted; shared Cargo cache cloned into the temporary runner root without reading credentials.
+- Graph Verify tier: no graph for this worktree. Nearest factri-main graph generation 2026-10-12T11:52:27Z is an older, different checkout. Discovery/coverage checked for engine; exact local source required for all claims and changes. No indexing of credential files.
+- Reproduction underway: cargo test --workspace --locked -- --test-threads=16 (before-01). Cold compile in progress. Exact outputs retained under the runner root.
+- Read-only CI evidence: run 38178832627 macOS /usage test failed with Today zero versus session one run; run 38144763796 Linux slash-popup test failed with Null versus true. These logs are older than this branch, whose tests already include polling/locking corrections, so they are leads rather than proof of current defects. Logs in /private/tmp/factri-flaky-ci-*.log.
+
+## Advice
+- Parent file says continue, no STOP. No architecture change or design fork so far. Claude CLI not called.
+
+## Next
+- Complete repeated pre-fix workspace runs, identify current failing tests, make separate minimal test-only fixes and validate each. Then five consecutive clean full workspace runs, final report and cleanup.
+
+## Flaky milestone 1: pre-fix reproduction complete
+- before-01: full workspace attempt, 16 threads, fail-fast; exit 101 in 212.4s. App-core risky-delete fixture failed; Cargo stopped before base/gateway.
+- before-02: full workspace, --no-fail-fast, 16 threads; exit 101 in 213.7s. Same fixture failed; all other targets including gateway 414/414 passed.
+- before-03: full workspace, --no-fail-fast, 64 threads; exit 101. Risky-delete fixture, passing_gate_records_skipped_count_on_the_guard_span_without_nudging, streamable_http_uses_factr_oauth_token_for_discovery_and_calls and a_pre_tool_hook_can_rewrite_the_arguments_and_the_gate_reports_it failed. Gateway a_session_grant_covers_only_its_own_risk_category hung with every other gateway unit test finished. Stopped ONLY that child binary via SIGTERM after 114s (PID/parent/path verified); Cargo continued all remaining targets.
+- Measured rates: workspace attempts failed 3/3; risky-delete fixture 3/3; stop-nudge recorder assertion 1/3; MCP OAuth and hook-rewrite 1/2 executions each; approval hang 1/2 gateway executions. Do not conflate fail-fast-unreached tests with passes.
+- Confirmed test causes: fixture assumes HOME is outside /tmp; two stop-nudge tests replace the recorder outside the lock held by fallback tests; MCP OAuth test mutates FACTR_CONFIG_HOME without the shared lock, colliding with locked hook tests; approval tests share config and one saves cargo publish into the permanent allowlist while another expects its prompt. No production bug established.
+- Advice read again: no STOP or task-specific correction. Asked parent in QUESTIONS-flaky.md about smallest approval config isolation guard versus subprocesses; proceeding with existing ENV_LOCK and test-local RAII restoration.
+- Next: separate validated fixes for fixture, MCP env lock, recorder lock and approval config/receives. Five consecutive clean full suites after the final fix.
