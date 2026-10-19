@@ -190,7 +190,7 @@ export function SidebarRail() {
               className="grid size-8 place-items-center rounded-md transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
               type="button"
             >
-              <ProfilePicture connectionId={connectionId} name={name || 'default'} tone={tone} />
+              <ProfilePicture className="size-7 text-sm" connectionId={connectionId} name={name || 'default'} tone={tone} />
             </button>
           )}
           wrapperClassName="inline-flex"

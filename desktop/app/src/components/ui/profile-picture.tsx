@@ -14,7 +14,7 @@ export function ProfilePicture({ connectionId, name, tone, className }: {
   const picture = validProfilePicture(pictures[profilePictureKey(connectionId, name)])
 
   return (
-    <span aria-hidden className={cn('relative grid size-6 shrink-0 place-items-center overflow-hidden rounded-sm bg-(--ui-control-active-background) text-xs font-medium leading-none text-foreground', className)}
+    <span aria-hidden className={cn('relative grid size-6 shrink-0 place-items-center overflow-hidden rounded-lg bg-(--ui-control-active-background) text-xs font-medium leading-none text-foreground', className)}
       style={tone ? { backgroundColor: `color-mix(in srgb, ${tone} 22%, var(--ui-bg-elevated))` } : undefined}>
       {profileShortLabel(name)}
       {picture && <img alt="" className="absolute inset-0 size-full object-cover" key={picture} onError={event => { event.currentTarget.style.visibility = 'hidden' }} src={picture} />}
