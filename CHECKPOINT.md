@@ -107,3 +107,30 @@
 - Post-cleanup disk: 71 GiB free. Final report copy verified byte-for-byte.
 
 ## Parent: merged feat/0.0.10-i18n (wording and translation leftovers); its checkpoint/report are in handoff/i18n-REPORT.md
+
+## Merge2: flaky engine test merge
+
+- Started clean at 11e5b0ee on feat/0.0.10-integration; merged all seven fix/flaky-engine-tests commits with --no-ff. No conflicts occurred, so restored the original integration checkpoint/report and appended the flaky report under Flaky engine test fixes. Reviewed the complete six-file Rust diff: all changes are in test modules. No production port or UI change.
+- Read COMMON-RULES.md, ADVICE-FROM-PARENT.md, merge2 handoff, RTK and Ponytail instructions. Parent says continue, no STOP. No advice fork needed. Verify tier: this worktree is not indexed; read the exact merge diff directly. Disk before builds: 71 GiB free. Evidence: /private/tmp/factri-merge2-etue5ry_.
+- Next: three locked 64-thread workspace runs in sequence, desktop TypeScript/UI/Electron sanity checks, name gate, changelog, whitespace, local commit and final report copy. No GUI, packaged app, Docker, benchmark or push.
+
+### Merge2 advice and early checks
+
+- Production-prefix assertion passes for all five Rust test-module files; bash_tests.rs remains included only under cfg(all(test, not(windows))).
+- First name gate fails solely on four matches in three personal paths copied from the flaky report. Replaced only these paths in the appended section with portable placeholders; archived verbatim source under the evidence directory. Question recorded in handoff/QUESTIONS-merge2.md, continuing with safest judgment. No source suppression or gate change.
+- Test runner reuses the prior integration isolation pattern with an allowlisted environment, fresh HOME/FACTR/config/TMPDIR/userData per command, task-local Cargo cache, CARGO_BUILD_JOBS=4 and the only target at target/.
+
+### Merge2 harness correction
+
+- First full workspace attempt: exit 101, 359.55s, log /private/tmp/factri-merge2-etue5ry_/merge2-check-zqrg6die/output.log. Four failures across gateway projects_store and harness-api-server are InvalidInput: path must be shorter than SUN_LEN. The runner nested its scratch beneath the evidence directory, exceeding macOS Unix-socket path limits. All merged test modules passed.
+- Corrected only the temporary runner to use fresh short /private/tmp/m2-* roots, still isolated for every command and still one target/. No repository source fix or skip. Restarting the required three consecutive full workspace runs; the failed attempt remains evidence.
+
+- Corrected workspace run 1: cargo test --workspace --locked --no-fail-fast -- --test-threads=64, exit 0, 143.64s, /private/tmp/m2-uq03wfyw/output.log. All four prior socket-path failures pass; no source changes. Run 2 started with fresh isolation.
+- Corrected workspace run 2: identical command, exit 0, 148.60s, /private/tmp/m2-2etxzwad/output.log. Run 3 started with fresh isolation.
+
+## Merge2 milestone 1 validated: three consecutive full workspace passes
+
+- Third run: identical locked 64-thread workspace command, exit 0, 143.57s, /private/tmp/m2-ow6nxcz0/output.log. Final streak is 143.64s / 148.60s / 143.57s, all green. Each completed all 147 Cargo targets. Main unit suites each run: app-core 1108 passed / 4 ignored, base 1366 / 3, gateway 387 / 1. Existing opt-in ignores unchanged, no retries or skips added.
+- Exact command for each: rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py engine cargo test --workspace --locked --no-fail-fast -- --test-threads=64. Full command/environment ledger: runs.jsonl and run.py in that evidence directory.
+- The runner-path failure is documented above and excluded from the streak. All four affected socket tests pass in every corrected run. No repository source adjustments were needed. Name gate passed after portable report paths; git diff --check passes. Disk: 66 GiB.
+- Next: amend this task's merge commit to preserve integration records with the required co-author trailer, then desktop TypeScript/UI/Electron sanity, changelog, final report and cleanup.

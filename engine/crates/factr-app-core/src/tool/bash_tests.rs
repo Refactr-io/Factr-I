@@ -1011,11 +1011,12 @@ async fn bash_refuses_to_delete_the_home_directory() {
 
 #[tokio::test]
 async fn bash_holds_a_risky_delete_until_justified_then_runs_it() {
-    // Outside the system temp dir: /tmp is scratch to the risk gate, so a delete
-    // there is safe on Linux and would never be held.
+    let _env_lock = crate::storage::lock_test_env();
+    // HOME can be redirected into /tmp by the runner or another test. The gate
+    // treats /tmp as scratch, so keep this fixture inside the checkout instead.
     let temp = tempfile::Builder::new()
         .prefix("factr-risky-delete-")
-        .tempdir_in(dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))))
+        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
         .expect("temp dir");
     let workdir = temp.path().join("work");
     let target = temp.path().join("outside");

@@ -1081,6 +1081,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_memory_proposal_is_rejected_and_reported_in_the_apply_span() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let home = std::env::temp_dir().join(format!("learn-memory-{}", std::process::id()));
         let store = factr_learn::entries::EntryStore::open(&home).unwrap();
         let fresh = vec![Turn { role: "user".into(), text: "I prefer Nim.".into() }];
