@@ -2564,7 +2564,7 @@ async function waitForUpdateToFinish() {
 
       await advanceBootProgress(
         'backend.update-wait',
-        'An update is finishing — Factr-I will start automatically when it completes…',
+        'An update is finishing - Factr-I will start automatically when it completes…',
         12
       )
     },
@@ -14442,7 +14442,7 @@ function createWindow() {
           title: 'Factr-I desktop UI was terminated',
           errorDescription:
             `The desktop UI process was terminated unexpectedly (reason: ${reason}${exit}). ` +
-            'Your sessions and the background gateway are unaffected — reload to continue.',
+            'Your sessions and the background gateway are unaffected - reload to continue.',
           reloadUrl: DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString()
         })
       }
@@ -17640,7 +17640,7 @@ function showAboutPanelFresh() {
     app.setAboutPanelOptions({
       applicationName: APP_NAME,
       applicationVersion: skew.outOfSync
-        ? `${resolveFactrVersion()} — app build out of date, update the desktop app`
+        ? `${resolveFactrVersion()} - app build out of date, update the desktop app`
         : resolveFactrVersion(),
       copyright: 'Copyright © 2026 Refactr'
     })

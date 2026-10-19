@@ -1152,8 +1152,6 @@ export const ru = defineLocale({
     // v2 multi-connection registry: Settings → Gateways.
     connections: {
       title: 'Зарегистрированные шлюзы',
-      intro:
-        'Управляйте этим устройством и всеми шлюзами Factr-I, до которых можно дотянуться через удалённые, SSH или Cloud-соединения.',
       stagedNote:
         'Переключайтесь между шлюзами из раздела «Сеансы». Профили, чаты, мессенджеры и cron-задачи остаются за своим шлюзом; работа на других шлюзах продолжается.',
       launchModeTitle: 'При запуске возвращаться к «Сеансам» на последнем шлюзе',
@@ -1180,14 +1178,10 @@ export const ru = defineLocale({
       updateAllRunning: 'Обновление всех инстансов…',
       updateAllDone: 'Обновления разосланы',
       updateAllFailed: 'Не удалось разослать обновления',
-      updateSkippedCloud: 'Управляется Factr-I Cloud',
       kindLocal: 'Локальный',
       kindRemote: 'Удалённый шлюз',
-      kindCloud: 'Factr-I Cloud',
       kindSsh: 'SSH',
       kindLocalDesc: 'Рантайм Factr-I, которым управляет это приложение.',
-      kindRemoteDesc: 'Шлюз Factr-I, доступный по HTTP(S) — LAN, Tailscale или интернет.',
-      kindCloudDesc: 'Хостинговая инстанция, обнаруженная через ваш аккаунт Factr-I Cloud.',
       kindSshDesc: 'Установка Factr-I, доступная по SSH.',
       labelTitle: 'Имя',
       labelDesc:
@@ -1207,8 +1201,6 @@ export const ru = defineLocale({
       duplicateSsh: label => `Соединение с этим SSH-хостом уже есть («${label}»).`,
       sameBackendHint: label => `Тот же бэкенд, что и «${label}»`,
       localAddHint: 'Локальное недоступно: управляемое локальное соединение уже существует (их всегда только одно).',
-      cloudAddHint:
-        'Подсказка: вход в Factr-I Cloud выше автоматически обнаруживает ваших агентов — эту форму используйте только для ручной регистрации известного URL инстанса.',
       save: 'Сохранить соединение',
       saving: 'Сохранение…',
       cancel: 'Отмена',
@@ -1229,9 +1221,6 @@ export const ru = defineLocale({
       localTitle: 'Локальный шлюз',
       localDesc: 'Запускает приватный бэкенд Factr-I на localhost. Это значение по умолчанию, работает офлайн.',
       remoteTitle: 'Удалённый шлюз',
-      remoteDesc: 'Подключает это приложение к удалённому бэкенду Factr-I.',
-      remoteAuthHint:
-        'Хостинговые шлюзы используют OAuth или логин/пароль; самохостинговые могут использовать токен сессии.',
       remoteUrlTitle: 'Удалённый URL',
       remoteUrlDesc: 'Базовый URL удалённого бэкенда дашборда. Поддерживаются префиксы пути, например /factr.',
       probing: 'Проверяем, как аутентифицируется этот шлюз…',
@@ -1782,7 +1771,7 @@ export const ru = defineLocale({
     },
     nav: {
       newChat: { title: 'Новый сеанс', detail: 'Начать новый сеанс' },
-      settings: { title: 'Настройки', detail: 'Настройка Factr-I desktop' },
+      settings: { title: 'Настройки', detail: 'Настройка Factr-I' },
       capabilities: { title: 'Возможности', detail: 'Навыки, инструменты и MCP-серверы' },
       messaging: { title: 'Сообщения', detail: 'Настройка Telegram, Slack, Discord и других' },
       artifacts: { title: 'Артефакты', detail: 'Просмотр сгенерированных результатов' }

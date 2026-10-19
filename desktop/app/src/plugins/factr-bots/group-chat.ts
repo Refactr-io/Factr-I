@@ -1717,7 +1717,7 @@ const GROUP_EMPTY_SENTINEL = '(empty)'
 
 const GROUP_EMPTY_FRIENDLY =
   '⚠️ The model returned no response after processing tool results. ' +
-  'This can happen with some models — try again or rephrase your question.'
+  'This can happen with some models - try again or rephrase your question.'
 
 function normalizeGroupChatText(text: string): string {
   const trimmed = String(text || '').trim()

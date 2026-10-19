@@ -562,7 +562,7 @@ export function renderRpcResult(response: unknown, name: string): string {
       return text ? `Steered · "${text}" queued for next tool call` : 'Steered next tool call'
     }
 
-    return 'Steer rejected — agent declined input'
+    return 'Steer rejected - agent declined input'
   }
 
   // process.stop — { killed: number }

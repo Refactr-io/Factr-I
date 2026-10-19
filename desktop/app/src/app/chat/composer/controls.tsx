@@ -385,7 +385,7 @@ function WakeWordButton({ disabled, pausedForVoice = false }: { disabled: boolea
       ? c.wakeWordListening(phrase)
       : c.wakeWordOff(phrase)
 
-  const tooltip = !pausedForVoice && wake.notice ? `${label} — ${wake.notice}` : label
+  const tooltip = !pausedForVoice && wake.notice ? `${label} - ${wake.notice}` : label
 
   return (
     <Tip label={tooltip} placement="control">

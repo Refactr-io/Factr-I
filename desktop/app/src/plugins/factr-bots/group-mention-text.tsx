@@ -40,7 +40,7 @@ export function classifyGroupMention(token: string, members: GroupMember[]): Gro
 const TITLES: Record<GroupMentionKind, string> = {
   agent: 'Bot in this room',
   broadcast: 'Everyone in the room',
-  human: 'You — the room is waiting on a human'
+  human: 'You - the room is waiting on a human'
 }
 
 /** Split one text node into prose and recognized mention spans. */

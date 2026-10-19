@@ -68,7 +68,7 @@ export function RunHistoryStats({ budgetFromList }: { budgetFromList?: BudgetBod
       {budget?.over_budget && (
         <p className="rounded-md bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300" role="status">
           Daily spend ${budget.spend_usd.toFixed(2)}
-          {budget.budget_daily_usd != null ? ` / $${budget.budget_daily_usd.toFixed(2)} budget` : ''} — soft limit only
+          {budget.budget_daily_usd != null ? ` / $${budget.budget_daily_usd.toFixed(2)} budget` : ''} - soft limit only
         </p>
       )}
       {monitors && (

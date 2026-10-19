@@ -430,7 +430,7 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
                 })
                 host.notify({
                   kind: 'success',
-                  message: `Created ${name} — full copy of ${bot.name}`
+                  message: `Created ${name} - full copy of ${bot.name}`
                 })
               })
               .catch(err => host.notifyError(err, b.bot.duplicateFailed))

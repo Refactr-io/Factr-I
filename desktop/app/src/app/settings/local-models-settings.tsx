@@ -66,7 +66,7 @@ function ProgressBar({ percent }: { percent: number | undefined }) {
 
 function gbLabel(bytes: number | null | undefined): string {
   if (!bytes) {
-    return '—'
+    return '-'
   }
 
   return `${(bytes / (1 << 30)).toFixed(1)} GB`

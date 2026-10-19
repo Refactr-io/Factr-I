@@ -90,7 +90,7 @@ function missingAssetsList(missingAssets?: string[]): string {
 
   return (
     `<p>The renderer bundle is missing ${missingAssets!.length} module file(s) ` +
-    `(first ${assets.length} shown) — the last update replaced the app while ` +
+    `(first ${assets.length} shown) - the last update replaced the app while ` +
     `its files were locked.</p><ul>${items}</ul>`
   )
 }

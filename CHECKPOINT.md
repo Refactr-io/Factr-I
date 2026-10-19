@@ -105,3 +105,5 @@
 - No remaining integration blocker or open architectural question. Manual/release limits are retained, including desktop-owned group rounds, Windows/native-Linux QA, real credential/provider paths, inherited browser/pet issues and the full GUI matrix. No push.
 
 - Post-cleanup disk: 71 GiB free. Final report copy verified byte-for-byte.
+
+## Parent: merged feat/0.0.10-i18n (wording and translation leftovers); its checkpoint/report are in handoff/i18n-REPORT.md

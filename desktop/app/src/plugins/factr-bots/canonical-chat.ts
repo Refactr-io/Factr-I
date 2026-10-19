@@ -86,7 +86,7 @@ async function openStoredBotChat(
   summary: CanonicalChatRow
 ): Promise<string> {
   if (!storedId || typeof host.openSession !== 'function') {
-    throw new Error('This Factr-I Desktop version cannot open stored sessions')
+    throw new Error('This Factr-I version cannot open stored sessions')
   }
 
   const { bot, name, route } = botOwner(owner)
@@ -280,7 +280,7 @@ async function findExistingCanonicalChat(owner: RosterRow | string): Promise<Can
     // message so update-required classification and diagnostics still work.
     const message = typeof (error as RpcErrorLike)?.message === 'string' ? (error as { message: string }).message : ''
     const detail = message ? ` (${message})` : ''
-    throw new Error(`Could not check ${name}'s Bot Chat registry${detail} — not starting a new chat`)
+    throw new Error(`Could not check ${name}'s Bot Chat registry${detail} - not starting a new chat`)
   }
 
   const rows = res?.sessions ?? []
@@ -299,7 +299,7 @@ async function findExistingCanonicalChat(owner: RosterRow | string): Promise<Can
   // an empty lookup is unconfirmed absence, not confirmed absence, so fail
   // closed the same way a thrown RPC error already does instead of minting.
   if (bot?.canonical_session?.id) {
-    throw new Error(`Could not confirm ${name}'s Bot Chat registry — not starting a new chat`)
+    throw new Error(`Could not confirm ${name}'s Bot Chat registry - not starting a new chat`)
   }
 
   return null
@@ -641,7 +641,7 @@ export async function prepareBotSource(bot: RosterRow) {
   if (route && typeof host.requestProfile !== 'function') {
     throw new Error(
       getPluginCtx()?.i18n?.t('bot.remoteConnectionsUnsupported') ??
-        'Update Factr-I Desktop to chat with bots on other connections.'
+        'Update Factr-I to chat with bots on other connections.'
     )
   }
 

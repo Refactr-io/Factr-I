@@ -345,7 +345,7 @@ export async function ensureGroupChatSession(
         if (error?.code !== 4007) {
           const detail = error instanceof Error && error.message ? ` (${error.message})` : ''
           throw new Error(
-            `Could not check ${member?.name || 'member'}'s group session${detail} — not starting a new one`
+            `Could not check ${member?.name || 'member'}'s group session${detail} - not starting a new one`
           )
         }
         /* genuinely doesn't exist (4007) — try the next target / fall through to create */

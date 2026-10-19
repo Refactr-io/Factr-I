@@ -188,7 +188,7 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
   if (unsupported) {
     return (
       <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-        Full configuration needs a newer gateway (restart it after updating Factr).
+        Full configuration needs a newer gateway (restart it after updating Factr-I).
       </div>
     )
   }
@@ -276,7 +276,7 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
           }}
         />
         {labeled(
-          'Capabilities (applies immediately — skills, tools, MCP)',
+          'Capabilities (applies immediately - skills, tools, MCP)',
           <ResizableFrame height={460} minHeight={300}>
             <CapabilitiesView
               embedded
@@ -381,7 +381,7 @@ export function AdvancedProfileConfig({ bot, state, setState }: AdvancedProfileC
         </div>
       )}
       {labeled(
-        `Toolsets (${enabledToolsets}/${state.toolsets.length} enabled — unchecking all restores the default)`,
+        `Toolsets (${enabledToolsets}/${state.toolsets.length} enabled - unchecking all restores the default)`,
         <div className="rounded-md border border-(--ui-stroke-secondary) p-2">
           <div
             className="overflow-y-auto overscroll-contain"

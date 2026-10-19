@@ -133,7 +133,7 @@ export function QuickEntryApp() {
                 dispatch({ type: 'dismiss' })
               }
             }}
-            placeholder={state.connected ? 'Ask Factr-I…' : 'Not connected — open Factr-I to reconnect'}
+            placeholder={state.connected ? 'Ask Factr-I…' : 'Not connected - open Factr-I to reconnect'}
             ref={inputRef}
             spellCheck={false}
             style={{

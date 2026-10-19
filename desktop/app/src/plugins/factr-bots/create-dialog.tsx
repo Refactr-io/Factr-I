@@ -385,7 +385,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
         return null
       }
 
-      const descriptionText = [botTitle, description].filter(Boolean).join(' — ')
+      const descriptionText = [botTitle, description].filter(Boolean).join(' - ')
       await requestForTarget('profiles.create', {
         name: slug,
         description: descriptionText,
@@ -786,7 +786,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                     }}
                   />
                   {labeled(
-                    'SOUL.md (optional — replaces the generated persona)',
+                    'SOUL.md (optional - replaces the generated persona)',
                     <Textarea
                       className="min-h-24 font-mono text-xs leading-5"
                       onChange={event => setSoul(event.target.value)}
@@ -811,8 +811,8 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                 !valid || taken ? (
                   <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
                     {taken
-                      ? 'That name is taken — pick another before configuring capabilities.'
-                      : 'Name the bot first — a draft profile is created when you open this tab (discarded if you cancel).'}
+                      ? 'That name is taken - pick another before configuring capabilities.'
+                      : 'Name the bot first - a draft profile is created when you open this tab (discarded if you cancel).'}
                   </div>
                 ) : !createdForCaps ? (
                   <div className="flex justify-center py-4">
@@ -836,12 +836,12 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                   // — a message rather than rendering `undefined` as a
                   // component, which throws.
                   <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                    Skills need a newer Factr Desktop.
+                    Skills need a newer Factr-I.
                   </div>
                 )
               ) : capsFailed ? (
                 <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                  Capability catalog needs a newer gateway (restart it after updating Factr).
+                  Capability catalog needs a newer gateway (restart it after updating Factr-I).
                 </div>
               ) : !caps ? (
                 <div className="flex justify-center py-4">
@@ -850,7 +850,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
               ) : advTab === 'skills' ? (
                 noSkills ? (
                   <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                    “Create empty” is checked — no bundled skills will be installed.
+                    “Create empty” is checked - no bundled skills will be installed.
                   </div>
                 ) : (
                   <div className="grid gap-1.5">
@@ -876,7 +876,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                         onToggle={(name, enabled) => toggleCap('skills', name, enabled)}
                       />
                     </div>
-                    <div className="text-[0.625rem] leading-4 text-(--ui-text-quaternary)">{`Catalog from ${caps.source} — unchecked skills are disabled after creation.`}</div>
+                    <div className="text-[0.625rem] leading-4 text-(--ui-text-quaternary)">{`Catalog from ${caps.source} - unchecked skills are disabled after creation.`}</div>
                   </div>
                 )
               ) : advTab === 'toolsets' ? (
@@ -1301,7 +1301,7 @@ export function CreateGroupChatDialog({ open, roster, onClose, onCreated }: Crea
               })
             ) : (
               <div className="px-1.5 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                {query.trim() ? `No bots match “${query.trim()}”` : 'No bots yet — create one first.'}
+                {query.trim() ? `No bots match “${query.trim()}”` : 'No bots yet - create one first.'}
               </div>
             )}
           </div>

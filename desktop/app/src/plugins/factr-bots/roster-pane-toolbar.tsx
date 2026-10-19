@@ -75,7 +75,7 @@ export function renderRosterToolbar({
         </span>
         <div className="flex items-center gap-0.5">
           <Tip
-            label={activityToasts ? 'Activity toasts on — click to silence' : 'Activity toasts off — click to enable'}
+            label={activityToasts ? 'Activity toasts on - click to silence' : 'Activity toasts off - click to enable'}
           >
             <Button
               className="rounded-md text-(--ui-text-tertiary) hover:text-foreground"

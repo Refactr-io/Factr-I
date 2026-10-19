@@ -50,7 +50,7 @@ export async function resolveSiblingWsUrl(
   const desktop = window.factrDesktop
 
   if (!desktop?.getConnection) {
-    throw new Error('Factr-I Desktop connection bridge unavailable')
+    throw new Error('Factr-I connection bridge unavailable')
   }
 
   const connectionId = route.connectionId?.trim() || null

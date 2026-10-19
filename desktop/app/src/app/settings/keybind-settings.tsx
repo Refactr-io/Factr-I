@@ -159,7 +159,7 @@ function ShortcutSettings({ includeScreenshot }: { includeScreenshot: boolean })
       {isSearching ? (
         <div className="px-2 py-2">
           {filteredActions?.length === 0 && filteredReadonly?.length === 0 ? (
-            <p className="px-3 py-4 text-center text-[0.8125rem] text-muted-foreground">—</p>
+            <p className="px-3 py-4 text-center text-[0.8125rem] text-muted-foreground">-</p>
           ) : (
             <>
               {filteredActions?.map(action => (

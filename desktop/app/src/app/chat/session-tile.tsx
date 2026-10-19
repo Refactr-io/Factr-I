@@ -95,10 +95,10 @@ export function sessionTileResumeFailure(
   }
 
   if (durableSessionFound) {
-    return 'Session is still available — retry resuming it.'
+    return 'Session is still available - retry resuming it.'
   }
 
-  return 'Session unavailable — you can retry resuming it.'
+  return 'Session unavailable - you can retry resuming it.'
 }
 
 /** Should this tile dispatch a `session.resume`?

@@ -58,12 +58,12 @@ function nextRunMs(job: CronJob): null | number {
 // narrow sidebar.
 function formatRunTime(seconds?: null | number): string {
   if (!seconds) {
-    return '—'
+    return '-'
   }
 
   const date = new Date(seconds * 1000)
 
-  return Number.isNaN(date.valueOf()) ? '—' : fmtDayTime.format(date)
+  return Number.isNaN(date.valueOf()) ? '-' : fmtDayTime.format(date)
 }
 
 interface SidebarCronJobsSectionProps {
@@ -250,7 +250,7 @@ function CronJobSidebarRow({
     ? (c.states[state] ?? state)
     : next !== null
       ? `${overdue ? `${c.overdueSince.replace(/:$/, '')} ` : ''}${relativeTime(next, nowMs)}`
-      : '—'
+      : '-'
 
   // Pause/resume and delete aren't threaded through the sidebar's prop chain, so
   // drive them against the shared $cronJobs atom directly (same path the cron

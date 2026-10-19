@@ -70,7 +70,7 @@ export function GroupImageControls({ image, onImage, seedName, seedMembers }: Gr
     try {
       const who = [seedName, seedMembers?.length ? `a team of ${seedMembers.join(', ')}` : '']
         .filter(Boolean)
-        .join(' — ')
+        .join(' - ')
 
       const res = await host.request<ImageGenerateResponse>('image.generate', {
         prompt:
@@ -443,7 +443,7 @@ export function GroupClarifyCard({ entry, members }: GroupClarifyCardProps) {
 
       // Echo the exchange into the room log so the thread reads complete.
       const summary = isApproval
-        ? `${resolve(questions[0])} — ${entry.command || entry.question || b.group.commandApproval}`
+        ? `${resolve(questions[0])} - ${entry.command || entry.question || b.group.commandApproval}`
         : questions.map(q => (questions.length > 1 ? `${q.question}: ${resolve(q)}` : resolve(q))).join('\n')
 
       appendGroupChatEntry(

@@ -19,8 +19,8 @@ interface ComputerUsePanelProps {
 // Per-OS one-liner shown when there's no TCC grant flow (Windows/Linux). macOS
 // drives the permission rows instead, so it has no entry here.
 const PLATFORM_NOTE: Record<string, string> = {
-  linux: 'Drives your desktop via the X11/XWayland accessibility stack — no permission prompt.',
-  win32: 'First run may trigger a Windows SmartScreen prompt for the cua-driver UIAccess worker — allow it.'
+  linux: 'Drives your desktop via the X11/XWayland accessibility stack - no permission prompt.',
+  win32: 'First run may trigger a Windows SmartScreen prompt for the cua-driver UIAccess worker - allow it.'
 }
 
 function tone(granted: boolean | null) {
@@ -173,7 +173,7 @@ export function ComputerUsePanel({ onConfiguredChange }: ComputerUsePanelProps) 
         <div className="min-w-0">
           {status.can_grant ? (
             <p className="text-[0.75rem] text-muted-foreground">
-              Grants attach to CuaDriver&apos;s own identity (com.trycua.driver), not Factr — so the dialog is
+              Grants attach to CuaDriver&apos;s own identity (com.trycua.driver), not Factr-I - so the dialog is
               attributed to the process that drives your Mac.
             </p>
           ) : (
