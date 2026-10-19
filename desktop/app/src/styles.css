@@ -1126,7 +1126,7 @@
 /* The terminal host is a fixed overlay chasing its slot; the slot carries the card's inner corner radius so the overlay
    never squares off the card's rounded bottom corners or paints over its border. */
 [data-tool-card] [data-terminal-slot] {
-  border-radius: 0 0 7px 7px;
+  border-radius: 0 0 8px 8px;
 }
 
 [data-tool-card] [data-panel-label] > .dither {

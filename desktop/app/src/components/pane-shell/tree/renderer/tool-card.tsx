@@ -22,11 +22,11 @@ export const isCardZone = (node: LayoutNode): boolean => {
 const iconButton =
   'grid size-6 shrink-0 place-items-center rounded-md text-(--ui-text-tertiary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground focus-visible:bg-(--ui-control-hover-background) focus-visible:text-foreground'
 
-/** The card itself: a hairline-bordered squircle surface that floats in the zone's gutter. */
+/** The card itself: a squircle surface whose hairline is drawn above its content (a child can never cover the corner arc) that floats in the zone's gutter. */
 export function ToolCardShell({ children }: { children: ReactNode }) {
   return (
     <div
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated)"
+      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-(--ui-bg-elevated) after:pointer-events-none after:absolute after:inset-0 after:z-5 after:rounded-[inherit] after:border after:border-(--ui-stroke-secondary) after:content-['']"
       data-tool-card=""
     >
       {children}

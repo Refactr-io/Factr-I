@@ -90,7 +90,7 @@ export function SessionRail() {
       )}
       data-session-rail=""
       ref={ref}
-      style={{ top: TITLEBAR_HEIGHT }}
+      style={{ top: TITLEBAR_HEIGHT + 6 }}
     >
       <Section title={copy.environment}>
         {cwd ? (
