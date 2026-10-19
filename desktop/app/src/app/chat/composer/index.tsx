@@ -1,5 +1,6 @@
 import { ComposerPrimitive } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
+import { BorderBeam } from 'border-beam'
 import {
   type ClipboardEvent,
   type FormEvent,
@@ -19,6 +20,7 @@ import { OnboardingSkip } from '@/components/onboarding-chat/skip'
 import { Button } from '@/components/ui/button'
 import { GlassBackdrop } from '@/components/ui/glass-backdrop'
 import { Slot as ContribSlot } from '@/contrib/react/slot'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { chatMessageText } from '@/lib/chat-messages'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
@@ -41,6 +43,7 @@ import { $gatewayState } from '@/store/session'
 import { $botChatSessionIds, $sessionStates, $sessionTiles, isBotChatSession } from '@/store/session-states'
 import { $threadScrolledUpBySession } from '@/store/thread-scroll'
 import { $autoSpeakReplies } from '@/store/voice-prefs'
+import { useTheme } from '@/themes/context'
 
 import { AttachmentList } from './attachments'
 import {
@@ -139,6 +142,8 @@ export function ChatBar({
   onTranscribeAudio
 }: ChatBarProps) {
   const hudMode = useStore($hudMode)
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  const { resolvedMode } = useTheme()
   const hudWindowing = window.factrDesktop?.hud?.windowing
   const hudNativeDrag = hudMode && hudWindowing?.nativeDrag === true
 
@@ -1436,6 +1441,14 @@ export function ChatBar({
                   onToggle={toggleStatusDrawer}
                 />
               )}
+              <BorderBeam
+                active={busy && !hudMode && !reduceMotion}
+                borderRadius={16}
+                className="w-full rounded-[inherit]"
+                colorVariant="mono"
+                strength={0.7}
+                theme={resolvedMode}
+              >
               <div
                 className={cn(
                   // grid-cols-[minmax(0,1fr)]: the implicit `auto` column sized
@@ -1551,6 +1564,7 @@ export function ChatBar({
                   <ContribSlot area={COMPOSER_AREAS.bottom} />
                 </div>
               </div>
+              </BorderBeam>
             </div>
           </ComposerPrimitive.Root>
           {/* Underside: chrome-free strip BELOW the composer. Outside the root

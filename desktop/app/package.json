@@ -106,6 +106,7 @@
     "@xterm/addon-webgl": "0.19.0",
     "@xterm/xterm": "6.0.0",
     "blobatar": "2.0.0",
+    "border-beam": "^1.4.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
