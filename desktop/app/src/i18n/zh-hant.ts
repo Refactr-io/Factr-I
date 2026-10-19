@@ -535,7 +535,7 @@ export const zhHant = defineLocale({
       appActionsRight: '右側',
       terminalFontTitle: '終端機字型',
       terminalFontDesc:
-        '選擇已安裝的字型用於桌面端終端機。Nerd Font 可正確顯示 Powerlevel10k 與 Shell 圖示；留空則使用內建的 JetBrains Mono。',
+        '選擇已安裝的字型用於桌面端終端機。Nerd Font 可正確顯示 Powerlevel10k 與 Shell 圖示；留空則使用內建的 IBM Plex Mono。',
       terminalFontPlaceholder: 'MesloLGS NF 或 CSS 字型堆疊',
       terminalFontPreview: '字形預覽',
       terminalFontReset: '使用預設字型',

@@ -807,7 +807,7 @@ export function drawScramble({
   const t = now / 1000 // seconds, for the travelling-glow highlight
 
   ctx.save()
-  ctx.font = `${cell}px "JetBrains Mono", "Hiragino Sans", "Noto Sans JP", ui-monospace, monospace`
+  ctx.font = `${cell}px "IBM Plex Mono", "Hiragino Sans", "Noto Sans JP", ui-monospace, monospace`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 

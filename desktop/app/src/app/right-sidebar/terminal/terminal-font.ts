@@ -1,6 +1,6 @@
 import { atom } from 'nanostores'
 
-export const DEFAULT_TERMINAL_FONT_FAMILY = "'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace"
+export const DEFAULT_TERMINAL_FONT_FAMILY = "'IBM Plex Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace"
 
 export const TERMINAL_FONT_SUGGESTIONS = [
   'MesloLGS NF',
@@ -9,6 +9,7 @@ export const TERMINAL_FONT_SUGGESTIONS = [
   'FiraCode Nerd Font',
   'Hack Nerd Font',
   'SauceCodePro Nerd Font',
+  'IBM Plex Mono',
   'JetBrains Mono',
   'SF Mono',
   'Menlo',

@@ -727,7 +727,7 @@ export const zh = defineLocale({
       appActionsRight: '右侧',
       terminalFontTitle: '终端字体',
       terminalFontDesc:
-        '选择已安装的字体用于桌面端终端。Nerd Font 可正确显示 Powerlevel10k 和 Shell 图标；留空则使用内置的 JetBrains Mono。',
+        '选择已安装的字体用于桌面端终端。Nerd Font 可正确显示 Powerlevel10k 和 Shell 图标；留空则使用内置的 IBM Plex Mono。',
       terminalFontPlaceholder: 'MesloLGS NF 或 CSS 字体栈',
       terminalFontPreview: '字形预览',
       terminalFontReset: '使用默认字体',

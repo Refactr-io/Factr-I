@@ -394,7 +394,7 @@ export function drawViewport(ctx: CanvasRenderingContext2D, w: number, h: number
   const quads = cubeQuads(t, w, h)
 
   ctx.save()
-  ctx.font = "8px 'JetBrains Mono', monospace"
+  ctx.font = "8px 'IBM Plex Mono', monospace"
 
   const rx = t * 0.00042
   const ry = t * 0.00071
