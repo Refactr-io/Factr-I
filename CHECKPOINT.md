@@ -134,3 +134,31 @@
 - Exact command for each: rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py engine cargo test --workspace --locked --no-fail-fast -- --test-threads=64. Full command/environment ledger: runs.jsonl and run.py in that evidence directory.
 - The runner-path failure is documented above and excluded from the streak. All four affected socket tests pass in every corrected run. No repository source adjustments were needed. Name gate passed after portable report paths; git diff --check passes. Disk: 66 GiB.
 - Next: amend this task's merge commit to preserve integration records with the required co-author trailer, then desktop TypeScript/UI/Electron sanity, changelog, final report and cleanup.
+
+- Merge milestone committed locally as dafd673e (two parents retained; required co-author trailer present). Parent advice re-read, no STOP or new merge2 answer.
+- Desktop typecheck: npm run typecheck from desktop/app through the isolated runner, exit 0, 18.00s, /private/tmp/m2-4dct4x_7/output.log. Includes renderer, Electron and E2E tsc --noEmit. Full UI project started with four workers.
+
+### Desktop sanity findings
+
+- First full UI run: exit 1, 235.66s, 987 files / 8228 tests, 985 files and 8224 tests passed; four failures in two files. Log /private/tmp/m2-ic_4wipq/output.log. Capabilities scope and three MoA progress assertions still expected em dashes after the already-merged wording branch changed the rendered copy to hyphens. Confirmed exact received strings and the 3da2131a..11e5b0ee source diff. Updated only the five stale expected strings; no production UI change.
+- Graph follow-up: nearest factri-main sibling generation 2026-10-12T11:52:27Z, different worktree. Coverage checked all six Rust paths, docs and the relevant UI paths. UI tests/docs are excluded or missing there; exact local test sources and wording diffs are authoritative. No stale graph claim or reindex.
+- Re-running the complete UI project after the assertion-only fixes, then Electron once. Rust source is unchanged from the three-run streak.
+
+- Full UI rerun after only five expectation fixes: exit 0, 233.50s, all 987 files / 8228 tests pass, /private/tmp/m2-c60z_jj7/output.log. Complete Electron project started next with four workers; no GUI launched.
+
+## Merge2 milestone 2 validated: desktop sanity
+
+- Electron full project: exit 0, 30.32s, 231 files passed / 3 skipped, 2484 tests passed / 19 skipped. Log /private/tmp/m2-8xh2v4kw/output.log. Skips are unchanged: 8 opt-in Docker, 1 opt-in live retirement, 10 WSLg process tests on macOS. No GUI or Docker run.
+- Exact desktop commands from desktop/app, via the isolated runner: npm run typecheck; node ../node_modules/vitest/vitest.mjs run --project ui --maxWorkers=4; node ../node_modules/vitest/vitest.mjs run --project electron --maxWorkers=4. All final checks exit 0.
+- Name gate after test fixes: bash scripts/gate-names.sh, exit 0, 2.68s, /private/tmp/m2-ydjeb6v6/output.log. git diff 11e5b0ee --check: exit 0.
+- Added one unreleased changelog line for engine test isolation fixes. No production change, dependency, version, lockfile or README edit. Existing NEEDS-GUI-QA.md is unchanged. Parent guidance re-read after desktop milestone, no STOP or new merge2 answer.
+- Next: clean this task's generated target/cache/scratch, finish and copy the report, run report-inclusive final gates, commit the fixture/docs follow-up and confirm clean status.
+
+## Merge2 final report and cleanup
+
+- Removed only this task's target/, isolated Cargo cache, per-run scratch and untracked TypeScript build-info caches after verifying no tracked target files or active target executables. Logs, run.py, runs.jsonl, check-test-only.py and original report copies remain. Free space returned to 71 GiB.
+- REPORT.md now leads with merge2 results, both resolved validation failures, full command/log ledger, unchanged-source proof, cleanup, limits and repeat commands; prior integration history and final Flaky engine test fixes section preserved. No requested work remains half-done.
+- Design-law applicability re-check: no rendered UI change, only expected-string alignment in tests. Existing GUI matrix unchanged; no visual or pointer certification. Final report-inclusive gates and report copy verification next.
+
+- Final report-inclusive name gate: exit 0, zero hits, 2.45s, /private/tmp/m2-wvbxqfgo/output.log. Full baseline-to-worktree whitespace check and production-prefix assertions pass. Final scope assertion matches exactly six Rust test files, two UI test fixtures and three documentation files.
+- Integration report body remains intact; final source-report appendix differs only in the documented three path substitutions. REPORT.md copied to handoff/merge2-REPORT.md and byte-compared successfully. All requested merge2 checks complete; no blocker or half-done work. No push.

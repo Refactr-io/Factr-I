@@ -2,6 +2,7 @@
 
 ## v0.0.10 (unreleased)
 
+- Engine tests no longer fail intermittently after test isolation fixes.
 - Bots keep a canonical chat on their own engine, queue attributed messages and replies, and route scheduled output back to that chat. Startup errors are bounded and visible, and idle engine retirement waits for the process to exit.
 - Bot computers support Docker setup, persistent Start/Stop, scheduled work and private local sandbox fallbacks where supported. Local fallback requires the app to remain open; group-room rounds still run in the app.
 - When OpenCode is installed, onboarding and the model picker offer to connect its Zen sign-in, with explicit consent and a key-entry fallback.

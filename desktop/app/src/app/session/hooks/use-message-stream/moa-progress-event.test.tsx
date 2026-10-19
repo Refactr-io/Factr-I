@@ -29,8 +29,8 @@ describe('useMessageStream moa.progress / moa.phase surfacing', () => {
     emit('moa.progress', { label: 'model-b', refs_done: 2, refs_total: 3 })
 
     const text = stream.reasoningText()
-    expect(text).toContain('MoA refs 1/3 — model-a')
-    expect(text).toContain('MoA refs 2/3 — model-b')
+    expect(text).toContain('MoA refs 1/3 - model-a')
+    expect(text).toContain('MoA refs 2/3 - model-b')
   })
 
   it('restarts the progress block on the first ref of a new fan-out', () => {
@@ -43,7 +43,7 @@ describe('useMessageStream moa.progress / moa.phase surfacing', () => {
     emit('moa.progress', { label: 'fresh', refs_done: 1, refs_total: 2 })
 
     const text = stream.reasoningText()
-    expect(text).toContain('MoA refs 1/2 — fresh')
+    expect(text).toContain('MoA refs 1/2 - fresh')
     expect(text).not.toContain('stale')
   })
 
@@ -68,7 +68,7 @@ describe('useMessageStream moa.progress / moa.phase surfacing', () => {
     emit('moa.reference', { count: 1, index: 1, label: 'model-a', text: 'advice-a' })
 
     const text = stream.reasoningText()
-    expect(text).toContain('Reference 1/1 — model-a')
+    expect(text).toContain('Reference 1/1 - model-a')
     expect(text).not.toContain('MoA refs')
     expect(text).not.toContain('aggregating')
   })

@@ -2,11 +2,73 @@
 
 ## Merge2 verification (2026-10-19)
 
-Merged all seven commits from fix/flaky-engine-tests into feat/0.0.10-integration with --no-ff. The merge applied cleanly. Restored the integration checkpoint/report and appended the source flaky report at the end. Six Rust test files changed; an exact source assertion confirms production prefixes are unchanged. README, versions and Cargo.lock remain unchanged.
+The requested merge2 work is complete at the automated macOS scope. Merge commit `dafd673e` retains `11e5b0ee` and `483eba0e` as its two parents, including all seven commits from `fix/flaky-engine-tests`. The merge applied without conflicts. The integration checkpoint/report were restored after Git automatically took the branch's report, and the source flaky report is preserved as the final section below. Its only edits are three portable path substitutions needed by the name gate; a verbatim copy remains in the evidence directory.
 
-Three consecutive locked full workspace runs at 64 test threads passed: 143.64s, 148.60s and 143.57s. Each completed all 147 Cargo test/doc-test targets. Main unit suites per run: app-core 1108 passed / 4 ignored; base 1366 / 3; gateway 387 / 1. No new test ignores or retries. The first attempt failed four socket fixtures because the runner scratch path exceeded macOS SUN_LEN; shortening only the temporary runner fixed all four, before the three-run streak.
+Six Rust test files change: environment/recorder locks, a checkout-local risky-delete fixture, isolated approval config with restoration, bounded channel waits, a permanent-grant isolation regression, and headless-mark cleanup. An exact source assertion confirms unchanged production prefixes; the bash test file remains test-only. No production engine or desktop behavior, dependency, README, version, Cargo.lock, remote, tag or existing GUI-QA matrix changed. The follow-up commit also corrects five stale expected strings in two UI test files and adds the one requested unreleased changelog line.
 
-Desktop sanity checks, changelog, final gates and cleanup remain in progress. Evidence and isolated runner: /private/tmp/factri-merge2-etue5ry_. The original integration history below describes the earlier integration milestone; its unchanged-source statements apply to that earlier scope. The final section preserves the flaky branch's report, with only three machine-specific paths made portable for the name gate.
+### Final validation
+
+| Check | Result |
+| --- | --- |
+| Locked workspace, 64 threads, three consecutive full runs | Exit 0 each: 143.64s, 148.60s, 143.57s. All 147 Cargo test/doc-test targets completed each time. |
+| Main Rust unit suites in each green run | app-core 1108 passed / 4 ignored; base 1366 / 3; gateway 387 / 1. Existing opt-in ignores unchanged. |
+| Desktop TypeScript | `npm run typecheck`: renderer, Electron and E2E noEmit checks pass, 18.00s. |
+| Full UI project, final rerun | 987 files and 8228 tests passed, exit 0, 233.50s. |
+| Full Electron project | 231 files passed / 3 skipped; 2484 tests passed / 19 skipped, exit 0, 30.32s. |
+| Naming and whitespace | Name gate zero hits after fixture corrections; `git diff 11e5b0ee --check` passes. Final report-inclusive checks are recorded in CHECKPOINT.md. |
+| Source scope | Production-prefix check passes; merged tip ancestry and both merge parents verified. Protected files remain unchanged. |
+
+The first workspace attempt failed four Unix-socket fixtures in two targets because the temporary runner nested scratch beneath a long evidence path, exceeding macOS SUN_LEN. Only the runner was changed to fresh short `/private/tmp/m2-*` roots. All four cases pass in each corrected run; the failed attempt is retained and excluded from the streak.
+
+The first UI attempt found four failures across capabilities and MoA progress tests. They still expected em dashes after the earlier wording merge changed those exact rendered strings to hyphens. The five expected strings were updated, with all behavioral assertions retained. A complete UI rerun then passed. No production UI fix, timeout increase, retry or skip was introduced.
+
+Electron skips are the unchanged 8 opt-in Docker tests, 1 opt-in live retirement test and 10 WSLg process tests on macOS. They are not counted as passes. Logs also contain Node localStorage warnings and expected mock error-path output; the final summaries above are the actual test outcomes.
+
+### Evidence and exact commands
+
+Evidence directory: `/private/tmp/factri-merge2-etue5ry_`. `run.py` records the allowlisted environment and creates fresh HOME, FACTR_HOME, FACTR_CONFIG_HOME, XDG, TMPDIR and Electron userData for every command. Only one build/test command ran at a time, using the sole worktree `target/` directory and four Cargo build jobs. `runs.jsonl` records exact commands, directories, exits, duration and logs. `check-test-only.py` retains the production-source assertion.
+
+All runner commands were invoked with `rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py <cwd> <command...>` from the worktree root. The ledger below includes failed diagnostic attempts, not just successful checks.
+
+| Directory and command | Exit | Seconds | Log |
+| --- | --- | --- | --- |
+| `.`: `bash scripts/gate-names.sh` | 1 | 3.21 | `/private/tmp/factri-merge2-etue5ry_/merge2-check-dx4h631f/output.log` |
+| `.`: `bash scripts/gate-names.sh` | 0 | 3.16 | `/private/tmp/factri-merge2-etue5ry_/merge2-check-br016pbw/output.log` |
+| `engine`: `cargo test --workspace --locked --no-fail-fast -- --test-threads=64` | 101 | 359.55 | `/private/tmp/factri-merge2-etue5ry_/merge2-check-zqrg6die/output.log` |
+| `engine`: `cargo test --workspace --locked --no-fail-fast -- --test-threads=64` | 0 | 143.64 | `/private/tmp/m2-uq03wfyw/output.log` |
+| `engine`: `cargo test --workspace --locked --no-fail-fast -- --test-threads=64` | 0 | 148.60 | `/private/tmp/m2-2etxzwad/output.log` |
+| `engine`: `cargo test --workspace --locked --no-fail-fast -- --test-threads=64` | 0 | 143.57 | `/private/tmp/m2-ow6nxcz0/output.log` |
+| `desktop/app`: `npm run typecheck` | 0 | 18.00 | `/private/tmp/m2-4dct4x_7/output.log` |
+| `desktop/app`: `node ../node_modules/vitest/vitest.mjs run --project ui --maxWorkers=4` | 1 | 235.66 | `/private/tmp/m2-ic_4wipq/output.log` |
+| `desktop/app`: `node ../node_modules/vitest/vitest.mjs run --project ui --maxWorkers=4` | 0 | 233.50 | `/private/tmp/m2-c60z_jj7/output.log` |
+| `.`: `bash scripts/gate-names.sh` | 0 | 2.68 | `/private/tmp/m2-ydjeb6v6/output.log` |
+| `desktop/app`: `node ../node_modules/vitest/vitest.mjs run --project electron --maxWorkers=4` | 0 | 30.32 | `/private/tmp/m2-8xh2v4kw/output.log` |
+
+### Limits, cleanup and resume
+
+Nothing remains half-done in the requested merge2 scope. Three green runs do not guarantee every future thread schedule. No GUI, packaged app, Windows/Linux manual QA, opt-in Docker/live-provider tests or benchmarks were run. No Rust production port was made, so new Python parity tests were not applicable. The preserved integration report and NEEDS-GUI-QA.md retain the existing release/manual QA limits. No credential files were read or copied. No push, remote change, tag, version bump, branch/worktree deletion or release-checkout modification occurred.
+
+Reviewed the full supplied design law for applicability: this merge adds no interface styling, layout, icon, typography, motion, control or rendered-copy change. Only test expectations were aligned with existing copy. The existing GUI-QA document is unchanged, and no visual or pointer verification is claimed.
+
+Removed only this task's generated `target/`, isolated Cargo cache, test scratch and untracked TypeScript build-info caches after checking for tracked target files and active target executables. Logs, runner, command ledger, original reports and source-scope check remain. Disk returned to 71 GiB free. No Docker resources were created.
+
+To repeat after cleanup, bootstrap only the public Cargo registry, then use the isolated runner from this worktree:
+
+```sh
+rtk proxy mkdir -p /private/tmp/factri-merge2-etue5ry_/cargo
+rtk proxy cp -cR "$HOME/.cargo/registry" /private/tmp/factri-merge2-etue5ry_/cargo/registry
+rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py engine cargo test --workspace --locked --no-fail-fast -- --test-threads=64
+rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py desktop/app npm run typecheck
+rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py desktop/app node ../node_modules/vitest/vitest.mjs run --project ui --maxWorkers=4
+rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py desktop/app node ../node_modules/vitest/vitest.mjs run --project electron --maxWorkers=4
+rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/run.py . bash scripts/gate-names.sh
+rtk proxy python3 /private/tmp/factri-merge2-etue5ry_/check-test-only.py
+rtk git diff 11e5b0ee --check
+```
+
+No additional work or decision is required to resume this task. `QUESTIONS-merge2.md` records the non-blocking portable-path decision; parent advice was re-read after milestones, with no STOP or new merge2 answer. Final report is copied to `handoff/merge2-REPORT.md` and byte-compared before handover. Local history contains the merge milestone and the subsequent assertion/changelog/report follow-up, both with the required co-author trailer.
+
+The original integration history below describes the earlier integration milestone. Its unchanged-source statements apply to that earlier scope. The final section preserves the flaky branch's original findings.
 
 ## Original integration report
 
