@@ -3109,6 +3109,33 @@ button[data-slot='aui_msg-reactions'] svg {
   border-radius: 0 0 var(--shape-radius-lg) var(--shape-radius-lg);
 }
 
+/* ONE CARD. The bar and the transcript band read as two unrelated objects: a band narrower than the bar left the bar's
+   shoulders hanging past it, and the corners that meet were both rounded, so a notch showed at each side. The band is
+   the bar's width, and while it is on screen the bar squares the corners that join it - the silhouette is a single
+   rounded rectangle with a light bar at one end. Your own lines drop the gold tint for a softer white: still told
+   apart from the agent's, no longer a second colour on the band. */
+[data-hud-shell],
+:root[data-factr-glass-on] [data-hud-shell] {
+  --hud-band-inset: 0px;
+  --hud-overlay-ink-user: rgb(255 255 255 / 0.62);
+}
+
+[data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
+[data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: 0 0 var(--shape-radius-lg) var(--shape-radius-lg) !important;
+}
+
+[data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
+[data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: var(--shape-radius-lg) var(--shape-radius-lg) 0 0 !important;
+}
+
+[data-hud-shell] [data-slot='composer-surface'] {
+  transition:
+    border-color var(--hud-reveal) var(--hud-ease-enter),
+    border-radius var(--hud-reveal) var(--hud-ease-enter);
+}
+
 /* WHAT ANSWERS THE CURSOR — and, because `useHudClickThrough` hands the window
    to the desktop wherever the document reports nothing under the mouse, what
    the HUD occupies as far as the rest of the screen is concerned.
