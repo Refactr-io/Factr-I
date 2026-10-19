@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 /// The launch-time answer for `method`, or `None` when the method is not a boot probe.
 pub(crate) fn answer(method: &str, _params: &Value) -> Option<Value> {
     Some(match method {
-        "bot_relay.roster.sync" => json!({ "count": 0 }),
         "wake.status" => json!({
             "listening": false, "owned_by_caller": false, "owner_surface": null,
             "phrase": "", "provider": "", "configured_surface": "auto",

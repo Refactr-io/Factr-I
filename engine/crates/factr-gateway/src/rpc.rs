@@ -1538,6 +1538,7 @@ impl Conn {
         let call = |req: Value| async move { self.call(req).await.map_err(RpcError::internal) };
         match method {
             "ping" | "gateway.ping" => Ok(json!({})),
+            "bot_relay.roster.sync" => bot_message::sync_roster(p),
             "bot.chat.reply" => Box::pin(self.bot_reply(p)).await,
             "bot.group.ensure" => Box::pin(self.bot_group_ensure(p)).await,
             m if local_state::handles(m) => self.local_state(m, p).await,

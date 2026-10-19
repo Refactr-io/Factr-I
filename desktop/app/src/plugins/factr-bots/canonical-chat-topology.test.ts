@@ -18,6 +18,8 @@ const { hostMock, requestForBotMock } = vi.hoisted(() => ({
   requestForBotMock: vi.fn()
 }))
 
+vi.mock('./relay', () => ({ refreshBotRelayRosters: vi.fn(async () => undefined) }))
+
 vi.mock('@factr/plugin-sdk', () => ({ BOT_CHAT_SESSION_HYDRATION_TIMEOUT_MS: 15_000, host: hostMock }))
 
 vi.mock('./routing', () => ({

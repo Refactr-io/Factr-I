@@ -99,7 +99,7 @@ interface RelayLifecycle {
   localTimer: null | ReturnType<typeof setInterval>
   pushDebounceTimer: null | ReturnType<typeof setTimeout>
   pushUnsub: (() => void) | null
-  rosterBusy: boolean
+  rosterFlight: Promise<void> | null
   /** Id of the sole connection whose roster clear went out; null once the peer set relays again. */
   rosterClearedFor: null | string
   rosterTimer: null | ReturnType<typeof setInterval>
@@ -114,7 +114,7 @@ const relay: RelayLifecycle = {
   localTimer: null,
   pushDebounceTimer: null,
   pushUnsub: null,
-  rosterBusy: false,
+  rosterFlight: null,
   rosterClearedFor: null,
   rosterTimer: null
 }
@@ -332,14 +332,22 @@ async function relayAgentsOn(
 const RELAY_AGENTS_CACHE_MAX = 32
 const relayAgentsCache = new LruCache<string, RelayAgentRow[]>(RELAY_AGENTS_CACHE_MAX)
 
+/** A create must run a fresh sync even if the periodic sync already took its snapshot. */
+export async function refreshBotRelayRosters() {
+  await relay.rosterFlight
+  await syncRelayRosters()
+}
+
 /** Push every gateway the union roster of agents on the OTHER connections. */
-async function syncRelayRosters() {
-  if (relay.disposed || relay.rosterBusy) {
-    return
+function syncRelayRosters(): Promise<void> {
+  if (relay.disposed) {
+    return Promise.resolve()
   }
 
-  relay.rosterBusy = true
+  return relay.rosterFlight ??= pushRelayRosters()
+}
 
+async function pushRelayRosters() {
   try {
     const connections = await relayConnections()
     const labels = await connectionLabels()
@@ -439,7 +447,7 @@ async function syncRelayRosters() {
         })
     )
   } finally {
-    relay.rosterBusy = false
+    relay.rosterFlight = null
   }
 }
 

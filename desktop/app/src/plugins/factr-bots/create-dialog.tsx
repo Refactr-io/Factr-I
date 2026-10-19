@@ -68,6 +68,7 @@ import type {
 } from './profile-config'
 import { CapabilitiesView, capabilitiesViewRoutesConnections, CheckList } from './profile-config'
 import { deleteBot } from './profile-ops'
+import { refreshBotRelayRosters } from './relay'
 import { botRosterMeta } from './routing'
 import { composeSoul } from './soul'
 import type { BotMeta, ConnectionRow, RosterRow } from './types'
@@ -498,6 +499,8 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
       queryClient.invalidateQueries({
         queryKey: ROSTER_KEY
       })
+
+      await refreshBotRelayRosters()
 
       return slug
     })

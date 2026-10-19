@@ -14,6 +14,7 @@ import { host } from '@factr/plugin-sdk'
 import { $botMeta, botMetaKey, botOwner, persistBotMetaSnapshot } from './data'
 import { engineBotChat, engineClaimBotChat, rememberEngineBotChat } from './engine-bot-chat'
 import { botsText } from './i18n'
+import { refreshBotRelayRosters } from './relay'
 import { backendTargetProfile, botConnectionRoute, botRosterMeta, botWorkspaceOwnerKey, requestForBot } from './routing'
 import type { RpcErrorLike } from './routing'
 import { getPluginCtx } from './shared'
@@ -543,6 +544,10 @@ export function createCanonicalChat(
       const submitIntro = kickoff || !titled
 
       if (submitIntro) {
+        if (kickoff) {
+          await refreshBotRelayRosters()
+        }
+
         await new Promise(resolve => window.setTimeout(resolve, 400))
 
         try {

@@ -4,6 +4,8 @@ const { hostMock, events } = vi.hoisted(() => ({
   events: [] as string[],
   hostMock: { request: vi.fn(), requestProfile: vi.fn(), retainProfile: vi.fn(), openSession: vi.fn() }
 }))
+vi.mock('./relay', () => ({ refreshBotRelayRosters: vi.fn(async () => { events.push('roster.sync') }) }))
+
 vi.mock('@factr/plugin-sdk', () => ({ host: hostMock, BOT_CHAT_SESSION_HYDRATION_TIMEOUT_MS: 60_000 }))
 vi.mock('./data', () => ({
   $botMeta: { get: () => ({}), set: vi.fn() },
@@ -52,6 +54,7 @@ it('births the intro in the private engine and retains its connection through ti
     'session.create',
     'session.title',
     'bot.chat.claim',
+    'roster.sync',
     'prompt.submit',
     'release'
   ])
