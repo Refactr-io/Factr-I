@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import { factrApi, getApiRequestProfile, profileScoped } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { requestGatewayForProfile } from '@/store/gateway'
 
@@ -75,8 +76,10 @@ interface Span {
 
 const money = (value: number | null) => (value === null ? 'unpriced' : value === 0 ? '$0' : `$${value.toFixed(4)}`)
 const runMoney = (run: Run) => (run.unpriced_calls > 0 ? 'unpriced' : money(run.cost_usd))
+
 const duration = (start: number, end: number | null) =>
   `${((Math.max(start, end ?? Date.now()) - start) / 1000).toFixed(1)}s`
+
 const time = (value: number) => new Date(value).toLocaleString()
 
 const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)'
@@ -156,6 +159,7 @@ const isWedged = (run: Run) => run.outcome === 'wedged'
 const bar = (span: Span, run: Run) => {
   const total = Math.max(1, (run.ended_at_ms ?? Date.now()) - run.started_at_ms)
   const left = Math.max(0, Math.min(99, ((span.started_at_ms - run.started_at_ms) / total) * 100))
+
   const width = Math.max(
     1,
     Math.min(100 - left, (((span.ended_at_ms ?? Date.now()) - span.started_at_ms) / total) * 100)
@@ -165,7 +169,8 @@ const bar = (span: Span, run: Run) => {
 }
 
 /** The run ledger belongs to the active Factr backend; older Factr backends show a clear error. */
-export function RunHistory() {
+export function RunHistory({ onOpenSession }: { onOpenSession?: (id: string) => void } = {}) {
+  const { t } = useI18n()
   const [runs, setRuns] = useState<Run[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [spans, setSpans] = useState<Span[]>([])
@@ -224,6 +229,7 @@ export function RunHistory() {
         if (!live) {
           return
         }
+
         setRuns(result.runs)
         setCaptureContent(result.capture_content)
         setDroppedEvents(result.dropped_events)
@@ -231,6 +237,7 @@ export function RunHistory() {
         if (result.budget) {
           setBudget(result.budget)
         }
+
         setSelected(current => current ?? result.runs[0]?.id ?? null)
         setError(null)
       } catch (cause) {
@@ -253,6 +260,7 @@ export function RunHistory() {
     if (sideTab !== 'approvals') {
       return
     }
+
     let live = true
 
     const load = async () => {
@@ -283,6 +291,7 @@ export function RunHistory() {
     if (!selected) {
       return
     }
+
     let live = true
     // A new selection starts empty; re-clicking the open run keeps its timeline.
     setSpans([])
@@ -340,6 +349,7 @@ export function RunHistory() {
     if (!run) {
       return
     }
+
     setActionBusy(true)
 
     try {
@@ -360,6 +370,7 @@ export function RunHistory() {
     if (!run) {
       return
     }
+
     setActionBusy(true)
 
     try {
@@ -380,6 +391,7 @@ export function RunHistory() {
     if (!run) {
       return
     }
+
     setStopping(true)
 
     try {
@@ -394,12 +406,14 @@ export function RunHistory() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <p className="shrink-0 text-xs text-(--ui-text-secondary)">{t.activity.totals(runs.length, runs.filter(run => ['running', 'queued', 'spawned'].includes(run.status)).length, runs.reduce((sum, run) => sum + run.input_tokens + run.output_tokens, 0).toLocaleString())}</p>
+      <RunHistoryStats budgetFromList={budget} />
+      <div className="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
       <div
         aria-label="Runs"
         className="flex max-h-[38%] min-h-0 w-full shrink-0 flex-col overflow-y-auto border-b border-(--ui-stroke-tertiary) pb-3 sm:max-h-none sm:w-64 sm:border-r sm:border-b-0 sm:pr-3 sm:pb-0"
       >
-        <RunHistoryStats budgetFromList={budget} />
         <div className="flex flex-wrap gap-1 px-2 pb-2">
           {TABS.map(([id, label]) => (
             <button
@@ -516,6 +530,7 @@ export function RunHistory() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              {onOpenSession && run.session_id && <Button onClick={() => onOpenSession(run.session_id)} size="sm" variant="text">{t.activity.openSession}</Button>}
               {run.status === 'complete' && (
                 <>
                   <Button disabled={actionBusy} onClick={() => void promote()} size="sm" variant="secondary">
@@ -634,6 +649,7 @@ export function RunHistory() {
         </div>
       )}
     </div>
+      </div>
   )
 }
 

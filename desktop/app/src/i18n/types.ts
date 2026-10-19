@@ -60,6 +60,26 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  account: {
+    profile: (name: string) => string
+    picture: string
+    uploadPicture: string
+    removePicture: string
+    pictureInvalid: string
+  }
+
+  activity: {
+    title: string
+    runs: string
+    usage: string
+    system: string
+    engine: string
+    profile: string
+    openSession: string
+    budgetExceeded: string
+    totals: (runs: number, running: number, tokens: string) => string
+  }
+
   connectors: {
     connect: string
     retry: string

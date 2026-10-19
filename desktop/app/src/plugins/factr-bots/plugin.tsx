@@ -19,6 +19,7 @@ import {
   CHAT_EMPTY_AREA,
   COMPOSER_AREAS,
   host,
+  icons,
   LocalizedTabTitle,
   PALETTE_AREA,
   SIDEBAR_PROFILE_GROUP_HEADER_AREA,
@@ -463,7 +464,7 @@ export default {
         width: '220px',
         collapsible: true,
         hideOnly: true,
-        tabTitle: () => <LocalizedTabTitle select={t => t.common.bots} />,
+        tabTitle: () => <span className="flex items-center gap-1.5"><icons.Bot aria-hidden {...icons.RAIL_ICON_PROPS} /><LocalizedTabTitle select={t => t.common.bots} /></span>,
         tabTitleText: () => translateNow('common.bots'),
         dock: {
           pane: 'sessions',

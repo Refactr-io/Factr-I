@@ -118,6 +118,22 @@ export function AgentsView({ onClose }: AgentsViewProps) {
   )
 }
 
+export function RunsActivity({ onOpenSession }: { onOpenSession: (id: string) => void }) {
+  const { t } = useI18n()
+  const subagentsBySession = useStore($subagentsBySession)
+  const tree = useMemo(() => buildSubagentTree(allSubagents(subagentsBySession)), [subagentsBySession])
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      {tree.length > 0 && <details className="max-h-[35%] shrink-0 overflow-y-auto">
+        <summary className="cursor-pointer text-sm font-medium">{t.agents.title}</summary>
+        <SubagentTree tree={tree} />
+      </details>}
+      <RunHistory onOpenSession={onOpenSession} />
+    </div>
+  )
+}
+
 const fmtDuration = (seconds: number | undefined, a: Translations['agents']) => {
   if (!seconds || seconds <= 0) {
     return ''

@@ -9,6 +9,8 @@ import type { ReactNode } from 'react'
  */
 export interface ZoneChrome {
   lead: () => ReactNode
+  /** Bottom row of the zone panel (the account row). */
+  foot?: () => ReactNode
 }
 
 export function ZoneChromeFrame({ children, chrome }: { children: ReactNode; chrome: null | ZoneChrome }) {
@@ -20,6 +22,7 @@ export function ZoneChromeFrame({ children, chrome }: { children: ReactNode; chr
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-(--shell-list-bg)" data-zone-panel="">
       <div className="flex h-11 shrink-0 items-center">{chrome.lead()}</div>
       {children}
+      {chrome.foot?.()}
     </div>
   )
 }

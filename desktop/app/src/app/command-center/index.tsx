@@ -14,15 +14,11 @@ import type { ActionStatusResponse, AnalyticsResponse, SessionInfo, StatusRespon
 import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import {
-  Activity,
   AlertCircle,
-  BarChart3,
   Bookmark,
   BookmarkFilled,
   Download,
-  MessageCircle,
-  Trash2,
-  Wrench
+  Trash2
 } from '@/lib/icons'
 import { exportSession } from '@/lib/session-export'
 import { fmtDateTime } from '@/lib/time'
@@ -34,29 +30,22 @@ import { notify } from '@/store/notifications'
 import { $sessions, sessionPinId } from '@/store/session'
 import { confirmSharedGatewayRestart } from '@/store/system-actions'
 
+import { RunsActivity } from '../agents'
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
-import { OverlayMain, OverlayNav, OverlaySplitLayout } from '../overlays/overlay-split-layout'
-import { OverlayView } from '../overlays/overlay-view'
+import { Panel, PanelHeader } from '../overlays/panel'
+import { PROFILES_ROUTE } from '../routes'
 
 import { MaintenancePanel } from './maintenance'
 import { systemStatusLine } from './system-line'
 
-export type CommandCenterSection = 'maintenance' | 'sessions' | 'system' | 'usage'
-
-const SECTIONS = ['sessions', 'system', 'usage', 'maintenance'] as const satisfies readonly CommandCenterSection[]
-
-const LOG_FILES = ['agent', 'errors', 'gateway', 'desktop'] as const
-const LOG_LEVELS = ['ALL', 'INFO', 'WARNING', 'ERROR'] as const
-
+export type CommandCenterSection = 'runs' | 'scheduled' | 'system' | 'maintenance' | 'sessions' | 'usage'
+const SECTIONS = ['runs', 'usage', 'system'] as const
 const USAGE_PERIODS = [7, 30, 90] as const
 type UsagePeriod = (typeof USAGE_PERIODS)[number]
 
-// Stable empty arrays so the selector returns the same reference when we're
-// not on the Sessions tab — useStoreSelector bails out on Object.is, so the
-// component never re-renders from $sessions ticks while on System/Usage/etc.
-const EMPTY_SESSIONS: readonly never[] = []
-const EMPTY_PINNED: readonly string[] = []
+const LOG_FILES = ['agent', 'errors', 'gateway', 'desktop'] as const
+const LOG_LEVELS = ['ALL', 'INFO', 'WARNING', 'ERROR'] as const
 
 interface CommandCenterViewProps {
   initialSection?: CommandCenterSection
@@ -64,7 +53,6 @@ interface CommandCenterViewProps {
   onDeleteSession: (sessionId: string) => Promise<void>
   // Accepted for call-site parity; navigation lives in the global Cmd+K palette.
   onNavigateRoute?: (path: string) => void
-  onOpenAgents?: () => void
   onOpenSession: (sessionId: string) => void
 }
 
@@ -137,22 +125,31 @@ function EmptyPanel({ action, description, title }: { action?: ReactNode; descri
   )
 }
 
-export function CommandCenterView({
-  initialSection,
-  onClose,
-  onDeleteSession,
-  onOpenAgents,
-  onOpenSession
-}: CommandCenterViewProps) {
+export function CommandCenterView({ initialSection, onClose, onDeleteSession, onNavigateRoute, onOpenSession }: CommandCenterViewProps) {
+  const { t } = useI18n()
+  const fallback = initialSection === 'runs' || initialSection === 'usage' ? initialSection : initialSection ? 'system' : 'runs'
+  const [section, setSection] = useRouteEnumParam('section', SECTIONS, fallback)
+
+  return (
+    <Panel closeLabel={t.commandCenter.close} onClose={onClose}>
+      <PanelHeader title={t.activity.title} />
+      <div className="mb-4 shrink-0">
+        <SegmentedControl onChange={setSection} options={SECTIONS.map(id => ({ id, label: t.activity[id] }))} value={section} />
+      </div>
+      {section === 'runs' ? <RunsActivity onOpenSession={onOpenSession} /> : section === 'usage' ? (
+        <UsageActivity />
+      ) : (
+        <SystemActivity onDeleteSession={onDeleteSession} onNavigateRoute={onNavigateRoute} onOpenSession={onOpenSession} />
+      )}
+    </Panel>
+  )
+}
+
+function SystemActivity({ onDeleteSession, onNavigateRoute, onOpenSession }: Pick<CommandCenterViewProps, 'onDeleteSession' | 'onNavigateRoute' | 'onOpenSession'>) {
   const { t } = useI18n()
   const cc = t.commandCenter
-  // $sessions ticks on every streaming token (title updates, new sessions),
-  // but we only need the data on the Sessions tab. Subscribe conditionally so
-  // the System/Usage/Maintenance tabs don't re-render on every stream delta.
-  const [section, setSection] = useRouteEnumParam('section', SECTIONS, initialSection ?? 'sessions')
-  const sessions = useStoreSelector($sessions, s => (section === 'sessions' ? s : EMPTY_SESSIONS))
-  const pinnedSessionIds = useStoreSelector($pinnedSessionIds, s => (section === 'sessions' ? s : EMPTY_PINNED))
-
+  const sessions = useStoreSelector($sessions, s => s)
+  const pinnedSessionIds = useStoreSelector($pinnedSessionIds, s => s)
   const [query, setQuery] = useState('')
   const [pendingDelete, setPendingDelete] = useState<SessionInfo | null>(null)
   const [status, setStatus] = useState<StatusResponse | null>(null)
@@ -163,12 +160,6 @@ export function CommandCenterView({
   const [systemLoading, setSystemLoading] = useState(false)
   const [systemError, setSystemError] = useState('')
   const [systemAction, setSystemAction] = useState<ActionStatusResponse | null>(null)
-  const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>(30)
-  const [usage, setUsage] = useState<AnalyticsResponse | null>(null)
-  const [usageLoading, setUsageLoading] = useState(false)
-  const [usageError, setUsageError] = useState('')
-  const usageRequestRef = useRef(0)
-
   const debouncedQuery = useDebouncedValue(query.trim(), 180)
 
   const filteredSessions = useMemo(() => {
@@ -215,51 +206,8 @@ export function CommandCenterView({
     }
   }, [logFile, logLevel])
 
-  const refreshUsage = useCallback(async (days: UsagePeriod) => {
-    const requestId = usageRequestRef.current + 1
-    usageRequestRef.current = requestId
-    setUsageLoading(true)
-    setUsageError('')
-
-    try {
-      const response = await getUsageAnalytics(days)
-
-      if (usageRequestRef.current === requestId) {
-        setUsage(response)
-      }
-    } catch (error) {
-      if (usageRequestRef.current === requestId) {
-        setUsageError(error instanceof Error ? error.message : String(error))
-      }
-    } finally {
-      if (usageRequestRef.current === requestId) {
-        setUsageLoading(false)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    // Refetch when the panel opens and whenever the log file/level filters
-    // change (refreshSystem's identity tracks them).
-    if (section === 'system') {
-      void refreshSystem()
-    }
-  }, [refreshSystem, section])
-
-  useEffect(() => {
-    if (section === 'usage') {
-      void refreshUsage(usagePeriod)
-    }
-  }, [refreshUsage, section, usagePeriod])
-
-  useRefreshHotkey(() => {
-    if (section === 'system') {
-      void refreshSystem()
-    } else if (section === 'usage') {
-      void refreshUsage(usagePeriod)
-    }
-  })
-
+  useEffect(() => { void refreshSystem() }, [refreshSystem])
+  useRefreshHotkey(() => void refreshSystem())
   const sessionListHasResults = filteredSessions.length > 0
 
   // Client-side substring filter over the fetched tail (matches `factr logs --search`).
@@ -325,128 +273,11 @@ export function CommandCenterView({
     [cc, refreshSystem]
   )
 
-  const navGroups = useMemo(
-    () =>
-      SECTIONS.map(value => ({
-        active: section === value,
-        icon:
-          value === 'sessions'
-            ? MessageCircle
-            : value === 'system'
-              ? Activity
-              : value === 'maintenance'
-                ? Wrench
-                : BarChart3,
-        id: value,
-        label: cc.sections[value],
-        onSelect: () => setSection(value)
-      })),
-    [cc, section, setSection]
-  )
-
   return (
-    <OverlayView closeLabel={cc.close} onClose={onClose}>
-      <OverlaySplitLayout>
-        <OverlayNav groups={navGroups} />
-
-        <OverlayMain>
-          <header className="mb-4 flex items-center justify-between gap-3 max-[47.5rem]:mb-2">
-            {/* Redundant on narrow — the nav dropdown already names the section. */}
-            <div className="min-w-0 max-[47.5rem]:hidden">
-              <h2 className="text-[length:var(--conversation-text-font-size)] font-semibold text-foreground">
-                {cc.sections[section]}
-              </h2>
-              <p className="mt-0.5 text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height) text-(--ui-text-tertiary)">
-                {cc.sectionDescriptions[section]}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {section === 'sessions' && (
-                <SearchField
-                  containerClassName="max-w-[40vw]"
-                  onChange={next => setQuery(next)}
-                  placeholder={cc.searchPlaceholder}
-                  value={query}
-                />
-              )}
-              {section === 'usage' && onOpenAgents && (
-                <Button aria-label={cc.runHistory} onClick={onOpenAgents} size="micro" type="button" variant="ghost">
-                  {cc.runHistory}
-                </Button>
-              )}
-              {section === 'usage' && (
-                <SegmentedControl
-                  onChange={id => setUsagePeriod(Number(id) as UsagePeriod)}
-                  options={USAGE_PERIODS.map(value => ({ id: String(value), label: cc.days(value) }))}
-                  value={String(usagePeriod)}
-                />
-              )}
-            </div>
-          </header>
-
-          {section === 'sessions' ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {!sessionListHasResults ? (
-                <EmptyPanel description={debouncedQuery ? cc.noResults : cc.noSessions} />
-              ) : (
-                <ul>
-                  {filteredSessions.map(session => {
-                    const pinId = sessionPinId(session)
-                    const pinned = pinnedSessionIds.includes(pinId)
-
-                    return (
-                      <li className="group flex items-center gap-2 py-2" key={session.id}>
-                        <button
-                          className="min-w-0 flex-1 text-left"
-                          onClick={() => onOpenSession(session.id)}
-                          type="button"
-                        >
-                          <div className="truncate text-[length:var(--conversation-text-font-size)] font-medium text-foreground">
-                            {sessionTitle(session)}
-                          </div>
-                          <div className="truncate text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
-                            {formatTimestamp(session.last_active || session.started_at)}
-                          </div>
-                        </button>
-                        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                          <RowIconButton
-                            onClick={() => (pinned ? unpinSession(pinId) : pinSession(pinId))}
-                            title={pinned ? cc.unpinSession : cc.pinSession}
-                          >
-                            {pinned ? <BookmarkFilled className="size-3.5" /> : <Bookmark className="size-3.5" />}
-                          </RowIconButton>
-                          <RowIconButton
-                            onClick={() => void exportSession(session.id, { session, title: sessionTitle(session) })}
-                            title={cc.exportSession}
-                          >
-                            <Download className="size-3.5" />
-                          </RowIconButton>
-                          <RowIconButton
-                            className="hover:text-destructive"
-                            onClick={() => setPendingDelete(session)}
-                            title={cc.deleteSession}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </RowIconButton>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          ) : section === 'usage' ? (
-            <UsagePanel
-              error={usageError}
-              loading={usageLoading}
-              onRefresh={() => void refreshUsage(usagePeriod)}
-              period={usagePeriod}
-              usage={usage}
-            />
-          ) : section === 'maintenance' ? (
-            <MaintenancePanel />
-          ) : (
-            <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pb-2">
+      <section className="shrink-0">
+        <h3 className="mb-2 text-sm font-medium">{t.activity.engine}</h3>
+            <div className="grid gap-4 gap-4">
               <div>
                 {status ? (
                   <div className="grid gap-2">
@@ -528,15 +359,76 @@ export function CommandCenterView({
                   )}
                 </div>
                 <LogTail
-                  className="flex-1 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary)"
+                  className="h-48 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-quinary)"
                   emptyLabel={cc.noLogs}
                   lines={systemLoading && logs.length === 0 ? null : visibleLogs}
                 />
               </div>
             </div>
-          )}
-        </OverlayMain>
-      </OverlaySplitLayout>
+
+      </section>
+      <section className="shrink-0"><MaintenancePanel /></section>
+      <section className="shrink-0">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-medium">{cc.sections.sessions}</h3>
+          <SearchField onChange={setQuery} placeholder={cc.searchPlaceholder} value={query} />
+        </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {!sessionListHasResults ? (
+                <EmptyPanel description={debouncedQuery ? cc.noResults : cc.noSessions} />
+              ) : (
+                <ul>
+                  {filteredSessions.map(session => {
+                    const pinId = sessionPinId(session)
+                    const pinned = pinnedSessionIds.includes(pinId)
+
+                    return (
+                      <li className="group flex items-center gap-2 py-2" key={session.id}>
+                        <button
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => onOpenSession(session.id)}
+                          type="button"
+                        >
+                          <div className="truncate text-[length:var(--conversation-text-font-size)] font-medium text-foreground">
+                            {sessionTitle(session)}
+                          </div>
+                          <div className="truncate text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
+                            {formatTimestamp(session.last_active || session.started_at)}
+                          </div>
+                        </button>
+                        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                          <RowIconButton
+                            onClick={() => (pinned ? unpinSession(pinId) : pinSession(pinId))}
+                            title={pinned ? cc.unpinSession : cc.pinSession}
+                          >
+                            {pinned ? <BookmarkFilled className="size-3.5" /> : <Bookmark className="size-3.5" />}
+                          </RowIconButton>
+                          <RowIconButton
+                            onClick={() => void exportSession(session.id, { session, title: sessionTitle(session) })}
+                            title={cc.exportSession}
+                          >
+                            <Download className="size-3.5" />
+                          </RowIconButton>
+                          <RowIconButton
+                            className="hover:text-destructive"
+                            onClick={() => setPendingDelete(session)}
+                            title={cc.deleteSession}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </RowIconButton>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+
+      </section>
+      {onNavigateRoute && <section className="shrink-0">
+        <h3 className="mb-2 text-sm font-medium">{t.activity.profile}</h3>
+        <Button onClick={() => onNavigateRoute(PROFILES_ROUTE)} size="xs" variant="text">{t.profiles.manageProfiles}</Button>
+      </section>}
       {pendingDelete && (
         <ConfirmDialog
           busyLabel={t.sidebar.row.deleting}
@@ -550,7 +442,7 @@ export function CommandCenterView({
           title={t.sidebar.row.deleteTitle}
         />
       )}
-    </OverlayView>
+    </div>
   )
 }
 
@@ -605,15 +497,6 @@ function UsagePanel({ error, loading, onRefresh, period, usage }: UsagePanelProp
           {error}
         </span>
       )}
-
-      <div className="grid grid-cols-2 gap-x-4 gap-y-4 py-2 sm:grid-cols-3">
-        <UsageStat label={cc.statSessions} value={compactNumber(totals.total_sessions)} />
-        <UsageStat label={cc.statApiCalls} value={compactNumber(totals.total_api_calls)} />
-        <UsageStat
-          label={cc.statTokens}
-          value={`${compactNumber(totals.total_input)} / ${compactNumber(totals.total_output)}`}
-        />
-      </div>
 
       <section>
         <div className="mb-2 flex items-baseline justify-between">
@@ -722,12 +605,43 @@ function UsageList({
   )
 }
 
-function UsageStat({ hint, label, value }: { hint?: string; label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-[0.625rem] font-medium uppercase tracking-[0.12em] text-(--ui-text-tertiary)">{label}</div>
-      <div className="mt-1 truncate text-base font-semibold tracking-tight text-foreground">{value}</div>
-      {hint && <div className="mt-0.5 truncate text-[0.625rem] text-(--ui-text-tertiary)">{hint}</div>}
-    </div>
-  )
+function UsageActivity() {
+  const { t } = useI18n()
+  const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>(30)
+  const [usage, setUsage] = useState<AnalyticsResponse | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+  const [usageError, setUsageError] = useState('')
+  const usageRequestRef = useRef(0)
+
+  const refreshUsage = useCallback(async (days: UsagePeriod) => {
+    const requestId = usageRequestRef.current + 1
+    usageRequestRef.current = requestId
+    setUsageLoading(true)
+    setUsageError('')
+
+    try {
+      const response = await getUsageAnalytics(days)
+
+      if (usageRequestRef.current === requestId) {
+        setUsage(response)
+      }
+    } catch (error) {
+      if (usageRequestRef.current === requestId) {
+        setUsageError(error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      if (usageRequestRef.current === requestId) {
+        setUsageLoading(false)
+      }
+    }
+  }, [])
+
+
+  useEffect(() => { void refreshUsage(usagePeriod) }, [refreshUsage, usagePeriod])
+  useRefreshHotkey(() => void refreshUsage(usagePeriod))
+
+  return <>
+    <div className="mb-3 shrink-0"><SegmentedControl onChange={id => setUsagePeriod(Number(id) as UsagePeriod)} options={USAGE_PERIODS.map(days => ({ id: String(days), label: t.commandCenter.days(days) }))} value={String(usagePeriod)} /></div>
+    <UsagePanel error={usageError} loading={usageLoading} onRefresh={() => void refreshUsage(usagePeriod)} period={usagePeriod} usage={usage} />
+  </>
 }
