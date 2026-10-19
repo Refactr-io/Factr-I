@@ -20,7 +20,7 @@ const TAG_CLASSES = {
   li: 'marker:text-muted-foreground/90',
   ol: 'mb-2 list-decimal pl-5 last:mb-0',
   p: 'mb-1.5 leading-relaxed last:mb-0',
-  pre: 'mb-2 overflow-x-auto rounded-md border border-(--ui-stroke-tertiary) bg-background/70 p-2 font-mono text-[0.6875rem] leading-[1.55] last:mb-0',
+  pre: 'mb-2 overflow-x-auto rounded-md border border-(--ui-stroke-tertiary) bg-background/70 p-2 type-code last:mb-0',
   td: 'px-2 py-1 align-top leading-snug',
   th: 'px-2 py-1 text-left text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground/90',
   thead: 'bg-muted/40',
@@ -58,7 +58,7 @@ function MarkdownAnchor({ children, className, href, ...rest }: ComponentProps<'
 function MarkdownCode({ className, ...rest }: ComponentProps<'code'>) {
   return (
     <code
-      className={cn('rounded bg-muted/80 px-1 py-px font-mono text-[0.86em] text-muted-foreground', className)}
+      className={cn('rounded bg-muted/80 px-1 py-px font-mono text-[length:var(--code-font-size)] text-muted-foreground', className)}
       {...rest}
     />
   )

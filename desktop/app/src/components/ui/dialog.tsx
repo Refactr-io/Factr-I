@@ -263,7 +263,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       className={cn(
-        'text-[0.875rem] font-semibold tracking-tight text-foreground',
+        'type-dialog-title text-foreground',
         Icon && 'flex items-center gap-2',
         className
       )}

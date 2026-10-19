@@ -84,7 +84,7 @@
   display: block;
   height: var(--glyph-spinner-frame-height, 1em);
   /* Clip each frame to its own box. Braille (U+2800..U+28FF) renders from a
-     system fallback face — JetBrains Mono has no glyphs in that block — and
+     system fallback face — IBM Plex Mono has no glyphs in that block — and
      fallback metrics are not guaranteed to fit the 1em box, so ink from the
      neighbouring frames could otherwise bleed into the viewport. */
   overflow: hidden;

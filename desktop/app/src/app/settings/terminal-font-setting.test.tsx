@@ -115,7 +115,7 @@ describe('TerminalFontSetting', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Use default' }))
     expect($terminalFontFamily.get()).toBe('')
-    expect((screen.getByLabelText('Glyph preview') as HTMLElement).style.fontFamily).toContain('JetBrains Mono')
+    expect((screen.getByLabelText('Glyph preview') as HTMLElement).style.fontFamily).toContain('IBM Plex Mono')
     await flushAutosave()
 
     expect(mocks.save.mock.calls[1][0]).toEqual({ terminal: { font_family: '' } })

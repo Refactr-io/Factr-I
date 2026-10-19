@@ -24,15 +24,15 @@ describe('Appearance keeps Factr font customisation on top of the calibrated def
     expect($zoomPercent.get()).toBe(100)
   })
 
-  it('ships Arimo with the Claude Code calibrated sizes and no scaling tricks', () => {
+  it('ships Pretendard with the calibrated sizes and no scaling tricks', () => {
     const css = read('..', '..', 'styles.css')
 
-    // Claude Code's whole-pixel scale: body 14, UI 13, tool and caption lines 12.
-    expect(css).toMatch(/--conversation-text-font-size:\s*0\.875rem/)
+    // Calibrated scale: chat 15/22, tool and caption lines 12/16.
+    expect(css).toMatch(/--conversation-text-font-size:\s*0\.9375rem/)
     expect(css).toMatch(/--conversation-tool-font-size:\s*0\.75rem/)
     expect(css).toMatch(/--conversation-caption-font-size:\s*0\.75rem/)
     expect(css).not.toMatch(/size-adjust|font-size-adjust/)
-    expect(css).toContain("--dt-font-sans:\n      'Arimo'")
+    expect(css).toContain("--dt-font-sans:\n      'Pretendard'")
   })
 
   it('keeps the font family key wired to live apply and autosave', () => {

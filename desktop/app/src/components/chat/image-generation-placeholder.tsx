@@ -155,7 +155,7 @@ const drawAsciiDiffusion = (
   const timestep = Math.floor(time * 1.15)
   const timestepBlend = smoothstep(0, 1, time * 1.15 - timestep)
 
-  ctx.font = `${fontSize}px "SF Mono", "Cascadia Code", Menlo, Consolas, monospace`
+  ctx.font = `${fontSize}px "IBM Plex Mono", "Cascadia Code", "SF Mono", Menlo, Consolas, monospace`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 

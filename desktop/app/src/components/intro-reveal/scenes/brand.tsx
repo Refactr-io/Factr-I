@@ -17,7 +17,7 @@ export function BrandClose({ ref }: BrandCloseProps) {
           className="text-[10.2vmin] leading-none uppercase text-white/95"
           style={{
             fontFamily: "'Collapse', sans-serif",
-            fontWeight: 700,
+            fontWeight: 600,
             letterSpacing: '0.06em',
             textShadow: '0 2px 24px rgba(0,0,0,0.45)'
           }}

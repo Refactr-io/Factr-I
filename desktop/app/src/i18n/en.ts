@@ -979,7 +979,7 @@ export const en: Translations = {
       appActionsRight: 'Right',
       terminalFontTitle: 'Terminal Font',
       terminalFontDesc:
-        'Choose an installed font for terminals. Nerd Fonts render Powerlevel10k and shell icons; leave blank to use bundled JetBrains Mono.',
+        'Choose an installed font for terminals. Nerd Fonts render Powerlevel10k and shell icons; leave blank to use bundled IBM Plex Mono.',
       terminalFontPlaceholder: 'MesloLGS NF or a CSS font stack',
       terminalFontPreview: 'Glyph preview',
       terminalFontReset: 'Use default',

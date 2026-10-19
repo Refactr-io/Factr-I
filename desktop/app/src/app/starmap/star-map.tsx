@@ -309,10 +309,10 @@ export function StarMap({
     invalidate()
   }, [adjacency, invalidate, memById])
 
-  // The empty-core ASCII scramble uses the bundled JetBrains Mono face. Canvas
+  // The empty-core ASCII scramble uses the bundled IBM Plex Mono face. Canvas
   // text doesn't reflow when a webfont loads, so repaint once it's ready.
   useEffect(() => {
-    document.fonts?.load('1em "JetBrains Mono"').then(invalidate, () => {})
+    document.fonts?.load('1em "IBM Plex Mono"').then(invalidate, () => {})
   }, [invalidate])
 
   // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
