@@ -139,3 +139,15 @@ Not executed in this run: the task explicitly prohibits GUI driving and starting
 5. With Alpha focused, explicitly choose a remote create target. Confirm creation stays on that selected machine. Local profiles/config/skills/session behavior should otherwise be unchanged.
 
 Run the no-Docker local scenario on macOS and native Linux where sandboxing is available. On Windows use the supported sandbox runtime, with the same isolated-directory assertions. Those platform GUI checks are pending; automated UI and Electron suites are reported separately in REPORT.md.
+
+## Bots roster refresh (fix/bots-roster-refresh)
+
+Headless gateway, Python, renderer and Electron tests cover routing; this task explicitly forbids GUI driving and packaged-app launches. Manual acceptance remains:
+
+1. Fresh isolated local install with a deterministic model: create Alpha, wait for its intro, then create Beta. Immediately return to Alpha and ask it to message Beta. Confirm Beta receives one attributed message, replies, and Alpha wakes once, without restarting either bot or waiting 60 seconds.
+2. Inspect the model's per-turn reminder: Beta is present after creation, Alpha is excluded from its own teammates list. An unknown-target error lists reachable peers and excludes the sender.
+3. Repeat with Docker computer bots, including a stopped Beta. Roster refresh must leave stopped computers asleep; an actual message may wake Beta for delivery.
+4. Repeat with native Windows and Linux sandbox bots. Check creation, intro, handoff/reply and stopped-engine routing under fresh HOME, FACTR_HOME, FACTR_CONFIG_HOME and Electron userData.
+5. During an in-flight roster refresh create Beta, then message it immediately. Confirm the creation's fresh push wins over the earlier snapshot and delivers exactly once.
+
+No rendered layout, typography, colors, controls or animations changed in this fix. No visual certification is claimed.
