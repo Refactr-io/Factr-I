@@ -29,7 +29,6 @@ import { $hideThreadTimeline, setHideThreadTimeline } from '@/store/thread-timel
 import { $spentTipCount, $tipsEnabled, resetTips, setTipsEnabled } from '@/store/tips'
 import {
   $titlebarAppActionsSide,
-  setTitlebarAppActionsSide,
   type TitlebarAppActionsSide
 } from '@/store/titlebar-app-actions'
 import { $hideCodeDiffs, $toolViewMode, setHideCodeDiffs, setToolViewMode } from '@/store/tool-view'
@@ -66,6 +65,7 @@ import { appearanceSubpageForSetting, type AppearanceSubpageId } from './appeara
 import { ChatFontSetting } from './chat-font-setting'
 import { MODE_OPTIONS } from './constants'
 import { setNested } from './helpers'
+import { LayoutPicker } from './layout-picker'
 import { MinimizeToTraySetting } from './minimize-to-tray-setting'
 import { PetSettings } from './pet-settings'
 import { ListRow, SectionHeading, SettingsContent, ToggleRow } from './primitives'
@@ -161,6 +161,7 @@ interface TranslucencySliderProps {
  */
 function TranslucencySlider({ label, onChange, value }: TranslucencySliderProps) {
   const rangePct = ((value - TRANSLUCENCY_MIN) / (TRANSLUCENCY_MAX - TRANSLUCENCY_MIN)) * 100
+
   return (
     <>
       <input
@@ -444,21 +445,9 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
           )}
 
           {show('window-layout') && (
-            <ListRow
-              action={
-                <SegmentedControl
-                  onChange={id => {
-                    triggerHaptic('selection')
-                    setTitlebarAppActionsSide(id)
-                  }}
-                  options={appActionsOptions}
-                  value={titlebarAppActionsSide}
-                />
-              }
-              description={a.appActionsDesc}
-              id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.appActions)}
-              title={a.appActionsTitle}
-            />
+            <div id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.appActions)}>
+              <LayoutPicker />
+            </div>
           )}
 
           {show('window-layout') && (

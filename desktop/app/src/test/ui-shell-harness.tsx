@@ -72,7 +72,7 @@ for (const [id, title, placement] of [
 }
 
 // QA handle: the same module instances the fixture renders from (a dynamic import would load a second copy).
-Object.assign(window, { __shell: { model, presets, treeStore } })
+Object.assign(window, { __shell: { model, presets, registry, treeStore } })
 
 registerLayoutPresets()
 declareDefaultTree(DEFAULT_TREE)
@@ -119,11 +119,11 @@ function Fixture() {
       <div className="flex gap-4 p-2 text-xs">
         <button
           onClick={() => {
-            const preset = registry.getArea('layouts').find(p => p.id === 'basic')!
-            applyLayoutPreset('basic', preset.data as NonNullable<typeof tree>)
+            const preset = registry.getArea('layouts').find(p => p.id === 'tools-open')!
+            applyLayoutPreset('tools-open', preset.data as NonNullable<typeof tree>)
           }}
         >
-          Apply Basic fixture
+          Apply Tools open fixture
         </button>
         <button
           onClick={() => {

@@ -587,6 +587,7 @@ export interface Translations {
     paneFiles: string
     paneMore: string
     resetLayout: string
+    layoutSettings: string
     toolCard: {
       close: string
       dockBottom: string
@@ -847,6 +848,18 @@ export interface Translations {
       appActionsDesc: string
       appActionsLeft: string
       appActionsRight: string
+      layoutTitle: string
+      layoutDesc: string
+      layoutSwapTitle: string
+      layoutSwapDesc: string
+      layoutResetTitle: string
+      layoutResetDesc: string
+      layoutResetAction: string
+      layoutSaveTitle: string
+      layoutSaveDesc: string
+      layoutSavePlaceholder: string
+      layoutSaveAction: string
+      layoutDelete: (name: string) => string
       terminalFontTitle: string
       terminalFontDesc: string
       terminalFontPlaceholder: string

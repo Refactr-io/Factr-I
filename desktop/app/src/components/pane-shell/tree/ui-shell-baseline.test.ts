@@ -68,13 +68,23 @@ function arrangement(node: LayoutNode): unknown {
   return node.type === 'group' ? node.panes : { [node.orientation]: node.children.map(arrangement) }
 }
 
+const TOOLS = { column: [['terminal'], ['files'], ['review']] }
+
 it.each([
-  ['default', { row: [['sessions'], ['workspace'], { column: [['terminal'], ['files'], ['review']] }] }],
-  ['basic', { row: [['sessions'], ['workspace'], { column: [['terminal'], ['files'], ['review']] }] }],
-  ['focus', { row: [['sessions'], { column: [['workspace', 'files', 'review'], ['terminal']] }] }],
-  ['terminal-deck', { column: [{ row: [['sessions'], ['workspace'], ['files', 'review']] }, ['terminal']] }],
-  ['quad', { column: [{ row: [['sessions', 'files'], ['workspace']] }, { row: [['terminal'], ['review']] }] }]
-])('preserves the current %s preset arrangement', async (id, expected) => {
+  ['default', { row: [['sessions'], ['workspace'], TOOLS] }, ['terminal', 'files', 'review']],
+  ['tools-open', { row: [['sessions'], ['workspace'], TOOLS] }, []],
+  [
+    'terminal-below',
+    { row: [['sessions'], { column: [['workspace'], ['terminal']] }, { column: [['files'], ['review']] }] },
+    ['files', 'review']
+  ],
+  ['tools-left', { row: [['sessions'], TOOLS, ['workspace']] }, ['terminal', 'files', 'review']],
+  [
+    'grid',
+    { row: [['sessions'], { column: [['workspace'], { row: [['terminal'], ['review']] }] }, ['files']] },
+    []
+  ]
+])('applies the %s layout: arrangement, panes, and what rests', async (id, expected, resting) => {
   const { tree, model, apply } = await boot()
   apply(id as string)
 
@@ -83,6 +93,13 @@ it.each([
   expect(model.allPaneIds(current).sort()).toEqual(['files', 'review', 'sessions', 'terminal', 'workspace'])
   expect(model.findGroupOfPane(current, 'workspace')?.active).toBe('workspace')
   expect(tree.$activePresetId.get()).toBe(id)
+
+  for (const pane of ['terminal', 'files', 'review']) {
+    expect(tree.isPaneVisible(pane), pane).toBe(!(resting as string[]).includes(pane))
+  }
+
+  expect(tree.isPaneVisible('workspace')).toBe(true)
+  expect(tree.isPaneVisible('sessions')).toBe(true)
 })
 
 it('persists a dragged tree and does not rearrange it during late adoption', async () => {
@@ -164,7 +181,7 @@ it('keeps a late Bots Screen workspace tab distinct from right tools across pres
   )
   expect(model.findGroupOfPane(tree.$layoutTree.get()!, 'workspace')?.active).toBe('workspace')
 
-  for (const preset of ['basic', 'focus', 'terminal-deck', 'quad', 'default']) {
+  for (const preset of ['tools-open', 'terminal-below', 'tools-left', 'grid', 'default']) {
     apply(preset)
     const current = tree.$layoutTree.get()!
     expect(model.allPaneIds(current).filter(p => p === id)).toHaveLength(1)
@@ -180,12 +197,10 @@ it('keeps a late Bots Screen workspace tab distinct from right tools across pres
   expect(tree.isPaneVisible('workspace')).toBe(true)
 })
 
-// S1 deliberately records the reported failure. Remove `.fails` with the S2
-// fix: Basic must leave an open Terminal instead of an empty right rail.
-it.fails('Basic leaves visible Terminal content in the right zone', async () => {
+it('Tools open leaves visible Terminal content in the tools column', async () => {
   const { tree, model, apply } = await boot()
   apply('default')
-  apply('basic')
+  apply('tools-open')
 
   const right = model.findGroupOfPane(tree.$layoutTree.get()!, 'terminal')!
   expect(right.minimized).toBeFalsy()

@@ -26,36 +26,47 @@ export const DEFAULT_TREE = split(
   'spl-root'
 )
 
-// Focus is one column of attention: files and review are tabs BEHIND the chat,
-// the terminal a collapsed rail under it — opening the terminal must never
-// cover the conversation, which a terminal tab did.
-const FOCUS_TREE = split(
-  'row',
-  [group(['sessions']), split('column', [group(['workspace', 'files', 'review']), group(['terminal'])], [3, 1])],
-  [1, 4.6]
-)
-
-// Basic is the same arrangement as Default: sessions, chat and the tool cards (all closed until opened).
+// The simple tier's arrangement is the default one: sessions, chat and the tool cards (all closed until opened).
 export const BASIC_TREE = DEFAULT_TREE
 
+// Every arrangement below is built from the same panes: Sessions, the chat, and the Terminal / Files / Changes cards.
+// `resting` is what a preset leaves closed; everything else it places opens when it is applied.
 const BASIC_RESTING = ['terminal', 'files', 'review'] as const
 
-const TERMINAL_TREE = split(
-  'column',
+// Terminal under the chat; Files and Changes stay a column on the right.
+const TERMINAL_BELOW_TREE = split(
+  'row',
   [
-    split('row', [group(['sessions']), group(['workspace']), group(['files', 'review'])], [1, 3.2, 1.2]),
-    group(['terminal'])
+    group(['sessions'], { id: 'grp-sessions' }),
+    split('column', [group(['workspace'], { id: 'grp-main' }), group(['terminal'], { id: 'grp-terminal' })], [3, 1.1]),
+    split('column', [group(['files'], { id: 'grp-files' }), group(['review'], { id: 'grp-review' })], [1, 1])
   ],
-  [3, 1]
+  [1, 3.4, 1.25]
 )
 
-const QUAD_TREE = split(
-  'column',
+// The tool cards between Sessions and the chat.
+const TOOLS_LEFT_TREE = split(
+  'row',
+  [group(['sessions'], { id: 'grp-sessions' }), TOOLS_COLUMN, group(['workspace'], { id: 'grp-main' })],
+  [1, 1.25, 3.4]
+)
+
+// The chat on top, Terminal and Changes side by side beneath it, Files on the right.
+const GRID_TREE = split(
+  'row',
   [
-    split('row', [group(['sessions', 'files']), group(['workspace'])], [1, 3]),
-    split('row', [group(['terminal']), group(['review'])], [1.4, 1])
+    group(['sessions'], { id: 'grp-sessions' }),
+    split(
+      'column',
+      [
+        group(['workspace'], { id: 'grp-main' }),
+        split('row', [group(['terminal'], { id: 'grp-terminal' }), group(['review'], { id: 'grp-review' })], [1.4, 1])
+      ],
+      [3, 1.1]
+    ),
+    group(['files'], { id: 'grp-files' })
   ],
-  [3, 1]
+  [1, 3.4, 1.1]
 )
 
 export function registerLayoutPresets() {
@@ -71,10 +82,10 @@ export function registerLayoutPresets() {
       resting: BASIC_RESTING,
       tier: 'simple'
     },
-    { id: 'default', title: 'Default', order: 0, tree: DEFAULT_TREE, tier: 'advanced' },
-    { id: 'basic', title: 'Basic', order: 5, tree: BASIC_TREE, resting: BASIC_RESTING, tier: 'advanced' },
-    { id: 'focus', title: 'Focus', order: 10, tree: FOCUS_TREE, resting: ['terminal'], tier: 'advanced' },
-    { id: 'terminal-deck', title: 'Terminal deck', order: 20, tree: TERMINAL_TREE, tier: 'advanced' },
-    { id: 'quad', title: 'Quad', order: 30, tree: QUAD_TREE, tier: 'advanced' }
+    { id: 'default', title: 'Default', order: 0, tree: DEFAULT_TREE, resting: BASIC_RESTING, tier: 'advanced' },
+    { id: 'tools-open', title: 'Tools open', order: 5, tree: DEFAULT_TREE, tier: 'advanced' },
+    { id: 'terminal-below', title: 'Terminal below', order: 10, tree: TERMINAL_BELOW_TREE, resting: ['files', 'review'], tier: 'advanced' },
+    { id: 'tools-left', title: 'Tools left', order: 20, tree: TOOLS_LEFT_TREE, resting: BASIC_RESTING, tier: 'advanced' },
+    { id: 'grid', title: 'Grid', order: 30, tree: GRID_TREE, tier: 'advanced' }
   ])
 }

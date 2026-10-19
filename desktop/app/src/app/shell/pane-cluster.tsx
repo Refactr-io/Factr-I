@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import { useNavigate } from 'react-router'
 
 import { hudTargetSessionId } from '@/app/hud/handoff'
 import {
@@ -7,7 +8,6 @@ import {
   $layoutTree,
   closeTreePane,
   isPaneVisible,
-  resetLayoutTree,
   revealTreePane,
   togglePaneVisible,
   treePanesWithPrefix
@@ -20,10 +20,12 @@ import { triggerHaptic } from '@/lib/haptics'
 import { FileDiff, Folder, Globe, ListDetails, MoreVertical, Terminal } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { toggleHud } from '@/store/hud'
-import { $fileBrowserOpen, setFileBrowserOpen, togglePanesFlipped } from '@/store/layout'
+import { $fileBrowserOpen, setFileBrowserOpen } from '@/store/layout'
 import { openBrowserTab } from '@/store/preview'
 import { $reviewOpen, toggleReview } from '@/store/review'
 import { $sessionRailOpen, toggleSessionRail } from '@/store/session-rail'
+
+import { SETTINGS_ROUTE } from '../routes'
 
 import { titlebarButtonClass } from './titlebar'
 import type { TitlebarTool } from './titlebar-controls'
@@ -91,6 +93,7 @@ export function usePaneClusterTools(): TitlebarTool[] {
 /** The cluster's last button: app actions that used to crowd the top bar. */
 export function PaneClusterMore() {
   const { t } = useI18n()
+  const navigate = useNavigate()
 
   return (
     <DropdownMenu>
@@ -110,9 +113,8 @@ export function PaneClusterMore() {
         </DropdownMenuTrigger>
       </Tip>
       <DropdownMenuContent align="end" className="min-w-48">
-        <DropdownMenuItem onSelect={() => togglePanesFlipped()}>{t.titlebar.swapSidebarSides}</DropdownMenuItem>
         <DropdownMenuItem onSelect={() => toggleHud(hudTargetSessionId())}>{t.titlebar.enterHud}</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => resetLayoutTree()}>{t.titlebar.resetLayout}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate(SETTINGS_ROUTE)}>{t.titlebar.layoutSettings}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

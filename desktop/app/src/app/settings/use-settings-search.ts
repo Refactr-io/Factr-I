@@ -235,11 +235,11 @@ export function useSettingsSearchCatalog(enabled: boolean) {
     },
     {
       context: appearanceContext,
-      description: appearance.appActionsDesc,
+      description: appearance.layoutDesc,
       icon: Palette,
       id: `setting:${APPEARANCE_SETTING_IDS.appActions}`,
-      keywords: ['titlebar', 'settings gear', 'layout', 'HUD', 'left', 'right', 'tabs'],
-      label: appearance.appActionsTitle,
+      keywords: ['layout', 'arrangement', 'sidebar', 'swap', 'preset', 'terminal', 'files', 'changes', 'reset'],
+      label: appearance.layoutTitle,
       target: { setting: APPEARANCE_SETTING_IDS.appActions, view: 'config:appearance' }
     },
     {
