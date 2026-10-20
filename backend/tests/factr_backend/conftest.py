@@ -181,3 +181,9 @@ def _reset_prompt_toolkit_output_cache():
     _clear()
     yield
     _clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_live_ollama(monkeypatch):
+    """The picker auto-lists a running Ollama; keep a dev machine's real one out of every test."""
+    monkeypatch.setattr("factr_backend.models_local.fetch_ollama_local_models", lambda *a, **k: None)

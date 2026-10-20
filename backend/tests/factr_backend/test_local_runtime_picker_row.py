@@ -88,3 +88,40 @@ def test_explicit_only_filter_keeps_local_row_on_any_profile(factr_home):
     kept = _filter_explicit_provider_rows([row], ctx)
     assert kept, "explicit-only filter dropped the local-runtime row"
     assert kept[0]["slug"] == "llamacpp"
+
+
+def test_configured_default_listed_even_when_not_staged(factr_home):
+    """Issue #11: the model config points at must show in the picker (status 'unloaded' or not staged)."""
+    from factr_backend.inventory import _local_runtime_row, load_picker_context
+
+    ctx = load_picker_context().with_overrides(current_provider="llamacpp", current_model="Qwen3.6-35B-A3B-UD-Q4_K_M")
+    row = _local_runtime_row(ctx)
+    assert row is not None and row["models"] == ["Qwen3.6-35B-A3B-UD-Q4_K_M"]
+
+
+def test_managed_router_models_listed_regardless_of_status(factr_home, monkeypatch):
+    from factr_backend import inventory
+    from factr_backend.inventory import _local_runtime_row, load_picker_context
+
+    monkeypatch.setattr("factr_backend.local_runtime.endpoint.managed_root", lambda: ("http://x", "k"))
+    monkeypatch.setattr("factr_backend.local_runtime.endpoint.managed_get_json", lambda *a: {
+        "data": [{"id": "A", "status": {"value": "unloaded"}}, {"id": "B", "status": {"value": "loaded"}}]})
+    row = _local_runtime_row(load_picker_context())
+    assert row["models"] == ["A", "B"]
+
+
+def test_running_ollama_is_listed(factr_home, monkeypatch):
+    from factr_backend.inventory import build_model_options_payload, load_picker_context
+
+    monkeypatch.setattr("factr_backend.models_local.fetch_ollama_local_models", lambda *a, **k: ["qwen3:8b"])
+    rows = build_model_options_payload(load_picker_context(), explicit_only=True)["providers"]
+    ollama = next(r for r in rows if r["slug"] == "ollama")
+    assert ollama["models"] == ["qwen3:8b"] and ollama["authenticated"] is True
+
+
+def test_no_ollama_no_row(factr_home, monkeypatch):
+    from factr_backend.inventory import build_model_options_payload, load_picker_context
+
+    monkeypatch.setattr("factr_backend.models_local.fetch_ollama_local_models", lambda *a, **k: None)
+    rows = build_model_options_payload(load_picker_context(), explicit_only=True)["providers"]
+    assert not any(r["slug"] == "ollama" for r in rows)
