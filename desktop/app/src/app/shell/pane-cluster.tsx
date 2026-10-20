@@ -21,9 +21,9 @@ import { triggerHaptic } from '@/lib/haptics'
 import { FileDiff, Folder, Globe, LayoutPanelLeft, LayoutPanelRight, MoreVertical, Terminal } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { toggleHud } from '@/store/hud'
-import { $fileBrowserOpen, $panesFlipped, setFileBrowserOpen } from '@/store/layout'
+import { $panesFlipped, setFileBrowserOpen } from '@/store/layout'
 import { openBrowserTab } from '@/store/preview'
-import { $reviewOpen, toggleReview } from '@/store/review'
+import { $reviewOpen, closeReview, toggleReview } from '@/store/review'
 import { $sessionRailOpen, toggleSessionRail } from '@/store/session-rail'
 
 import { SETTINGS_ROUTE } from '../routes'
@@ -82,11 +82,11 @@ export function usePaneClusterTools(): TitlebarTool[] {
   useStore($hiddenTreePanes)
   useStore($dismissedPanes)
 
-  // Each card's own store is the truth for its toggle (the bindings keep the tree in step with it).
-  // The terminal collapses (store stays true behind a sibling tab or a minimized zone), so it reads the tree.
+  // What is on screen is the truth for every pill: a store can read open while its card was dismissed or never
+  // placed (a layout that rests it), and the button must never claim a card that is not there.
   const terminal = isPaneVisible('terminal')
-  const changes = useStore($reviewOpen)
-  const files = useStore($fileBrowserOpen)
+  const changes = isPaneVisible('review')
+  const files = isPaneVisible('files')
   const previews = visiblePreviews()
   const browser = previews.length > 0
 
@@ -107,12 +107,27 @@ export function usePaneClusterTools(): TitlebarTool[] {
     // Greyed out only when the chat column is too narrow to open it over (an open one can always be closed).
     { ...tool('session-rail', t.titlebar.paneSession, railOpen, (flipped ? <LayoutPanelLeft {...ICON} /> : <LayoutPanelRight {...ICON} />), toggleSessionRail), disabled: !railOpen && chatWidth < RAIL_MIN_CHAT_PX },
     tool('terminal', t.titlebar.paneTerminal, terminal, <Terminal {...ICON} />, () => togglePaneVisible('terminal')),
-    tool('changes', t.titlebar.paneChanges, changes, <FileDiff {...ICON} />, () => toggleReview()),
+    tool('changes', t.titlebar.paneChanges, changes, <FileDiff {...ICON} />, () => {
+      if (changes) {
+        closeReview()
+        closeTreePane('review')
+      } else {
+        if ($reviewOpen.get()) {
+          closeReview()
+        }
+
+        toggleReview()
+        revealTreePane('review')
+      }
+    }),
     tool('browser', t.titlebar.paneBrowser, browser, <Globe {...ICON} />, () =>
       browser ? previews.forEach(closeTreePane) : openBrowserTab()
     ),
     tool('files', t.titlebar.paneFiles, files, <Folder {...ICON} />, () => {
       if (files) {
+        // Close through the store too: closing only the card left the flag open, and every later layout read
+        // "Files is open" for a card that was gone.
+        setFileBrowserOpen(false)
         closeTreePane('files')
       } else {
         setFileBrowserOpen(true)

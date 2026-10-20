@@ -98,6 +98,10 @@ it.each([
     expect(tree.isPaneVisible(pane), pane).toBe(!(resting as string[]).includes(pane))
   }
 
+  // The header's pill reads these stores: they must agree with what the layout put on screen.
+  const { $fileBrowserOpen } = await import('@/store/layout')
+  expect($fileBrowserOpen.get(), 'files store').toBe(tree.isPaneVisible('files'))
+
   expect(tree.isPaneVisible('workspace')).toBe(true)
   expect(tree.isPaneVisible('sessions')).toBe(true)
 })
@@ -206,4 +210,21 @@ it('Tools open leaves visible Terminal content in the tools column', async () =>
   expect(right.minimized).toBeFalsy()
   expect(tree.$hiddenTreePanes.get().has('terminal')).toBe(false)
   expect(tree.isPaneVisible('terminal')).toBe(true)
+})
+
+it('Tools left after a swap and a closed Files card: the Files store still agrees with the layout', async () => {
+  const { tree, apply } = await boot()
+  const layout = await import('@/store/layout')
+
+  apply('terminal-below')
+  layout.setFileBrowserOpen(true)
+  tree.revealTreePane('files')
+  layout.setFileBrowserOpen(false)
+  layout.togglePanesFlipped()
+  apply('default')
+  layout.togglePanesFlipped()
+  apply('tools-left')
+
+  expect(layout.$fileBrowserOpen.get(), 'files store').toBe(tree.isPaneVisible('files'))
+  expect(tree.isPaneVisible('files')).toBe(false)
 })

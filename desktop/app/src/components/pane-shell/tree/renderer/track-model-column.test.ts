@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Contribution } from '@/contrib/registry'
+import type { Contribution } from '@/contrib/types'
 
 import { group, split } from '../model'
 
