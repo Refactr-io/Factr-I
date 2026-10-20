@@ -3159,6 +3159,8 @@ button[data-slot='aui_msg-reactions'] svg {
 [data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
 [data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
   border-radius: 0 0 var(--shape-radius-lg) var(--shape-radius-lg) !important;
+  /* Joined to the sheet: the bar's lift shadow would draw a dark seam along the join. */
+  box-shadow: none !important;
 }
 
 [data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],

@@ -85,7 +85,7 @@ export function SessionRail() {
     <aside
       aria-label={copy.title}
       className={cn(
-        'fixed z-60 flex max-h-[calc(100vh-var(--session-rail-bottom,48px)-0.75rem)] w-80 flex-col overflow-y-auto rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) text-[0.8125rem] text-foreground',
+        'fixed z-60 flex max-h-[calc(100vh-var(--session-rail-bottom,48px)-0.75rem)] w-[min(20rem,calc(100vw-var(--workspace-left,0px)-var(--workspace-right,0px)-1rem))] flex-col overflow-y-auto rounded-lg border border-(--ui-stroke-secondary) bg-(--ui-bg-elevated) text-[0.8125rem] text-foreground',
         flipped ? 'left-[calc(var(--workspace-left,0px)+0.5rem)]' : 'right-[calc(var(--workspace-right,0px)+0.5rem)]'
       )}
       data-session-rail=""

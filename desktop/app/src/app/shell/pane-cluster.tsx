@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { hudTargetSessionId } from '@/app/hud/handoff'
@@ -35,6 +36,34 @@ const ICON = { 'aria-hidden': true, size: 16, stroke: 1.5 } as const
 const ON = 'bg-(--ui-control-active-background) text-foreground'
 const OFF = 'text-(--ui-text-secondary)'
 
+/** The summary opens over the chat and shrinks to fit it; below this column width there is nothing to open it over. */
+const RAIL_MIN_CHAT_PX = 288
+
+/** Width of the chat column, from the edges the pane shell publishes. */
+function useChatColumnWidth(): number {
+  const read = () => {
+    const css = getComputedStyle(document.documentElement)
+
+    return window.innerWidth - (parseFloat(css.getPropertyValue('--workspace-left')) || 0) - (parseFloat(css.getPropertyValue('--workspace-right')) || 0)
+  }
+
+  const [width, setWidth] = useState(read)
+
+  useEffect(() => {
+    const update = () => setWidth(read())
+    const id = window.setInterval(update, 400)
+
+    window.addEventListener('resize', update)
+
+    return () => {
+      window.clearInterval(id)
+      window.removeEventListener('resize', update)
+    }
+  }, [])
+
+  return width
+}
+
 /** Browser tabs are dynamic preview tiles: the Browser is "open" when any of them is on screen. */
 const visiblePreviews = () => treePanesWithPrefix(PREVIEW_PREFIX).filter(isPaneVisible)
 
@@ -45,6 +74,7 @@ const visiblePreviews = () => treePanesWithPrefix(PREVIEW_PREFIX).filter(isPaneV
 export function usePaneClusterTools(): TitlebarTool[] {
   const { t } = useI18n()
   const railOpen = useStore($sessionRailOpen)
+  const chatWidth = useChatColumnWidth()
 
   // Re-render whenever the tree or the hidden/dismissed sets change; `isPaneVisible` reads them live.
   useStore($layoutTree)
@@ -73,7 +103,8 @@ export function usePaneClusterTools(): TitlebarTool[] {
   })
 
   return [
-    tool('session-rail', t.titlebar.paneSession, railOpen, <ListDetails {...ICON} />, toggleSessionRail),
+    // Greyed out only when the chat column is too narrow to open it over (an open one can always be closed).
+    { ...tool('session-rail', t.titlebar.paneSession, railOpen, <ListDetails {...ICON} />, toggleSessionRail), disabled: !railOpen && chatWidth < RAIL_MIN_CHAT_PX },
     tool('terminal', t.titlebar.paneTerminal, terminal, <Terminal {...ICON} />, () => togglePaneVisible('terminal')),
     tool('changes', t.titlebar.paneChanges, changes, <FileDiff {...ICON} />, () => toggleReview()),
     tool('browser', t.titlebar.paneBrowser, browser, <Globe {...ICON} />, () =>
