@@ -88,6 +88,7 @@ export function usePaneClusterTools(): TitlebarTool[] {
   const changes = isPaneVisible('review')
   const files = isPaneVisible('files')
   const previews = visiblePreviews()
+  const browser = previews.length > 0
 
 
   const tool = (id: string, label: string, active: boolean, icon: TitlebarTool['icon'], onSelect: () => void): TitlebarTool => ({
