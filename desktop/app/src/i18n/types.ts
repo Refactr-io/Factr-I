@@ -2205,6 +2205,15 @@ export interface Translations {
     groups: Record<'bots' | 'chats' | 'cron' | 'mcp' | 'memory' | 'permissions' | 'prompt' | 'skills', { title: string; note: string }>
     importAction: (count: number) => string
     itemCount: (count: number) => string
+    customizeDesc: string
+    nothingFound: string
+    customize: string
+    importOne: string
+    importAll: (count: number) => string
+    importAnother: string
+    importingFrom: (name: string) => string
+    notFoundList: (names: string) => string
+    summary: Record<'bots' | 'chats' | 'cron' | 'mcp' | 'memory' | 'permissions' | 'prompt' | 'skills', (count: number) => string>
     importing: string
     scanning: string
     resultTitle: string

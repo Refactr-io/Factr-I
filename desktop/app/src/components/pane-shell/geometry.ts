@@ -14,6 +14,7 @@
 import { type RefObject, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 
 import { $layoutTree } from '@/components/pane-shell/tree/store'
+import { $panesFlipped } from '@/store/layout'
 import { $connection } from '@/store/session'
 
 import { $maximizedPane } from './tree/pane-maximize'
@@ -285,10 +286,16 @@ export function publishWorkspaceGeometry(): () => void {
 
   // Fill moves the workspace edges while the cards animate: keep measuring as the motion settles.
   const unsubFill = $maximizedPane.listen(() => settle())
+  // Swapping sides moves every zone without resizing any: nothing else here would notice.
+  const unsubFlip = $panesFlipped.listen(() => settle())
+  // Safety net for any other pure move: a handful of reads a second, and a write only when a number changed.
+  const poll = window.setInterval(measure, 250)
 
   return () => {
     unsubTree()
     unsubFill()
+    unsubFlip()
+    window.clearInterval(poll)
     cancelAnimationFrame(settleFrame)
     onSashDragEnd = null
     window.removeEventListener('resize', measure)

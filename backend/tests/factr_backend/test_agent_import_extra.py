@@ -63,7 +63,7 @@ def test_hermes_execute_writes_everything_and_strips_secrets(tmp_path):
     assert report["summary"]["error"] == 0
     assert (target / "SOUL.md").read_text().startswith("You are a terse release engineer")
     assert (target / "skills/hermes-imports/github/SKILL.md").exists()
-    assert (target / "skills/hermes-imports/devops/deploy/SKILL.md").exists()  # category kept
+    assert (target / "skills/hermes-imports/deploy/SKILL.md").exists()  # the registry reads <category>/<name>
     assert not (target / "skills/hermes-imports/.hub").exists()
     assert "Atlas deploys on Fridays." in (target / "memories/MEMORY.md").read_text()
     assert "Asia/Karachi" in (target / "memories/USER.md").read_text()
@@ -268,3 +268,41 @@ def test_with_an_engine_home_skills_and_chats_go_where_the_app_reads_them(tmp_pa
     again = run_import("claude-code", root, target, execute=True, groups=["chats"])
     assert [i for i in again["items"] if i["kind"] == "chats"][0]["sessions"] == 0
     assert len(list((target / "engine/sessions").glob("session_*.json"))) == 1
+
+
+def test_detection_follows_each_os_and_environment_overrides(tmp_path):
+    from factr_backend.agent_import import candidate_dirs, detect_sources, find_agent_dir
+
+    home = tmp_path / "home"
+    linux = candidate_dirs("opencode", env={"XDG_CONFIG_HOME": "/x/cfg"}, home=home, platform="linux")
+    assert linux == [Path("/x/cfg/opencode"), home / ".config/opencode"]
+    win = candidate_dirs("hermes", env={"LOCALAPPDATA": "C:/L", "HERMES_HOME": "D:/h"}, home=home, platform="win32")
+    assert win == [Path("D:/h"), home / ".hermes", Path("C:/L/hermes")]
+    assert candidate_dirs("hermes", env={"LOCALAPPDATA": "C:/L"}, home=home, platform="linux") == [home / ".hermes"]
+    assert candidate_dirs("claude-code", env={"CLAUDE_CONFIG_DIR": "/c"}, home=home, platform="darwin")[0] == Path("/c")
+    assert candidate_dirs("codex", env={"CODEX_HOME": "/cx"}, home=home, platform="darwin")[0] == Path("/cx")
+
+    (home / ".hermes" / "skills").mkdir(parents=True)
+    (home / ".hermes" / "SOUL.md").write_text("x")
+    (home / ".claude").mkdir()
+    rows = {r["agent"]: r for r in detect_sources(home=home, env={}, platform="linux")}
+    assert rows["hermes"]["found"] and rows["claude-code"]["found"]
+    assert not rows["codex"]["found"] and rows["codex"]["path"] == str(home / ".codex")
+    assert find_agent_dir("opencode", home=home, env={}) is None
+
+
+def test_prime_is_read_as_whichever_layout_its_folder_has(tmp_path):
+    from factr_backend.agent_import import detect_sources
+
+    home = tmp_path / "home"
+    (home / ".prime" / "agent" / "kernel-venv").mkdir(parents=True)
+    assert not {r["agent"]: r for r in detect_sources(home=home, env={})}["prime"]["found"]  # only a venv: nothing to read
+    _write(home / ".prime" / "agent" / "SOUL.md", "You are a careful assistant.")
+    _write(home / ".prime" / "agent" / "skills" / "tidy" / "SKILL.md", "---\nname: tidy\n---\nbody")
+    assert {r["agent"]: r for r in detect_sources(home=home, env={})}["prime"]["found"]
+    target = tmp_path / "factr"
+    report = run_import("prime", home / ".prime" / "agent", target, execute=True)
+    assert report["summary"]["error"] == 0
+    assert (target / "SOUL.md").read_text().startswith("You are a careful assistant")
+    assert (target / "skills/prime-imports/tidy/SKILL.md").exists()
+    assert run_import("prime", home, target)["summary"]["skipped"] >= 1  # a folder with nothing readable

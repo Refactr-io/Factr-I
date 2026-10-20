@@ -2580,7 +2580,7 @@ export const en: Translations = {
 
   agentImport: {
     title: 'Import from other agents',
-    description: 'Bring your setup over from Claude Code, Codex, Hermes, OpenCode or any folder that looks like one. Credentials are never imported.',
+    description: 'Factr-I looked for other agents on this computer. Import brings over everything it found; credentials are never imported.',
     detected: 'Found on this computer',
     chooseFolder: 'Choose a folder…',
     notFound: 'Not found',
@@ -2600,6 +2600,24 @@ export const en: Translations = {
     },
     importAction: count => (count === 1 ? 'Import 1 item' : `Import ${count} items`),
     itemCount: count => (count === 1 ? '1 item' : `${count} items`),
+    customizeDesc: 'Pick what to bring over from this agent.',
+    nothingFound: 'No other agents found here. You can choose a folder to import from.',
+    customize: 'Choose what to import',
+    importOne: 'Import',
+    importAll: count => `Import all (${count})`,
+    importAnother: 'Import another',
+    importingFrom: name => `Importing from ${name}…`,
+    notFoundList: names => `Not found on this computer: ${names}`,
+    summary: {
+      skills: count => (count === 1 ? '1 skill' : `${count} skills`),
+      mcp: count => (count === 1 ? '1 MCP server' : `${count} MCP servers`),
+      memory: count => (count === 1 ? '1 memory note' : `${count} memory notes`),
+      prompt: () => 'system prompt',
+      cron: count => (count === 1 ? '1 scheduled job' : `${count} scheduled jobs`),
+      bots: count => (count === 1 ? '1 bot' : `${count} bots`),
+      chats: count => (count === 1 ? '1 chat' : `${count} chats`),
+      permissions: count => (count === 1 ? '1 command rule' : `${count} command rules`)
+    },
     importing: 'Importing…',
     scanning: 'Looking for other agents…',
     resultTitle: 'Import finished',

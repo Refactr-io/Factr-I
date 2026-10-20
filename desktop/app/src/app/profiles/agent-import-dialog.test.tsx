@@ -29,13 +29,17 @@ const report = (overrides = {}) => ({
   ...overrides
 })
 
+const ALL = ['skills', 'mcp', 'memory', 'prompt', 'cron', 'bots', 'chats', 'permissions']
+
 beforeEach(() => {
   vi.mocked(detectAgentImports).mockResolvedValue({
     agents: [
       { agent: 'claude-code', counts: { bot: 2, chats: 5, skill: 4 }, found: true, label: 'Claude Code', path: '/h/.claude' },
-      { agent: 'hermes', counts: {}, found: false, label: 'Hermes', path: '/h/.hermes' }
+      { agent: 'hermes', counts: { 'cron-job': 2, skill: 3 }, found: true, label: 'Hermes', path: '/h/.hermes' },
+      { agent: 'codex', counts: {}, found: false, label: 'Codex', path: '/h/.codex' },
+      { agent: 'prime', counts: {}, found: false, label: 'Prime', path: '/h/.prime' }
     ],
-    groups: ['skills', 'mcp', 'memory', 'prompt', 'cron', 'bots', 'chats', 'permissions']
+    groups: ALL as never
   })
   openAgentImport()
 })
@@ -46,35 +50,34 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-it('lists what was found and disables agents that are not on this computer', async () => {
+it('finds agents by itself, summarises what each has, and names the ones it could not find', async () => {
   render(<AgentImportDialog />)
 
-  const claude = (await screen.findByRole('button', { name: /Claude Code/ })) as HTMLButtonElement
-  expect(claude.disabled).toBe(false)
-  expect(claude.textContent).toContain('11 items')
-  expect((screen.getByRole('button', { name: /Hermes/ }) as HTMLButtonElement).disabled).toBe(true)
+  await screen.findByText('Claude Code')
+  expect(screen.queryByText('4 skills, 2 bots, 5 chats')).not.toBeNull()
+  expect(screen.queryByText('3 skills, 2 scheduled jobs')).not.toBeNull()
+  expect(screen.queryByText('Not found on this computer: Codex, Prime')).not.toBeNull()
+  expect(runAgentImport).not.toHaveBeenCalled() // nothing happens until you click
 })
 
-it('imports only the groups that stay ticked, into the active profile, and shows the result', async () => {
+it('one click on Import brings everything over from that agent, into the active profile', async () => {
   vi.mocked(runAgentImport).mockResolvedValueOnce(
     report({
       bots: [{ detail: '/p/scout', name: 'scout', ok: true }],
-      stripped_secrets: ['mcp_servers.fs.env.API_KEY'],
-      items: [{ kind: 'cron-job', reason: '', source: 'j', status: 'imported' }]
+      items: [{ kind: 'cron-job', reason: '', source: 'j', status: 'imported' }],
+      stripped_secrets: ['mcp_servers.fs.env.API_KEY']
     })
   )
   render(<AgentImportDialog />)
 
-  fireEvent.click(await screen.findByRole('button', { name: /Claude Code/ }))
-  expect(screen.queryByText('Skills')).not.toBeNull()
-  fireEvent.click(screen.getAllByRole('checkbox')[2]) // chats off (skills, bots, chats)
-  fireEvent.click(screen.getByRole('button', { name: /Import 6 items/ }))
+  const row = (await screen.findByText('Claude Code')).closest('[data-agent]') as HTMLElement
+  fireEvent.click(row.querySelector('button:not([class*="underline"])') as HTMLButtonElement)
 
   await waitFor(() =>
     expect(runAgentImport).toHaveBeenCalledWith({
       agent: 'claude-code',
       execute: true,
-      groups: ['skills', 'bots'],
+      groups: ALL,
       overwrite: false,
       profile: 'default',
       source: '/h/.claude'
@@ -86,13 +89,39 @@ it('imports only the groups that stay ticked, into the active profile, and shows
   expect(screen.queryByText(/paused until you resume/i)).not.toBeNull()
 })
 
-it('keeps the dialog on the pick step and says why when the import fails', async () => {
+it('Import all runs every detected agent in turn and reports each', async () => {
+  vi.mocked(runAgentImport).mockResolvedValueOnce(report()).mockResolvedValueOnce(report({ summary: { conflict: 1, error: 0, imported: 2, skipped: 0 } }))
+  render(<AgentImportDialog />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Import all (2)' }))
+
+  await waitFor(() => expect(runAgentImport).toHaveBeenCalledTimes(2))
+  expect(vi.mocked(runAgentImport).mock.calls.map(call => call[0].agent)).toEqual(['claude-code', 'hermes'])
+  expect(await screen.findByText('2 imported, 0 skipped, 1 already existed')).not.toBeNull()
+  expect(screen.queryByText(/Claude Code:/)).not.toBeNull()
+})
+
+it('"Choose what to import" runs only the ticked groups, and replaces only when asked', async () => {
+  vi.mocked(runAgentImport).mockResolvedValueOnce(report())
+  render(<AgentImportDialog />)
+
+  const row = (await screen.findByText('Claude Code')).closest('[data-agent]') as HTMLElement
+  fireEvent.click(row.querySelector('button[class*="underline"]') as HTMLButtonElement)
+  fireEvent.click(screen.getAllByRole('checkbox')[2]) // chats off (skills, bots, chats)
+  fireEvent.click(screen.getByRole('button', { name: /Import 6 items/ }))
+
+  await waitFor(() =>
+    expect(runAgentImport).toHaveBeenCalledWith(expect.objectContaining({ agent: 'claude-code', groups: ['skills', 'bots'], overwrite: false }))
+  )
+})
+
+it('keeps the list and says why when the import fails', async () => {
   vi.mocked(runAgentImport).mockRejectedValueOnce(new Error('boom'))
   render(<AgentImportDialog />)
 
-  fireEvent.click(await screen.findByRole('button', { name: /Claude Code/ }))
-  fireEvent.click(screen.getByRole('button', { name: /Import 11 items/ }))
+  const row = (await screen.findByText('Claude Code')).closest('[data-agent]') as HTMLElement
+  fireEvent.click(row.querySelector('button:not([class*="underline"])') as HTMLButtonElement)
 
   expect(await screen.findByText('boom')).not.toBeNull()
-  expect((screen.getByRole('button', { name: /Import 11 items/ }) as HTMLButtonElement).disabled).toBe(false)
+  expect(screen.queryByText('Claude Code')).not.toBeNull()
 })
