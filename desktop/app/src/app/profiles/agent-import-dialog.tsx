@@ -136,6 +136,7 @@ export function AgentImportDialog() {
       setReport(result)
       setStep('result')
       void refreshProfiles().catch(() => undefined)
+      window.dispatchEvent(new Event('factr:sessions-changed'))
     } catch (err) {
       setStep('pick')
       setError(err instanceof Error ? err.message : a.failed)
@@ -198,7 +199,7 @@ export function AgentImportDialog() {
                   <label className="flex cursor-pointer items-start gap-3" key={g}>
                     <Checkbox
                       checked={chosen.has(g)}
-                      className="mt-0.5"
+                      className="mt-0.5 border-(--ui-text-quaternary)"
                       onCheckedChange={on =>
                         setChosen(prev => {
                           const next = new Set(prev)
@@ -222,7 +223,7 @@ export function AgentImportDialog() {
                   </label>
                 ))}
                 <label className="flex cursor-pointer items-start gap-3 border-t border-(--ui-stroke-secondary) pt-3">
-                  <Checkbox checked={overwrite} className="mt-0.5" onCheckedChange={on => setOverwrite(Boolean(on))} />
+                  <Checkbox checked={overwrite} className="mt-0.5 border-(--ui-text-quaternary)" onCheckedChange={on => setOverwrite(Boolean(on))} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm text-foreground">{a.overwriteTitle}</span>
                     <span className="block text-xs text-(--ui-text-tertiary)">{a.overwriteDesc}</span>

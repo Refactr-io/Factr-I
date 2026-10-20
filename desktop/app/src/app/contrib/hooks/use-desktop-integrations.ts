@@ -105,6 +105,15 @@ export function useDesktopIntegrations({
     window.factrDesktop?.setPreviewShortcutActive?.(true)
   }, [])
 
+  // Something wrote sessions behind the sidebar's back (an import): re-read the list.
+  useEffect(() => {
+    const onChanged = () => void Promise.resolve(refreshSessions()).catch(() => undefined)
+
+    window.addEventListener('factr:sessions-changed', onChanged)
+
+    return () => window.removeEventListener('factr:sessions-changed', onChanged)
+  }, [refreshSessions])
+
   const restoredRef = useRef(false)
   const diskPluginsScanPending = useStore($diskPluginsScanPending)
 

@@ -3145,14 +3145,14 @@ button[data-slot='aui_msg-reactions'] svg {
   transition-duration: var(--hud-reveal);
 }
 
-[data-hud-shell] [data-slot='composer-bounds'] {
+:root [data-hud-shell] [data-slot='composer-bounds'] {
   --hud-overlay-ink: var(--ui-text-primary);
   --hud-overlay-ink-user: var(--ui-text-secondary);
   --hud-top-fade: 0.75rem;
   text-shadow: none;
 }
 
-[data-hud-shell] [data-slot='composer-bounds'] * {
+:root [data-hud-shell] [data-slot='composer-bounds'] * {
   text-shadow: none;
 }
 
