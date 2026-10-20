@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { playSfx } from '@/lib/sfx'
+
 type BrowserAudioContext = typeof AudioContext
 
 export interface MicRecorderOptions {
@@ -262,6 +264,7 @@ export function useMicRecorder(copy: MicRecorderErrorCopy): {
     }
 
     recorder.start()
+    playSfx('enterVoice')
     setRecording(true)
     startMeter(stream, options)
   }
@@ -278,6 +281,7 @@ export function useMicRecorder(copy: MicRecorderErrorCopy): {
       }
 
       stopResolverRef.current = resolve
+      playSfx('exitVoice')
       recorder.stop()
     })
 
@@ -287,6 +291,7 @@ export function useMicRecorder(copy: MicRecorderErrorCopy): {
     stopResolverRef.current = null
 
     if (recorder && recorder.state !== 'inactive') {
+      playSfx('exitVoice')
       recorder.ondataavailable = null
       recorder.onerror = null
       recorder.onstop = null

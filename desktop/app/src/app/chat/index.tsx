@@ -5,17 +5,20 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReadableAtom } from 'nanostores'
 import type * as React from 'react'
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router'
 
+import { ChatTitle } from '@/app/chat/chat-title'
 import type { SubmitTextOptions } from '@/app/session/hooks/use-prompt-actions/utils'
 import { sessionShouldHaveTranscript } from '@/app/session/hooks/use-session-actions/utils'
+import { $titleBarSlot, setChatBarSlot } from '@/app/shell/chat-bar-slot'
 import { Thread } from '@/components/assistant-ui/thread'
 import { TranscriptWindowProvider } from '@/components/assistant-ui/thread/transcript-window'
 import { COMPOSER_HEART_CONFIG, HeartField } from '@/components/chat/vibe-hearts'
 import { usePaneGroup, usePaneVisible } from '@/components/pane-shell/pane-visibility'
+import { $maximizedPane } from '@/components/pane-shell/tree/pane-maximize'
 import { $hoveredTreeGroup, $sessionTileDragging, $sessionTileEdgeHover } from '@/components/pane-shell/tree/store'
 import { PromptOverlays } from '@/components/prompt-overlays'
-import { TitleMenuTrigger } from '@/components/ui/title-menu-trigger'
 import { type FactrGateway } from '@/factr'
 import { useI18n } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
@@ -27,7 +30,7 @@ import { cn } from '@/lib/utils'
 import { migrateSessionDraft } from '@/store/composer'
 import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
 import { $introSplash } from '@/store/intro-splash'
-import { $pinnedSessionIds } from '@/store/layout'
+import { $panesFlipped, $pinnedSessionIds } from '@/store/layout'
 import { $petActive } from '@/store/pet'
 import { $petOverlayActive } from '@/store/pet-overlay'
 import { $activeGatewayProfile, $gatewaySwapTarget, $hydrationSyncProfile, $profiles } from '@/store/profile'
@@ -53,7 +56,7 @@ import { $transcriptTailBySessionId, transcriptTailState } from '@/store/transcr
 import { isAuxiliaryWindow, isWatchWindow } from '@/store/windows'
 
 import { primaryRouteSelectedSessionId, routeSessionId } from '../routes'
-import { titlebarHeaderBaseClass, titlebarHeaderShadowClass, titlebarHeaderTitleClass } from '../shell/titlebar'
+import { titlebarHeaderShadowClass } from '../shell/titlebar'
 
 import { ChatDropOverlay } from './chat-drop-overlay'
 import { ChatSwapOverlay, ChatSyncBadge } from './chat-swap-overlay'
@@ -78,7 +81,6 @@ import { isRouteSessionMismatch } from './route-session-state'
 import { useRuntimeMessageRepository } from './runtime-repository'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
 import { useSessionView } from './session-view'
-import { SessionActionsMenu } from './sidebar/session-actions-menu'
 import { composerStaysMounted, routedSessionIsLoading, threadLoadingState } from './thread-loading'
 import {
   backfillOlderTranscriptPage,
@@ -140,6 +142,8 @@ function ChatHeader({
   const sessions = useStore($sessions)
   const pinnedSessionIds = useStore($pinnedSessionIds)
   const profiles = useStore($profiles)
+  // A pane in Fill takes the window over: the chat title steps aside with the chat.
+  const filled = useStore($maximizedPane) !== null
 
   const activeStoredSession =
     (selectedSessionId && sessions.find(session => sessionMatchesStoredId(session, selectedSessionId))) || null
@@ -161,35 +165,37 @@ function ChatHeader({
       : false
 
   // Secondary windows (new-session scratch, subagent watch, cmd-click pop-out)
-  // are compact side panels — they drop the session-actions header + border
-  // entirely. A brand-new draft has nothing to pin/delete/rename either.
-  if (isAuxiliaryWindow() || (!selectedSessionId && !activeSessionId && !isRoutedSessionView)) {
+  // are compact side panels: no session-actions header there.
+  if (isAuxiliaryWindow() || filled) {
     return null
   }
 
-  return (
-    <header className={cn(titlebarHeaderBaseClass, isRoutedSessionView && titlebarHeaderShadowClass)}>
-      <div
-        className={cn(titlebarHeaderTitleClass, showProfileTag && 'flex items-center')}
-        style={{
-          maxWidth:
-            'calc(100vw - var(--titlebar-content-inset,0px) - var(--titlebar-tools-right) - var(--titlebar-tools-width) - 1.5rem)'
-        }}
-      >
-        {showProfileTag && <ProfileTag className="pointer-events-auto mr-1.5" profile={activeStoredSession?.profile} />}
-        <SessionActionsMenu
-          align="start"
-          onDelete={selectedSessionId ? onDeleteSelectedSession : undefined}
-          onPin={selectedSessionId ? onToggleSelectedPin : undefined}
-          pinned={selectedIsPinned}
-          sessionId={selectedSessionId || activeSessionId || ''}
-          sideOffset={8}
-          title={title}
-        >
-          <TitleMenuTrigger>{title}</TitleMenuTrigger>
-        </SessionActionsMenu>
+  // A brand-new draft has nothing to pin/delete/rename: just the plain title.
+  if (!selectedSessionId && !activeSessionId && !isRoutedSessionView) {
+    return (
+      <div className="min-w-0 truncate px-3 text-[0.8125rem] font-medium text-foreground" data-titlebar-chat-title-text="">
+        {title}
       </div>
-    </header>
+    )
+  }
+
+  return (
+    <div
+      className={cn('pointer-events-auto flex min-w-0 items-center', showProfileTag && 'gap-1')}
+      data-titlebar-chat-title-text=""
+    >
+      {showProfileTag && <ProfileTag className="pointer-events-auto mr-1.5" profile={activeStoredSession?.profile} />}
+      <ChatTitle
+        onArchive={selectedSessionId ? () => void sessionTileDelegate()?.archiveSession(selectedSessionId) : undefined}
+        onBranch={selectedSessionId ? () => void sessionTileDelegate()?.branchSession(selectedSessionId) : undefined}
+        onDelete={selectedSessionId ? onDeleteSelectedSession : undefined}
+        onPin={selectedSessionId ? onToggleSelectedPin : undefined}
+        pinned={selectedIsPinned}
+        profile={activeStoredSession?.profile}
+        sessionId={selectedSessionId || activeSessionId || ''}
+        title={title}
+      />
+    </div>
   )
 }
 
@@ -795,6 +801,8 @@ const ChatViewContent = memo(function ChatViewContent({
   // COMPUTED booleans, never the raw `$dropHint`: the hint churns on every
   // pointer-crossing of every drag (pane drags included), and a re-render
   // here is the WHOLE surface — thread, composer, header — per mounted tile.
+  const panesFlipped = useStore($panesFlipped)
+  const titleSlot = useStore($titleBarSlot)
   const sessionDragging = useStore($sessionTileDragging)
   const sessionEdgeHover = useStore($sessionTileEdgeHover)
 
@@ -812,17 +820,34 @@ const ChatViewContent = memo(function ChatViewContent({
       data-composer-target={composerScope.target}
       data-session-anchor={sessionAnchor}
     >
+      {/* The chat bar (title and pane icons) mounts here, so it is part of the chat column. */}
+      {isPrimary && (
+        <>
+          {titleSlot &&
+            createPortal(
+              <ChatHeader
+                activeSessionId={activeSessionId}
+                isRoutedSessionView={isRoutedSessionView}
+                onDeleteSelectedSession={onDeleteSelectedSession}
+                onToggleSelectedPin={onToggleSelectedPin}
+                selectedSessionId={selectedSessionId}
+              />,
+              titleSlot
+            )}
+          <div
+            className={cn(
+              'relative z-4 flex h-[2.625rem] shrink-0 items-center bg-(--ui-chat-surface-background) pt-1.5',
+              titlebarHeaderShadowClass,
+              panesFlipped ? 'justify-start' : 'justify-end'
+            )}
+            data-chat-bar=""
+            ref={setChatBarSlot}
+          />
+        </>
+      )}
+
       {/* Tiles get their chrome from the layout zone (chip strip); the modal
           prompt overlays stay active-session-scoped in the primary surface. */}
-      {isPrimary && (
-        <ChatHeader
-          activeSessionId={activeSessionId}
-          isRoutedSessionView={isRoutedSessionView}
-          onDeleteSelectedSession={onDeleteSelectedSession}
-          onToggleSelectedPin={onToggleSelectedPin}
-          selectedSessionId={selectedSessionId}
-        />
-      )}
 
       {/* Mounted for the primary AND every tile, each scoped to its own session
           so a tiled/background session's blocking prompt surfaces instead of

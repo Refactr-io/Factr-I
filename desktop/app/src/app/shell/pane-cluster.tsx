@@ -20,7 +20,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { FileDiff, Folder, Globe, History, MoreVertical, Terminal } from '@/lib/icons'
+import { FileDiff, Folder, Globe, ListTree, MoreVertical, Terminal } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { toggleHud } from '@/store/hud'
 import { $panesFlipped, setFileBrowserOpen } from '@/store/layout'
@@ -108,7 +108,7 @@ export function usePaneClusterTools(): TitlebarTool[] {
 
   return [
     // Greyed out only when the chat column is too narrow to open it over (an open one can always be closed).
-    { ...tool('session-rail', t.titlebar.paneSession, railOpen, <History {...ICON} />, toggleSessionRail), disabled: !railOpen && chatWidth < RAIL_MIN_CHAT_PX },
+    { ...tool('session-rail', t.titlebar.paneSession, railOpen, <ListTree {...ICON} />, toggleSessionRail), disabled: !railOpen && chatWidth < RAIL_MIN_CHAT_PX },
     tool('terminal', t.titlebar.paneTerminal, terminal, <Terminal {...ICON} />, () => togglePaneVisible('terminal')),
     tool('changes', t.titlebar.paneChanges, changes, <FileDiff {...ICON} />, () => {
       if (changes) {

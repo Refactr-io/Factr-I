@@ -600,6 +600,9 @@ function runFlags(
 
 const markerPath = (profile: string) => path.join(hostProfileDir(profile), BOT_COMPUTER.marker)
 
+/** Written the first time any bot is given a computer: from then on startup tidies up leftover containers. */
+const usedFlagPath = () => path.join(cfg().configHome, '.bot-computers-used')
+
 const wantedPath = (profile: string) => path.join(hostProfileDir(profile), '.computer-wanted')
 
 /** A bot gets a Docker computer only when its owner asked, or it already has one. Default none: no Docker, no RAM. */
@@ -612,6 +615,7 @@ export async function setComputerWanted(profile: string, on: boolean): Promise<v
   if (on) {
     fs.mkdirSync(hostProfileDir(profile), { recursive: true })
     fs.writeFileSync(wantedPath(profile), '')
+    fs.writeFileSync(usedFlagPath(), '')
     resumeComputer(profile)
 
     return
@@ -622,6 +626,11 @@ export async function setComputerWanted(profile: string, on: boolean): Promise<v
 }
 
 function writeMarker(profile: string) {
+  try {
+    fs.writeFileSync(usedFlagPath(), '')
+  } catch {
+    // A flag we could not write only means startup skips its tidy-up; the marker below is what matters.
+  }
   fs.writeFileSync(markerPath(profile), JSON.stringify({ container: computerName(profile), v: BOT_COMPUTER.version }))
 }
 
@@ -913,6 +922,14 @@ export async function computerStatus(profile: string): Promise<ComputerStatus> {
  */
 export async function reconcileComputers(existingProfiles: Iterable<string>): Promise<string[]> {
   const profiles = [...existingProfiles]
+
+  // Nobody has a computer and none was ever given: leave Docker alone entirely (not even a CLI probe).
+  if (!profiles.some(computerWanted) && !fs.existsSync(usedFlagPath())) {
+    await startScheduledComputers(profiles)
+
+    return []
+  }
+
   if (!(await dockerAvailable())) {
     await startScheduledComputers(profiles)
     return []

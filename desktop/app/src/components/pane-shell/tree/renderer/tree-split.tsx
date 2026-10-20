@@ -29,8 +29,8 @@ import { allPaneIds } from '../model'
 import { $maximizedPane } from '../pane-maximize'
 import {
   $collapsedTreeSides,
-  $hiddenTreePanes,
   $narrowViewport,
+  $renderHiddenPanes,
   collapseTreeSide,
   isCollapsePane,
   paneRootSide,
@@ -152,7 +152,7 @@ export function TreeSplit({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const panes = useContributions('panes')
-  const hiddenPanes = useStore($hiddenTreePanes)
+  const hiddenPanes = useStore($renderHiddenPanes)
   const narrow = useStore($narrowViewport)
   // Scoped to THIS subtree's panes: a sash drag writes size overrides on every
   // pointermove, but only the splits whose subtree actually resized should
@@ -831,10 +831,14 @@ export function TreeSplit({
       {tracks.map(({ child, collapsed, minimized, narrowCollapsed, sizing, slideTrack, track }, i) => {
         const partner = collapsed ? -1 : seamPartner(i)
         const absorbs = i === absorberIndex
+        // Two tool cards side by side each carry a 6px gutter; pull the second back by one so the gap between them
+        // is the same 6px as the gap to the window edge and to the chat.
+        const before = visibleOrder.indexOf(i) > 0 ? tracks[visibleOrder[visibleOrder.indexOf(i) - 1]!] : undefined
+        const pulled = !collapsed && Boolean(before) && isCardZone(child) && isCardZone(before!.child)
 
         return (
           <div
-            className="relative flex min-h-0 min-w-0"
+            className={cn('relative flex min-h-0 min-w-0', pulled && (horizontal ? '-ml-1.5' : '-mt-1.5'))}
             data-slide-shut={collapsed && slideTrack ? '' : undefined}
             key={child.id}
             style={

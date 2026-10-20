@@ -580,8 +580,15 @@ describe('stop, destroy, idle', () => {
 })
 
 describe('reconcile', () => {
+  it('does not touch Docker at all while no bot has ever had a computer', async () => {
+    configure()
+    expect(await reconcileComputers(['scout', 'writer'])).toEqual([])
+    expect(calls).toEqual([])
+  })
+
   it('removes only bots- containers with the factr.bot label whose bot is gone', async () => {
     configure()
+    await setComputerWanted('scout', true)
     ps = [
       'bots-factr-bot-scout|running|scout',
       'bots-factr-bot-gone|exited|gone',

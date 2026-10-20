@@ -18,7 +18,6 @@ import {
   IconBook as Book,
   IconBookmark as Bookmark,
   IconBookmarkFilled as BookmarkFilled,
-  IconRobotFace as Bot,
   IconLayoutBottombar as BottomPanel,
   IconBox as Box,
   IconBrain as Brain,
@@ -181,7 +180,6 @@ export {
   Book,
   Bookmark,
   BookmarkFilled,
-  Bot,
   BottomPanel,
   Box,
   Brain,
@@ -344,4 +342,6 @@ export const iconSize = {
 export type IconSize = keyof typeof iconSize
 
 /** Rail and pane-tab marks share one 18px grid and line weight. */
+export { BotMessageSquare as Bot, ListTree } from './drawn-icons'
+
 export const RAIL_ICON_PROPS = { className: 'size-[1.125rem]', size: 18, stroke: 1.5 } as const

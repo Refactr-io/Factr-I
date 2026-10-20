@@ -17,11 +17,7 @@ import {
   setDefaultReasoningEffort,
   setIntroPersonality
 } from '@/store/session'
-import {
-  applyAutoSpeakFromConfig,
-  applyThinkingSoundFromConfig,
-  applyVoiceStopPhraseFromConfig
-} from '@/store/voice-prefs'
+import { applyAutoSpeakFromConfig, applyVoiceStopPhraseFromConfig } from '@/store/voice-prefs'
 import { setChatFontFamilyFromConfig } from '@/themes/chat-font'
 
 const DEFAULT_VOICE_SECONDS = 120
@@ -150,7 +146,6 @@ export function useFactrConfig({ activeSessionIdRef }: FactrConfigOptions) {
 
         applyAutoSpeakFromConfig(config)
         applyVoiceStopPhraseFromConfig(config)
-        applyThinkingSoundFromConfig(config)
         // Resolved server-side (mode + whether a key resolves); non-critical.
       } catch {
         // Config is nice-to-have; chat still works without it.

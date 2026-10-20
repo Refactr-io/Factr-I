@@ -12,7 +12,7 @@ import { useTerminalSession } from './use-terminal-session'
 
 // Absolute-stacked so inactive tabs keep layout size (a display:none host goes
 // 0×0 and renders garbled on re-show); visibility toggles which one is seen.
-const INSTANCE_CLASS = 'absolute inset-0 flex flex-col bg-(--ui-terminal-surface-background) px-2 pb-2 pt-0'
+const INSTANCE_CLASS = 'absolute inset-0 flex flex-col bg-(--ui-terminal-surface-background) pl-3 pr-2 pb-2 pt-0'
 
 // xterm host. The screen/viewport overrides matter for the DOM renderer (the
 // WebGL fast-path paints the canvas from ITheme.background instead) — both

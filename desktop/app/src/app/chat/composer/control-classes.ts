@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils'
 // so both the row (`controls.tsx`) and the menus it renders can wear them
 // without importing each other in a cycle.
 
-export const ICON_BTN = 'size-(--composer-control-size) shrink-0 rounded-full'
+// Squircle controls, concentric with the composer surface (outer radius minus the padding around them).
+export const ICON_BTN = 'size-(--composer-control-size) shrink-0 rounded-sm'
 
 export const GHOST_ICON_BTN = cn(
   ICON_BTN,
@@ -13,9 +14,10 @@ export const GHOST_ICON_BTN = cn(
 
 // Send/voice-conversation primary: solid foreground-on-background (reads as
 // black-on-white in light mode, white-on-black in dark mode), the row's one
-// high-contrast CTA. A true circle, like every round control in the app.
+// high-contrast CTA. A squircle, concentric with the composer surface (DESIGN-refactr: nested radius = outer minus the gap),
+// not a circle: circles are for dots and avatars.
 export const PRIMARY_ICON_BTN = cn(
-  'size-(--composer-control-primary-size,var(--composer-control-size)) shrink-0 rounded-full p-0',
+  'size-(--composer-control-primary-size,var(--composer-control-size)) shrink-0 rounded-sm p-0',
   'bg-foreground text-background hover:bg-foreground/90',
   'disabled:bg-foreground/30 disabled:text-background disabled:opacity-100'
 )

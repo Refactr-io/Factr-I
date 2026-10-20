@@ -28,6 +28,7 @@ import {
   type GroupNode,
   insertAtGroup,
   isLayoutNode,
+  isToolCardPane,
   type LayoutNode,
   mergeZonesWithPane as mergeZonesWithPaneOp,
   migratePersistedTree,
@@ -46,6 +47,7 @@ import {
 } from './model'
 import { FLOATING_PLACEMENT } from './renderer/floating-rect'
 import { tabStripVisibleForZone } from './renderer/strip-visibility'
+import { reflowToolColumns } from './tool-columns'
 
 // v2: v1 trees were saved against placeholder panes with index-order zone
 // assignment (chat could land in a corner cell). Retire them wholesale.
@@ -2254,6 +2256,52 @@ export function resetLayoutTree() {
     sideOpeners[side]?.(true)
   }
 }
+
+/** False on pages that are not a chat (Artifacts, Messaging, ...): the tool cards belong to a session, so they step
+ *  aside there without losing their open state. Written by the shell from the route. */
+export const $chatView = atom(true)
+
+/** `$hiddenTreePanes` as the renderer sees it: plus every tool card while no chat is on screen. */
+export const $renderHiddenPanes = computed([$hiddenTreePanes, $chatView, $layoutTree], (hidden, chatView, tree) => {
+  if (chatView || !tree) {
+    return hidden
+  }
+
+  return new Set([...hidden, ...allPaneIds(tree).filter(isToolCardPane)])
+})
+
+// Tool cards open at most two to a column (tool-columns.ts): re-arrange whenever one opens, closes, docks or the
+// layout is replaced. The arrangement is idempotent, so the commit it makes settles on the next pass.
+let toolColumnsQueued = false
+
+function scheduleToolColumns() {
+  if (toolColumnsQueued) {
+    return
+  }
+
+  toolColumnsQueued = true
+
+  queueMicrotask(() => {
+    toolColumnsQueued = false
+    const tree = $layoutTree.get()
+
+    if (!tree) {
+      return
+    }
+
+    const dismissed = $dismissedPanes.get()
+    const hidden = $hiddenTreePanes.get()
+    const next = reflowToolColumns(tree, paneId => !dismissed.has(paneId) && !hidden.has(paneId))
+
+    if (next !== tree) {
+      commit(next)
+    }
+  })
+}
+
+$layoutTree.listen(scheduleToolColumns)
+$hiddenTreePanes.listen(scheduleToolColumns)
+$dismissedPanes.listen(scheduleToolColumns)
 
 // Dev hook for automation.
 if ((import.meta.env.DEV || import.meta.env.VITE_PERF_PROBE === '1') && typeof window !== 'undefined') {

@@ -46,11 +46,11 @@ import {
 import type { DropPosition, GroupNode } from '../model'
 import {
   $dropHint,
-  $hiddenTreePanes,
   $mainTileZoneCount,
   $narrowViewport,
   $newSessionTabAction,
   $panesWithCloser,
+  $renderHiddenPanes,
   $treeDragging,
   $treePaneEpochs,
   activateTreePane,
@@ -265,7 +265,7 @@ export function TreeGroup({
   const dragging = useStore($treeDragging)
   const wcOverlap = useWindowControlsOverlap(ref, !topEdge)
 
-  const hiddenPanes = useStore($hiddenTreePanes)
+  const hiddenPanes = useStore($renderHiddenPanes)
   const narrow = useStore($narrowViewport)
   // A count that moves only when a main zone appears or goes — NOT the tree
   // itself (see the note above `targetPane` on why zones never subscribe to it).

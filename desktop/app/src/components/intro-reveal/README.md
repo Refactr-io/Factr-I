@@ -3,8 +3,7 @@
 A scripted chat types a request, runs tool rows beside a cube viewport, streams a
 reply, expands into parallel agents, then ends on the brand. The seven beats take
 22 seconds of wall time, followed by a 900 ms dissolve. Reduced motion shows the
-brand briefly instead. Sound is on by default and respects the haptics mute
-preference. Fonts are the existing Collapse and IBM Plex Mono faces.
+brand briefly instead. Fonts are the existing Collapse and IBM Plex Mono faces.
 
 Eligibility is `guestOnboardingEnabled && !firstRunSkipped && !hasSeenIntroReveal()`.
 Electron sets the flag from `FACTR_GUEST_ONBOARDING=1` or `--guest-onboarding`.
@@ -18,7 +17,7 @@ records the film as watched and queues the guide directly.
 | Main-window gate and phase timers | `index.tsx` |
 | Phase, seen key and IPC listeners | `../../store/intro-reveal.ts` |
 | Overlay boot and surface | `intro-root.tsx`, `intro-reveal-surface.tsx` |
-| Clock, score, cube and synthesized sound | `use-intro-clock.ts`, `timeline.ts`, `viewport-cube.ts`, `sound.ts` |
+| Clock, score and cube | `use-intro-clock.ts`, `timeline.ts`, `viewport-cube.ts` |
 | Constellation, brand and text effects | `scenes/` |
 | Native window and preload bridge | `../../../electron/intro-reveal-window.ts`, `../../../electron/preload.ts` |
 

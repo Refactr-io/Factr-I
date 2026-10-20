@@ -18,8 +18,11 @@ describe('rail icon geometry', () => {
       unmount()
     }
   })
-  it('uses the symmetric robot-face mark, not a profile avatar', () => {
+  it('uses the bot-with-speech-bubble mark, not a profile avatar', () => {
     const { container } = render(<Bot {...RAIL_ICON_PROPS} />)
-    expect(container.querySelector('svg')?.classList.contains('tabler-icon-robot-face')).toBe(true)
+    const svg = container.querySelector('svg')
+    expect(svg?.getAttribute('viewBox')).toBe('0 0 24 24')
+    // The antenna, ears and bubble of the drawn mark (lib/drawn-icons.tsx).
+    expect(svg?.querySelectorAll('path').length).toBe(6)
   })
 })

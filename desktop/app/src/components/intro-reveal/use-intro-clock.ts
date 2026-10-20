@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { playLatch, playResolve, playSwell, playTick, startPad } from './sound'
 import {
   beatsBetween,
   INTRO_BEATS,
@@ -11,19 +10,10 @@ import {
   INTRO_REPLY_WORDS,
   INTRO_TOOL_ROWS,
   INTRO_TOTAL_MS,
-  type IntroBeat,
-  sampleCurves,
   streamingSchedule,
   typingSchedule
 } from './timeline'
 import { drawViewport, VIEWPORT_END_MS } from './viewport-cube'
-
-const SOUND_CUES = {
-  tick: (beat: string) => playTick(beat === 'send' ? 1.35 : 1),
-  swell: playSwell,
-  latch: playLatch,
-  resolve: playResolve
-} satisfies Record<NonNullable<IntroBeat['cue']>, (beat: string) => void>
 
 const INTRO_BEAT_INDEX: Record<string, number> = Object.fromEntries(INTRO_BEATS.map((b, i) => [b.id, i]))
 
@@ -118,8 +108,6 @@ export function useIntroClock() {
         stageRef.current.style.opacity = '0'
       }
 
-      playLatch()
-
       const id = window.setTimeout(() => {
         skip()
       }, 2600)
@@ -127,7 +115,6 @@ export function useIntroClock() {
       return () => window.clearTimeout(id)
     }
 
-    const pad = startPad()
     const start = performance.now()
     let prevT = -1
     // `start` is wall time; everything downstream of `elapsed` is score time. This
@@ -144,10 +131,6 @@ export function useIntroClock() {
 
       for (const b of beatsBetween(prevT, t)) {
         currentBeat = INTRO_BEAT_INDEX[b.id] ?? currentBeat
-
-        if (b.cue) {
-          SOUND_CUES[b.cue](b.id)
-        }
       }
 
       prevT = t
@@ -161,10 +144,6 @@ export function useIntroClock() {
         lastFrameKey = key
         setFrame(next)
       }
-
-      const curves = sampleCurves(t)
-
-      pad.setLevel(Math.max(curves.glow, next.beat >= INTRO_BEAT_INDEX.working ? 0.45 : 0.2))
 
       const ss = (from: number, to: number) => {
         const f = Math.min(1, Math.max(0, (t - from) / (to - from)))
@@ -218,7 +197,6 @@ export function useIntroClock() {
 
     return () => {
       cancelAnimationFrame(raf)
-      pad.stop()
     }
   }, [reduceMotion, skip])
 

@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react'
 import { atom } from 'nanostores'
 import type { CSSProperties, ReactElement, PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect } from 'react'
 
 import { SessionDraftTitle } from '@/app/chat/session-draft-title'
 import { SessionStatusDot } from '@/app/chat/session-status-dot'
@@ -60,6 +61,7 @@ import {
 } from '@/lib/icons'
 import { isOnboardingEnabled } from '@/lib/onboarding-enabled'
 import { Codecs } from '@/lib/persisted'
+import { watchConnectionSfx } from '@/lib/sfx'
 import { TRANSCRIPT_DIRECTIVE_AREA, type TranscriptDirectiveContribution } from '@/lib/transcript-directives'
 import { setYoloEnabled } from '@/lib/yolo-session'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
@@ -821,6 +823,9 @@ registerPaneCloser('files', () =>
 
 export function ContribController() {
   const sidebarOpen = useStore($sidebarOpen)
+
+  // One cue when an established gateway connection drops.
+  useEffect(() => watchConnectionSfx(), [])
 
   // HUD mode is the SAME app with its frame removed: the wiring (gateway,
   // sessions, streams, submit) mounts identically, and only the shell around

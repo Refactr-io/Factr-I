@@ -811,10 +811,9 @@ export interface Translations {
       testTitle: string
       testBody: string
       testSent: string
+      soundEffectsTitle: string
+      soundEffectsDesc: string
       testUnsupported: string
-      completionSoundTitle: string
-      completionSoundDesc: string
-      completionSoundPreview: string
     }
     sections: Record<string, string>
     searchPlaceholder: Record<'about' | 'config' | 'gateway' | 'keys' | 'mcp' | 'sessions', string>
@@ -2669,6 +2668,7 @@ export interface Translations {
       openInSplit: string
       copyIdFailed: string
       sessionActions: string
+      moreOptionsFor: (title: string) => string
       sessionRunning: string
       needsInput: string
       waitingForAnswer: string

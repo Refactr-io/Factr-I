@@ -10,7 +10,7 @@ const TEXT_ACTION_ICON = '[&_.codicon]:no-underline [&_svg]:no-underline'
 
 // Filled controls use the shared 6px radius; boxless text actions stay square.
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md type-button whitespace-nowrap shadow-none transition-all duration-100 outline-none focus-visible:border-ring focus-visible:ring-[0.1875rem] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-default disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md type-button whitespace-nowrap shadow-none transition-[color,background-color,border-color,box-shadow,opacity,scale] duration-150 ease-out outline-none enabled:active:scale-[0.96] motion-reduce:enabled:active:scale-100 focus-visible:border-ring focus-visible:ring-[0.1875rem] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-default disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
   {
     variants: {
       variant: {

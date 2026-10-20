@@ -90,7 +90,8 @@ export function SessionRail() {
       )}
       data-session-rail=""
       ref={ref}
-      style={{ top: TITLEBAR_HEIGHT + 6 }}
+      // below the title-bar band and the 42px pane-icon row at the top of the chat column
+      style={{ top: TITLEBAR_HEIGHT + 42 + 6 }}
     >
       <Section title={copy.environment}>
         {cwd ? (

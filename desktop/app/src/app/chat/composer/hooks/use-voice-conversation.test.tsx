@@ -34,11 +34,6 @@ vi.mock('@/lib/voice-playback', () => ({
   stopVoicePlayback: () => stopVoicePlayback()
 }))
 
-vi.mock('@/lib/thinking-sound', () => ({
-  startThinkingSound: vi.fn(),
-  stopThinkingSound: vi.fn()
-}))
-
 const micHandle = {
   cancel: vi.fn(),
   start: vi.fn(async () => undefined),

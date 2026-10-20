@@ -4,7 +4,6 @@ import { burstVibeHearts } from '@/components/chat/vibe-hearts'
 import { reportFirstBuildTurnComplete } from '@/components/onboarding-chat/first-build'
 import { translateNow } from '@/i18n'
 import { coerceGatewayText, coerceThinkingText } from '@/lib/chat-runtime'
-import { playCompletionSound } from '@/lib/completion-sound'
 import { parseErrorSurface } from '@/lib/error-surface'
 import { triggerHaptic } from '@/lib/haptics'
 import { billingCtaLabel, clearBillingBlock, runBillingRecovery, setBillingBlock } from '@/store/billing-block'
@@ -351,9 +350,6 @@ export function handleMessageStreamEvent(ctx: GatewayEventContext): boolean {
     setSessionCompacting(sessionId, false)
 
     flushQueuedDeltas(sessionId)
-
-    // Keyed by session so only one window beeps when several are open.
-    playCompletionSound(sessionId)
 
     const finalText = coerceGatewayText(payload?.text) || coerceGatewayText(payload?.rendered)
 

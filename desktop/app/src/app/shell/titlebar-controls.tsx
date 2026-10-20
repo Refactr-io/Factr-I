@@ -9,9 +9,11 @@ import {
   useRef,
   useState
 } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router'
 
 import { $maximizedPane } from '@/components/pane-shell/tree/pane-maximize'
+import { $chatView } from '@/components/pane-shell/tree/store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
@@ -31,6 +33,7 @@ import { TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-app-actions'
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
+import { $chatBarSlot, setTitleBarSlot } from './chat-bar-slot'
 import { PaneClusterMore, usePaneClusterTools } from './pane-cluster'
 import { SessionRail } from './session-rail'
 import {
@@ -157,6 +160,16 @@ export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControl
 
   const view = appViewForPath(location.pathname)
 
+  // The tool cards and their icons belong to a session: off a chat page (Artifacts, Messaging, ...) they step aside.
+  // Overlays sit over whatever page is below and change nothing.
+  const onChatPage = view === 'chat' || isOverlayView(view)
+
+  useEffect(() => {
+    $chatView.set(onChatPage)
+
+    return () => $chatView.set(true)
+  }, [onChatPage])
+
   // Route changes can replace measured clusters without resizing the panels.
   useEffect(() => {
     window.dispatchEvent(new CustomEvent(TITLEBAR_CHROME_CHANGED_EVENT))
@@ -211,14 +224,9 @@ export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControl
   return (
     <>
       <TitlebarPartitionDashes />
-      <div aria-label={t.shell.windowControls} className={leftClusterClass} data-titlebar-cluster="left">
-        {visibleLeftTools.map(tool => (
-          <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
-        ))}
-        <Slot area="titleBar.left" />
-        <Slot area="titleBar.center" />
-      </div>
-
+      {/* The chat bar is a window-drag region that, with the panes swapped, runs under the left controls. Drag
+          regions resolve in DOM order (a later no-drag carves out earlier drag), so the left cluster comes LAST:
+          otherwise its buttons, the swap button included, would be swallowed by the drag region. */}
       <TitlebarChatHeader flipped={panesFlipped}>
         {visiblePaneTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
@@ -229,6 +237,14 @@ export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControl
         <PaneClusterMore />
         <Slot area="titleBar.right" />
       </TitlebarChatHeader>
+      <div aria-label={t.shell.windowControls} className={leftClusterClass} data-titlebar-cluster="left">
+        {visibleLeftTools.map(tool => (
+          <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
+        ))}
+        <Slot area="titleBar.left" />
+        <Slot area="titleBar.center" />
+      </div>
+
       <SessionRail />
     </>
   )
@@ -312,54 +328,26 @@ function TitlebarPartitionDashes() {
   )
 }
 
-/** Keeps the header's left end clear of the left cluster (native window buttons, back, forward, sidebar toggle,
- *  swap). The chat column can start under that cluster - the sidebar folded, or sidebars swapped with the cluster of
- *  pane icons sitting at the column's left edge - so the header pads itself past it, whichever of the title and the
- *  pane icons is at the left. Everything else is pure CSS: the header is pinned to the main zone's edges. */
-const PINNED_RIGHT = 'var(--workspace-right, 0px)'
-
-function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolean): boolean {
+/** The title bar's chat header starts right of the window controls and the chat column's left edge, whichever is
+ *  further right, so the title can never sit under the controls whatever the layout. */
+function useLeftClearance(ref: RefObject<HTMLDivElement | null>) {
   const sidebarOpen = useStore($sidebarOpen)
-  const [crowded, setCrowded] = useState(false)
 
   useEffect(() => {
     const node = ref.current
     const cluster = document.querySelector('[data-titlebar-cluster="left"]') as HTMLElement | null
 
-    if (!node || !cluster || !enabled) {
+    if (!node || !cluster) {
       return
     }
 
     const place = () => {
-      const left = node.getBoundingClientRect().left
-      const clearance = Math.round(cluster.getBoundingClientRect().right + 8 - left)
+      const column = parseFloat(getComputedStyle(node).getPropertyValue('--workspace-left')) || 0
 
-      node.style.paddingLeft = clearance > 0 ? `${clearance}px` : ''
-      setCrowded(clearance > 0)
-
-      // A narrow main zone (a filled Files card) can be tighter than clearance + the pane icons: let the bar run on
-      // past its right edge instead of sliding the icons under the left controls.
-      const icons = node.querySelector('[data-titlebar-cluster="right"]')?.getBoundingClientRect().width ?? 0
-      const need = Math.max(clearance, 0) + icons
-
-      node.style.right = PINNED_RIGHT
-      node.style.width = ''
-      const available = node.getBoundingClientRect().width
-
-      if (available < need) {
-        node.style.right = 'auto'
-        node.style.width = `${need}px`
-      }
+      node.style.left = `${Math.max(column, Math.round(cluster.getBoundingClientRect().right + 8))}px`
     }
 
     place()
-    const anchor = document.querySelector('[data-session-anchor="workspace"]')
-    const observer = new ResizeObserver(place)
-
-    if (anchor) {
-      observer.observe(anchor)
-    }
-
     let frame = 0
 
     const follow = () => {
@@ -377,8 +365,8 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
       place()
     }
 
-    // The chat zone's element is replaced when panes dock around it, so the observer above can end up on a node that
-    // is gone; a slow poll and the layout stores keep the padding right whatever moved.
+    // The cluster slides on fullscreen and sidebar folds, and the chat column moves with every pane: a slow poll
+    // covers whatever the transitions miss.
     const poll = window.setInterval(place, 200)
 
     cluster.addEventListener('transitionrun', start)
@@ -388,26 +376,20 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
 
     return () => {
       window.clearInterval(poll)
-      node.style.paddingLeft = ''
-      node.style.right = PINNED_RIGHT
-      node.style.width = ''
       window.cancelAnimationFrame(frame)
-      observer.disconnect()
       cluster.removeEventListener('transitionrun', start)
       cluster.removeEventListener('transitionend', stop)
       cluster.removeEventListener('transitioncancel', stop)
       window.removeEventListener('resize', place)
     }
-  }, [enabled, ref, sidebarOpen])
-
-  return crowded
+  }, [ref, sidebarOpen])
 }
 
 /**
- * The chat column's header: the chat title and the pane cluster share one bar pinned to the main zone's edges
- * (`--workspace-left` / `--workspace-right`, published by the pane tree). Sidebars folding, panes opening and
- * sash drags move it with no per-frame measuring. Flipped layouts mirror the bar, so the cluster stays on the
- * side where the tool panes are and the title never lands on the wrong edge.
+ * The chat header. The title (with its session menu, mounted by the chat surface through `$titleBarSlot`) lives in the
+ * title bar over the chat column and mirrors to the right when the sidebars swap. The pane icons live in a row at the
+ * top of the chat column (`$chatBarSlot`), on the side where the tool panes are. With no chat on screen (another
+ * page, or a pane in Fill) the icons ride the title bar instead.
  */
 function TitlebarChatHeader({ children, flipped }: { children: ReactNode; flipped: boolean }) {
   const { t } = useI18n()
@@ -416,53 +398,54 @@ function TitlebarChatHeader({ children, flipped }: { children: ReactNode; flippe
   const focusedId = useStore($focusedStoredSessionId)
   const titleOverrides = useStore($sessionTitleOverrides)
   const focusedIsTile = useStore($focusedSessionIsTile)
+  const iconSlot = useStore($chatBarSlot)
   const ref = useRef<HTMLDivElement>(null)
   const filled = useStore($maximizedPane) !== null
+  const chatView = useStore($chatView)
+  const inChat = Boolean(iconSlot) && !filled
 
   // While a pane is in Fill the chat is out of the way, so its title is too.
   const visible = !filled && (focusedIsTile || appViewForPath(pathname) === 'chat')
 
-  // A mirrored bar would park the pane icons against the left controls; when the chat starts under them, keep the
-  // normal order (title left, icons at the chat's right edge).
-  const crowded = useLeftClearance(ref, true)
-  const mirrored = flipped && !crowded
+  useLeftClearance(ref)
 
   const session = focusedId ? sessions.find(s => sessionMatchesStoredId(s, focusedId)) : null
   // A session the list does not carry (a cron run) names itself from its resume reply.
   const title = session ? sessionTitle(session) : (focusedId && titleOverrides[focusedId]) || NEW_SESSION_TITLE
 
-  return (
+  const cluster = (
     <div
-      className={cn(
-        'pointer-events-none fixed top-0 z-70 flex items-center [-webkit-app-region:drag]',
-        mirrored ? 'flex-row-reverse' : 'flex-row'
-      )}
-      data-titlebar-chat-header=""
-      ref={ref}
-      style={{ height: TITLEBAR_HEIGHT, left: 'var(--workspace-left, 0px)', right: PINNED_RIGHT }}
+      aria-label={t.shell.appControls}
+      className="pointer-events-auto flex shrink-0 flex-row items-center gap-1 px-2 select-none [-webkit-app-region:no-drag]"
+      data-titlebar-cluster="right"
     >
-      {visible ? (
-        <span
-          className={cn(
-            'min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-foreground',
-            flipped ? 'pr-4 text-right' : 'pl-4'
-          )}
-          data-titlebar-chat-title=""
-          data-titlebar-chat-title-text=""
-        >
-          {title}
-        </span>
-      ) : (
-        <span className="flex-1" />
-      )}
-      <div
-        aria-label={t.shell.appControls}
-        className="pointer-events-auto flex shrink-0 flex-row items-center gap-0.5 px-2 select-none [-webkit-app-region:no-drag]"
-        data-titlebar-cluster="right"
-      >
-        {children}
-      </div>
+      {children}
     </div>
+  )
+
+  return (
+    <>
+      <div
+        className="pointer-events-none fixed top-0 z-70 flex flex-row items-center [-webkit-app-region:drag]"
+        data-titlebar-chat-header=""
+        ref={ref}
+        style={{ height: TITLEBAR_HEIGHT, right: inChat ? 'var(--workspace-right, 0px)' : 0 }}
+      >
+        <div
+          className={cn('flex min-w-0 flex-1 items-center px-1', flipped ? 'justify-end' : 'justify-start')}
+          data-titlebar-chat-title=""
+          ref={setTitleBarSlot}
+        >
+          {visible && !inChat ? (
+            <span className="truncate px-3 text-[0.8125rem] font-medium text-foreground" data-titlebar-chat-title-text="">
+              {title}
+            </span>
+          ) : null}
+        </div>
+        {inChat || (!chatView && !filled) ? null : cluster}
+      </div>
+      {inChat && iconSlot ? createPortal(cluster, iconSlot) : null}
+    </>
   )
 }
 

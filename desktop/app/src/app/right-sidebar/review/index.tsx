@@ -24,7 +24,6 @@ import {
   $reviewTreeMode,
   cancelRevert,
   clearReviewSelection,
-  closeReview,
   confirmRevert,
   refreshReview,
   requestRevert,
@@ -129,9 +128,6 @@ export function ReviewPane() {
               <Codicon name="refresh" size="0.8125rem" spinning={loading} />
             </Button>
           </Tip>
-          <Button aria-label={c.close} className={ACTION_BTN} onClick={closeReview} size="icon-xs" variant="ghost">
-            <Codicon name="close" size="0.8125rem" />
-          </Button>
         </RightSidebarSectionHeader>
       )}
 

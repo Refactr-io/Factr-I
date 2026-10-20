@@ -100,11 +100,6 @@ vi.mock('@/lib/voice-playback', () => ({
   stopVoicePlayback: mocks.stopVoicePlayback
 }))
 
-vi.mock('@/lib/thinking-sound', () => ({
-  startThinkingSound: vi.fn(),
-  stopThinkingSound: vi.fn()
-}))
-
 vi.mock('@/store/notifications', () => ({
   notify: vi.fn(),
   notifyError: vi.fn()

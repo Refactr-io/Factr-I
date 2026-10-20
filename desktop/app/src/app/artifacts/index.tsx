@@ -362,7 +362,7 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
           <div className="flex flex-col gap-3 px-3 pb-2">
             {visibleImageArtifacts.length > 0 && (
               <section className="flex flex-col">
-                <div className="sticky top-0 z-10 -mx-3 flex h-7 items-center gap-3 overflow-x-auto bg-background px-3">
+                <div className="sticky top-0 z-10 -mx-3 flex h-7 items-center gap-3 overflow-x-auto bg-(--ui-chat-surface-background) px-3">
                   <ArtifactsPagination
                     className="ml-auto justify-end px-0"
                     itemLabel={a.itemsImage}
@@ -388,7 +388,7 @@ export function ArtifactsView({ setStatusbarItemGroup: _setStatusbarItemGroup, .
 
             {visibleFileArtifacts.length > 0 && (
               <section className="flex flex-col">
-                <div className="sticky top-0 z-10 -mx-3 flex h-7 items-center gap-3 overflow-x-auto bg-background px-3">
+                <div className="sticky top-0 z-10 -mx-3 flex h-7 items-center gap-3 overflow-x-auto bg-(--ui-chat-surface-background) px-3">
                   <ArtifactsPagination
                     className="ml-auto justify-end px-0"
                     itemLabel={itemsLabel(kindFilter, a)}
@@ -599,7 +599,7 @@ const PrimaryCell = memo(function PrimaryCell({ artifact, ctx }: { artifact: Art
       onClick={isLink ? undefined : () => void ctx.onOpen(artifact)}
       title={label}
     >
-      <span className="mt-0.5 grid size-6 shrink-0 place-items-center self-start rounded-md bg-(--ui-bg-tertiary) text-(--ui-text-tertiary)">
+      <span className="mt-0.5 grid size-6 shrink-0 place-items-center self-start text-(--ui-text-tertiary)">
         <Icon className="size-3.5" />
       </span>
       <span className={cn('min-w-0 flex-1', isLink ? 'wrap-anywhere' : 'truncate')}>

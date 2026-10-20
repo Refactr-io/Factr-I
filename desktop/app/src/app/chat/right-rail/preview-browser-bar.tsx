@@ -147,7 +147,7 @@ export function PreviewBrowserBar({
   }
 
   return (
-    <div className="flex min-h-(--titlebar-height) shrink-0 flex-wrap items-center gap-1 border-b border-border/60 bg-(--shell-block-bg) px-1.5 py-1">
+    <div className="flex min-h-(--titlebar-height) shrink-0 flex-nowrap items-center gap-1 border-b border-border/60 bg-(--shell-block-bg) px-1.5 py-1">
       <PaneStripGlyph
         disabled={!canGoBack}
         icon={<Codicon name="arrow-left" size="0.8125rem" />}
@@ -169,7 +169,7 @@ export function PreviewBrowserBar({
           same pre-faded inline icon code blocks use, not a toolbar button.
           It copies what the field shows: on a remote gateway, that is the
           reach-resolved address. */}
-      <div className="relative min-w-36 flex-1">
+      <div className="relative min-w-20 flex-1">
         {/* Progress lives IN the field, where the address it belongs to is —
             the reload glyph also spins, but it sits in a row of four and
             reads as chrome rather than as this page's state. */}

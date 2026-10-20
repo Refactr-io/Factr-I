@@ -22,11 +22,12 @@ export const MIN_PANE_PX = 80
 /**
  * The floor for a TOOL PANEL zone (terminal / logs) instead of `MIN_PANE_PX`.
  * A tool panel is meant to be draggable down to nothing — the minimized rail
- * (its header strip, `h-7`) is the smallest meaningful form, so the sash lets
+ * (its header strip, one card header tall) is the smallest meaningful form, so the sash lets
  * it shrink to exactly that and then collapses the zone rather than jamming
  * against an 80px floor with a sliver of unusable content still showing.
  */
-export const COLLAPSED_ZONE_PX = 28
+/** A tool card's full header: the h-9 title row plus the card's 1px top and bottom borders. */
+export const COLLAPSED_ZONE_PX = 38
 
 /** Optional CSS sizing a pane contributes (`data.width` / `data.minWidth`…).
  *  Applied to the pane's GROUP along the axis of the split that contains it —

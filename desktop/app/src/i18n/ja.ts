@@ -490,10 +490,7 @@ export const ja = defineLocale({
       testBody: '通知は正常に動作しています。',
       testSent:
         'テストを送信しました。表示されない場合は、OS の通知許可と集中モード／おやすみモードを確認してください。',
-      testUnsupported: 'このシステムはネイティブ通知に対応していません。',
-      completionSoundTitle: '完了サウンド',
-      completionSoundDesc: 'エージェントのターン終了時に再生されます。プリセットを選んでここで試聴できます。',
-      completionSoundPreview: '試聴'
+      testUnsupported: 'このシステムはネイティブ通知に対応していません。'
     },
     sections: {
       model: 'モデル',

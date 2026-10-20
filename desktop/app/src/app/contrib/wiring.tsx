@@ -38,7 +38,6 @@ import { translateNow } from '@/i18n'
 import { type ChatMessage, chatMessageText } from '@/lib/chat-messages'
 import { isMessagingSource } from '@/lib/session-source'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
-import { playWakeSound } from '@/lib/wake-sound'
 import { $desktopBoot } from '@/store/boot'
 import { requestVoiceConversationStart } from '@/store/composer'
 import { $activeConnectionId } from '@/store/connections'
@@ -835,9 +834,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
         // Server already pauses the detector lease; this stops client PCM feed.
         stopClientCapture()
 
-        // Audible confirmation that the wake registered, before voice capture
-        // starts. Gated by the shared sound-mute toggle.
-        playWakeSound()
         activateWakeIndicator()
 
         // Multi-profile routing: a wake phrase enrolled by another profile

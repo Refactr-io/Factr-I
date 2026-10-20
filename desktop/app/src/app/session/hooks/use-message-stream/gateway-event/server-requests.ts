@@ -1,4 +1,5 @@
 import { readActivePreview } from '@/app/chat/right-rail/preview-reader'
+import { playSfx } from '@/lib/sfx'
 import { readActiveTerminal } from '@/app/right-sidebar/terminal/buffer'
 import { pendingClarifyToolPayload } from '@/app/session/hooks/use-session-actions/restore-pending-clarify'
 import { translateNow } from '@/i18n'
@@ -236,6 +237,7 @@ const approval: Handler = ctx => {
   markNeedsInput(ctx)
 
   if (!request.replayed) {
+    playSfx('approval')
     dispatchNativeNotification({
       actions: [
         {

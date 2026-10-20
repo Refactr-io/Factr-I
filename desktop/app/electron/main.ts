@@ -1034,7 +1034,7 @@ const BOOT_FAKE_STEP_MS = (() => {
 
 const APP_NAME = process.env.FACTR_DESKTOP_APP_NAME || 'Factr-I'
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
-const TITLEBAR_HEIGHT = 40
+const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
 
 // x matches Codex and Claude (~19px from the window edge); y centres the 14px lights in the 34px bar.

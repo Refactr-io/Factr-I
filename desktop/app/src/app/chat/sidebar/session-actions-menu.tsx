@@ -114,7 +114,11 @@ interface SessionActions {
   onClose?: () => void
   /** TAB surfaces: the session is already a tab, so "Open in new tab" is
    *  nonsense there — sidebar rows/dropdowns keep it. */
-  surface?: 'row' | 'tab'
+  /** 'header': the chat title's menu, slim like the chat apps': open elsewhere, rename, fork, pin, export, archive, delete. */
+  surface?: 'header' | 'row' | 'tab'
+  /** Controlled rename dialog, so a title click can open the same rename. */
+  renameOpen?: boolean
+  onRenameOpenChange?: (open: boolean) => void
   /** The tab's layout-tree pane id (`session-tile:<id>` or `workspace`) — enables
    *  the Close-others / to-the-right / all tab verbs. Tab surfaces only. */
   tabPaneId?: string
@@ -196,11 +200,15 @@ function useSessionActions({
   onClose,
   onHideTabBar,
   surface = 'row',
-  tabPaneId
+  tabPaneId,
+  renameOpen: renameOpenProp,
+  onRenameOpenChange
 }: SessionActions) {
   const { t } = useI18n()
   const r = t.sidebar.row
-  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameOpenLocal, setRenameOpenLocal] = useState(false)
+  const renameOpen = renameOpenProp ?? renameOpenLocal
+  const setRenameOpen = onRenameOpenChange ?? setRenameOpenLocal
   // The rename item opens a Dialog. When a menu closes, Radix restores focus to
   // its trigger — for a sidebar row that trigger is the row's own <button>, so
   // focus lands there instead of the dialog's input: Space then activates the
@@ -460,6 +468,19 @@ function useSessionActions({
     }
   ]
 
+  const renderHeaderItems = (kit: MenuKit) => (
+    <>
+      {openItems.map(item => renderActionItem(kit, item))}
+      {openItems.length > 0 && <kit.Separator />}
+      {renderActionItem(kit, identityItems[0]!)}
+      {renderActionItem(kit, workItems[0]!)}
+      {renderActionItem(kit, identityItems[1]!)}
+      {renderActionItem(kit, workItems[1]!)}
+      <kit.Separator />
+      {dangerItems.map(item => renderActionItem(kit, item))}
+    </>
+  )
+
   const renderItems = (kit: MenuKit) => (
     <>
       {openItems.map(item => renderActionItem(kit, item))}
@@ -550,7 +571,7 @@ function useSessionActions({
     />
   )
 
-  return { deleteDialog, onCloseAutoFocus, renameDialog, renderItems }
+  return { deleteDialog, onCloseAutoFocus, renameDialog, renderItems: surface === 'header' ? renderHeaderItems : renderItems }
 }
 
 interface DeleteSessionDialogProps {

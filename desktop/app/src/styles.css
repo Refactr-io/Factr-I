@@ -655,7 +655,7 @@
     --sticky-human-top: 0.23rem;
     --file-tree-row-height: 1.375rem;
 
-    --composer-width: min(100%, 48rem);
+    --composer-width: min(calc(100% - 3rem), 48rem);
     --composer-control-size: 1.5rem;
     --composer-control-primary-size: 1.625rem;
     --composer-control-gap: 0.25rem;
@@ -679,9 +679,9 @@
 
     --sidebar-width: 14.8125rem;
     --chat-min-width: 28rem;
-    --titlebar-control-size: 24px;
-    --titlebar-control-height: 24px;
-    --titlebar-icon-size: 13.9px;
+    --titlebar-control-size: 28px;
+    --titlebar-control-height: 28px;
+    --titlebar-icon-size: 16px;
     --sidebar-content-inline-padding: 1rem;
 
     --sidebar: var(--dt-sidebar-bg);

@@ -64,11 +64,12 @@ describe('TitlebarControls fixed clusters', () => {
     cleanup()
   })
 
-  it('keeps the app clusters on a contributed page that mounts no titlebar chrome', () => {
+  it('keeps the window controls, but not the session pane icons, on a page that is not a chat', () => {
     renderControls('/plain')
 
     expect(windowControls()).not.toBeNull()
-    expect(appControls()).not.toBeNull()
+    // The terminal / changes / browser / files icons belong to a session.
+    expect(appControls()).toBeNull()
   })
 
   it('hides the app clusters on an overlay', () => {

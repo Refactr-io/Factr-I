@@ -954,10 +954,9 @@ export const en: Translations = {
       testTitle: 'Factr-I',
       testBody: 'Notifications are working.',
       testSent: 'Test sent. If nothing appears, check your OS notification permissions and Focus/Do Not Disturb.',
-      testUnsupported: 'This system does not support native notifications.',
-      completionSoundTitle: 'Completion Sound',
-      completionSoundDesc: 'Plays when an agent turn finishes. Pick a preset and preview it here.',
-      completionSoundPreview: 'Preview'
+      soundEffectsTitle: 'Sound effects',
+      soundEffectsDesc: 'Short cues for the microphone, approvals and a lost connection.',
+      testUnsupported: 'This system does not support native notifications.'
     },
     sections: {
       model: 'Model',
@@ -3129,6 +3128,7 @@ export const en: Translations = {
       openInSplit: 'Open in split',
       copyIdFailed: 'Could not copy session ID',
       sessionActions: 'Session actions',
+      moreOptionsFor: (title: string) => `More options for ${title}`,
       sessionRunning: 'Session running',
       needsInput: 'Needs your input',
       waitingForAnswer: 'Waiting for your answer',

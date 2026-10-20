@@ -1650,7 +1650,7 @@ export function ChatSidebar({
             {trimmedQuery && (
               <SidebarSessionsSection
                 activeSessionId={activeSidebarSessionId}
-                contentClassName={cn('flex min-h-0 flex-1 flex-col gap-px pb-1.75', SCROLL_Y)}
+                contentClassName={cn('flex min-h-0 flex-1 flex-col gap-px pr-2 pb-1.75', SCROLL_Y)}
                 emptyState={
                   searchPending ? (
                     <SidebarSessionSkeletons />
@@ -1716,7 +1716,7 @@ export function ChatSidebar({
                 card={cardRows}
                 collapsible={!inProject}
                 contentClassName={cn(
-                  'flex min-h-0 flex-1 flex-col gap-px pb-1.75',
+                  'flex min-h-0 flex-1 flex-col gap-px pr-2 pb-1.75',
                   // The section is the ONE authority on whether the virtual
                   // list owns scrolling: it neutralizes this wrapper scroller
                   // itself (overflow-visible) when it virtualizes. Gating

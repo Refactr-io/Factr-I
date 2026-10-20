@@ -172,7 +172,7 @@ export function TerminalNewButton() {
     <Tip label={<TipHintLabel hint={newHint && formatCombo(newHint)} text={t.rightSidebar.terminalNew} />}>
       <button
         aria-label={t.rightSidebar.terminalNew}
-        className={cn(RAIL_ACTION, 'size-5 rounded-full')}
+        className={cn(RAIL_ACTION, 'size-5 rounded-sm')}
         onClick={() => createTerminal()}
         type="button"
       >
