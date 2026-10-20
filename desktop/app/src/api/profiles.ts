@@ -40,7 +40,8 @@ export function renameProfile(
 ): Promise<{ name: string; ok: boolean; path: string }> {
   return factrApi<{ name: string; ok: boolean; path: string }>({
     ...profileOwnerScoped(scope),
-    path: `/api/profiles/${encodeURIComponent(name)}`,
+    // A user action that needs the Python runtime: unmarked, the packaged engine answers 404 feature_not_requested.
+    path: `/api/profiles/${encodeURIComponent(name)}?feature=1`,
     method: 'PATCH',
     body: { new_name: newName }
   })
@@ -60,7 +61,8 @@ export function deleteProfile(name: string, scope?: ProfileScope): Promise<{ ok:
 
   return factrApi<{ ok: boolean; path: string }>({
     ...profileOwnerScoped(scope),
-    path: `/api/profiles/${encodeURIComponent(normalized)}`,
+    // Same as rename: marked so the packaged engine wakes Python instead of refusing with 404 feature_not_requested.
+    path: `/api/profiles/${encodeURIComponent(normalized)}?feature=1`,
     method: 'DELETE'
   })
 }

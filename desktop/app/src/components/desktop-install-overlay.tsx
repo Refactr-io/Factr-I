@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { BrandMark } from '@/components/brand-mark'
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { ErrorIcon } from '@/components/ui/error-state'
+import { Loader } from '@/components/ui/loader'
 import { LogView } from '@/components/ui/log-view'
 import { Progress } from '@/components/ui/progress'
 import type {
@@ -115,7 +115,7 @@ function StageRow({ descriptor, result, now }: StageRowProps) {
   const icon = useMemo(() => {
     switch (state) {
       case 'running':
-        return <AgentOrb state="working" />
+        return <Loader />
 
       case 'succeeded':
 
@@ -591,7 +591,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
 
           {totalCount === 0 && state.active && (
             <div className="mb-4 flex items-center gap-2.5 text-sm text-muted-foreground">
-              <AgentOrb state="working" />
+              <Loader />
               <span>{copy.fetchingManifest}</span>
             </div>
           )}
@@ -670,7 +670,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
                 size="sm"
                 variant="ghost"
               >
-                {cancelling ? <AgentOrb className="-my-1" state="working" /> : null}
+                {cancelling ? <Loader className="-my-1" /> : null}
                 {cancelling ? copy.cancelling : copy.cancelInstall}
               </Button>
             </div>
@@ -683,7 +683,7 @@ export function DesktopInstallOverlay({ enabled = true }: DesktopInstallOverlayP
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">
                 {copy.transcriptSaved}{' '}
-                <code className="font-mono text-(--ui-text-secondary)">%LOCALAPPDATA%\factr\logs\</code>
+                <code className="font-mono text-(--ui-text-secondary)">%USERPROFILE%\.factr\logs\</code>
               </span>
               <div className="flex gap-2">
                 <Button

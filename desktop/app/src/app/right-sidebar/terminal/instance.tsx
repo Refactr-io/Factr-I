@@ -1,8 +1,8 @@
 import '@xterm/xterm/css/xterm.css'
 
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { KbdCombo } from '@/components/ui/kbd'
+import { Loader } from '@/components/ui/loader'
 import { useI18n } from '@/i18n'
 import { cn } from '@/lib/utils'
 
@@ -59,7 +59,7 @@ export function TerminalInstance({
     >
       {status === 'starting' && (
         <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">
-          <AgentOrb state="connecting" />
+          <Loader />
         </div>
       )}
       {selection.trim() && (

@@ -121,7 +121,7 @@ export function pendingNotice(factrHome: string, userData: string): PendingNotic
       const hits = report.plugins[n]
       const first = hits[0]
 
-      return `• ${n} — ${hits.length} import${hits.length === 1 ? '' : 's'} (e.g. ${first.old} → ${first.new})`
+      return `• ${n} - ${hits.length} import${hits.length === 1 ? '' : 's'} (e.g. ${first.old} → ${first.new})`
     })
     .join('\n')
 

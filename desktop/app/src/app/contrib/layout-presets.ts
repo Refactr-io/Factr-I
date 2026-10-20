@@ -5,62 +5,68 @@ import { registerBundledPresets } from '@/components/pane-shell/tree/presets'
 // Layout presets — CHAT (main) always dominates.
 // ---------------------------------------------------------------------------
 
-// The REAL default: sessions left, chat main, and ONE right sidebar whose tab strip carries Terminal,
-// Files and Changes (the review pane), with Browser stacking in beside them when it is opened. Every tool
-// is one click away; the sidebar's toggle shows or hides the whole thing.
+// The REAL default: sessions left, chat main, and a column of tool CARDS on the right. Terminal, Files, Changes and
+// (docked above Files when it is opened) the Browser are separate cards, each toggled from the pane cluster in the chat
+// header. A card that is closed is hidden and its siblings absorb the space; when none is open the chat has the whole
+// width. Every tool is one click away and several can be open together.
 //
 // Preview tiles are DYNAMIC panes (like session tiles), so no preset names one: they're registered by
-// watchPreviewTiles as tabs open. A Browser tab stacks into this sidebar; a file peek still opens its own
-// pane beside it.
+// watchPreviewTiles as tabs open and dock above the Files card.
+export const TOOLS_COLUMN = split(
+  'column',
+  [group(['terminal'], { id: 'grp-terminal' }), group(['files'], { id: 'grp-files' }), group(['review'], { id: 'grp-review' })],
+  [1, 1, 1],
+  'spl-tools'
+)
+
 export const DEFAULT_TREE = split(
   'row',
-  [
-    group(['sessions'], { id: 'grp-sessions' }),
-    group(['workspace'], { id: 'grp-main' }),
-    group(['terminal', 'files', 'review'], { id: 'grp-right' })
-  ],
+  [group(['sessions'], { id: 'grp-sessions' }), group(['workspace'], { id: 'grp-main' }), TOOLS_COLUMN],
   [1, 3.4, 1.25],
   'spl-root'
 )
 
-// Focus is one column of attention: files and review are tabs BEHIND the chat,
-// the terminal a collapsed rail under it — opening the terminal must never
-// cover the conversation, which a terminal tab did.
-const FOCUS_TREE = split(
-  'row',
-  [group(['sessions']), split('column', [group(['workspace', 'files', 'review']), group(['terminal'])], [3, 1])],
-  [1, 4.6]
-)
+// The simple tier's arrangement is the default one: sessions, chat and the tool cards (all closed until opened).
+export const BASIC_TREE = DEFAULT_TREE
 
-// Basic is sessions and chat with the tooling RESTING in one right sidebar: a single zone whose
-// tab strip carries Terminal, Files and Changes (and Browser, which stacks in when opened), so every
-// tool is one click away instead of its own toggle. The toggle shows or hides the whole sidebar.
-// A tree that simply omitted the tools was a lie — applying it adopts every missing pane back in as
-// workspace tabs, which is Focus.
-export const BASIC_TREE = split(
+// Every arrangement below is built from the same panes: Sessions, the chat, and the Terminal / Files / Changes cards.
+// `resting` is what a preset leaves closed; everything else it places opens when it is applied.
+const BASIC_RESTING = ['terminal', 'files', 'review'] as const
+
+// Terminal under the chat; Files and Changes stay a column on the right.
+const TERMINAL_BELOW_TREE = split(
   'row',
-  [group(['sessions']), group(['workspace']), group(['terminal', 'files', 'review'], { id: 'grp-right' })],
+  [
+    group(['sessions'], { id: 'grp-sessions' }),
+    split('column', [group(['workspace'], { id: 'grp-main' }), group(['terminal'], { id: 'grp-terminal' })], [3, 1.1]),
+    split('column', [group(['files'], { id: 'grp-files' }), group(['review'], { id: 'grp-review' })], [1, 1])
+  ],
   [1, 3.4, 1.25]
 )
 
-const BASIC_RESTING = ['terminal', 'files', 'review'] as const
-
-const TERMINAL_TREE = split(
-  'column',
-  [
-    split('row', [group(['sessions']), group(['workspace']), group(['files', 'review'])], [1, 3.2, 1.2]),
-    group(['terminal'])
-  ],
-  [3, 1]
+// The tool cards between Sessions and the chat.
+const TOOLS_LEFT_TREE = split(
+  'row',
+  [group(['sessions'], { id: 'grp-sessions' }), TOOLS_COLUMN, group(['workspace'], { id: 'grp-main' })],
+  [1, 1.25, 3.4]
 )
 
-const QUAD_TREE = split(
-  'column',
+// The chat on top, Terminal and Changes side by side beneath it, Files on the right.
+const GRID_TREE = split(
+  'row',
   [
-    split('row', [group(['sessions', 'files']), group(['workspace'])], [1, 3]),
-    split('row', [group(['terminal']), group(['review'])], [1.4, 1])
+    group(['sessions'], { id: 'grp-sessions' }),
+    split(
+      'column',
+      [
+        group(['workspace'], { id: 'grp-main' }),
+        split('row', [group(['terminal'], { id: 'grp-terminal' }), group(['review'], { id: 'grp-review' })], [1.4, 1])
+      ],
+      [3, 1.1]
+    ),
+    group(['files'], { id: 'grp-files' })
   ],
-  [3, 1]
+  [1, 3.4, 1.1]
 )
 
 export function registerLayoutPresets() {
@@ -76,10 +82,10 @@ export function registerLayoutPresets() {
       resting: BASIC_RESTING,
       tier: 'simple'
     },
-    { id: 'default', title: 'Default', order: 0, tree: DEFAULT_TREE, tier: 'advanced' },
-    { id: 'basic', title: 'Basic', order: 5, tree: BASIC_TREE, resting: BASIC_RESTING, tier: 'advanced' },
-    { id: 'focus', title: 'Focus', order: 10, tree: FOCUS_TREE, resting: ['terminal'], tier: 'advanced' },
-    { id: 'terminal-deck', title: 'Terminal deck', order: 20, tree: TERMINAL_TREE, tier: 'advanced' },
-    { id: 'quad', title: 'Quad', order: 30, tree: QUAD_TREE, tier: 'advanced' }
+    { id: 'default', title: 'Default', order: 0, tree: DEFAULT_TREE, resting: BASIC_RESTING, tier: 'advanced' },
+    { id: 'tools-open', title: 'Tools open', order: 5, tree: DEFAULT_TREE, tier: 'advanced' },
+    { id: 'terminal-below', title: 'Terminal below', order: 10, tree: TERMINAL_BELOW_TREE, resting: ['files', 'review'], tier: 'advanced' },
+    { id: 'tools-left', title: 'Tools left', order: 20, tree: TOOLS_LEFT_TREE, resting: BASIC_RESTING, tier: 'advanced' },
+    { id: 'grid', title: 'Grid', order: 30, tree: GRID_TREE, tier: 'advanced' }
   ])
 }

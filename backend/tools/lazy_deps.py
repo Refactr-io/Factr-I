@@ -637,7 +637,7 @@ def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300, constraint_
                 if pip_index_url:
                     uv_env["UV_INDEX_URL"] = pip_index_url
             try:
-                r = _run_installer([uv_bin, "pip", "install", "--compile-bytecode", *policy_args, *extra_args, *specs],
+                r = _run_installer([uv_bin, "pip", "install", "--python", sys.executable, "--compile-bytecode", *policy_args, *extra_args, *specs],
                                    timeout=timeout, env=uv_env, cwd=uv_cwd)
                 if r.returncode != 0:
                     logger.debug("uv pip install failed: %s", r.stderr)

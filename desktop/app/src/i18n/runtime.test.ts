@@ -4,6 +4,7 @@ import { fieldCopyForSchemaKey } from '@/app/settings/field-copy'
 
 import { TRANSLATIONS } from './catalog'
 import { setRuntimeI18nLocale, translateNow } from './runtime'
+import type { Locale } from './types'
 import { zh } from './zh'
 
 describe('desktop i18n runtime translator', () => {
@@ -50,6 +51,45 @@ describe('desktop i18n runtime translator', () => {
       boot.ready = originalReady
     }
   })
+
+  it.each(Object.keys(TRANSLATIONS) as Locale[])('keeps obsolete cloud wording out of %s', locale => {
+    const messages = JSON.stringify(TRANSLATIONS[locale], (_key, value) =>
+      typeof value === 'function' ? value.toString() : value
+    )
+
+    expect(messages.includes('Factr-I Cloud')).toBe(false)
+  })
+
+  it.each(['zh', 'zh-hant', 'ja', 'ar', 'ru'] as const)(
+    'uses current English gateway wording for removed overrides in %s',
+    locale => {
+      const keys = [
+        'settings.connections.intro',
+        'settings.connections.updateSkippedCloud',
+        'settings.connections.kindCloud',
+        'settings.connections.kindRemoteDesc',
+        'settings.connections.kindCloudDesc',
+        'settings.connections.cloudAddHint',
+        'settings.gateway.remoteDesc',
+        'settings.gateway.remoteAuthHint'
+      ]
+
+      if (locale !== 'ru') {
+        keys.push('settings.gateway.intro')
+      }
+
+      for (const key of keys) {
+        setRuntimeI18nLocale('en')
+        const english = translateNow(key)
+        setRuntimeI18nLocale(locale)
+
+        expect(english).not.toBe(key)
+        expect(translateNow(key), key).toBe(english)
+      }
+
+      expect(translateNow('settings.connections.cloudAddHint')).toBe('')
+    }
+  )
 
   it('returns the key when no locale can resolve a path', () => {
     setRuntimeI18nLocale('zh')

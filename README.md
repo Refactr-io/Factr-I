@@ -75,7 +75,7 @@ Your choice is saved. Factr-I uses the provider you picked and does not quietly 
 
 Everything stays on your computer:
 
-- `~/.factr/` holds your settings, sign-ins, chats and projects. On Windows the app uses `%LOCALAPPDATA%\factr`.
+- `~/.factr/` holds your settings, sign-ins, chats and projects. On Windows that is `%USERPROFILE%\.factr`.
 - The in-app uninstall lists exactly what it will delete before it deletes anything.
 
 ## Running this for a business

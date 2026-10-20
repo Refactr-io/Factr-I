@@ -21,11 +21,12 @@ beforeAll(() => {
 })
 
 const request = vi.fn(async () => ({}))
+const notify = vi.fn()
 
 vi.mock('@factr/plugin-sdk', async importOriginal => {
   const sdk = await importOriginal<typeof FactrSdk>()
 
-  return { ...sdk, host: { ...sdk.host, request } }
+  return { ...sdk, host: { ...sdk.host, notify, request } }
 })
 
 const { RoutineDetailDialog, RoutineRow, routineDetailIssue, routineDetailRows } = await import('./cron')
@@ -131,6 +132,30 @@ describe('the row is reachable', () => {
     expect(within(opener).queryByRole('button')).toBeNull()
     expect(screen.getAllByRole('switch')).toHaveLength(1)
     expect(screen.getByRole('button', { name: /delete/i })).toBeTruthy()
+  })
+
+  it('has a Run now control that fires THIS job on its own bot and says so', async () => {
+    render(<RoutineRow job={activeJob} onOpen={() => undefined} owner={{ name: 'notetaker' }} />)
+
+    screen.getByRole('button', { name: 'Run now' }).click()
+    await vi.waitFor(() => expect(notify).toHaveBeenCalledWith({ kind: 'info', message: 'Job started' }))
+
+    expect(request.mock.calls.map(call => call.slice(0, 2))).toContainEqual([
+      'cron.manage',
+      { action: 'run', name: 'job-1', profile: 'notetaker' }
+    ])
+  })
+
+  it('does not offer Run now for a legacy delegated routine', () => {
+    render(
+      <RoutineRow
+        job={{ ...activeJob, prompt_preview: 'You are running the scheduled routine "Morning digest" for agent \'notetaker\'.' }}
+        onOpen={() => undefined}
+        owner={{ name: 'notetaker' }}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'Run now' })).toHaveProperty('disabled', true)
   })
 
   it('refuses to run a legacy delegated routine, and says why', () => {

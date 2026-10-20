@@ -61,7 +61,7 @@ export interface PaneMirror<T> {
 /** Build a `watch*` fn: syncs once, then re-syncs on every source/also change.
  *  Module-level state lives in the returned closure, so call it once per app. */
 export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
-  const registered = new Map<string, { dispose: () => void; title: string }>()
+  const registered = new Map<string, { dispose: () => void; title: string; render: () => ReactNode }>()
 
   const paneId = (key: string) => `${cfg.prefix}:${key}`
 
@@ -78,6 +78,10 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
       if (current && current.title === title) {
         continue
       }
+
+      // ContribRender mounts this callback as a component type. A title refresh
+      // must keep its identity or React tears down live guests and local state.
+      const render = current?.render ?? (() => cfg.render(key))
 
       const dispose = registry.register({
         id: paneId(key),
@@ -105,10 +109,10 @@ export function paneMirror<T>(cfg: PaneMirror<T>): () => void {
           tabMenuPrefix: cfg.tabMenuPrefix?.(key),
           tabWrap: cfg.tabWrap ? (tab: ReactElement) => cfg.tabWrap!(key, tab) : undefined
         },
-        render: () => cfg.render(key)
+        render
       })
 
-      registered.set(key, { dispose, title })
+      registered.set(key, { dispose, title, render })
 
       if (!current) {
         registerPaneCloser(paneId(key), () => cfg.close(key))

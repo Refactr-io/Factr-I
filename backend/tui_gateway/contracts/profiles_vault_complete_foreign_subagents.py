@@ -81,7 +81,8 @@ method("paste.collapse", params=PasteCollapseParams, result=PasteCollapseResult,
 
 class ModelSaveKeyParams(Params):
     slug: str
-    api_key: str
+    api_key: str = ""
+    source: Literal["opencode"] | None = None  # adopt the key from an installed OpenCode instead of ``api_key``
     session_id: str | None = None
 
 

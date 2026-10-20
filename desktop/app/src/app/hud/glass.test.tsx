@@ -22,7 +22,8 @@ function Harness({ backing, drawer }: { backing: boolean; drawer?: boolean }) {
   )
 }
 
-const frostState = () => setFrost.mock.calls.at(-1)?.[0]
+// The panel is opaque CSS now: whatever the surface is doing, the native frost is never asked for.
+const frostState = () => setFrost.mock.calls.some(call => call[0] === true)
 
 const nextFrame = () => act(() => new Promise(resolve => requestAnimationFrame(() => resolve(undefined))))
 
@@ -43,13 +44,13 @@ describe('useHudGlass', () => {
     expect(frostState()).toBe(false)
   })
 
-  it('frosts once the caret is in the composer, and lets go when it leaves', () => {
+  it('tracks the caret with an attribute and never asks for the native frost', () => {
     const { container } = render(<Harness backing />)
     const input = container.querySelector('input')!
 
     const shell = container.querySelector('[data-hud-shell]')!
     act(() => input.focus())
-    expect(frostState()).toBe(true)
+    expect(frostState()).toBe(false)
     expect(shell.hasAttribute('data-hud-typing')).toBe(true)
 
     act(() => input.blur())
@@ -65,11 +66,11 @@ describe('useHudGlass', () => {
     expect(frostState()).toBe(false)
   })
 
-  it('drops the frost when a completion drawer takes the surface over', async () => {
+  it('tracks a completion drawer with an attribute and never asks for the native frost', async () => {
     const { container, rerender } = render(<Harness backing />)
 
     act(() => container.querySelector('input')!.focus())
-    expect(frostState()).toBe(true)
+    expect(frostState()).toBe(false)
 
     rerender(<Harness backing drawer />)
     await nextFrame()
@@ -79,6 +80,6 @@ describe('useHudGlass', () => {
     rerender(<Harness backing />)
     await nextFrame()
     expect(container.querySelector('[data-hud-shell]')?.hasAttribute('data-hud-drawer')).toBe(false)
-    expect(frostState()).toBe(true)
+    expect(frostState()).toBe(false)
   })
 })

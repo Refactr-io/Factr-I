@@ -63,25 +63,20 @@ const DRAWER_SELECTOR = '[data-slot="composer-completion-drawer"]'
 export function useHudGlass(rootRef: RefObject<HTMLElement | null>, backing: boolean): void {
   useEffect(() => {
     const root = rootRef.current
-    const setFrost = window.factrDesktop?.hud?.setFrost
 
     if (!root) {
       return
     }
-
-    let on: boolean | null = null
 
     const apply = () => {
       const typing = root.querySelector(TYPING_SELECTOR) !== null
       const drawer = root.querySelector(DRAWER_SELECTOR) !== null
       root.toggleAttribute('data-hud-typing', typing)
       root.toggleAttribute('data-hud-drawer', drawer)
-      const next = backing && !drawer && typing
-
-      if (on !== next) {
-        on = next
-        void setFrost?.(next)
-      }
+      // No native frost any more: the material fills the window's whole rectangle while the panel is a rounded shape
+      // inside it, so desktop showed through as slivers at every corner. The panel paints its own opaque surface.
+      // The attributes above are all the CSS needs; `backing` stays in the signature so callers are unchanged.
+      void backing
     }
 
     // The drawer mounts and unmounts without any focus change, so neither
@@ -115,7 +110,6 @@ export function useHudGlass(rootRef: RefObject<HTMLElement | null>, backing: boo
     window.addEventListener('focus', schedule)
 
     return () => {
-      void setFrost?.(false)
       root.removeAttribute('data-hud-typing')
       root.removeAttribute('data-hud-drawer')
       observer.disconnect()

@@ -13,7 +13,7 @@
 //    Nothing in the app itself reads it, so without this test a delete would
 //    look free and would silently regress that repro's response gate.
 import { AssistantRuntimeProvider, type ThreadMessage, useExternalStoreRuntime } from '@assistant-ui/react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Thread } from '.'
@@ -103,6 +103,23 @@ function dispatch(id: string, target: string): ThreadMessage {
 }
 
 describe('inter-agent collapse gate', () => {
+  it('mounts reply text and images only while the reader opens the disclosure', async () => {
+    const text = 'build is green\n\n![trace](http://127.0.0.1:1/trace.png)'
+    render(<Harness messages={[user('u1', DELIVERY), assistant('a1', text, false)]} />)
+
+    const summary = await screen.findByText('show reply')
+    expect(screen.queryByText('build is green')).toBeNull()
+    expect(screen.queryByAltText('trace')).toBeNull()
+
+    fireEvent.click(summary)
+    expect(await screen.findByText('build is green')).toBeTruthy()
+    expect(await screen.findByAltText('trace')).toBeTruthy()
+
+    fireEvent.click(summary)
+    await waitFor(() => expect(screen.queryByText('build is green')).toBeNull())
+    expect(screen.queryByAltText('trace')).toBeNull()
+  })
+
   it('keeps the report after a relayed answer to this bot\u2019s own dispatch expanded', async () => {
     // Bot Mode round trip seen from the DISPATCHING bot: it messaged @factr,
     // the answer came back as an inbound "Message from" row, and the next

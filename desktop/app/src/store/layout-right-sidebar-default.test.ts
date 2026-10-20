@@ -12,7 +12,7 @@ describe('right sidebar first-run default', () => {
     vi.resetModules()
   })
 
-  it('closes the right sidebar when nothing was saved, and only once', async () => {
+  it('closes the tool cards when nothing was saved, and only once', async () => {
     const tree = await import('@/components/pane-shell/tree/store')
     const layout = await import('@/store/layout')
 
@@ -21,7 +21,8 @@ describe('right sidebar first-run default', () => {
 
     expect(layout.applyRightSidebarFirstRunDefault(false, false)).toBe(true)
     expect(layout.$fileBrowserOpen.get()).toBe(false)
-    expect(tree.$collapsedTreeSides.get().has('right')).toBe(true)
+    // The Files card is closed; the tool side itself is never collapsed as a whole.
+    expect(tree.$collapsedTreeSides.get().has('right')).toBe(false)
 
     // Later in the session the user opens it: a repeat of the one-shot must not close it again.
     layout.setFileBrowserOpen(true)

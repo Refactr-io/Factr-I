@@ -140,7 +140,7 @@ const AUX_TASKS: readonly AuxTaskMeta[] = [
 // The levels shown for the profile default when the model's catalog row reports none.
 const FALLBACK_EFFORT_LEVELS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
-const NO_PROVIDERS: readonly ModelOptionProvider[] = [{ name: '—', slug: '', models: [] }]
+const NO_PROVIDERS: readonly ModelOptionProvider[] = [{ name: '-', slug: '', models: [] }]
 
 // Radix <Select> renders a blank trigger when `value` matches no <SelectItem>.
 // A custom model (e.g. one added via config that isn't in the provider's
@@ -996,8 +996,8 @@ export function ModelSettings({ onMainModelChanged, scopeProfile, subpage }: Mod
           {needsSetup && !setupIsApiKey && selectedProviderRow && (
             <p className="mt-2 text-xs text-muted-foreground">
               {selectedProviderRow?.auth_type === 'api_key'
-                ? `${selectedProviderRow?.name} needs an API key — set it up to choose a model.`
-                : `${selectedProviderRow?.name} signs in through your browser — Factr-I runs the flow for you.`}
+                ? `${selectedProviderRow?.name} needs an API key - set it up to choose a model.`
+                : `${selectedProviderRow?.name} signs in through your browser - Factr-I runs the flow for you.`}
             </p>
           )}
           {config && mainModel && (reasoningSupported || fastSupported) && (

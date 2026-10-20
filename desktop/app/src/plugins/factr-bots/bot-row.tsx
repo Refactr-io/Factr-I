@@ -40,6 +40,7 @@ import {
   saveSelectedRosterBot
 } from './bot-state'
 import { ensureBotMetadata } from './canonical-chat'
+import { computerWordKey, useBotComputer } from './computer'
 import {
   $botAttention,
   $botMeta,
@@ -142,6 +143,8 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
   // Keep user photos/pets. Drop the 160px SVG backfill so the math face can move.
   const photo = Boolean(image && !isBackfilledFacePng(image))
   const turnBusy = useTurnBusy()
+  const computer = useBotComputer(bot)
+  const computerWord = computer ? computerWordKey(computer.status) : null
   // Preview identity must match click identity (#88200): when the backend
   // resolved the pinned canonical chat, preview THAT session — not the
   // profile's most recent (but unrelated) activity. Activity signals
@@ -271,6 +274,9 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
           <div className="flex min-w-0 items-center gap-1.5">
             {/* The session row's own lead cell, so a bot's name sits on the
                 same left edge as every session name above it in the rail. */}
+            {/* The dot is core's SESSION dot (the bot's canonical chat), not the computer's: it never means
+                "computer on". The computer shows only as the status word below, which is read from
+                the same `computer.status` as the Screen pane, so the roster and the pane cannot disagree. */}
             <SidebarRowLead>
               <SessionStatusDot storedSessionId={canonicalSessionId} />
             </SidebarRowLead>
@@ -287,6 +293,9 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
             <Tip label={rowTooltip}>
               <span className="min-w-0 truncate text-[0.8125rem] font-medium">{displayName(bot, meta)}</span>
             </Tip>
+            {computerWord ? (
+              <span className="shrink-0 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">{b.computer.word[computerWord]}</span>
+            ) : null}
           </div>
           {attention ? (
             <Tip label={botAttentionHint(attention.reason)}>
@@ -421,7 +430,7 @@ export function BotRow({ bot, onDelete, onEdit, onGroup, onNewSection, showHandl
                 })
                 host.notify({
                   kind: 'success',
-                  message: `Created ${name} — full copy of ${bot.name}`
+                  message: `Created ${name} - full copy of ${bot.name}`
                 })
               })
               .catch(err => host.notifyError(err, b.bot.duplicateFailed))

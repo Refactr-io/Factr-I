@@ -1,6 +1,19 @@
 import { atom } from 'nanostores'
 
-export const DEFAULT_TERMINAL_FONT_FAMILY = "'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace"
+export const DEFAULT_TERMINAL_FONT_FAMILY = "'IBM Plex Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace"
+
+/** CSS owns role sizes; fallbacks cover tests or an unavailable stylesheet. */
+export function terminalTypography() {
+  const style = getComputedStyle(document.documentElement)
+
+  return {
+    fontSize: Number(style.getPropertyValue('--terminal-font-size')) || 13,
+    fontWeight: 400 as const,
+    fontWeightBold: 600 as const,
+    letterSpacing: 0,
+    lineHeight: Number(style.getPropertyValue('--terminal-line-height')) || 1.4
+  }
+}
 
 export const TERMINAL_FONT_SUGGESTIONS = [
   'MesloLGS NF',
@@ -9,6 +22,7 @@ export const TERMINAL_FONT_SUGGESTIONS = [
   'FiraCode Nerd Font',
   'Hack Nerd Font',
   'SauceCodePro Nerd Font',
+  'IBM Plex Mono',
   'JetBrains Mono',
   'SF Mono',
   'Menlo',
@@ -59,8 +73,8 @@ export async function warmTerminalFontFamily(
   }
 
   await Promise.allSettled(
-    ['400', '700', 'italic 400'].map(descriptor =>
-      Promise.resolve().then(() => fontSet.load(`${descriptor} 11px ${fontFamily}`))
+    ['400', '600', 'italic 400', 'italic 600'].map(descriptor =>
+      Promise.resolve().then(() => fontSet.load(`${descriptor} ${terminalTypography().fontSize}px ${fontFamily}`))
     )
   )
 }

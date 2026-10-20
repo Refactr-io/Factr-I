@@ -618,7 +618,7 @@ export function useStatusbarItems({
         // not a vanished item — an enabled-but-invisible toggle reads as
         // "another item took its spot".
         id: 'context-usage',
-        label: contextUsage || '—',
+        label: contextUsage || '-',
         menuAlign: 'end',
         menuClassName: 'w-auto border-(--ui-stroke-secondary) p-0',
         menuContent: (
@@ -663,7 +663,7 @@ export function useStatusbarItems({
         id: 'cache-hit-rate',
         // Same never-self-hide rule as the context meter: opted in means a
         // placeholder until the first cached turn reports, not a vanished item.
-        label: cacheHit || '—',
+        label: cacheHit || '-',
         title: copy.cacheHitRateTitle,
         toggleLabel: copy.toggleCacheHitRate,
         variant: 'text'
@@ -671,7 +671,7 @@ export function useStatusbarItems({
       {
         icon: <Zap className="size-3" />,
         id: 'tokens-per-second',
-        label: tokensPerSecond || '—',
+        label: tokensPerSecond || '-',
         title: copy.tokensPerSecondTitle,
         toggleLabel: copy.toggleTokensPerSecond,
         variant: 'text'

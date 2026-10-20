@@ -3,18 +3,17 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { findGroupOfPane } from '@/components/pane-shell/tree/model'
 import { $layoutTree, activateTreePane } from '@/components/pane-shell/tree/store'
-import { Codicon } from '@/components/ui/codicon'
+import { ProfilePicture } from '@/components/ui/profile-picture'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
-import { Command, Home, HomeFilled } from '@/lib/icons'
-import { profileShortLabel } from '@/lib/profile-short-label'
+import { Bot, Command, Home, HomeFilled, RAIL_ICON_PROPS, Settings } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { SIDEBAR_RAIL_WIDTH } from '@/store/layout'
 import { $selectedStoredSessionId } from '@/store/session'
 import { $focusedSessionIsTile } from '@/store/session-states'
 
-import { appViewForPath, navigateToWorkspacePage, NEW_CHAT_ROUTE, sessionRoute } from '../../routes'
+import { appViewForPath, navigateToWorkspacePage, NEW_CHAT_ROUTE, sessionRoute, SETTINGS_ROUTE } from '../../routes'
 import { useOverlayRouting } from '../../shell/hooks/use-overlay-routing'
 import { TITLEBAR_HEIGHT } from '../../shell/titlebar'
 import type { SidebarNavItem } from '../../types'
@@ -97,9 +96,7 @@ export function SidebarRail() {
   const labelFor = (item: SidebarNavItem) => t.sidebar.nav[item.id] ?? item.label
   const { commandCenterOpen, toggleCommandCenter } = useOverlayRouting()
 
-  const commandCenterLabel = commandCenterOpen
-    ? t.shell.statusbar.closeCommandCenter
-    : t.shell.statusbar.openCommandCenter
+  const commandCenterLabel = t.activity.title
 
   const openSessions = () => {
     activate('sessions')
@@ -125,7 +122,7 @@ export function SidebarRail() {
           onClick={openSessions}
           tour="rail-nav-sessions"
         >
-          {activeId === 'sessions' && !pageActive ? <HomeFilled className="size-[1.125rem]" /> : <Home className="size-[1.125rem]" />}
+          {activeId === 'sessions' && !pageActive ? <HomeFilled {...RAIL_ICON_PROPS} /> : <Home {...RAIL_ICON_PROPS} />}
         </RailButton>
       )}
       {items.map(item => {
@@ -145,9 +142,9 @@ export function SidebarRail() {
             tour={`rail-nav-${item.id}`}
           >
             {isNavItemActive(item, view, pathname) && item.filledIcon ? (
-              <item.filledIcon className="size-[1.125rem]" />
+              <item.filledIcon {...RAIL_ICON_PROPS} />
             ) : (
-              <item.icon className="size-[1.125rem]" />
+              <item.icon {...RAIL_ICON_PROPS} />
             )}
           </RailButton>
         )
@@ -160,31 +157,40 @@ export function SidebarRail() {
           onClick={() => activate(pane.id)}
           tour={`rail-pane-${pane.id}`}
         >
-          <Codicon name="robot" size="1rem" />
+          <Bot {...RAIL_ICON_PROPS} />
         </RailButton>
       ))}
       <div className="mt-auto flex flex-col items-center gap-2 pb-2">
         <UpdateIndicator />
+        <RailButton
+          active={view === 'settings' || pathname.startsWith(SETTINGS_ROUTE)}
+          label={t.sidebar.nav.settings}
+          onClick={() => navigate(SETTINGS_ROUTE)}
+          tip={<TipKeybindLabel actionId="nav.settings" text={t.sidebar.nav.settings} />}
+          tour="nav-settings"
+        >
+          <Settings {...RAIL_ICON_PROPS} />
+        </RailButton>
         {/* The way into every other surface (was the status bar's ⌘). */}
         <RailButton
           active={commandCenterOpen}
           label={commandCenterLabel}
           onClick={toggleCommandCenter}
-          tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterOpen ? commandCenterLabel : t.commandCenter.railTip} />}
+          tip={<TipKeybindLabel actionId="nav.commandCenter" text={commandCenterLabel} />}
           tour="rail-command-center"
         >
-          <Command className="size-[1.125rem]" />
+          <Command {...RAIL_ICON_PROPS} />
         </RailButton>
         <ProfileSwitcher
           contentAlign="end"
           contentSide="right"
-          renderTrigger={({ label, name }) => (
+          renderTrigger={({ connectionId, label, name, tone }) => (
             <button
               aria-label={label}
-              className="grid size-7 place-items-center rounded-full bg-(--ui-control-active-background) text-xs font-medium text-foreground transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-bg-tertiary) active:scale-[0.97]"
+              className="grid size-8 place-items-center rounded-md transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background)"
               type="button"
             >
-              {profileShortLabel(name || 'default')}
+              <ProfilePicture className="size-7 text-sm" connectionId={connectionId} name={name || 'default'} tone={tone} />
             </button>
           )}
           wrapperClassName="inline-flex"

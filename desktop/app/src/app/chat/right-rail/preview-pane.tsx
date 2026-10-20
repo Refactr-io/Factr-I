@@ -255,6 +255,12 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
   const consoleOpen = useStore(consoleState.$open)
   const selectedStoredSessionId = useStore($selectedStoredSessionId)
   const [currentUrl, setCurrentUrl] = useState(target.url)
+  // The resting Browser (`about:blank`, painted over by BrowserTools) owns no guest: a <webview> costs a whole
+  // renderer process (~85 MB) before it has a page. The first address typed into the bar arms it.
+  const armKey = `${tabId ?? ''}|${target.url}`
+  const [armed, setArmed] = useState<{ key: string; url: string } | null>(null)
+  const armedUrl = armed?.key === armKey ? armed.url : null
+  const restingBlank = target.kind === 'url' && armedUrl === null && (!target.url || /^about:blank\/?$/i.test(target.url))
   const liveUrlRef = useRef(currentUrl)
   liveUrlRef.current = currentUrl
   const [devtoolsOpen, setDevtoolsOpen] = useState(false)
@@ -714,7 +720,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
           // rejected load is a real navigation failure the user has to see —
           // `did-fail-load` doesn't fire for every rejection (a bad scheme
           // rejects outright).
-          webviewRef.current?.loadURL?.(reached)
+          webviewRef.current ? webviewRef.current.loadURL?.(reached) : setArmed({ key: armKey, url: reached })
         )
         .catch((error: unknown) => {
           setLoadError({
@@ -724,7 +730,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
           setLoading(false)
         })
     },
-    [copy.unreachableDescription]
+    [armKey, copy.unreachableDescription]
   )
 
   const goBack = useCallback(() => {
@@ -1028,14 +1034,14 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
 
     host.replaceChildren()
     webviewRef.current = null
-    setCurrentUrl(target.url)
+    setCurrentUrl(armedUrl ?? target.url)
     setDevtoolsOpen(false)
     setHistory({ back: false, forward: false })
     setLoadError(null)
     consoleState.reset()
     setLoading(true)
 
-    if (!isWebPreview || isRemoteHtml) {
+    if (!isWebPreview || isRemoteHtml || restingBlank) {
       setLoading(false)
 
       return
@@ -1044,7 +1050,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
     const webview = document.createElement('webview') as PreviewWebview
     webview.className = 'flex h-full w-full flex-1 bg-transparent'
     webview.setAttribute('partition', 'persist:factr-preview')
-    webview.setAttribute('src', target.url)
+    webview.setAttribute('src', armedUrl ?? target.url)
     webview.setAttribute('webpreferences', 'contextIsolation=yes,nodeIntegration=no,sandbox=yes')
 
     // The guest preload (main.ts installs it on this partition) forwards a
@@ -1277,7 +1283,7 @@ export function PreviewPane({ embedded = false, onRestartServer, reloadRequest =
       webview.remove()
       setAnnotate(session => (session.mode ? { ...endAnnotateMode(session), stack: emptyAnnotateStack() } : session))
     }
-  }, [appendConsoleEntry, consoleState, copy, isRemoteHtml, isWebPreview, tabId, target.kind, target.url])
+  }, [appendConsoleEntry, armedUrl, consoleState, copy, isRemoteHtml, isWebPreview, restingBlank, tabId, target.kind, target.url])
 
   return (
     <aside

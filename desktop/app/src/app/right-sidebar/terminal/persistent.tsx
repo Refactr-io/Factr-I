@@ -56,12 +56,14 @@ interface Rect {
   left: number
   width: number
   height: number
+  /** The slot's own corner radius (a tool card rounds its bottom corners); the fixed overlay must follow it. */
+  radius: string
 }
 
 const shown = (rect: Rect | null) => Boolean(rect && !rect.hidden && rect.width > 0 && rect.height > 0)
 
 const sameRect = (a: Rect | null, b: Rect) =>
-  !!a && a.hidden === b.hidden && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
+  !!a && a.hidden === b.hidden && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height && a.radius === b.radius
 
 export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalProps) {
   const slot = useStore($slot)
@@ -120,8 +122,8 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
       }
     }
 
-    const measure = (reason: string): boolean => {
-      if (rendererPaused()) {
+    const measure = (reason: string, force = false): boolean => {
+      if (rendererPaused() && !force) {
         syncHidden()
 
         return false
@@ -141,7 +143,8 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
         top,
         left,
         width: Math.ceil(r.right) - left,
-        height: Math.ceil(r.bottom) - top
+        height: Math.ceil(r.bottom) - top,
+        radius: getComputedStyle(slot).borderRadius
       }
 
       if (!sameRect(prev, next)) {
@@ -257,10 +260,22 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
 
     const handleResize = () => scheduleMeasure('window-resize')
 
+    // A preset or fill can move the slot (its ancestors reflow) without
+    // resizing it or touching an observed attribute, leaving the overlay on
+    // the old rect. A cheap poll catches whatever the observers miss.
+    // A window that is visible but unfocused (second monitor, side by side) still shows the overlay, so the poll
+    // keeps measuring there; only a hidden document sleeps.
+    const poll = window.setInterval(() => {
+      if (!stopped && document.visibilityState === 'visible' && measure('poll', true)) {
+        scheduleMeasure('settle')
+      }
+    }, 250)
+
     window.addEventListener('resize', handleResize)
 
     return () => {
       stopped = true
+      window.clearInterval(poll)
       cancelFrame()
       observer?.disconnect()
       positionObserver?.disconnect()
@@ -280,6 +295,7 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
     left: rect?.left ?? 0,
     width: rect?.width ?? 0,
     height: rect?.height ?? 0,
+    borderRadius: rect?.radius,
     display: 'flex',
     flexDirection: 'column',
     visibility: visible ? 'visible' : 'hidden',

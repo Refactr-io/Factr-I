@@ -44,7 +44,7 @@ export function discoverBundledPlugins(): void {
     }
 
     if (!plugin?.id || typeof plugin.register !== 'function') {
-      console.warn(`[plugins] ${path} has no valid default FactrPlugin export — skipped`)
+      console.warn(`[plugins] ${path} has no valid default FactrPlugin export - skipped`)
 
       continue
     }

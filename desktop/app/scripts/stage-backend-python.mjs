@@ -10,7 +10,7 @@ const stage = path.resolve(import.meta.dirname, '../build/backend-python')
 const managed = path.resolve(import.meta.dirname, '../build/backend-python-managed')
 // Kept next to (not inside) the staged tree so it never ships in the app bundle.
 export const integrityPath = root => `${root}.integrity.json`
-const version = '3.12.12'
+const version = '3.12.14'
 const pycTag = 'cpython-312'
 
 const targets = {

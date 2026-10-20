@@ -117,10 +117,10 @@ export async function readActivePreview(opts: PreviewReadOptions = {}): Promise<
       kind: target.kind,
       note:
         target.kind === 'file'
-          ? 'File preview — read the file itself with read_file.'
+          ? 'File preview - read the file itself with read_file.'
           : target.kind === 'artifact'
-            ? 'Generated artifact — its content is in the conversation that produced it.'
-            : 'The page has not finished loading — retry in a moment.',
+            ? 'Generated artifact - its content is in the conversation that produced it.'
+            : 'The page has not finished loading - retry in a moment.',
       path: target.path,
       title: target.label,
       url: target.url

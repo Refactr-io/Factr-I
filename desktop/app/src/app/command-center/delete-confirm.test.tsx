@@ -95,24 +95,3 @@ describe('Command Center session delete confirmation (#99410)', () => {
   })
 })
 
-describe('Command Center Usage: Run history link', () => {
-  it('shows a Run history button on Usage that opens the agents page', async () => {
-    const onOpenAgents = vi.fn()
-
-    render(
-      <MemoryRouter>
-        <CommandCenterView
-          initialSection="usage"
-          onClose={() => {}}
-          onDeleteSession={() => Promise.resolve()}
-          onOpenAgents={onOpenAgents}
-          onOpenSession={() => {}}
-        />
-      </MemoryRouter>
-    )
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Run history' }))
-
-    expect(onOpenAgents).toHaveBeenCalledTimes(1)
-  })
-})

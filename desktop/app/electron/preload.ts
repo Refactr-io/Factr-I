@@ -35,6 +35,19 @@ contextBridge.exposeInMainWorld('factrDesktop', {
   getProfileRoutes: profiles => ipcRenderer.invoke('factr:plugin-profile-routes', profiles),
   revalidateConnection: () => ipcRenderer.invoke('factr:connection:revalidate'),
   touchBackend: (profile, options) => ipcRenderer.invoke('factr:backend:touch', profile, options),
+  // Bot computers (one Docker container per bot). Failures return {ok:false,error}, never throw.
+  botRelay: { tick: () => ipcRenderer.invoke('factr:bot-relay:tick') },
+  botComputer: {
+    runtimeStatus: () => ipcRenderer.invoke('factr:bot-computer:runtime-status'),
+    setup: () => ipcRenderer.invoke('factr:bot-computer:setup'),
+    list: () => ipcRenderer.invoke('factr:bot-computer:list'),
+    status: profile => ipcRenderer.invoke('factr:bot-computer:status', profile),
+    start: profile => ipcRenderer.invoke('factr:bot-computer:start', profile),
+    setWanted: (profile, on) => ipcRenderer.invoke('factr:bot-computer:set-wanted', profile, on),
+    stop: profile => ipcRenderer.invoke('factr:bot-computer:stop', profile),
+    hold: (profile, reason, on) => ipcRenderer.invoke('factr:bot-computer:hold', profile, reason, on),
+    openDocker: () => ipcRenderer.invoke('factr:bot-computer:open-docker')
+  },
   getPoolLimits: () => ipcRenderer.invoke('factr:pool-limits:get'),
   setPoolLimits: limits => ipcRenderer.invoke('factr:pool-limits:set', limits),
   getGatewayWsUrl: profile => ipcRenderer.invoke('factr:gateway:ws-url', profile),

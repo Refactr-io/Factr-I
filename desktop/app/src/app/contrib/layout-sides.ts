@@ -3,7 +3,7 @@ import { computed } from 'nanostores'
 import { allPaneIds } from '@/components/pane-shell/tree/model'
 import { $layoutTree, bindTreeSideVisibility, mirrorLayoutTree } from '@/components/pane-shell/tree/store'
 import { modeLayout } from '@/store/interface-mode'
-import { $fileBrowserOpen, $panesFlipped, $sidebarOpen, setFileBrowserOpen, setSidebarOpen } from '@/store/layout'
+import { $panesFlipped, $sidebarOpen, setSidebarOpen } from '@/store/layout'
 
 /** Side toggles belong to panes, not physical edges. Derive the flip from the
  * tree so dragging sessions or choosing a mirrored preset remaps the buttons. */
@@ -39,18 +39,19 @@ export function bindLayoutSides() {
     }
   })
 
-  const $leftEdgeOpen = computed([$panesFlipped, $sidebarOpen, $fileBrowserOpen], (flipped, sidebar, files) =>
-    flipped ? files : sidebar
-  )
+  // The sessions column is the only side with a collapse toggle now. Tool cards (terminal, files, changes, browser)
+  // open and close one by one, so the tool side is never collapsed as a whole.
+  const $leftOpen = computed([$panesFlipped, $sidebarOpen], (flipped, sidebar) => (flipped ? true : sidebar))
+  const $rightOpen = computed([$panesFlipped, $sidebarOpen], (flipped, sidebar) => (flipped ? sidebar : true))
 
-  const $rightEdgeOpen = computed([$panesFlipped, $sidebarOpen, $fileBrowserOpen], (flipped, sidebar, files) =>
-    flipped ? sidebar : files
-  )
-
-  bindTreeSideVisibility('left', $leftEdgeOpen, open =>
-    ($panesFlipped.get() ? setFileBrowserOpen : setSidebarOpen)(open)
-  )
-  bindTreeSideVisibility('right', $rightEdgeOpen, open =>
-    ($panesFlipped.get() ? setSidebarOpen : setFileBrowserOpen)(open)
-  )
+  bindTreeSideVisibility('left', $leftOpen, open => {
+    if (!$panesFlipped.get()) {
+      setSidebarOpen(open)
+    }
+  })
+  bindTreeSideVisibility('right', $rightOpen, open => {
+    if ($panesFlipped.get()) {
+      setSidebarOpen(open)
+    }
+  })
 }

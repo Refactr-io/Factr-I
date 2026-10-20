@@ -318,6 +318,31 @@ type BotsMessages = {
 
   /** Bot-scoped scheduled jobs. Generic scheduling chrome (weekday names,
    *  Daily/Hourly, the job verbs) resolves against core's `cron` section. */
+  /** Bot computers: one Docker container per bot, started on demand. */
+  computer: {
+    word: { localSandbox: string; noDocker: string; off: string; on: string; starting: string; working: string }
+    start: string
+    stop: string
+    starting: string
+    startingBody: string
+    offTitle: string
+    offBody: string
+    noComputer: string
+    noComputerBody: string
+    giveComputer: string
+    removeComputer: string
+    onLine: (uptime: string, used: null | string, limit: null | string) => string
+    failedTitle: string
+    dockerNotRunning: string
+    imageMissing: string
+    imageMissingBody: string
+    dockerNotRunningBody: string
+    dockerNotInstalled: string
+    dockerNotInstalledBody: string
+    openDocker: string
+    getDocker: string
+    teach: string
+  }
   cron: {
     filterHint: string
     needsRosterFirst: string
@@ -419,7 +444,7 @@ const en: BotsMessages = {
     deleted: (name, count) =>
       count === 0
         ? `Deleted “${name}”`
-        : `Deleted “${name}” — ${count} ${count === 1 ? 'bot' : 'bots'} moved to Unassigned`,
+        : `Deleted “${name}” - ${count} ${count === 1 ? 'bot' : 'bots'} moved to Unassigned`,
     undo: 'Undo'
   },
   bot: {
@@ -436,7 +461,7 @@ const en: BotsMessages = {
     unpinnedToast: name => `${name} unpinned`,
     hide: 'Hide',
     unhide: 'Unhide',
-    hiddenToast: name => `${name} hidden — use the eye button in the Bots header to see hidden bots`,
+    hiddenToast: name => `${name} hidden - use the eye button in the Bots header to see hidden bots`,
     unhiddenToast: name => `${name} is back in the roster`,
     groupsMenu: groups => `Groups: ${groups}…`,
     manageGroups: 'Manage groups…',
@@ -447,8 +472,8 @@ const en: BotsMessages = {
     attentionFallback: 'Needs attention',
     attentionProviderAuth: 'Sign in again for this profile',
     attentionQuota: 'Quota or balance exhausted',
-    attentionMissingConfig: 'Provider not configured — run factr model',
-    attentionBlocked: 'Bot is blocked — see its last message',
+    attentionMissingConfig: 'Provider not configured - run factr model',
+    attentionBlocked: 'Bot is blocked - see its last message',
     duplicate: 'Duplicate',
     duplicateFailed: 'Duplicate failed',
     deleteTitle: 'Delete bot and profile?',
@@ -456,10 +481,10 @@ const en: BotsMessages = {
     createFirstHint: 'Open the Bots pane and hit “New Bot”.',
     createFailed: 'Could not create the profile yet',
     advanced: 'Advanced',
-    advancedHint: 'Advanced — model, skills, toolsets, SOUL.md',
+    advancedHint: 'Advanced - model, skills, toolsets, SOUL.md',
     advancedFailed: 'Advanced configuration failed',
-    openAnotherChatUnsupported: 'Update Factr-I Desktop to open another Bot chat.',
-    remoteConnectionsUnsupported: 'Update Factr-I Desktop to chat with bots on other connections.',
+    openAnotherChatUnsupported: 'Update Factr-I to open another Bot chat.',
+    remoteConnectionsUnsupported: 'Update Factr-I to chat with bots on other connections.',
     openNeedsUpdateTitle: 'This bot lives on an older Factr-I',
     openNeedsUpdateMessage: connectionLabel => `Update ${connectionLabel}, then try again.`,
     openUnreachableTitle: 'Factr-I couldn’t reach the computer this bot runs on',
@@ -472,20 +497,20 @@ const en: BotsMessages = {
   },
   avatar: {
     classicShapes: 'Classic shapes',
-    blobFromName: 'Blob face — drawn from the bot’s name',
-    unlockFollowsName: 'Unlock — the face follows the bot’s name again',
+    blobFromName: 'Blob face - drawn from the bot’s name',
+    unlockFollowsName: 'Unlock - the face follows the bot’s name again',
     randomize: 'Randomize',
     tabBot: 'Bot',
     tabGenerate: 'Generate',
     upload: 'Upload',
     tabPet: 'Pet',
-    removeImage: 'Remove image — use shape',
-    removeBackToShape: 'Remove — back to shape avatar',
+    removeImage: 'Remove image - use shape',
+    removeBackToShape: 'Remove - back to shape avatar',
     describePlaceholder: 'Describe your avatar…',
     describeHint: 'Leave blank to auto-generate from name/title/description + agent-messaging roster.',
     matchTheName: 'Match the name',
     pickPet: 'Pick a pet as this bot’s profile picture.',
-    petLoadFailed: 'Could not load that pet — try another.',
+    petLoadFailed: 'Could not load that pet - try another.',
     imageTooLarge: 'Image too large (max 15MB).',
     generationFailed: 'Avatar generation failed',
     savedLocally: 'Saved look locally; remote persistence failed',
@@ -507,8 +532,8 @@ const en: BotsMessages = {
       `Compress ${member}'s hidden room history so the member stops failing with empty replies`,
     compressing: (member: string) => `Compressing ${member}'s room history…`,
     compressDone: (member: string, compressed: number, detail: string) =>
-      `Compressed ${compressed} room session${compressed === 1 ? '' : 's'} for ${member}${detail ? ` — ${detail}` : ''}`,
-    compressNothing: (member: string) => `Nothing to compress for ${member} — no room session yet`,
+      `Compressed ${compressed} room session${compressed === 1 ? '' : 's'} for ${member}${detail ? ` - ${detail}` : ''}`,
+    compressNothing: (member: string) => `Nothing to compress for ${member} - no room session yet`,
     compressFailed: (member: string, error: string) => `Could not compress ${member}'s room history: ${error}`,
     searchToAdd: 'Search bots to add',
     searchToAddPlaceholder: 'Search bots to add…',
@@ -516,10 +541,10 @@ const en: BotsMessages = {
     disbandTitle: 'Disband group chat?',
     deleteTitle: 'Delete group chat?',
     deleteAction: 'Delete',
-    composerPlaceholder: 'Say something — every bot in this group hears the room.',
+    composerPlaceholder: 'Say something - every bot in this group hears the room.',
     slashCommandsUnsupported:
       'Slash commands are not supported in group chats. Open an individual bot chat to use them.',
-    attachHint: 'Attach files — every responding bot sees them',
+    attachHint: 'Attach files - every responding bot sees them',
     newThread: 'New Thread',
     reply: 'Reply',
     replyInThread: 'Reply in thread',
@@ -532,19 +557,19 @@ const en: BotsMessages = {
     showActivity: 'Show room activity',
     hideActivity: 'Hide room activity',
     stop: 'Stop',
-    stopHint: 'Stop this run — interrupts the member on turn and holds the rest',
+    stopHint: 'Stop this run - interrupts the member on turn and holds the rest',
     allHeldStatus: count => `All ${count} bots are paused`,
     heldMembersStatus: members => `Paused: ${members}`,
     holdReleaseHint: 'Mention a paused bot or send @all resume to release them.',
     needsYourInput: 'A bot in this group chat needs your input',
     noMembersToSend: group =>
-      `${group} has no members to send to — add a bot, or reopen the room if members are still loading.`,
+      `${group} has no members to send to - add a bot, or reopen the room if members are still loading.`,
     pictureGenerationFailed: 'Group picture generation failed',
     nameTaken: name => `A group named “${name}” already exists.`,
     memberCount: count => `${count} bots`,
     you: 'You',
     availableCount: (available, total) => `${available} of ${total} available`,
-    settingsHint: group => `Group settings — rename ${group} or set a room picture`,
+    settingsHint: group => `Group settings - rename ${group} or set a room picture`,
     settingsLabel: group => `Group settings for ${group}`,
     disbandHint: group => `Disband the ${group} group chat`,
     disbandLabel: group => `Disband ${group}`,
@@ -555,12 +580,12 @@ const en: BotsMessages = {
     disbandDescPrefix: 'This removes the ',
     disbandDescSuffix: count =>
       ` grouping from its ${count} bots and clears the shared room log. The bots themselves and their per-group sessions are kept.`,
-    stopped: group => `Stopped ${group} — remaining turns are held until you resume`,
+    stopped: group => `Stopped ${group} - remaining turns are held until you resume`,
     removeAttachment: 'Remove attachment',
     threadFallback: 'Thread',
     replyCount: replies => `${replies} ${replies === 1 ? 'reply' : 'replies'}`,
     dropToThread: 'Drop to attach to this thread reply',
-    dropToRoom: 'Drop to attach — every responding bot sees it',
+    dropToRoom: 'Drop to attach - every responding bot sees it',
     waitingForAnswer: 'Waiting for your answer…',
     memberThinking: name => `${name} is thinking…`,
     roomWorking: 'The room is working…',
@@ -595,7 +620,7 @@ const en: BotsMessages = {
     heroStopped: 'Screen is off',
     heroNotInstalled: 'Not installed on this host',
     heroConnecting: 'Checking the screen…',
-    heroStale: 'Last seen — screen unreachable',
+    heroStale: 'Last seen - screen unreachable',
     heroSuppressed: 'Hidden while someone has control',
     heroOpenLive: 'Open live',
     heroInstall: 'Install',
@@ -621,18 +646,42 @@ const en: BotsMessages = {
     handBack: 'Hand back',
     handBackForce: 'Hand back (force)',
     handBackForceHint: 'Release a lease held by a viewer that is no longer here, e.g. after a reload.',
-    openNeedsUpdate: 'Update Factr-I Desktop to open bot screens.',
+    openNeedsUpdate: 'Update Factr-I to open bot screens.',
     youControl: 'You are in control',
     otherControls: 'Another viewer is in control',
     agentControls: 'Bot is in control',
     controlTaken: 'Another viewer took control. Watching only.'
+  },
+  computer: {
+    word: { localSandbox: 'Sandbox', noDocker: 'No Docker', off: 'Off', on: 'On', starting: 'Starting', working: 'Working' },
+    start: 'Start computer',
+    stop: 'Stop computer',
+    starting: 'Starting your bot\u2019s computer',
+    startingBody: 'Ready in a moment.',
+    offTitle: 'Computer is off',
+    offBody: 'Start it to give this bot its own desktop.',
+    noComputer: 'This bot has no computer',
+    noComputerBody: 'It works in a sandbox on your machine and uses no Docker, no extra memory. Give it its own computer for an isolated desktop and browser.',
+    giveComputer: 'Give it a computer',
+    removeComputer: 'Remove computer',
+    onLine: (uptime, used, limit) => `On for ${uptime}${used && limit ? `, using ${used} of ${limit}` : ''}`,
+    failedTitle: 'The computer did not start',
+    imageMissing: 'This bot\u2019s computer is not installed',
+    imageMissingBody: 'Docker is running, but the bot computer image is not on this machine yet. The bot works in its local sandbox meanwhile.',
+    dockerNotRunning: 'Docker is not running',
+    dockerNotRunningBody: 'Open Docker, then start this bot\u2019s computer.',
+    dockerNotInstalled: 'Docker is not installed',
+    dockerNotInstalledBody: 'Bots get their own computer through Docker Desktop.',
+    openDocker: 'Open Docker',
+    getDocker: 'Get Docker',
+    teach: 'Teach a task'
   },
   cron: {
     filterHint:
       'Scheduled jobs exist in this profile but none are tagged for this bot. Name a job "[bot:<name>] …" to show it here, or see them in Cron below.',
     needsRosterFirst: 'This bot has to appear in the roster first.',
     staleNotice: 'Could not refresh scheduled jobs. Showing the last list we had.',
-    readFailure: 'The list may still be there — this was a read failure, not a delete.',
+    readFailure: 'The list may still be there - this was a read failure, not a delete.',
     createDesc: bot => `A recurring task ${bot} runs on a schedule. Runs land in its own chat history.`,
     instruction: 'Instruction',
     whenToRun: 'When to run',
@@ -663,7 +712,7 @@ const en: BotsMessages = {
     runsWeekly: (day, time) => `Runs every ${day} at ${time}`,
     runsMonthly: (day, time) => `Runs on day ${day} of each month at ${time}`,
     runsInterval: (count, unit) => `Runs every ${count} ${unit}`,
-    runsRaw: 'Raw schedule — every Nm/Nh/Nd or 5-field cron',
+    runsRaw: 'Raw schedule - every Nm/Nh/Nd or 5-field cron',
     timesTotal: count => `, ${count} time(s) total`
   }
 }
@@ -765,8 +814,8 @@ const ja: BotsMessages = {
     advanced: '詳細設定',
     advancedHint: '詳細設定 — モデル、スキル、ツールセット、SOUL.md',
     advancedFailed: '詳細設定に失敗しました',
-    openAnotherChatUnsupported: '別のボットチャットを開くには Factr-I Desktop を更新してください。',
-    remoteConnectionsUnsupported: '他の接続上のボットとチャットするには Factr-I Desktop を更新してください。',
+    openAnotherChatUnsupported: '別のボットチャットを開くには Factr-I を更新してください。',
+    remoteConnectionsUnsupported: '他の接続上のボットとチャットするには Factr-I を更新してください。',
     openNeedsUpdateTitle: 'このボットは古い Factr-I 上で動いています',
     openNeedsUpdateMessage: connectionLabel => `${connectionLabel} を更新してから、もう一度お試しください。`,
     openUnreachableTitle: 'このボットが動いているコンピューターに Factr-I が接続できませんでした',
@@ -931,12 +980,14 @@ const ja: BotsMessages = {
     handBack: '戻す',
     handBackForce: '強制的に戻す',
     handBackForceHint: 'もう存在しないビューア（再読み込み後など）が保持しているリースを解放します。',
-    openNeedsUpdate: 'ボットの画面を開くには Factr-I Desktop を更新してください。',
+    openNeedsUpdate: 'ボットの画面を開くには Factr-I を更新してください。',
     youControl: 'あなたが操作中',
     otherControls: '別のビューアが操作中',
     agentControls: 'ボットが操作中',
     controlTaken: '別のビューアが操作を引き継ぎました。閲覧のみ。'
   },
+  // English until translated.
+  computer: en.computer,
   cron: {
     filterHint:
       'このプロファイルには定期実行ジョブがありますが、このボット向けのタグが付いたものはありません。ジョブ名を「[bot:<名前>] …」にするとここに表示されます。下のCronでも確認できます。',
@@ -1071,8 +1122,8 @@ const zh: BotsMessages = {
     advanced: '高级',
     advancedHint: '高级 — 模型、技能、工具集、SOUL.md',
     advancedFailed: '高级配置失败',
-    openAnotherChatUnsupported: '请更新 Factr-I Desktop 以打开另一个机器人聊天。',
-    remoteConnectionsUnsupported: '请更新 Factr-I Desktop 以与其他连接上的机器人聊天。',
+    openAnotherChatUnsupported: '请更新 Factr-I 以打开另一个机器人聊天。',
+    remoteConnectionsUnsupported: '请更新 Factr-I 以与其他连接上的机器人聊天。',
     openNeedsUpdateTitle: '这个机器人运行在较旧的 Factr-I 上',
     openNeedsUpdateMessage: connectionLabel => `请更新 ${connectionLabel}，然后重试。`,
     openUnreachableTitle: 'Factr-I 无法连接到运行这个机器人的电脑',
@@ -1231,12 +1282,14 @@ const zh: BotsMessages = {
     handBack: '交还',
     handBackForce: '强制交还',
     handBackForceHint: '释放已不在场的查看者（例如重新加载后）持有的控制权。',
-    openNeedsUpdate: '更新 Factr-I Desktop 以打开机器人屏幕。',
+    openNeedsUpdate: '更新 Factr-I 以打开机器人屏幕。',
     youControl: '你正在控制',
     otherControls: '另一位查看者正在控制',
     agentControls: '机器人正在控制',
     controlTaken: '另一位查看者已接管控制。仅可观看。'
   },
+  // English until translated.
+  computer: en.computer,
   cron: {
     filterHint:
       '此配置档案中有定时任务，但没有一个标记给这个机器人。将任务命名为“[bot:<名称>] …”即可显示在这里，也可以在下方的 Cron 中查看。',
@@ -1371,8 +1424,8 @@ const zhHant: BotsMessages = {
     advanced: '進階',
     advancedHint: '進階 — 模型、技能、工具集、SOUL.md',
     advancedFailed: '進階設定失敗',
-    openAnotherChatUnsupported: '請更新 Factr-I Desktop 以開啟另一個機器人聊天。',
-    remoteConnectionsUnsupported: '請更新 Factr-I Desktop 以與其他連線上的機器人聊天。',
+    openAnotherChatUnsupported: '請更新 Factr-I 以開啟另一個機器人聊天。',
+    remoteConnectionsUnsupported: '請更新 Factr-I 以與其他連線上的機器人聊天。',
     openNeedsUpdateTitle: '這個機器人運行在較舊的 Factr-I 上',
     openNeedsUpdateMessage: connectionLabel => `請更新 ${connectionLabel}，然後再試一次。`,
     openUnreachableTitle: 'Factr-I 無法連線到運行這個機器人的電腦',
@@ -1531,12 +1584,14 @@ const zhHant: BotsMessages = {
     handBack: '交還',
     handBackForce: '強制交還',
     handBackForceHint: '釋放已不在場的檢視者（例如重新載入後）持有的控制權。',
-    openNeedsUpdate: '更新 Factr-I Desktop 以開啟機器人螢幕。',
+    openNeedsUpdate: '更新 Factr-I 以開啟機器人螢幕。',
     youControl: '你正在控制',
     otherControls: '另一位檢視者正在控制',
     agentControls: '機器人正在控制',
     controlTaken: '另一位檢視者已接手控制。僅可觀看。'
   },
+  // English until translated.
+  computer: en.computer,
   cron: {
     filterHint:
       '此設定檔中有排程工作，但沒有任何一個標記給這個機器人。將工作命名為「[bot:<名稱>] …」即可顯示在這裡，也可以在下方的 Cron 中查看。',

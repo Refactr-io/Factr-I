@@ -40,7 +40,7 @@ export function SideAgents({ active, side, tick }: SideAgentsProps) {
       <div className="text-[0.875rem] leading-6 text-white/85">{line1}</div>
       <div
         className="mt-1 text-[0.875rem] leading-6"
-        style={{ color: WHITE_FAINT, fontFamily: "'JetBrains Mono', monospace" }}
+        style={{ color: WHITE_FAINT, fontFamily: "'IBM Plex Mono', monospace" }}
       >
         {active ? decoded(line2, EVERYWHERE_T + delayMs + 500, tick, 700) : line2}
       </div>

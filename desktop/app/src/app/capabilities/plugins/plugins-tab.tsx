@@ -227,7 +227,7 @@ function HalfCell({ label, children }: { label: string; children: ReactNode }) {
 function Dash() {
   return (
     <span aria-hidden className="w-9 text-center text-(--ui-text-quaternary)">
-      —
+      -
     </span>
   )
 }

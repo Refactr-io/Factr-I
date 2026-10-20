@@ -1,0 +1,83 @@
+import { backendTargetProfile, botConnectionRoute, requestForBot } from './routing'
+import type { BotRequestOptions } from './routing'
+import type { CanonicalSession, RosterRow } from './types'
+
+/** The profile the registry is asked about. Always sent: which engine answers depends on how the window is routed
+ *  (an unrouted row reaches the ACTIVE gateway, which may be another bot's engine), and the pointer is keyed by this
+ *  name, so every engine writes and reads the same one. */
+const targetProfile = (bot: Partial<RosterRow>) => backendTargetProfile(botConnectionRoute(bot), String(bot.name ?? ''))
+
+/** A bot's own engine keeps its sessions in its own store; the roster's `canonical_session` is read from the
+ *  primary's state.db, which never sees them, so it is null for every engine-backed bot. The engine serves the
+ *  registry itself (`bot.chat.get`): `undefined` means this engine cannot answer (an older engine, a Python
+ *  gateway, unreachable), `null` that it answered and has no Bot Chat yet. */
+export async function engineBotChat(
+  bot: Partial<RosterRow>,
+  options?: BotRequestOptions
+): Promise<CanonicalSession | null | undefined> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(
+        bot,
+        'bot.chat.get',
+        { profile: targetProfile(bot) },
+        options
+      )
+
+      return res && typeof res === 'object' && 'canonical_session' in res ? (res.canonical_session ?? null) : undefined
+    } catch (error) {
+      // A cold open with a full pool queues behind an eviction (and the engine's own start): that is a slow answer, not
+      // a "cannot answer". Ask once more when it is over, so the click does not end in "Could not open".
+      if (attempt === 0 && TRANSIENT_OPEN_FAILURE.test(String((error as Error)?.message ?? error))) {
+        await new Promise(resolve => setTimeout(resolve, OPEN_RETRY_MS))
+
+        continue
+      }
+
+      return undefined
+    }
+  }
+}
+
+/** Failures of a cold open that are worth one more try. */
+const TRANSIENT_OPEN_FAILURE = /timed out|free local slot|retired|cancelled|connection descriptor|starting/i
+export const OPEN_RETRY_MS = 2500
+
+/** Register a Bot Chat the desktop just created on this engine. The registered chat comes back: the new one, or
+ *  the one that was already there (the first wins). `undefined` when the engine cannot answer. */
+export async function engineClaimBotChat(bot: Partial<RosterRow>, sessionId: string): Promise<CanonicalSession | undefined> {
+  try {
+    const res = await requestForBot<{ canonical_session?: CanonicalSession | null }>(bot, 'bot.chat.claim', {
+      profile: targetProfile(bot),
+      session_id: sessionId
+    })
+
+    return res?.canonical_session ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** What the bots' engines last said about their Bot Chat, kept for the roster. Filled from the primary's batch
+ *  answer and from the open path; the roster itself never asks a bot's engine, because that would start it. */
+const chats = new Map<string, { at: number; chat: CanonicalSession | null }>()
+
+/** `connection::profile`: the row and the open path name the same bot the same way. */
+export const engineChatKey = (bot: Partial<RosterRow>) => `${bot.connectionId ?? 'local'}::${bot.name ?? ''}`
+
+export const cachedEngineBotChat = (bot: Partial<RosterRow>) => chats.get(engineChatKey(bot))
+
+/** Remember an answer. A `null` (the asker did not know the chat) never erases a chat that was learned. */
+export function rememberEngineBotChat(bot: Partial<RosterRow>, chat: CanonicalSession | null, at = Date.now()): boolean {
+  const key = engineChatKey(bot)
+  const before = chats.get(key)?.chat ?? null
+
+  chats.set(key, { at, chat: chat ?? before })
+
+  return (chat?.id ?? null) !== (before?.id ?? null)
+}
+
+/** Test seam. */
+export function resetEngineBotChats(): void {
+  chats.clear()
+}

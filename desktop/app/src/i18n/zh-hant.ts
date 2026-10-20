@@ -535,7 +535,7 @@ export const zhHant = defineLocale({
       appActionsRight: '右側',
       terminalFontTitle: '終端機字型',
       terminalFontDesc:
-        '選擇已安裝的字型用於桌面端終端機。Nerd Font 可正確顯示 Powerlevel10k 與 Shell 圖示；留空則使用內建的 JetBrains Mono。',
+        '選擇已安裝的字型用於桌面端終端機。Nerd Font 可正確顯示 Powerlevel10k 與 Shell 圖示；留空則使用內建的 IBM Plex Mono。',
       terminalFontPlaceholder: 'MesloLGS NF 或 CSS 字型堆疊',
       terminalFontPreview: '字形預覽',
       terminalFontReset: '使用預設字型',
@@ -1095,15 +1095,11 @@ export const zhHant = defineLocale({
       unavailableDesc: '桌面 IPC 橋接器未公開閘道設定。',
       title: '閘道連線',
       envOverride: '環境變數覆寫',
-      intro:
-        'Factr-I 預設會啟動自己的本機閘道。如果您希望此應用程式控制另一台機器或可信代理後面已執行的 Factr-I 後端，請使用遠端閘道。閘道連線屬於本機層級設定；設定檔是從已連線的閘道中探索出來的。',
       envOverrideTitle: '環境變數正在控制此桌面工作階段。',
       envOverrideDesc: '取消設定 FACTR_DESKTOP_REMOTE_URL 和 FACTR_DESKTOP_REMOTE_TOKEN 後才會使用下方儲存的設定。',
       localTitle: '本機閘道',
       localDesc: '在 localhost 啟動私有 Factr-I 後端。這是預設方式，可離線使用。',
       remoteTitle: '遠端閘道',
-      remoteDesc:
-        '將此桌面殼層連線至遠端 Factr-I 後端。託管閘道使用 OAuth 或帳號密碼；自託管閘道也可使用工作階段 Token。',
       remoteUrlTitle: '遠端 URL',
       remoteUrlDesc: '遠端儀表板後端的基礎 URL。支援路徑前綴，例如 /factr。',
       probing: '正在檢查此閘道的驗證方式…',
@@ -2135,6 +2131,7 @@ export const zhHant = defineLocale({
     failedLoad: '載入排程工作失敗',
     failedUpdate: '更新排程工作失敗',
     failedTrigger: '觸發排程工作失敗',
+    runNow: '立即執行',
     failedDelete: '刪除排程工作失敗',
     failedSave: '儲存排程工作失敗',
     editTitle: '編輯排程工作',

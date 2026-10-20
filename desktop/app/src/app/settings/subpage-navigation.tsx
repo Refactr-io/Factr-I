@@ -185,7 +185,7 @@ export const SettingsStack = forwardRef<
               style={index === sections.length - 1 && viewportHeight ? { minHeight: viewportHeight - 24 } : undefined}
             >
               {index > 0 && <div aria-hidden className="mb-10 h-px w-full rounded-full bg-(--ui-stroke-tertiary)" />}
-              <h2 className="mb-5 text-[25px] leading-[30px] font-[550] tracking-[-0.0113em] text-foreground">
+              <h2 className="mb-5 type-settings-heading text-foreground">
                 {section.label}
               </h2>
               <SettingsStackContext.Provider value={{ index }}>

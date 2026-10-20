@@ -436,9 +436,24 @@ describe('PreviewPane console state', () => {
 
     expect(rendered.container.textContent).toContain('Type an address above')
 
+    // The resting Browser owns no guest: a webview is a whole renderer process.
+    expect(rendered.container.querySelector('webview')).toBeNull()
+
+    const address = rendered.getByRole('textbox', { name: 'Address' }) as HTMLInputElement
+
+    // The first address typed mounts the guest; the empty state is dismissed once it navigates.
+    await act(async () => {
+      fireEvent.focus(address)
+      fireEvent.change(address, { target: { value: 'https://example.com' } })
+      fireEvent.keyDown(address, { key: 'Enter' })
+    })
+
+    await waitFor(() => expect(rendered.container.querySelector('webview')?.getAttribute('src')).toBe('https://example.com'), {
+      container: rendered.container
+    })
+
     const webview = rendered.container.querySelector('webview') as HTMLElement
 
-    // Navigating away dismisses it; the bar and the webview stay put.
     act(() => {
       webview.dispatchEvent(Object.assign(new Event('did-navigate'), { url: 'https://example.com' }))
     })

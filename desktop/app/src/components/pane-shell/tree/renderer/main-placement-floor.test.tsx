@@ -93,6 +93,8 @@ describe('the main placement floor in the renderer', () => {
     expect(main).toBeTruthy()
     expect(main!.style.display).not.toBe('none')
     expect(zoneWrapper('grp-sessions')?.style.display).not.toBe('none')
-    expect(zoneWrapper('grp-tools')?.style.display).toBe('none')
+    // Tool cards slide shut (zero track, then hidden) instead of snapping to display:none.
+    expect(zoneWrapper('grp-tools')?.style.flex).toBe('0 0 0px')
+    expect(zoneWrapper('grp-tools')?.style.visibility).toBe('hidden')
   })
 })

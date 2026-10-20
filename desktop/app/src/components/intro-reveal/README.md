@@ -4,7 +4,7 @@ A scripted chat types a request, runs tool rows beside a cube viewport, streams 
 reply, expands into parallel agents, then ends on the brand. The seven beats take
 22 seconds of wall time, followed by a 900 ms dissolve. Reduced motion shows the
 brand briefly instead. Sound is on by default and respects the haptics mute
-preference. Fonts are the existing Collapse and JetBrains Mono faces.
+preference. Fonts are the existing Collapse and IBM Plex Mono faces.
 
 Eligibility is `guestOnboardingEnabled && !firstRunSkipped && !hasSeenIntroReveal()`.
 Electron sets the flag from `FACTR_GUEST_ONBOARDING=1` or `--guest-onboarding`.

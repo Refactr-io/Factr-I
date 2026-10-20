@@ -12,6 +12,10 @@
  *    every later open after a create or cancel silently started fresh.
  */
 
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
 import type * as FactrSdk from '@factr/plugin-sdk'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -28,16 +32,18 @@ interface CapabilitiesViewProps {
 }
 
 const mocks = vi.hoisted(() => ({
+  activeProfile: { value: 'default' },
   connections: vi.fn(async () => [] as { id: string; label: string }[]),
-  createCanonicalChat: vi.fn(async () => 'session-1'),
+  createCanonicalChat: vi.fn(async (_profile: string, _options: { kickoff: boolean }) => 'session-1'),
   deleteBot: vi.fn(async () => undefined),
   /** Flipped off to model a desktop build that predates the live surface. */
   hasCapabilitiesView: { value: true },
   notify: vi.fn(),
   notifyError: vi.fn(),
   request: vi.fn(),
-  requestProfile: vi.fn(async () => ({})),
+  requestProfile: vi.fn(async (_route: unknown, _method: string, _params: Record<string, unknown>) => ({})),
   saveBotMeta: vi.fn(),
+  refreshBotRelayRosters: vi.fn(async () => undefined),
   skillsView: [] as CapabilitiesViewProps[]
 }))
 
@@ -62,7 +68,12 @@ vi.mock('@factr/plugin-sdk', async importOriginal => {
       notify: mocks.notify,
       notifyError: mocks.notifyError,
       request: mocks.request,
-      requestProfile: mocks.requestProfile
+      requestProfile: mocks.requestProfile,
+      state: {
+        ...original.host.state,
+        connectionId: { get: () => 'local' },
+        profile: { get: () => mocks.activeProfile.value }
+      }
     },
     // The plugin bundle normally lands via `ctx.i18n.register` at load.
     usePluginI18n: () => translateBots
@@ -77,6 +88,7 @@ vi.mock('@factr/plugin-sdk', async importOriginal => {
   return mocked
 })
 
+vi.mock('./relay', () => ({ refreshBotRelayRosters: mocks.refreshBotRelayRosters }))
 vi.mock('./canonical-chat', () => ({ createCanonicalChat: mocks.createCanonicalChat }))
 vi.mock('./profile-ops', () => ({ deleteBot: mocks.deleteBot }))
 vi.mock('./data', async importOriginal => {
@@ -137,6 +149,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.activeProfile.value = 'default'
+  mocks.createCanonicalChat.mockImplementation(async () => 'session-1')
   mocks.skillsView.length = 0
   mocks.connections.mockResolvedValue([])
   mocks.requestProfile.mockResolvedValue({})
@@ -167,6 +181,78 @@ afterEach(async () => {
 })
 
 describe('materializing the draft profile', () => {
+  it.each([false, true])('creates alpha then beta under the primary config home (lazy draft: %s)', async lazy => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bots-create-'))
+    const configHome = path.join(root, 'config')
+    const sandboxConfig = path.join(configHome, 'profiles/alpha/.local-computer/config')
+    const destinations: string[] = []
+
+    const create = (home: string, method: string, params: Record<string, unknown>) => {
+      if (method === 'profiles.create') {
+        destinations.push(home)
+        fs.mkdirSync(path.join(home, 'profiles', String(params.name)), { recursive: true })
+      }
+
+      return {}
+    }
+
+    mocks.request.mockImplementation(async (method: string, params: Record<string, unknown>) =>
+      create(mocks.activeProfile.value === 'default' ? configHome : sandboxConfig, method, params)
+    )
+    mocks.requestProfile.mockImplementation(async (route, method, params) => {
+      expect(route).toEqual({ connectionId: 'local', mode: 'local', profile: 'default', targetProfile: 'default' })
+
+      return method === 'profiles.describe'
+        ? { mcp_servers: [], skills: [], toolsets: [] }
+        : create(configHome, method, params)
+    })
+    mocks.createCanonicalChat.mockImplementation(async profile => {
+      mocks.activeProfile.value = profile
+
+      return `session-${profile}`
+    })
+
+    try {
+      await renderDialog(true)
+
+      for (const name of ['alpha', 'beta']) {
+        fireEvent.change(screen.getByPlaceholderText('inbox-triage'), { target: { value: name } })
+
+        if (lazy && name === 'beta') {
+          fireEvent.click(screen.getByRole('button', { name: /Advanced/ }))
+          fireEvent.click(screen.getByRole('radio', { name: 'Capabilities' }))
+          await waitFor(() => expect(destinations).toHaveLength(2))
+        }
+
+        fireEvent.click(screen.getByRole('button', { name: 'Create Bot' }))
+        await waitFor(() => expect(mocks.createCanonicalChat).toHaveBeenCalledWith(name, { kickoff: true }))
+      }
+
+      expect(mocks.refreshBotRelayRosters).toHaveBeenCalledTimes(2)
+      expect(mocks.refreshBotRelayRosters.mock.invocationCallOrder[1]).toBeLessThan(
+        mocks.createCanonicalChat.mock.invocationCallOrder[1]
+      )
+      expect(destinations).toEqual([configHome, configHome])
+      expect(fs.existsSync(path.join(configHome, 'profiles/beta'))).toBe(true)
+      expect(fs.existsSync(path.join(sandboxConfig, 'profiles/beta'))).toBe(false)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('shows a root-backend error without creating the second bot in the active sandbox', async () => {
+    mocks.activeProfile.value = 'alpha'
+    mocks.requestProfile.mockRejectedValue(new Error('Primary backend unavailable'))
+    await renderDialog(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create Bot' }))
+
+    await screen.findByText('Primary backend unavailable')
+    expect(createCalls()).toHaveLength(0)
+    expect(mocks.createCanonicalChat).not.toHaveBeenCalled()
+    expect(mocks.notify).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['小助手', 'u5c0f-u52a9-u624b'],
     ['test机器人', 'test-u673a-u5668-u4eba']
@@ -209,6 +295,7 @@ describe('materializing the draft profile', () => {
   })
 
   it('pins a remote-target draft to the TARGET machine, not the active gateway', async () => {
+    mocks.activeProfile.value = 'alpha'
     mocks.connections.mockResolvedValue([
       { id: 'local', label: 'This Mac' },
       { id: 'studio', label: 'Studio' }

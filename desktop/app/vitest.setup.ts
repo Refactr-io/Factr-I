@@ -6,6 +6,21 @@ import { stubResizeObserver } from './src/test/jsdom'
 // Geometry assertions still belong in a real browser, not this inert observer.
 stubResizeObserver()
 
+// jsdom has no matchMedia; border-beam reads it unguarded on mount.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      addEventListener: () => undefined,
+      addListener: () => undefined,
+      dispatchEvent: () => false,
+      matches: false,
+      media: query,
+      onchange: null,
+      removeEventListener: () => undefined,
+      removeListener: () => undefined
+    }) as MediaQueryList
+}
+
 // Node 26 defines its own `localStorage` accessor on the global object, which
 // returns `undefined` unless the process was started with --localstorage-file
 // (it warns: "localStorage is not available because --localstorage-file was

@@ -37,6 +37,8 @@ const { hostMock, persistMock, requestForBotMock, saveBotMetaMock } = vi.hoisted
   saveBotMetaMock: vi.fn()
 }))
 
+vi.mock('./relay', () => ({ refreshBotRelayRosters: vi.fn(async () => undefined) }))
+
 vi.mock('@factr/plugin-sdk', () => ({
   BOT_CHAT_SESSION_HYDRATION_TIMEOUT_MS: 15_000,
   host: hostMock
@@ -173,7 +175,8 @@ describe('the registry row wins, always', () => {
     // No id-verification RPC: the name IS the identity, so there is nothing to
     // verify a stored id against.
     expect(calls.every(call => !('preferred_session_ids' in call.params))).toBe(true)
-    expect(calls.map(call => call.method)).toEqual(['session.list'])
+    // `bot.chat.get` asks the engine for ITS registry (no id, nothing to verify); this mock engine cannot answer it.
+    expect(calls.map(call => call.method)).toEqual(['bot.chat.get', 'session.list'])
   })
 })
 

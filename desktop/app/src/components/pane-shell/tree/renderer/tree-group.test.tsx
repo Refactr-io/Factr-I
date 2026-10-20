@@ -224,12 +224,13 @@ describe('TreeGroup', () => {
   })
 
   it('keeps a top-edge strip inside its panel and yields native drag while moving a pane', () => {
+    // A tool pane (terminal) draws as a card with its own header, so the strip check uses a plain pane.
     disposePane = registry.register({
       area: 'panes',
       data: { placement: 'main' },
-      id: 'terminal',
-      title: 'Terminal',
-      render: () => <div>Terminal</div>
+      id: 'scratch',
+      title: 'Scratch',
+      render: () => <div>Scratch</div>
     })
     vi.stubGlobal('CSS', { escape: (value: string) => value })
     vi.stubGlobal(
@@ -240,14 +241,14 @@ describe('TreeGroup', () => {
         disconnect() {}
       }
     )
-    render(<TreeGroup leftEdge node={terminalGroup(false)} rightEdge topEdge />)
+    render(<TreeGroup leftEdge node={{ ...terminalGroup(false), active: 'scratch', panes: ['scratch'] }} rightEdge topEdge />)
     const zone = container!.querySelector('[data-tree-group]')!
     const strip = zone.querySelector<HTMLElement>('[data-zone-tabstrip]')!
     const header = zone.querySelector<HTMLElement>('[data-panel-header]')!
     expect(strip.closest('[data-tree-group]')).toBe(zone)
     expect(header.contains(strip)).toBe(true)
     expect(zone.querySelectorAll('[data-window-drag-handle]').length).toBeGreaterThan(0)
-    act(() => $treeDragging.set('terminal'))
+    act(() => $treeDragging.set('scratch'))
     expect(strip.style).toHaveProperty('WebkitAppRegion', 'no-drag')
     act(() => $treeDragging.set(null))
     expect(strip.style).toHaveProperty('WebkitAppRegion', '')

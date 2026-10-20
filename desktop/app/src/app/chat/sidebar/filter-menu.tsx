@@ -21,6 +21,7 @@ import {
 import { useI18n } from '@/i18n'
 import { desktopGit } from '@/lib/desktop-git'
 import { cn } from '@/lib/utils'
+import { openAgentImport } from '@/store/agent-import'
 import { $showsAdvancedChrome } from '@/store/interface-mode'
 import {
   $sidebarCardRows,
@@ -390,6 +391,7 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
               <DropdownMenuItem onSelect={() => void runImportProfileFlow()}>
                 {t.profiles.importProfile}
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={openAgentImport}>{t.profiles.importFromAgents}</DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 

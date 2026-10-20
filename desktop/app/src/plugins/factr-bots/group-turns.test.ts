@@ -152,21 +152,21 @@ describe('session resolution', () => {
 
     // A real gateway error on the NEXT resume of the member's own stored
     // session — backend still warming up, a network blip, not "not found".
-    const request = host.request as (method: string, params: Record<string, unknown>) => Promise<unknown>
+    const request = host.requestProfile as (route: unknown, method: string, params: Record<string, unknown>) => Promise<unknown>
 
-    host.request = async (method: string, params: Record<string, unknown>) => {
+    host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown>) => {
       if (method === 'session.resume' && params.session_id === first.stored) {
         throw Object.assign(new Error('gateway temporarily unavailable'), { code: 5000 })
       }
 
-      return request(method, params)
+      return request(route, method, params)
     }
 
     await expect(room.turns.ensureGroupChatSession('Alpha', member, 't1')).rejects.toThrow(
       /Could not check .*group session/
     )
 
-    host.request = request
+    host.requestProfile = request
 
     // Nothing was forked: the room's session pointer is untouched, and the
     // original session is still the only one on record for this member.
@@ -341,11 +341,11 @@ describe('session-gone classification', () => {
     let now = 1_000_000
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => (now += 60_000))
     const room = await loadRoom({ turn: () => [] })
-    const request = host.request as (method: string, params?: Record<string, unknown>) => Promise<unknown>
+    const request = host.requestProfile as (route: unknown, method: string, params?: Record<string, unknown>) => Promise<unknown>
     let submitted = false
 
-    host.request = async (method: string, params: Record<string, unknown> = {}) => {
-      const result = (await request(method, params)) as Record<string, unknown> & { messages?: { role: string }[] }
+    host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown> = {}) => {
+      const result = (await request(route, method, params)) as Record<string, unknown> & { messages?: { role: string }[] }
 
       submitted = submitted || method === 'prompt.submit'
 
@@ -401,6 +401,15 @@ describe('per-turn socket lease', () => {
     // Exactly one disposal, via the turn lease's own release at the end.
     expect(room.gateway.disposals()).toBe(1)
     expect(room.gateway.timeline.at(-1)).toBe('release')
+  })
+
+  it('retains an unscoped local profile for its entire session sequence too', async () => {
+    const room = await loadRoom({ turn: () => 'local reply' })
+    expect(await room.turns.runGroupChatMemberTurn('Room', LOCAL_MEMBER, 'hi', 't1', [IMG])).toBe('local reply')
+    expect(room.gateway.timeline[0]).toBe('retain')
+    expect(room.gateway.timeline.at(-1)).toBe('release')
+    expect(room.gateway.rpc.every(call => call.refcountAfter >= 1)).toBe(true)
+    expect(room.gateway.disposals()).toBe(1)
   })
 
   it('is released even when the turn fails', async () => {
@@ -681,13 +690,13 @@ describe('clarify and approvals (#90694)', () => {
           release = resolve
         })
 
-        const original = host.request as (method: string, params: Record<string, unknown>) => Promise<any>
+        const original = host.requestProfile as (route: unknown, method: string, params: Record<string, unknown>) => Promise<any>
         let submitted = false
         let answered = false
         let polls = 0
 
-        host.request = async (method: string, params: Record<string, unknown>) => {
-          const result = await original(method, params)
+        host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown>) => {
+          const result = await original(route, method, params)
 
           if (method === 'prompt.submit') {
             submitted = true
@@ -792,16 +801,16 @@ describe('clarify and approvals (#90694)', () => {
           release = resolve
         })
 
-        const original = host.request as (method: string, params: Record<string, unknown>) => Promise<any>
+        const original = host.requestProfile as (route: unknown, method: string, params: Record<string, unknown>) => Promise<any>
 
-        host.request = async (method: string, params: Record<string, unknown>) => {
+        host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown>) => {
           if (method === rejectedMethod) {
             phaseEntered()
             await held
             throw new Error('401 unauthorized late rejection')
           }
 
-          return original(method, params)
+          return original(route, method, params)
         }
 
         const drive = room.rounds.runGroupChatRounds('Core', members, 'thread')
@@ -853,17 +862,17 @@ describe('clarify and approvals (#90694)', () => {
         release = resolve
       })
 
-      const original = host.request as (method: string, params: Record<string, unknown>) => Promise<any>
+      const original = host.requestProfile as (route: unknown, method: string, params: Record<string, unknown>) => Promise<any>
       let submitted = false
 
-      host.request = async (method: string, params: Record<string, unknown>) => {
+      host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown>) => {
         if (method === 'session.resume' && submitted) {
           entered()
           await held
           throw new Error('poll rejected after deadline')
         }
 
-        const result = await original(method, params)
+        const result = await original(route, method, params)
 
         if (method === 'prompt.submit') {
           submitted = true
@@ -926,11 +935,11 @@ describe('clarify and approvals (#90694)', () => {
 
     let background = false
     const backgroundProfiles: unknown[] = []
-    const original = host.request as (method: string, params: Record<string, unknown>) => Promise<any>
+    const original = host.requestProfile as (route: unknown, method: string, params: Record<string, unknown>) => Promise<any>
 
-    host.request = async (method: string, params: Record<string, unknown>) => {
+    host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown>) => {
       if (method !== 'session.resume') {
-        return original(method, params)
+        return original(route, method, params)
       }
 
       if (background) {
@@ -1065,11 +1074,11 @@ describe('clarify and approvals (#90694)', () => {
 describe('in-flight marker', () => {
   it('marks a turn in flight at submit and clears the marker with its reply', async () => {
     const room = await loadRoom({ pollsBusy: 1, turn: () => 'the answer' })
-    const request = host.request as (method: string, params?: Record<string, unknown>) => Promise<unknown>
+    const request = host.requestProfile as (route: unknown, method: string, params?: Record<string, unknown>) => Promise<unknown>
     const seen: { marker?: unknown; live?: boolean } = {}
 
-    host.request = async (method: string, params: Record<string, unknown> = {}) => {
-      const result = await request(method, params)
+    host.requestProfile = async (route: unknown, method: string, params: Record<string, unknown> = {}) => {
+      const result = await request(route, method, params)
 
       if (method === 'session.resume' && room.gateway.rpcFor('prompt.submit').length && seen.marker === undefined) {
         seen.marker = room.chat.$groupChats.get().Room?.stranded?.helper

@@ -258,6 +258,10 @@ const $paneShares = modeLayout.atom<Record<string, number>>(
   )
 )
 
+/** Where a dismissed pane sat (its seam partner + side), so re-opening puts it back
+ *  in its own column instead of the pane's registry default dock. In-memory. */
+const closedAnchors = new Map<string, { pane: string; pos: DropPosition }>()
+
 function rememberPaneShare(tree: LayoutNode, paneId: string) {
   const zone = findGroupOfPane(tree, paneId)
 
@@ -280,6 +284,12 @@ function rememberPaneShare(tree: LayoutNode, paneId: string) {
   const partner = at > 0 ? at - 1 : at + 1
   const pair = (parent.weights[at] ?? 1) + (parent.weights[partner] ?? 1)
   const share = pair > 0 ? (parent.weights[at] ?? 1) / pair : null
+  const partnerPane = allPaneIds(parent.children[partner]!)[0]
+
+  if (partnerPane) {
+    const column = parent.orientation === 'column'
+    closedAnchors.set(paneId, { pane: partnerPane, pos: partner < at ? (column ? 'bottom' : 'right') : column ? 'top' : 'left' })
+  }
 
   if (validShare(share)) {
     $paneShares.set({ ...$paneShares.get(), [paneId]: share })
@@ -1563,7 +1573,9 @@ export function adoptContributedPanes(): void {
   let next = healed
 
   for (const pane of missing) {
-    const dock = dataOf(pane.id)?.dock
+    const closedAt = closedAnchors.get(pane.id)
+    const remembered = closedAt && allPaneIds(next).includes(closedAt.pane) ? closedAt : undefined
+    const dock = remembered ? { pane: remembered.pane, pos: remembered.pos } : dataOf(pane.id)?.dock
     const placement = placementOf(pane.id) ?? 'right'
 
     const anchor =
@@ -1731,7 +1743,19 @@ export function applyTree(tree: LayoutNode, presetId: string, resting: readonly 
   // previous arrangement would distort it. Same for user-placed pins: picking
   // a layout hands pane placement back to the app (auto-docking resumes).
   clearAllPaneSizeOverrides()
+  closedAnchors.clear()
   $userPlacedPanes.set(new Set())
+
+  // A layout is a whole arrangement: every pane it places is in it again, even one closed earlier (dismissed). Left
+  // dismissed, the commit stripped the pane, and whatever docks against it (a Browser card docks above Files) lost its
+  // anchor and landed above the chat. A pane the layout rests stays closed through the hidden set instead.
+  const placed = new Set(allPaneIds(tree))
+  const dismissed = $dismissedPanes.get()
+
+  if ([...dismissed].some(id => placed.has(id))) {
+    $dismissedPanes.set(new Set([...dismissed].filter(id => !placed.has(id))))
+  }
+
   commit(previous ? adoptMissingPanes(tree, previous) : tree)
   markActivePreset(presetId)
 

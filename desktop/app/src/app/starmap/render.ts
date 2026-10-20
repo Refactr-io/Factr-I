@@ -593,7 +593,7 @@ export function drawScene(scene: Scene): DrawResult {
     const LINE_H = 16
     const ITEM_GAP = 8
     const badgeFont = '9px ui-sans-serif, system-ui, sans-serif'
-    const monoFont = '9px ui-monospace, SFMono-Regular, Menlo, monospace'
+    const monoFont = '9px "IBM Plex Mono", ui-monospace, Menlo, monospace'
     const titleFont = '600 11px ui-sans-serif, system-ui, sans-serif'
     const footerFont = '9px ui-sans-serif, system-ui, sans-serif'
     const FOOTER_H = 13
@@ -807,7 +807,7 @@ export function drawScramble({
   const t = now / 1000 // seconds, for the travelling-glow highlight
 
   ctx.save()
-  ctx.font = `${cell}px "JetBrains Mono", "Hiragino Sans", "Noto Sans JP", ui-monospace, monospace`
+  ctx.font = `${cell}px "IBM Plex Mono", "Hiragino Sans", "Noto Sans JP", ui-monospace, monospace`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 

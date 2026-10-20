@@ -356,7 +356,7 @@ describe('CapabilitiesView toolset management', { timeout: 60_000 }, () => {
 
       await waitFor(() => expect(getAgentRoster).toHaveBeenCalled())
       // The selector paints roster rows labeled profile — device.
-      expect(await screen.findByText('default — This device (current)')).toBeTruthy()
+      expect(await screen.findByText('default - This device (current)')).toBeTruthy()
     } finally {
       delete (window as { factrDesktop?: unknown }).factrDesktop
     }

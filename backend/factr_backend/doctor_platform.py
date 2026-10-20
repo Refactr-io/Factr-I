@@ -33,6 +33,9 @@ def _sqlite_upgrade_hint(install_method: str | None = None) -> str:
     cmd = recommended_update_command_for_method(method)
     action = cmd if is_nix_install_method(method) else {  # nix: prose guidance, not a shell command
         "docker": f"run `{cmd}`, then recreate all Factr containers", "apt": f"run `{cmd}`"}.get(method, "run `factr update`")
+    # The desktop app bundles its own interpreter; `factr update` cannot replace it.
+    if "backend-python" in Path(sys.executable).parts:
+        action = "install the latest Factr-I desktop release, which bundles a fixed SQLite"
     return f"({action}; fixed versions: 3.51.3+ / 3.50.7 / 3.44.6 — see https://sqlite.org/wal.html#walresetbug)"
 
 

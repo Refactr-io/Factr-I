@@ -150,10 +150,10 @@ export function groupActivityLabel(event: GroupActivityEntry, group?: null | str
   const reason = kind === 'failed' ? String(event?.reason || '').trim() : ''
 
   if (kind === 'failed' && reason === GROUP_SLOT_WAIT_REASON) {
-    return `${who} couldn't start — too many bots running`
+    return `${who} couldn't start - too many bots running`
   }
 
-  return `${who} ${base}${reason ? ` — ${plainFailureReason(reason)}` : ''}`
+  return `${who} ${base}${reason ? ` - ${plainFailureReason(reason)}` : ''}`
 }
 
 // The engine's "<Provider> credentials not available. Run `factr login <x>` first." names a provider the
@@ -178,8 +178,8 @@ const GROUP_ACTIVITY_LABELS: Record<GroupActivityKind, string> = {
   settled: 'turn settled',
   capped: 'turn stopped at the round/message cap',
   delivered: 'delivered a late reply',
-  held: 'is held (stopped by you) — @mention it or say resume to release',
-  stopped: 'stopped the room — remaining turns are held until resumed'
+  held: 'is held (stopped by you) - @mention it or say resume to release',
+  stopped: 'stopped the room - remaining turns are held until resumed'
 }
 
 export const GROUP_ACTIVITY_GLYPHS: Record<GroupActivityKind, string> = {

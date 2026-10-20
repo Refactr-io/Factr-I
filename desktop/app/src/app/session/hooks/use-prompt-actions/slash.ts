@@ -399,8 +399,8 @@ export function useSlashCommand(deps: SlashCommandDeps) {
           if (queued !== 'idle') {
             renderSlashOutput(
               queued === 'queued'
-                ? 'session busy — message queued to send when the current turn finishes'
-                : 'session busy — /interrupt the current turn before sending this command'
+                ? 'session busy - message queued to send when the current turn finishes'
+                : 'session busy - /interrupt the current turn before sending this command'
             )
 
             return
@@ -613,7 +613,7 @@ export function useSlashCommand(deps: SlashCommandDeps) {
 
           if (!question) {
             renderSlashOutput(
-              'Usage: /btw <question> — answered from a snapshot of this conversation without interrupting it.'
+              'Usage: /btw <question> - answered from a snapshot of this conversation without interrupting it.'
             )
 
             return
@@ -627,8 +627,8 @@ export function useSlashCommand(deps: SlashCommandDeps) {
 
             renderSlashOutput(
               result.task_id
-                ? `btw ${result.task_id} — answering from a conversation snapshot`
-                : 'btw — answering from a conversation snapshot'
+                ? `btw ${result.task_id} - answering from a conversation snapshot`
+                : 'btw - answering from a conversation snapshot'
             )
           } catch (err) {
             // Older gateways without the dedicated RPC still have the
@@ -1174,7 +1174,7 @@ export function useSlashCommand(deps: SlashCommandDeps) {
 
           if ($connection.get()?.mode === 'remote') {
             renderSlashOutput(
-              '/browser manages a Chromium-family browser on the gateway host — only available when connected to a local gateway.'
+              '/browser manages a Chromium-family browser on the gateway host - only available when connected to a local gateway.'
             )
 
             return

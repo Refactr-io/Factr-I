@@ -59,86 +59,162 @@
    (this variant) flatten everything into one shared scroll. See ChatSidebar. */
 @custom-variant compact (@media (max-height: 768px));
 
-/* Arimo (Steve Matteson, Google Fonts). SIL Open Font License 1.1: https://openfontlicense.org */
+/* Pretendard Std 1.3.9: official Latin variable build, SIL OFL 1.1.
+   Preloaded in index.html; one face covers the entire UI weight range. */
 @font-face {
-  font-family: 'Arimo';
-  font-style: italic;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('./fonts/arimo/Arimo-italic-latin-ext.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-  font-family: 'Arimo';
-  font-style: italic;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('./fonts/arimo/Arimo-italic-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'Arimo';
+  font-family: 'Pretendard';
   font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('./fonts/arimo/Arimo-normal-cyrillic.woff2') format('woff2');
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
-}
-@font-face {
-  font-family: 'Arimo';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('./fonts/arimo/Arimo-normal-greek.woff2') format('woff2');
-  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
-}
-@font-face {
-  font-family: 'Arimo';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('./fonts/arimo/Arimo-normal-vietnamese.woff2') format('woff2');
-  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
-}
-@font-face {
-  font-family: 'Arimo';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('./fonts/arimo/Arimo-normal-latin-ext.woff2') format('woff2');
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
-  font-family: 'Arimo';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('./fonts/arimo/Arimo-normal-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  font-weight: 100 900;
+  font-display: block;
+  src: url('./fonts/pretendard/PretendardStdVariable.woff2') format('woff2');
 }
 
-/* JetBrains Mono — bundled terminal font (Apache-2.0) so bold/italic share the
-   regular face's metrics instead of squeezing against a system fallback. */
+/* IBM Plex Mono 5.3.0 (@fontsource): SIL OFL 1.1. Italics serve code and ANSI output. */
 @font-face {
-  font-family: 'JetBrains Mono';
+  font-family: 'IBM Plex Mono';
   font-style: normal;
   font-weight: 400;
-  font-display: swap;
-  src: url('./fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-display: block;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-400-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
 }
 @font-face {
-  font-family: 'JetBrains Mono';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('./fonts/JetBrainsMono-Bold.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'JetBrains Mono';
+  font-family: 'IBM Plex Mono';
   font-style: italic;
   font-weight: 400;
   font-display: swap;
-  src: url('./fonts/JetBrainsMono-Italic.woff2') format('woff2');
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-400-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-500-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-500-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-600-normal.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-ext-600-italic.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-400-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: italic;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-500-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: italic;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/ibm-plex-mono-latin-600-italic.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+@utility type-body {
+  font: var(--type-body);
+  letter-spacing: var(--tracking-body);
+}
+
+@utility type-chat {
+  font: var(--type-chat);
+  letter-spacing: var(--tracking-chat);
+}
+
+@utility type-sidebar {
+  font: var(--type-sidebar);
+  letter-spacing: var(--tracking-sidebar);
+}
+
+@utility type-section-label {
+  font: var(--type-section-label);
+  letter-spacing: var(--tracking-section-label);
+}
+
+@utility type-dialog-title {
+  font: var(--type-dialog-title);
+  letter-spacing: var(--tracking-dialog-title);
+}
+
+@utility type-settings-heading {
+  font: var(--type-settings-heading);
+  letter-spacing: var(--tracking-settings-heading);
+}
+
+@utility type-button {
+  font: var(--type-button);
+  letter-spacing: var(--tracking-button);
+}
+
+@utility type-input {
+  font: var(--type-input);
+  letter-spacing: var(--tracking-input);
+}
+
+@utility type-code {
+  font: var(--type-code);
+  letter-spacing: var(--tracking-code);
+}
+
+@utility type-caption {
+  font: var(--type-caption);
+  letter-spacing: var(--tracking-caption);
 }
 
 @theme inline {
@@ -167,6 +243,7 @@
 
   --font-sans: var(--dt-font-sans);
   --font-mono: var(--dt-font-mono);
+  --font-weight-bold: var(--weight-heading);
 
   --spacing-mul: var(--dt-spacing-mul, 1);
 
@@ -498,18 +575,14 @@
     --dt-user-bubble-border: var(--ui-stroke-tertiary);
 
     --dt-font-sans:
-      'Arimo', 'Segoe WPC', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif,
+      'Pretendard', 'Segoe WPC', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif,
       'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
-    /* Key caps always use the native UI face — never theme typography overrides. */
-    --dt-font-kbd: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-    /* Menlo/Monaco first — Apple's native monospace faces — so code/diff read
-       in the system mono on macOS, with SF Mono and the generic monospace as
-       fallbacks. */
+    --dt-font-kbd: var(--dt-font-sans);
     --dt-font-mono:
-      Menlo, Monaco, 'SF Mono', monospace, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-      'Noto Color Emoji', emoji;
+      'IBM Plex Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace,
+      'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', emoji;
     --dt-base-size: 1rem;
-    --dt-line-height: 1.4286;
+    --dt-line-height: 1.428571;
     --dt-letter-spacing: 0;
     --dt-spacing-mul: 1;
 
@@ -527,13 +600,40 @@
 
     --composer-shell-pad-block-end: 0.125rem;
     --message-text-indent: 0;
-    /* One type scale, measured from Claude Code's desktop app at 100% zoom (Arimo): body and
-       bubble 14/20, UI 13/18, caption and tool lines 12/16. Tracking 0. */
-    --conversation-text-font-size: 0.875rem;
+    /* Dense desktop roles. Keep root geometry at 16px; tune reading roles here.
+       Pretendard Std has a weight axis, no optical-size axis. */
+    --weight-body: 400;
+    --weight-label: 500;
+    --weight-heading: 600;
+    --conversation-text-font-size: 0.9375rem;
     --conversation-tool-font-size: 0.75rem;
     --conversation-caption-font-size: 0.75rem;
-    --conversation-line-height: 1.25rem;
+    --conversation-line-height: 1.375rem;
     --conversation-caption-line-height: 1rem;
+    --code-font-size: 0.8125rem;
+    --code-line-height: 1.25rem;
+    --terminal-font-size: 13;
+    --terminal-line-height: 1.4;
+    --type-body: var(--weight-body) 0.875rem/1.25rem var(--dt-font-sans);
+    --type-chat: var(--weight-body) var(--conversation-text-font-size)/var(--conversation-line-height) var(--dt-font-sans);
+    --type-sidebar: var(--weight-body) 0.84375rem/1.25rem var(--dt-font-sans);
+    --type-section-label: var(--weight-label) 0.8125rem/1.125rem var(--dt-font-sans);
+    --type-dialog-title: var(--weight-heading) 1rem/1.375rem var(--dt-font-sans);
+    --type-settings-heading: var(--weight-heading) 1.5625rem/1.875rem var(--dt-font-sans);
+    --type-button: var(--weight-label) 0.8125rem/1.125rem var(--dt-font-sans);
+    --type-input: var(--weight-body) 0.875rem/1.25rem var(--dt-font-sans);
+    --type-code: var(--weight-body) var(--code-font-size)/var(--code-line-height) var(--dt-font-mono);
+    --type-caption: var(--weight-body) var(--conversation-caption-font-size)/var(--conversation-caption-line-height) var(--dt-font-sans);
+    --tracking-body: 0;
+    --tracking-chat: 0;
+    --tracking-sidebar: 0;
+    --tracking-section-label: 0.01em;
+    --tracking-dialog-title: -0.01em;
+    --tracking-settings-heading: -0.012em;
+    --tracking-button: 0.0025em;
+    --tracking-input: 0;
+    --tracking-code: 0;
+    --tracking-caption: 0.004em;
     --conversation-turn-gap: 0.375rem;
     /* Gap between top-level turn blocks (prose ↔ tools ↔ thinking) — enough air
        that scaffolding reads as separate from the reply, not crammed into it. */
@@ -823,10 +923,9 @@
     margin: 0;
     background: var(--ui-chat-surface-background);
     color: var(--dt-foreground);
-    font-family: var(--dt-font-sans);
-    font-size: 0.8125rem;
-    line-height: var(--dt-line-height, 1.55);
-    letter-spacing: var(--dt-letter-spacing, 0);
+    font: var(--type-body);
+    font-optical-sizing: auto;
+    letter-spacing: var(--tracking-body);
     -webkit-user-select: none;
     user-select: none;
     -webkit-font-smoothing: antialiased;
@@ -1010,6 +1109,27 @@
    when its zone header is showing a tab with the same name — hide it there.
    Headerless zones (and the pane used outside the tree) keep the label. */
 [data-tree-group][data-zone-header] [data-pane-self-label] {
+  display: none;
+}
+
+/* Inside a tool card the card header already names the pane; any label left in the body reads as plain
+   sentence-case text, not tracked caps with a dither dot. */
+[data-tool-card] [data-panel-label] {
+  padding-left: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ui-text-secondary);
+}
+
+/* The terminal host is a fixed overlay chasing its slot; the slot carries the card's inner corner radius so the overlay
+   never squares off the card's rounded bottom corners or paints over its border. */
+[data-tool-card] [data-terminal-slot] {
+  border-radius: 0 0 8px 8px;
+}
+
+[data-tool-card] [data-panel-label] > .dither {
   display: none;
 }
 
@@ -1405,42 +1525,27 @@ body.guest-pointer-lock :is(webview, iframe) {
     background: transparent;
   }
 
+  /* An overlay thumb: hidden at rest, no track, 6px wide inside the 8px bar (1px inset each side). Chromium does not
+     animate a scrollbar pseudo-element, so lib/scroll-activity.ts tweens --sb-a (0..1: 180ms in, 800ms idle, 300ms
+     out) on the element that scrolled and the colour follows it. Hovering the area also shows the bar, unanimated. */
   *::-webkit-scrollbar-thumb {
-    background: transparent;
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) calc(var(--sb-a, 0) * 38%), transparent);
+    border: 1px solid transparent;
     border-radius: var(--shape-radius-sm);
     corner-shape: superellipse(1.3);
     background-clip: padding-box;
-    transition: none;
   }
 
   *:hover::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--dt-scrollbar-thumb) 18%, transparent);
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 38%, transparent);
   }
 
   *:hover::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--dt-scrollbar-thumb) 40%, transparent);
-    background-clip: padding-box;
+    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 55%, transparent);
   }
 
   *::-webkit-scrollbar-button {
     display: none;
-  }
-
-  /* Retain the existing opt-in class as an alias for the global behavior. */
-  .scrollbar-fade::-webkit-scrollbar-thumb,
-  .scrollbar-dt .scrollbar-fade::-webkit-scrollbar-thumb {
-    background-color: transparent;
-    transition: none;
-  }
-
-  .scrollbar-fade:hover::-webkit-scrollbar-thumb,
-  .scrollbar-dt .scrollbar-fade:hover::-webkit-scrollbar-thumb {
-    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 18%, transparent);
-  }
-
-  .scrollbar-fade:hover::-webkit-scrollbar-thumb:hover,
-  .scrollbar-dt .scrollbar-fade:hover::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--dt-scrollbar-thumb) 40%, transparent);
   }
 
   /* Hover marquee: a truncated line that scrolls its overflow into view while
@@ -1671,7 +1776,7 @@ body.guest-pointer-lock :is(webview, iframe) {
 
 [data-slot='aui_user-message-root'],
 [data-slot='aui_edit-composer-root'] {
-  --human-msg-line-height: 1.4286;
+  --human-msg-line-height: calc(var(--conversation-line-height) / var(--conversation-text-font-size));
   font-size: var(--conversation-text-font-size);
 }
 
@@ -1813,7 +1918,7 @@ body.guest-pointer-lock :is(webview, iframe) {
    wordmark rendered in body text. */
 .wordmark {
   font-family: var(--font-sans);
-  font-weight: 700;
+  font-weight: var(--weight-heading);
   line-height: 0.9;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -3004,6 +3109,114 @@ button[data-slot='aui_msg-reactions'] svg {
   border-radius: 0 0 var(--shape-radius-lg) var(--shape-radius-lg);
 }
 
+/* ONE PANEL, THE APP'S OWN.
+   The HUD read as three unrelated objects: a light bar, a near-black scrim narrower than it, and white text with a
+   gold tint and a hard drop shadow fading out through a gradient. It looked like a game overlay bolted onto a
+   different app. It is now one rounded panel in the app's own surface and ink - the transcript and the bar share
+   a width, a fill, a hairline and a radius, so it reads as a single object, light or dark with the theme.
+
+   - The sheet paints the card surface (the same token as the bar), with a hairline on its free sides.
+   - The panel is on screen whenever the transcript is (a recent turn or the caret in the composer), not only on
+     focus, so a reply never floats as bare text over whatever is behind the window.
+   - Ink is the theme's. Your lines are the secondary tone; the agent's are primary. No shadow, no tint.
+   - The bar squares the corners that join the sheet and the sheet is flush with it. */
+[data-hud-shell],
+:root[data-factr-glass-on] [data-hud-shell] {
+  --hud-band-inset: 0px;
+}
+
+[data-hud-shell] [data-hud-glass],
+[data-hud-shell][data-hud-typing] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell][data-hud-typing] [data-hud-glass] {
+  background: var(--dt-card) !important;
+  border: 1px solid var(--ui-stroke-secondary);
+  border-bottom-width: 0;
+}
+
+[data-hud-shell][data-hud-edge='top'] [data-hud-glass] {
+  border-top-width: 0;
+  border-bottom-width: 1px;
+}
+
+[data-hud-shell][data-hud-recent] [data-hud-glass] {
+  translate: none;
+  opacity: 1;
+  transition-duration: var(--hud-reveal);
+}
+
+:root [data-hud-shell] [data-slot='composer-bounds'] {
+  --hud-overlay-ink: var(--ui-text-primary);
+  --hud-overlay-ink-user: var(--ui-text-secondary);
+  --hud-top-fade: 0.75rem;
+  text-shadow: none;
+}
+
+:root [data-hud-shell] [data-slot='composer-bounds'] * {
+  text-shadow: none;
+}
+
+:root [data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: 0 0 var(--shape-radius-lg) var(--shape-radius-lg) !important;
+  /* Joined to the sheet: the bar's lift shadow would draw a dark seam along the join. */
+  box-shadow: none !important;
+}
+
+:root [data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: var(--shape-radius-lg) var(--shape-radius-lg) 0 0 !important;
+}
+
+:root [data-hud-shell] [data-slot='composer-surface'] {
+  transition:
+    border-color var(--hud-reveal) var(--hud-ease-enter),
+    border-radius var(--hud-reveal) var(--hud-ease-enter);
+}
+
+/* TRUE CIRCLES. The HUD is a transparent window, so its corners are drawn by the page alone: the global squircle
+   (superellipse) reads as a slightly pinched corner on a free-floating object, and three different radii (bar,
+   sheet, band) never lined up. One radius, round corners, on all three. */
+[data-hud-shell] {
+  --hud-radius: 10px; /* DESIGN-refactr: containers render at 10px; nothing above the 8px design ceiling */
+}
+
+:where([data-hud-shell] [data-slot='composer-bounds'], [data-hud-shell] [data-hud-glass], [data-hud-shell] [data-slot='composer-surface']) {
+  corner-shape: round;
+}
+
+:root [data-hud-shell] [data-slot='composer-surface'] {
+  border-radius: var(--hud-radius) !important;
+}
+
+:root [data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: 0 0 var(--hud-radius) var(--hud-radius) !important;
+}
+
+:root [data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: var(--hud-radius) var(--hud-radius) 0 0 !important;
+}
+
+[data-hud-shell] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell] [data-hud-glass],
+[data-hud-shell] [data-slot='composer-bounds'] {
+  border-radius: var(--hud-radius) var(--hud-radius) 0 0;
+}
+
+[data-hud-shell][data-hud-edge='top'] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell][data-hud-edge='top'] [data-hud-glass],
+[data-hud-shell][data-hud-edge='top'] [data-slot='composer-bounds'] {
+  border-radius: 0 0 var(--hud-radius) var(--hud-radius);
+}
+
+/* Focus keeps the same hairline as the sheet below it: the theme's primary (near-black on a light theme) drew a
+   heavy outline around the whole bar, and a darker neutral still read as a frame. */
+:root [data-hud-shell][data-hud-typing] [data-slot='composer-surface'] {
+  border-color: var(--ui-stroke-secondary) !important;
+}
+
 /* WHAT ANSWERS THE CURSOR — and, because `useHudClickThrough` hands the window
    to the desktop wherever the document reports nothing under the mouse, what
    the HUD occupies as far as the rest of the screen is concerned.
@@ -3893,25 +4106,21 @@ svg.tabler-icon {
   stroke-linejoin: round;
 }
 
-/* A working label (thinking, running a tool) is a quiet opacity pulse: no gradient sweep, no glow, no ring. */
+/* Share the supplied label shimmer across existing tool and thinking rows. */
 .shimmer {
-  animation: working-pulse 1.8s ease-in-out infinite;
-}
-
-@keyframes working-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.55;
-  }
+  color: var(--ui-text-secondary);
+  background-image: linear-gradient(90deg, var(--ui-text-secondary) 35%, var(--ui-text-primary) 50%, var(--ui-text-secondary) 65%);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer-text 1.4s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .shimmer {
     animation: none;
+    background: none;
+    -webkit-text-fill-color: currentColor;
   }
 }
 
@@ -3980,4 +4189,37 @@ input[type='range'].ui-range:focus-visible::-webkit-slider-thumb {
 :root.dark {
   --ui-control-on: #0a84ff;
   --ui-segment-thumb: color-mix(in srgb, var(--dt-foreground) 16%, var(--ui-bg-editor));
+}
+
+/* Shared code defaults cover streamed, highlighted and plain fallbacks alike. */
+:where(pre, code, kbd, samp) {
+  font-family: var(--dt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:where(strong, b) {
+  font-weight: var(--weight-heading);
+}
+
+:where(.aui-md, [data-slot='group-chat-message-content']) :not(pre) > code {
+  font-size: var(--code-font-size);
+  letter-spacing: var(--tracking-code);
+}
+
+
+/* Outline strokes, tuned per theme. Light: a soft warm grey like Codex's light theme (never a dark line around a card);
+   dark: a clearly lighter hairline, so cards and the composer keep an edge against the dark canvas. One ink mix,
+   no accent tint, so every stroke in the app (cards, composer, panels, sashes) reads the same. */
+:root:root {
+  --ui-stroke-primary: color-mix(in srgb, var(--ui-base) 14%, transparent);
+  --ui-stroke-secondary: color-mix(in srgb, var(--ui-base) 9%, transparent);
+  --ui-stroke-tertiary: color-mix(in srgb, var(--ui-base) 6%, transparent);
+  --ui-stroke-quaternary: color-mix(in srgb, var(--ui-base) 4%, transparent);
+}
+
+:root:root.dark {
+  --ui-stroke-primary: color-mix(in srgb, var(--ui-base) 24%, transparent);
+  --ui-stroke-secondary: color-mix(in srgb, var(--ui-base) 16%, transparent);
+  --ui-stroke-tertiary: color-mix(in srgb, var(--ui-base) 10%, transparent);
+  --ui-stroke-quaternary: color-mix(in srgb, var(--ui-base) 6%, transparent);
 }

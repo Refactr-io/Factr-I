@@ -158,7 +158,7 @@ function HeroChat({ frame, viewportRef }: HeroChatProps) {
             >
               <span
                 className={cn('w-4 text-center font-mono text-[0.875rem]', !done && 'text-white/55')}
-                style={{ color: done ? WHITE : undefined, fontFamily: "'JetBrains Mono', monospace" }}
+                style={{ color: done ? WHITE : undefined, fontFamily: "'IBM Plex Mono', monospace" }}
               >
                 {done ? '✓' : SPINNER[frame.tick % SPINNER.length]}
               </span>
@@ -170,7 +170,7 @@ function HeroChat({ frame, viewportRef }: HeroChatProps) {
               </span>
               <span
                 className="ml-auto grid text-[0.8125rem] text-white/50"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                style={{ fontFamily: "'IBM Plex Mono', monospace" }}
               >
                 {/* Stacking keeps the running/done crossfade in place. */}
                 <span
@@ -331,7 +331,7 @@ function ViewportNode({ frame, viewportRef }: HeroChatProps) {
           </span>
           <span
             className="text-[0.625rem] normal-case tracking-normal"
-            style={{ color: WHITE_DIM, fontFamily: "'JetBrains Mono', monospace" }}
+            style={{ color: WHITE_DIM, fontFamily: "'IBM Plex Mono', monospace" }}
           >
             {decoded(viewport.mode, viewport.at, frame.tick, 300)}
           </span>

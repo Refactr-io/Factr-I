@@ -93,7 +93,7 @@ export const PROVIDER_GROUPS: ProviderPrefix[] = [
   {
     prefix: 'DASHSCOPE_',
     name: 'DashScope (Qwen)',
-    description: 'Alibaba Cloud DashScope — Qwen and multi-vendor models',
+    description: 'Alibaba Cloud DashScope - Qwen and multi-vendor models',
     docsUrl: 'https://modelstudio.console.alibabacloud.com/',
     priority: 6
   },
@@ -138,7 +138,7 @@ export const PROVIDER_GROUPS: ProviderPrefix[] = [
   {
     prefix: 'HF_',
     name: 'Hugging Face',
-    description: 'Inference Providers — 20+ open models via router.huggingface.co',
+    description: 'Inference Providers - 20+ open models via router.huggingface.co',
     docsUrl: 'https://huggingface.co/settings/tokens',
     priority: 12
   },
@@ -639,7 +639,7 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   voice: {
     autoTts: 'Automatically speak assistant responses.',
     voiceChatMode:
-      'chained: speech-to-text → Factr-I → text-to-speech with the providers below. gpt-live: one full-duplex OpenAI voice model (gpt-live-1) listens and talks, and hands every real request to Factr-I — any model you have selected answers with the full toolset. Needs an OpenAI API key; the voice layer bills $0.05 per minute.',
+      'chained: speech-to-text → Factr-I → text-to-speech with the providers below. gpt-live: one full-duplex OpenAI voice model (gpt-live-1) listens and talks, and hands every real request to Factr-I - any model you have selected answers with the full toolset. Needs an OpenAI API key; the voice layer bills $0.05 per minute.',
     gptLive: {
       voice: 'Voice for GPT-Live mode. Custom voice IDs are accepted.',
       instructions:

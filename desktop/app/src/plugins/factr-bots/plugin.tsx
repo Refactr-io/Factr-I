@@ -19,6 +19,7 @@ import {
   CHAT_EMPTY_AREA,
   COMPOSER_AREAS,
   host,
+  icons,
   LocalizedTabTitle,
   PALETTE_AREA,
   SIDEBAR_PROFILE_GROUP_HEADER_AREA,
@@ -106,7 +107,7 @@ export default {
   id: ID,
   name: translateNow('common.bots'),
   description:
-    'Bot Mode — a one-chat-per-agent roster with avatars, routines, group chats, and bot-to-bot messaging. Ships with the app; disable here if unwanted.',
+    'Bot Mode - a one-chat-per-agent roster with avatars, routines, group chats, and bot-to-bot messaging. Ships with the app; disable here if unwanted.',
   register(ctx: PluginContext) {
     setPluginCtx(ctx)
     // The user's own roster sections. Read once at register; every mutation
@@ -463,7 +464,7 @@ export default {
         width: '220px',
         collapsible: true,
         hideOnly: true,
-        tabTitle: () => <LocalizedTabTitle select={t => t.common.bots} />,
+        tabTitle: () => <span className="flex items-center gap-1.5"><icons.Bot aria-hidden {...icons.RAIL_ICON_PROPS} /><LocalizedTabTitle select={t => t.common.bots} /></span>,
         tabTitleText: () => translateNow('common.bots'),
         dock: {
           pane: 'sessions',
@@ -775,7 +776,7 @@ export default {
                 kind: 'info',
                 title: 'This chat never resets',
                 message:
-                  'Bot chats are one continuous conversation — compacting instead. ' +
+                  'Bot chats are one continuous conversation - compacting instead. ' +
                   'For a throwaway session with this bot, use Sessions mode.'
               })
 

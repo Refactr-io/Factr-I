@@ -1,9 +1,11 @@
 import { ComposerPrimitive } from '@assistant-ui/react'
 import { useStore } from '@nanostores/react'
+import { BorderBeam } from 'border-beam'
 import {
   type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -19,6 +21,7 @@ import { OnboardingSkip } from '@/components/onboarding-chat/skip'
 import { Button } from '@/components/ui/button'
 import { GlassBackdrop } from '@/components/ui/glass-backdrop'
 import { Slot as ContribSlot } from '@/contrib/react/slot'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { chatMessageText } from '@/lib/chat-messages'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
@@ -41,6 +44,7 @@ import { $gatewayState } from '@/store/session'
 import { $botChatSessionIds, $sessionStates, $sessionTiles, isBotChatSession } from '@/store/session-states'
 import { $threadScrolledUpBySession } from '@/store/thread-scroll'
 import { $autoSpeakReplies } from '@/store/voice-prefs'
+import { useTheme } from '@/themes/context'
 
 import { AttachmentList } from './attachments'
 import {
@@ -112,6 +116,30 @@ import {
 } from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
 
+/** The beam that rides the composer's border while a turn runs. Not in the HUD: that bar owns its own corners, and a
+ *  wrapper clipping it with another radius is what made them elliptical there. */
+function ComposerBeam({
+  active,
+  children,
+  enabled,
+  theme
+}: {
+  active: boolean
+  children: ReactNode
+  enabled: boolean
+  theme: 'dark' | 'light'
+}) {
+  if (!enabled) {
+    return <>{children}</>
+  }
+
+  return (
+    <BorderBeam active={active} borderRadius={8} className="w-full rounded-[inherit]" colorVariant="mono" strength={0.7} theme={theme}>
+      {children}
+    </BorderBeam>
+  )
+}
+
 export function ChatBar({
   busy,
   cwd,
@@ -139,6 +167,8 @@ export function ChatBar({
   onTranscribeAudio
 }: ChatBarProps) {
   const hudMode = useStore($hudMode)
+  const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  const { resolvedMode } = useTheme()
   const hudWindowing = window.factrDesktop?.hud?.windowing
   const hudNativeDrag = hudMode && hudWindowing?.nativeDrag === true
 
@@ -1362,7 +1392,7 @@ export function ChatBar({
           </StatusDrawerContent>
           <ComposerPrimitive.Root
             className={cn(
-              'group/composer relative w-full overflow-visible rounded-2xl',
+              'group/composer relative w-full overflow-visible rounded-lg',
               poppedOut && 'bg-transparent',
               dragging && 'cursor-grabbing select-none touch-none',
               // Native Wayland HUD: setBounds cannot position a top-level
@@ -1436,6 +1466,7 @@ export function ChatBar({
                   onToggle={toggleStatusDrawer}
                 />
               )}
+              <ComposerBeam active={busy && !reduceMotion} enabled={!hudMode} theme={resolvedMode}>
               <div
                 className={cn(
                   // grid-cols-[minmax(0,1fr)]: the implicit `auto` column sized
@@ -1551,6 +1582,7 @@ export function ChatBar({
                   <ContribSlot area={COMPOSER_AREAS.bottom} />
                 </div>
               </div>
+              </ComposerBeam>
             </div>
           </ComposerPrimitive.Root>
           {/* Underside: chrome-free strip BELOW the composer. Outside the root
@@ -1603,7 +1635,7 @@ export function ChatBarFallback() {
   return (
     <div
       className={cn(
-        'group/composer absolute bottom-0 left-1/2 z-30 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 rounded-2xl pt-2 pb-[var(--composer-shell-pad-block-end)]',
+        'group/composer absolute bottom-0 left-1/2 z-30 w-[min(var(--composer-width),calc(100%-2rem))] max-w-full -translate-x-1/2 rounded-lg pt-2 pb-[var(--composer-shell-pad-block-end)]',
         'bg-linear-to-b from-transparent to-background/55'
       )}
       data-slot="composer-root"

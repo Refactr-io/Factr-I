@@ -12,7 +12,9 @@ import * as sdk from '@factr/plugin-sdk'
 import { host } from '@factr/plugin-sdk'
 
 import { $botMeta, botMetaKey, botOwner, persistBotMetaSnapshot } from './data'
+import { engineBotChat, engineClaimBotChat, rememberEngineBotChat } from './engine-bot-chat'
 import { botsText } from './i18n'
+import { refreshBotRelayRosters } from './relay'
 import { backendTargetProfile, botConnectionRoute, botRosterMeta, botWorkspaceOwnerKey, requestForBot } from './routing'
 import type { RpcErrorLike } from './routing'
 import { getPluginCtx } from './shared'
@@ -85,7 +87,7 @@ async function openStoredBotChat(
   summary: CanonicalChatRow
 ): Promise<string> {
   if (!storedId || typeof host.openSession !== 'function') {
-    throw new Error('This Factr-I Desktop version cannot open stored sessions')
+    throw new Error('This Factr-I version cannot open stored sessions')
   }
 
   const { bot, name, route } = botOwner(owner)
@@ -228,6 +230,21 @@ export function notifyBotOpenFailure(error: unknown, bot: RosterRow, step: BotOp
  *  authorizes this RPC. */
 async function findExistingCanonicalChat(owner: RosterRow | string): Promise<CanonicalChatRow | null> {
   const { bot, name, route } = botOwner(owner)
+
+  // A bot on its own engine: that engine's registry (`bot.chat.get`, one pointer per profile) is the authority.
+  // Its `session.list` has no title lookup and, on a host engine, lists every bot's chats from the one shared
+  // store, so a title scan could return another bot's "Bot Chat". An answer, even "none", settles it; an engine
+  // that cannot answer (older build, Python gateway) takes the title lookup below.
+  const engine = await engineBotChat(bot ?? { name }, { spawnPriority: 'foreground' })
+
+  if (engine !== undefined) {
+    if (engine?.id) {
+      rememberEngineBotChat(bot ?? { name }, engine)
+    }
+
+    return engine?.id ? engine : null
+  }
+
   // FAIL CLOSED. A failed registry lookup MUST NOT read as "no Bot Chat
   // exists" — that is the one remaining way to fork a bot's forever chat.
   // The failure lives exactly in the post-update window: the desktop
@@ -264,7 +281,7 @@ async function findExistingCanonicalChat(owner: RosterRow | string): Promise<Can
     // message so update-required classification and diagnostics still work.
     const message = typeof (error as RpcErrorLike)?.message === 'string' ? (error as { message: string }).message : ''
     const detail = message ? ` (${message})` : ''
-    throw new Error(`Could not check ${name}'s Bot Chat registry${detail} — not starting a new chat`)
+    throw new Error(`Could not check ${name}'s Bot Chat registry${detail} - not starting a new chat`)
   }
 
   const rows = res?.sessions ?? []
@@ -283,7 +300,7 @@ async function findExistingCanonicalChat(owner: RosterRow | string): Promise<Can
   // an empty lookup is unconfirmed absence, not confirmed absence, so fail
   // closed the same way a thrown RPC error already does instead of minting.
   if (bot?.canonical_session?.id) {
-    throw new Error(`Could not confirm ${name}'s Bot Chat registry — not starting a new chat`)
+    throw new Error(`Could not confirm ${name}'s Bot Chat registry - not starting a new chat`)
   }
 
   return null
@@ -386,8 +403,10 @@ export function createCanonicalChat(
   }
 
   const canNavigate = () => !openingStillCurrent || openingStillCurrent()
+  let release: (() => void) | undefined
 
   const run = (async () => {
+    release = await host.retainProfile?.(route || name, { spawnPriority: 'foreground' })
     const existing = await findExistingCanonicalChat(owner)
 
     if (existing?.id) {
@@ -446,6 +465,22 @@ export function createCanonicalChat(
           title: CANONICAL_CHAT_TITLE
         })
         titled = true
+
+        // An engine-backed bot registers its chat (first one wins, see `bot.chat.claim`); a chat that lost the race
+        // is abandoned and the registered one is adopted, like the title conflict below.
+        const registered = await engineClaimBotChat(bot, runtime)
+
+        if (registered?.id) {
+          rememberEngineBotChat(bot, registered)
+        }
+
+        if (registered?.id && registered.id !== runtime && registered.id !== sid) {
+          if (typeof host.openSession === 'function' && canNavigate()) {
+            await openStoredBotChat(owner, registered.resolved_id || registered.id, registered)
+          }
+
+          return registered.id
+        }
       } catch (error) {
         // ADOPT-BEFORE-MINT: a title-uniqueness rejection is not an old
         // gateway — it means another writer took the canonical title between
@@ -472,6 +507,18 @@ export function createCanonicalChat(
         }
         /* compatibility fallback: prompt.submit will persist the lazy row */
       }
+
+      // An engine persists an empty chat on its own: if it registers the chat (the claim needs it in the store)
+      // the row exists even though the eager title did not land, and the compat intro below would be an unprompted
+      // model turn in a chat nobody has spoken in.
+      if (!titled) {
+        const registered = await engineClaimBotChat(bot, runtime)
+
+        if (registered && (registered.id === runtime || registered.id === sid)) {
+          rememberEngineBotChat(bot, registered)
+          titled = true
+        }
+      }
     }
 
     // Mount the session view FIRST, then send the kickoff — submitting into
@@ -497,6 +544,10 @@ export function createCanonicalChat(
       const submitIntro = kickoff || !titled
 
       if (submitIntro) {
+        if (kickoff) {
+          await refreshBotRelayRosters()
+        }
+
         await new Promise(resolve => window.setTimeout(resolve, 400))
 
         try {
@@ -525,6 +576,7 @@ export function createCanonicalChat(
 
     return sid || null
   })().finally(() => {
+    release?.()
     if (canonicalCreations.get(key) === flight) {
       canonicalCreations.delete(key)
     }
@@ -594,7 +646,7 @@ export async function prepareBotSource(bot: RosterRow) {
   if (route && typeof host.requestProfile !== 'function') {
     throw new Error(
       getPluginCtx()?.i18n?.t('bot.remoteConnectionsUnsupported') ??
-        'Update Factr-I Desktop to chat with bots on other connections.'
+        'Update Factr-I to chat with bots on other connections.'
     )
   }
 

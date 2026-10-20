@@ -942,15 +942,11 @@ export const ar = defineLocale({
       unavailableDesc: 'جسر IPC في سطح المكتب لا يوفّر إعدادات البوابة.',
       title: 'اتصال البوابة',
       envOverride: 'تجاوز من البيئة',
-      intro:
-        'يشغّل Factr-I بوابة محلية خاصة افتراضياً. استخدم بوابة بعيدة عندما تريد أن يتحكم هذا التطبيق بخلفية Factr-I تعمل مسبقاً على جهاز آخر أو خلف وكيل موثوق. اتصالات البوابة إعداد على مستوى الجهاز؛ ويتم اكتشاف الملفات الشخصية من البوابات المتصلة.',
       envOverrideTitle: 'متغيرات البيئة تتحكم في جلسة سطح المكتب هذه.',
       envOverrideDesc: 'أزل FACTR_DESKTOP_REMOTE_URL و FACTR_DESKTOP_REMOTE_TOKEN لاستخدام الإعداد المحفوظ أدناه.',
       localTitle: 'بوابة محلية',
       localDesc: 'تشغيل خلفية Factr-I خاصة على localhost. هذا هو الافتراضي ويعمل دون اتصال.',
       remoteTitle: 'بوابة بعيدة',
-      remoteDesc:
-        'صل واجهة سطح المكتب هذه بخلفية Factr-I بعيدة. البوابات المستضافة تستخدم OAuth أو اسم مستخدم وكلمة مرور، والبوابات الذاتية قد تستخدم رمز جلسة.',
       remoteUrlTitle: 'رابط البوابة البعيدة',
       remoteUrlDesc: 'الرابط الأساسي لخلفية لوحة التحكم البعيدة. يمكن استخدام بادئات مسار مثل /factr.',
       probing: 'جار فحص طريقة مصادقة هذه البوابة...',
@@ -1354,7 +1350,7 @@ export const ar = defineLocale({
       },
       settings: {
         title: 'الإعدادات',
-        detail: 'تكوين Factr-I desktop'
+        detail: 'تكوين Factr-I'
       },
       capabilities: {
         title: 'المهارات والأدوات',
@@ -1830,6 +1826,7 @@ export const ar = defineLocale({
     failedLoad: 'فشل تحميل المهام',
     failedUpdate: 'فشل التحديث',
     failedTrigger: 'فشل التشغيل',
+    runNow: 'تشغيل الآن',
     failedDelete: 'فشل الحذف',
     failedSave: 'فشل الحفظ',
     editTitle: 'تحرير المهمة المجدولة',

@@ -13,7 +13,7 @@ export const PROJECT_IDEA_TEMPLATES: ProjectIdeaTemplate[] = [
   {
     emoji: '🎮',
     label: 'Game jam',
-    idea: 'A tiny browser game built in a weekend.\n\n- One core mechanic, juicy feedback\n- No build step — single HTML/JS file\n- Playable in under 60 seconds'
+    idea: 'A tiny browser game built in a weekend.\n\n- One core mechanic, juicy feedback\n- No build step - single HTML/JS file\n- Playable in under 60 seconds'
   },
   {
     emoji: '📚',

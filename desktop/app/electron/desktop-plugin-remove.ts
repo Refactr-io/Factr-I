@@ -47,7 +47,7 @@ export async function removeDesktopPlugin(appRoot: string, rawName: unknown): Pr
   }
 
   if (stat.isDirectory() && fs.existsSync(path.join(target, PACKAGE_MARKER))) {
-    return { ok: false, error: `${name} is the desktop half of an agent plugin — uninstall that plugin instead` }
+    return { ok: false, error: `${name} is the desktop half of an agent plugin - uninstall that plugin instead` }
   }
 
   try {

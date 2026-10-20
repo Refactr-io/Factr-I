@@ -155,6 +155,9 @@ fn factr_command(mut cmd: Vec<String>, h: Vec<String>) -> std::process::Command 
     }
     if let Ok(pythonpath) = std::env::var("FACTR_BACKEND_PYTHONPATH") {
         c.env("PYTHONPATH", pythonpath);
+    } else if let Some((_, pythonpath)) = crate::factr_runtime::bundled_backend().filter(|(p, _)| *p == cmd[0]) {
+        // Installed layout, command resolved to the bundled interpreter: it needs the bundled source on its path.
+        c.env("PYTHONPATH", pythonpath);
     }
     if let Some(tools) = std::env::var_os("FACTR_BACKEND_TOOLS_DIR") {
         let mut paths = vec![PathBuf::from(tools)];

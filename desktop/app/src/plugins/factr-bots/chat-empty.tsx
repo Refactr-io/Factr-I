@@ -7,10 +7,11 @@
  * says whose it is.
  */
 
-import { host, useValue, Wordmark } from '@factr/plugin-sdk'
+import { Button, host, requestComposerFocus, requestComposerInsert, useValue, Wordmark } from '@factr/plugin-sdk'
 
 import { avatarColor, botAppearance, BotFace } from './avatar'
 import { isBackfilledFacePng } from './avatar-image'
+import { computerProfile, TEACH_TEMPLATE } from './computer'
 import { $botMeta, $lastRoster } from './data'
 import { useBots } from './i18n'
 import { displayName } from './labels'
@@ -105,6 +106,20 @@ export function BotChatEmpty({ sessionId }: { sessionId: string }) {
         <Wordmark className="mb-1" text={name} width="calc(80% - 1rem)" />
 
         <p className="m-0 text-center leading-normal tracking-tight">{b.bot.chatEmpty}</p>
+
+        {computerProfile(bot) ? (
+          <Button
+            className="pointer-events-auto mt-3"
+            onClick={() => {
+              requestComposerInsert(TEACH_TEMPLATE)
+              requestComposerFocus()
+            }}
+            size="sm"
+            variant="ghost"
+          >
+            {b.computer.teach}
+          </Button>
+        ) : null}
       </div>
     </div>
   )

@@ -3,6 +3,12 @@ import { FIELD_DESCRIPTIONS, FIELD_LABELS } from '@/app/settings/constants'
 import type { Translations } from './types'
 
 export const en: Translations = {
+  account: { profile: name => `Profile: ${name}`, picture: 'Profile picture', uploadPicture: 'Upload picture', removePicture: 'Remove picture', pictureInvalid: 'Use a PNG, JPEG or WebP image under 256 KB.' },
+  activity: {
+    title: 'Activity', runs: 'Runs', usage: 'Usage', system: 'System', engine: 'Engine', profile: 'Profile',
+    openSession: 'Open session', budgetExceeded: 'Daily spending is over the soft limit.',
+    totals: (runs, running, tokens) => `${runs} runs · ${running} running · ${tokens} tokens in this list`
+  },
   connectors: {
     connect: 'Connect',
     retry: 'Try again',
@@ -306,6 +312,13 @@ export const en: Translations = {
   },
 
   boot: {
+    connection: {
+      startingEngine: 'Starting engine',
+      preparingEngine: 'Preparing engine',
+      connectingEngine: 'Connecting to engine',
+      loadingModel: 'Loading model',
+      reconnecting: 'Reconnecting to engine'
+    },
     ready: 'Factr-I is ready',
     desktopBootFailedWithMessage: message => `Desktop boot failed: ${message}`,
     steps: {
@@ -494,6 +507,16 @@ export const en: Translations = {
     dismiss: 'Dismiss'
   },
 
+  sessionRail: {
+    changes: 'Changes',
+    context: 'Context',
+    environment: 'Environment',
+    noChanges: 'No changes in this folder.',
+    noFolder: 'This chat is not in a folder yet.',
+    openChanges: count => `Review ${count} changed ${count === 1 ? 'file' : 'files'}`,
+    percentUsed: percent => `${percent}% used`,
+    title: 'Session'
+  },
   titlebar: {
     hideSidebar: 'Hide sidebar',
     back: 'Back',
@@ -513,7 +536,25 @@ export const en: Translations = {
     exitHud: 'Exit HUD mode',
     resetHudLayout: 'Reset HUD size and position',
     layoutEditor: 'Layout editor',
-    layoutEditorTitle: mod => `Layout editor: ${mod}-click resets the layout`
+    layoutEditorTitle: mod => `Layout editor: ${mod}-click resets the layout`,
+    paneSession: 'Session',
+    paneTerminal: 'Terminal',
+    paneChanges: 'Changes',
+    paneBrowser: 'Browser',
+    paneFiles: 'Files',
+    paneMore: 'More',
+    resetLayout: 'Reset layout',
+    layoutSettings: 'Layout settings',
+    toolCard: {
+      close: 'Close',
+      dockBottom: 'Dock below chat',
+      dockLeft: 'Dock left of chat',
+      dockRight: 'Dock right of chat',
+      dockTop: 'Dock above chat',
+      fill: 'Fill the window',
+      move: 'Move',
+      restore: 'Restore size'
+    }
   },
 
   keybinds: {
@@ -971,9 +1012,21 @@ export const en: Translations = {
       appActionsDesc: 'Where Settings, Layout, and HUD sit in the titlebar. Right leaves room for tabs on the left.',
       appActionsLeft: 'Left',
       appActionsRight: 'Right',
+      layoutTitle: 'Layout',
+      layoutDesc: 'Choose how Sessions, the chat and the Terminal, Files and Changes cards are arranged.',
+      layoutSwapTitle: 'Swap sidebar sides',
+      layoutSwapDesc: 'Mirror the window: Sessions and the tool cards trade sides.',
+      layoutResetTitle: 'Reset layout',
+      layoutResetDesc: 'Return to the default arrangement and close every tool card.',
+      layoutResetAction: 'Reset',
+      layoutSaveTitle: 'Save this layout',
+      layoutSaveDesc: 'Keep the current arrangement, and which cards are open, as a named layout.',
+      layoutSavePlaceholder: 'Layout name',
+      layoutSaveAction: 'Save',
+      layoutDelete: name => `Delete layout ${name}`,
       terminalFontTitle: 'Terminal Font',
       terminalFontDesc:
-        'Choose an installed font for terminals. Nerd Fonts render Powerlevel10k and shell icons; leave blank to use bundled JetBrains Mono.',
+        'Choose an installed font for terminals. Nerd Fonts render Powerlevel10k and shell icons; leave blank to use bundled IBM Plex Mono.',
       terminalFontPlaceholder: 'MesloLGS NF or a CSS font stack',
       terminalFontPreview: 'Glyph preview',
       terminalFontReset: 'Use default',
@@ -2525,6 +2578,58 @@ export const en: Translations = {
     }
   },
 
+  agentImport: {
+    title: 'Import from other agents',
+    description: 'Factr-I looked for other agents on this computer. Import brings over everything it found; credentials are never imported.',
+    detected: 'Found on this computer',
+    chooseFolder: 'Choose a folder…',
+    notFound: 'Not found',
+    nothingToImport: 'Nothing to import from here.',
+    target: profile => `Into the ${profile} profile`,
+    overwriteTitle: 'Replace what already exists',
+    overwriteDesc: 'Items with the same name are replaced. Off, they are left alone and reported.',
+    groups: {
+      skills: { title: 'Skills', note: 'Copied into the profile, grouped by where they came from.' },
+      mcp: { title: 'MCP servers', note: 'Keys and tokens are left out; add them again after.' },
+      memory: { title: 'Memory and instructions', note: 'CLAUDE.md, AGENTS.md and memory files, merged into your memory.' },
+      prompt: { title: 'System prompt', note: 'Your SOUL.md is kept unless you choose to replace it.' },
+      cron: { title: 'Scheduled jobs', note: 'Arrive paused. Review each one, then resume it.' },
+      bots: { title: 'Bots', note: 'Each agent definition or profile becomes a profile of its own.' },
+      chats: { title: 'Chats', note: 'Your conversations, as history you can open and continue.' },
+      permissions: { title: 'Command rules', note: 'Allow and deny lists, mapped to the closest equivalent.' }
+    },
+    importAction: count => (count === 1 ? 'Import 1 item' : `Import ${count} items`),
+    itemCount: count => (count === 1 ? '1 item' : `${count} items`),
+    customizeDesc: 'Pick what to bring over from this agent.',
+    nothingFound: 'No other agents found here. You can choose a folder to import from.',
+    customize: 'Choose what to import',
+    importOne: 'Import',
+    importAll: count => `Import all (${count})`,
+    importAnother: 'Import another',
+    importingFrom: name => `Importing from ${name}…`,
+    notFoundList: names => `Not found on this computer: ${names}`,
+    summary: {
+      skills: count => (count === 1 ? '1 skill' : `${count} skills`),
+      mcp: count => (count === 1 ? '1 MCP server' : `${count} MCP servers`),
+      memory: count => (count === 1 ? '1 memory note' : `${count} memory notes`),
+      prompt: () => 'system prompt',
+      cron: count => (count === 1 ? '1 scheduled job' : `${count} scheduled jobs`),
+      bots: count => (count === 1 ? '1 bot' : `${count} bots`),
+      chats: count => (count === 1 ? '1 chat' : `${count} chats`),
+      permissions: count => (count === 1 ? '1 command rule' : `${count} command rules`)
+    },
+    importing: 'Importing…',
+    scanning: 'Looking for other agents…',
+    resultTitle: 'Import finished',
+    resultSummary: (imported, skipped, conflicts, errors) =>
+      `${imported} imported, ${skipped} skipped, ${conflicts} already existed${errors ? `, ${errors} failed` : ''}`,
+    strippedSecrets: 'Left out because they look like credentials. Add them again where needed:',
+    pausedJobs: 'Imported jobs are paused until you resume them.',
+    botsCreated: 'Profiles created',
+    done: 'Done',
+    failed: 'The import failed',
+    back: 'Back'
+  },
   profiles: {
     close: 'Close profiles',
     nameHint: 'Lowercase letters, digits, hyphens, and underscores. Must start with a letter or digit.',
@@ -2534,6 +2639,7 @@ export const en: Translations = {
     loading: 'Loading profiles...',
     newProfile: 'New profile',
     importProfile: 'Import profile…',
+    importFromAgents: 'Import from other agents…',
     exportProfile: 'Export profile…',
     imported: 'Profile imported',
     exported: 'Profile exported',
@@ -2765,6 +2871,7 @@ export const en: Translations = {
     failedLoad: 'Could not load scheduled jobs',
     failedUpdate: 'Could not update the job',
     failedTrigger: 'Could not start the job',
+    runNow: 'Run now',
     failedDelete: 'Could not delete the job',
     failedSave: 'Could not save the job',
     editTitle: 'Edit scheduled job',
@@ -3668,6 +3775,9 @@ export const en: Translations = {
     connected: 'Connected',
     featuredPitch: 'Sign in with your ChatGPT account. No API key needed.',
     fireworksPitch: 'Models hosted by Fireworks, through their API',
+    openCodeTitle: 'OpenCode Zen (detected)',
+    openCodePitch: 'OpenCode is installed on this computer. Use its sign-in to get Zen models, free ones included.',
+    openCodePitchNoLogin: 'OpenCode is installed here. Paste a Zen key to use its models.',
     localModelsTitle: 'Run models locally',
     localModelsPitch: 'Download a model and run it on this computer. No account needed.',
     openRouterPitch: 'One key for hundreds of models',
@@ -3773,6 +3883,7 @@ export const en: Translations = {
       editModels: 'Edit models…',
       connectProvider: 'Connect another provider',
       refreshModels: 'Refresh models',
+      connectOpenCode: 'Connect OpenCode Zen',
       fast: 'Fast'
     },
     modelOptions: {

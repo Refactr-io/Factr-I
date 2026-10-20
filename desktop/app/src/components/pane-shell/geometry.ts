@@ -14,7 +14,10 @@
 import { type RefObject, useLayoutEffect, useState, useSyncExternalStore } from 'react'
 
 import { $layoutTree } from '@/components/pane-shell/tree/store'
+import { $panesFlipped } from '@/store/layout'
 import { $connection } from '@/store/session'
+
+import { $maximizedPane } from './tree/pane-maximize'
 
 // ---------------------------------------------------------------------------
 // Rects
@@ -227,8 +230,19 @@ export function publishWorkspaceGeometry(): () => void {
     }
 
     const r = el.getBoundingClientRect()
-    const left = Math.round(r.left)
-    const right = Math.round(window.innerWidth - r.right)
+    let left = Math.round(r.left)
+    let right = Math.round(window.innerWidth - r.right)
+
+    // The main zone steps aside while a pane is in Fill (display:none, zero size): the chat header then spans from
+    // the sessions list's edge to the window edge.
+    if (r.width === 0 && r.height === 0) {
+      const filled = [...document.querySelectorAll<HTMLElement>('[data-tree-group]:has([data-tool-card])')]
+        .map(group => group.getBoundingClientRect())
+        .find(box => box.width > 0)
+
+      left = filled ? Math.round(filled.left) : 0
+      right = filled ? Math.round(window.innerWidth - filled.right) : 0
+    }
 
     // Skip unchanged writes: a sash drag fires the RO every frame, and each
     // :root custom-property set dirties style for everything that reads them.
@@ -243,17 +257,46 @@ export function publishWorkspaceGeometry(): () => void {
     }
   }
 
-  // Tree mutations move zones without resizing them (⌘\ flip) — re-measure a
-  // frame later, after the DOM committed. RO covers width changes (sash drags,
-  // side collapses); window resize covers the rest.
-  const unsubTree = $layoutTree.listen(() => requestAnimationFrame(measure))
+  // Tree mutations move zones without resizing them (the ⌘\ flip, a dock move): the ResizeObserver never fires for a
+  // pure position change, and React commits after the store notifies. So a change watches the geometry frame by frame
+  // until the motion has settled - a write only happens when a number actually changed.
+  let settleUntil = 0
+  let settleFrame = 0
+
+  const settle = (ms = 600) => {
+    settleUntil = performance.now() + ms
+
+    if (settleFrame) {
+      return
+    }
+
+    const tick = () => {
+      measure()
+      settleFrame = performance.now() < settleUntil ? requestAnimationFrame(tick) : 0
+    }
+
+    settleFrame = requestAnimationFrame(tick)
+  }
+
+  const unsubTree = $layoutTree.listen(() => settle())
   // Drag released → publish the final geometry the deferral above skipped.
-  onSashDragEnd = () => requestAnimationFrame(measure)
+  onSashDragEnd = () => settle(200)
   window.addEventListener('resize', measure)
   measure()
 
+  // Fill moves the workspace edges while the cards animate: keep measuring as the motion settles.
+  const unsubFill = $maximizedPane.listen(() => settle())
+  // Swapping sides moves every zone without resizing any: nothing else here would notice.
+  const unsubFlip = $panesFlipped.listen(() => settle())
+  // Safety net for any other pure move: a handful of reads a second, and a write only when a number changed.
+  const poll = window.setInterval(measure, 250)
+
   return () => {
     unsubTree()
+    unsubFill()
+    unsubFlip()
+    window.clearInterval(poll)
+    cancelAnimationFrame(settleFrame)
     onSashDragEnd = null
     window.removeEventListener('resize', measure)
     ro.disconnect()

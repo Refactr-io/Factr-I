@@ -29,6 +29,20 @@ mod detached;
 mod driver;
 pub(crate) use driver::start as start_driver;
 pub(crate) mod attach;
+mod bot_chat;
+mod bot_chat_deliver;
+mod bot_preamble;
+mod bot_message;
+mod bot_peer;
+mod bot_routine;
+mod bot_stop;
+mod bot_group;
+mod bot_http;
+mod feature_link;
+pub(crate) use bot_http::deliver as deliver_bot_output;
+pub(crate) use bot_message::start as start_bot_replies;
+mod bot_retirement;
+pub(crate) use bot_retirement::request as pool_retirement;
 mod local_state;
 mod settings;
 pub(crate) use settings::{config_record, yolo_active};
@@ -85,6 +99,7 @@ fn default_new_chat_effort(provider: &str) -> Option<String> {
 pub(crate) fn put_config(home: &std::path::Path, config: &Value) -> Result<(), (bool, String)> {
     settings::put_config(home, config).map_err(|e| (e.code == 4002, e.message))
 }
+mod opencode;
 mod projects;
 mod provider_state;
 pub use provider_state::{any_provider_configured, runtime_provider_id, runtime_saved_provider};
@@ -289,8 +304,9 @@ impl RpcError {
 
 /// A WebSocket to the Factr feature backend for one desktop connection.
 struct Upstream {
+    port: u16,
     tx: mpsc::Sender<String>,
-    pending: Mutex<HashMap<String, oneshot::Sender<Value>>>,
+    pending: Arc<feature_link::Replies>,
     tasks: Vec<tokio::task::AbortHandle>,
 }
 
@@ -722,6 +738,7 @@ impl Conn {
     /// and the engine's disconnect cleanup then drops the agent. A chat that has had no turn is not
     /// on disk yet, so `known` keeps it for `session.list`.
     async fn forget_link(&self, sid: &str) {
+        bot_preamble::trace("detach", sid, self.client.id);
         self.release_after_turn.lock().unwrap_or_else(|e| e.into_inner()).remove(sid);
         if self.is_detached() {
             detached::forget(sid, self);
@@ -858,6 +875,7 @@ impl Conn {
     }
 
     async fn attach_once(self: &Arc<Self>, session_id: &str) -> Result<Value> {
+        bot_preamble::trace("attach", session_id, self.client.id);
         // A closed window's connection only finishes the turns it holds: a new link would outlive them.
         if self.is_detached() {
             bail!("the window that held this chat has closed");
@@ -981,6 +999,8 @@ impl Conn {
     }
 
     async fn on_harness_frame(self: &Arc<Self>, frame: Value) {
+        bot_preamble::progress(&frame);
+        if self.bot_tool(&frame) { return; }
         if std::env::var_os("FACTR_GATEWAY_TRACE").is_some() {
             eprintln!(
                 "factr-gateway: harness {}",
@@ -1446,6 +1466,7 @@ impl Conn {
     /// history, not a running one).
     fn map_subagent_status(info: &Value, sessions: &HashMap<String, SessionState>, followed: bool) -> Value {
         let child_id = info["session_id"].as_str().unwrap_or_default();
+        if bot_stop::cancelled(child_id) { return json!("interrupted"); }
         if followed || sessions.get(child_id).is_some_and(SessionState::turn_active) {
             return json!("running");
         }
@@ -1504,6 +1525,10 @@ impl Conn {
     }
 
     async fn dispatch(self: &Arc<Self>, method: &str, p: &Value) -> Result<Value, RpcError> {
+        if std::env::var_os("FACTR_BOT_TRACE").is_some() { eprintln!("bot-dispatch: {method}"); }
+        let _bot_admission = bot_retirement::admission(method)?;
+        let _preamble = (method == "prompt.submit").then(|| bot_preamble::arm(self, p));
+        if method == "prompt.submit" { Box::pin(self.prepare_bot_tool(p)).await?; }
         let sid = || {
             p["session_id"]
                 .as_str()
@@ -1513,7 +1538,12 @@ impl Conn {
         let call = |req: Value| async move { self.call(req).await.map_err(RpcError::internal) };
         match method {
             "ping" | "gateway.ping" => Ok(json!({})),
+            "bot_relay.roster.sync" => bot_message::sync_roster(p),
+            "bot.chat.reply" => Box::pin(self.bot_reply(p)).await,
+            "bot.group.ensure" => Box::pin(self.bot_group_ensure(p)).await,
             m if local_state::handles(m) => self.local_state(m, p).await,
+            m if bot_chat_deliver::handles(m) => self.bot_deliver(m, p).await,
+            m if bot_chat::handles(m) => self.bot_chat(m, p).await,
             m if attach::handles(m) => {
                 // Only a session this connection has open or the engine has stored may stage files.
                 if let Some(id) = p["session_id"].as_str().filter(|s| !s.is_empty()) {
@@ -1556,6 +1586,18 @@ impl Conn {
                 };
                 let models = listed.as_ref().and_then(|r| r["models"].as_array()).map(|m| m.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
                 Ok(model_options(&self.config, models, p["include_unconfigured"] == true))
+            }
+            // "Use my OpenCode sign-in": approve OpenCode's own auth.json as a credential source (the engine reads it in
+            // place, the key never moves). Any other save_key goes to the backend as before.
+            "model.save_key" if p["source"] == "opencode" => {
+                if crate::deployment::is_private() {
+                    return Err(RpcError { code: -32000, message: crate::deployment::PRIVATE_MSG.into(), data: None });
+                }
+                opencode::adopt().map_err(|message| RpcError { code: 4007, message, data: None })?;
+                crate::reload_if_credentials_moved(&self.config).await;
+                let options = model_options(&self.config, Vec::new(), false);
+                let row = options["providers"].as_array().and_then(|r| r.iter().find(|r| r["slug"] == "opencode")).cloned();
+                Ok(json!({ "provider": row.unwrap_or_else(|| json!({ "slug": "opencode", "name": "OpenCode Zen", "models": [], "total_models": 0, "authenticated": true })) }))
             }
             "session.active_list" => {
                 let stored = super::session_infos(&self.config, 1000, false)
@@ -2644,7 +2686,8 @@ impl Conn {
                     let (home, id) = (self.config.home.clone(), id.clone());
                     tokio::task::spawn_blocking(move || attach::staged_images(&home, &id)).await.map_err(|e| RpcError::internal(e.into()))?
                 };
-                if let Err(err) = self.submit(&id, &text, p["system_reminder"].as_str(), images).await {
+                let reminder = self.bot_reminder(p["system_reminder"].as_str(), &id).await;
+                if let Err(err) = self.submit(&id, &text, reminder.as_deref(), images).await {
                     self.observer.failed_submit(&id, &run, &err.to_string());
                     attach::restore_staged(&self.config.home, &id, &staged, &unreadable);
                     return Err(RpcError::internal(err));
@@ -2683,9 +2726,14 @@ impl Conn {
                     || self.observer.has_active_run(id);
                 self.ensure_attached(id).await.map_err(RpcError::internal)?;
                 call(json!({ "req": "cancel", "session_id": id })).await?;
+                let children = match self.stop_bot_children(id).await {
+                    Ok(count) => count,
+                    Err(error) => { self.emit("error", Some(id), json!({"message":format!("Some child tasks could not be stopped: {error}"),"reason":"child_cancel_failed"})).await; 0 }
+                };
                 Ok(json!({
                     "status": if busy { "interrupted" } else { "not_interrupted" },
                     "interrupted": busy,
+                    "children_stopped": children,
                 }))
             }
             "session.title" => {
@@ -2923,7 +2971,12 @@ impl Conn {
             // Launch-time reads of Python-owned state: stubbed until Python is up for something else.
             _ => {
                 if let Some(stub) = crate::boot_stubs::answer(method, p) {
-                    if !self.backend_running().await {
+                    let local = if matches!(method, "pet.info" | "pet.info.meta") {
+                        crate::boot_stubs::pet_disabled(method, p)
+                    } else {
+                        !self.backend_running().await
+                    };
+                    if local {
                         return Ok(stub);
                     }
                 }
@@ -3368,18 +3421,22 @@ Reply ONLY with a single JSON object on one line:\n\
             crate::note_unsupported("rpc", method);
             return Err(RpcError::unsupported(method));
         };
+        let _lease = features.lease();
         let upstream = self.upstream(&features).await.map_err(RpcError::internal)?;
         let id = format!("fwd-{}", self.next_forward.fetch_add(1, Ordering::Relaxed));
-        let (tx, rx) = oneshot::channel();
-        upstream.pending.lock().await.insert(id.clone(), tx);
+        let rx = upstream.pending.register(id.clone()).await.map_err(RpcError::internal)?;
         let frame = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-        upstream
+        if upstream
             .tx
             .send(frame.to_string())
             .await
-            .map_err(|_| RpcError::internal(anyhow!("feature backend connection closed")))?;
-        let reply = tokio::time::timeout(FORWARD_TIMEOUT, rx)
-            .await
+            .is_err() {
+            upstream.pending.close().await;
+            return Err(RpcError::internal(anyhow!("feature backend connection closed")));
+        }
+        let received = tokio::time::timeout(FORWARD_TIMEOUT, rx).await;
+        upstream.pending.remove(&id).await;
+        let reply = received
             .map_err(|_| RpcError::internal(anyhow!("{method} timed out in the feature backend")))?
             .map_err(|_| RpcError::internal(anyhow!("the feature backend restarted; try again")))?;
         features.touch(method, "forwarded-rpc");
@@ -3409,28 +3466,34 @@ Reply ONLY with a single JSON object on one line:\n\
         features: &crate::features::Features,
     ) -> Result<Arc<Upstream>> {
         let mut slot = self.upstream.lock().await;
+        // Join an in-progress idle shutdown/start before considering the cached socket.
+        let port = features.port().await?;
         if let Some(up) = slot.as_ref() {
-            if !up.tx.is_closed() {
+            if up.port == port && !up.tx.is_closed() && up.pending.is_open().await {
                 return Ok(up.clone());
             }
         }
-        let port = features.port().await?;
         let url = format!("ws://127.0.0.1:{port}/api/ws?token={}", features.token);
         let (ws, _) = tokio_tungstenite::connect_async(url)
             .await
             .context("connecting to the feature backend")?;
         let (mut ws_tx, mut ws_rx) = ws.split();
         let (tx, mut rx) = mpsc::channel::<String>(256);
+        let pending = Arc::new(feature_link::Replies::default());
+        let writer_pending = pending.clone();
         let writer = tokio::spawn(async move {
             while let Some(text) = rx.recv().await {
                 if ws_tx.send(Message::Text(text)).await.is_err() {
                     break;
                 }
             }
+            writer_pending.close().await;
         });
         let up = Arc::new_cyclic(|weak: &std::sync::Weak<Upstream>| {
             let weak_up = weak.clone();
             let conn = Arc::downgrade(self);
+            let reader_pending = pending.clone();
+            let writer_abort = writer.abort_handle();
             let reader = tokio::spawn(async move {
                 while let Some(Ok(msg)) = ws_rx.next().await {
                     let Message::Text(text) = msg else { continue };
@@ -3442,9 +3505,7 @@ Reply ONLY with a single JSON object on one line:\n\
                     };
                     if frame.get("method").is_none() {
                         if let Some(id) = frame["id"].as_str() {
-                            if let Some(tx) = up.pending.lock().await.remove(id) {
-                                let _ = tx.send(frame);
-                            }
+                            up.pending.resolve(id, frame.clone()).await;
                         }
                     } else if frame["method"] == "event" {
                         // The desktop already has our own gateway.ready.
@@ -3460,10 +3521,13 @@ Reply ONLY with a single JSON object on one line:\n\
                         conn.send_json(frame).await;
                     }
                 }
+                reader_pending.close().await;
+                writer_abort.abort();
             });
             Upstream {
+                port,
                 tx,
-                pending: Mutex::new(HashMap::new()),
+                pending,
                 tasks: vec![writer.abort_handle(), reader.abort_handle()],
             }
         });
@@ -3780,6 +3844,8 @@ pub(crate) async fn agent_run(
     timeout: Duration,
 ) -> Result<Value> {
     // Queued behind the chat's running turn (its `timeout` starts once this turn does).
+    let routine = if opts.surface == "cron" { bot_routine::prompt(prompt, crate::profile::current().name.as_deref().unwrap_or("default"))? } else { std::borrow::Cow::Borrowed(prompt) };
+    let prompt = routine.as_ref();
     let turn = match session_key {
         Some(key) => Some(chat_turn(key).await),
         None => None,
@@ -4849,6 +4915,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_headless_run_is_never_auto_reviewed_and_no_model_is_called() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let (mut config, home) = test_config("headless-learn");
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         {
@@ -4933,6 +5000,53 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert!(!marker.exists(), "no backend process was launched for the catalog");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn pet_polls_forward_enabled_named_and_managed_scopes_even_before_backend_start() {
+        let _env = crate::factr_env::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let before = ["FACTR_CONFIG_HOME", "FACTR_MANAGED_DIR"].map(|k| (k, std::env::var_os(k)));
+        let dir = std::env::temp_dir().join(format!("pet-routing-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("profiles/scribe")).unwrap();
+        unsafe {
+            std::env::set_var("FACTR_CONFIG_HOME", &dir);
+            std::env::remove_var("FACTR_MANAGED_DIR");
+        }
+        let conn = test_conn_with_backend("pet-routing", "/usr/bin/false");
+        for method in ["pet.info", "pet.info.meta"] {
+            std::fs::write(dir.join("config.yaml"), "display: {pet: {enabled: true}}\n").unwrap();
+            assert!(conn.dispatch(method, &json!({})).await.is_err(), "an enabled pet must wake Python");
+        }
+        // The stub represents an already-running feature service; its answer identifies forwarding.
+        *conn.forward_stub.lock().unwrap() = Some(Arc::new(|_, _| Ok(json!({"forwarded": true}))));
+        std::fs::write(dir.join("config.yaml"), "display: {pet: {enabled: false}}\n").unwrap();
+        std::fs::write(dir.join("profiles/scribe/config.yaml"), "display: {pet: {enabled: true}}\n").unwrap();
+        for method in ["pet.info", "pet.info.meta"] {
+            assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"enabled": false}));
+            assert_eq!(conn.dispatch(method, &json!({"profile": "scribe"})).await.unwrap(), json!({"forwarded": true}));
+            for profile in ["SCRIBE", "Default", "missing", "factr", ".factr", "_invalid"] {
+                assert_eq!(conn.dispatch(method, &json!({"profile": profile})).await.unwrap(), json!({"forwarded": true}));
+            }
+            assert_eq!(conn.dispatch(method, &json!({"profile": 123})).await.unwrap(), json!({"forwarded": true}));
+            assert_eq!(conn.dispatch(method, &json!({"session_id": "s1"})).await.unwrap(), json!({"forwarded": true}));
+            unsafe { std::env::set_var("FACTR_CONFIG_HOME", dir.join("profiles/scribe")) };
+            assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"forwarded": true}));
+            assert_eq!(conn.dispatch(method, &json!({"profile": "default"})).await.unwrap(), json!({"enabled": false}));
+            unsafe {
+                std::env::set_var("FACTR_CONFIG_HOME", &dir);
+                std::env::set_var("FACTR_MANAGED_DIR", dir.join("managed"));
+            }
+            assert_eq!(conn.dispatch(method, &json!({})).await.unwrap(), json!({"forwarded": true}));
+            unsafe { std::env::remove_var("FACTR_MANAGED_DIR") };
+        }
+        for (key, value) in before {
+            match value {
+                Some(v) => unsafe { std::env::set_var(key, v) },
+                None => unsafe { std::env::remove_var(key) },
+            }
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     /// The requests the packaged desktop sends within the first seconds of launch (traced with

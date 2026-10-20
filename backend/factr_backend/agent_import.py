@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import sys
@@ -27,9 +28,13 @@ logger = logging.getLogger(__name__)
 ENTRY_DELIMITER = "\n§\n"
 # Character budget for merged memory files (openclaw script default).
 MEMORY_CHAR_LIMIT = 20_000
-SUPPORTED_AGENTS = ("claude-code", "codex")
-_AGENT_DEFAULT_DIRS = {"claude-code": ".claude", "codex": ".codex"}
-_SKILL_CATEGORY = {"claude-code": "claude-code-imports", "codex": "codex-imports"}
+SUPPORTED_AGENTS = ("claude-code", "codex", "hermes", "opencode", "prime")
+_AGENT_DEFAULT_DIRS = {"claude-code": ".claude", "codex": ".codex", "hermes": ".hermes",
+                       "opencode": ".config/opencode", "prime": ".prime/agent"}
+_SKILL_CATEGORY = {"claude-code": "claude-code-imports", "codex": "codex-imports",
+                   "hermes": "hermes-imports", "opencode": "opencode-imports", "prime": "prime-imports"}
+# What a run can cover. The desktop picks a subset; the CLI runs them all.
+IMPORT_GROUPS = ("skills", "mcp", "memory", "prompt", "permissions", "cron", "bots", "chats")
 
 # Env var names that look like credentials — never copied into config.yaml.
 _SECRET_KEY_RE = re.compile(
@@ -191,9 +196,60 @@ def claude_rule_to_command_pattern(rule: str) -> Optional[str]:
     return inner[:-2] + "*" if inner.endswith(":*") else inner
 
 
+def candidate_dirs(agent: str, env: Optional[Mapping[str, str]] = None, home: Optional[Path] = None,
+                   platform: Optional[str] = None) -> List[Path]:
+    """Where an agent keeps its setup on this OS, most specific first: its own environment override, then the
+    usual folders under the home directory, XDG on Linux, AppData on Windows."""
+    env = os.environ if env is None else env
+    home = Path(home) if home else Path.home()
+    windows = (platform or sys.platform).startswith("win")
+    out: List[Path] = []
+
+    def override(name: str, *parts: str) -> None:
+        if env.get(name):
+            out.append(Path(env[name]).joinpath(*parts))
+
+    def appdata(name: str, *parts: str) -> None:
+        if windows and env.get(name):
+            out.append(Path(env[name]).joinpath(*parts))
+
+    if agent == "claude-code":
+        override("CLAUDE_CONFIG_DIR")
+        out.append(home / ".claude")
+    elif agent == "codex":
+        override("CODEX_HOME")
+        out.append(home / ".codex")
+    elif agent == "hermes":
+        override("HERMES_HOME")
+        out.append(home / ".hermes")
+        appdata("LOCALAPPDATA", "hermes")
+    elif agent == "opencode":
+        override("OPENCODE_CONFIG_DIR")
+        override("XDG_CONFIG_HOME", "opencode")
+        out.append(home / ".config" / "opencode")
+        appdata("APPDATA", "opencode")
+    elif agent == "prime":
+        override("PRIME_HOME")
+        out.extend([home / ".prime" / "agent", home / ".prime"])
+        appdata("LOCALAPPDATA", "prime")
+    unique: List[Path] = []
+    for candidate in out:
+        if candidate not in unique:
+            unique.append(candidate)
+    return unique
+
+
+def find_agent_dir(agent: str, **kwargs) -> Optional[Path]:
+    """The first candidate folder that exists (and, for Prime, looks like a layout we can read)."""
+    for candidate in candidate_dirs(agent, **kwargs):
+        if candidate.is_dir() and (agent != "prime" or guess_agent(candidate)):
+            return candidate
+    return None
+
+
 def detect_agents() -> List[str]:
-    """Return the list of supported agents whose default dirs exist."""
-    return [a for a in SUPPORTED_AGENTS if (Path.home() / _AGENT_DEFAULT_DIRS[a]).is_dir()]
+    """Return the list of supported agents whose folders exist on this machine."""
+    return [a for a in SUPPORTED_AGENTS if find_agent_dir(a)]
 
 
 def sanitize_mcp_env(env: Any) -> Tuple[Dict[str, str], List[str]]:
@@ -236,7 +292,8 @@ class AgentImporter:
 
     def __init__(self, agent: str, source_root: Path, target_root: Path,
                  execute: bool = False, overwrite: bool = False,
-                 sync_skills: Mapping[str, Optional[str]] | Sequence[str] = ()) -> None:
+                 sync_skills: Mapping[str, Optional[str]] | Sequence[str] = (),
+                 groups: Optional[Sequence[str]] = None) -> None:
         if agent not in SUPPORTED_AGENTS:
             raise ValueError(f"Unsupported agent: {agent!r}")
         self.agent = agent
@@ -251,6 +308,13 @@ class AgentImporter:
                                                        else {name: None for name in sync_skills})
         self.items: List[Dict[str, Any]] = []
         self.stripped_secrets: List[str] = []
+        # None = everything; otherwise only these IMPORT_GROUPS run.
+        self.groups = None if groups is None else set(groups)
+        # Bot definitions found in the source (subagents, Hermes profiles); the caller turns them into profiles.
+        self.bots: List[Dict[str, Any]] = []
+
+    def wants(self, group: str) -> bool:
+        return self.groups is None or group in self.groups
 
     def record(self, kind: str, source, destination, status: str,
                reason: str = "", **details) -> None:
@@ -294,44 +358,71 @@ class AgentImporter:
             self.record("source", self.source_root, None, "error",
                         "Source directory does not exist")
         else:
-            {"claude-code": self._run_claude_code, "codex": self._run_codex}[self.agent]()
+            from factr_backend import agent_import_extra as extra
+            runners = {"claude-code": self._run_claude_code, "codex": self._run_codex,
+                       "hermes": lambda: extra.run_hermes(self), "opencode": lambda: extra.run_opencode(self)}
+            # Prime has no layout of its own: it is read as whichever supported layout its folder looks like.
+            layout = guess_agent(self.source_root) if self.agent == "prime" else self.agent
+            if layout in runners:
+                runners[layout]()
+            else:
+                self.record("source", self.source_root, None, "skipped",
+                            "Nothing importable found in this folder")
         return self.build_report()
 
     def _run_claude_code(self) -> None:
         settings = self._load_source_mapping(
             "settings", self.source_root / "settings.json", json.loads, self._JSON_ERRORS,
             record_missing=True, non_mapping_error="settings.json is not a JSON object")
-        self.import_context_file(self.source_root / "CLAUDE.md", "claude-md")
-        self._import_permission_rules(settings, "allow")
-        self._import_permission_rules(settings, "deny")
+        if self.wants("memory"):
+            self.import_context_file(self.source_root / "CLAUDE.md", "claude-md")
+        if self.wants("permissions"):
+            self._import_permission_rules(settings, "allow")
+            self._import_permission_rules(settings, "deny")
         # mcpServers: ~/.claude.json (preferred; lives NEXT TO ~/.claude/) then settings.json
+        inner = self.source_root / ".claude.json"
         claude_json = self._load_source_mapping(
-            "mcp-servers", self.source_root.parent / ".claude.json", json.loads, self._JSON_ERRORS)
+            "mcp-servers", inner if inner.is_file() else self.source_root.parent / ".claude.json",
+            json.loads, self._JSON_ERRORS)
         servers: Dict[str, Any] = {}
         for source in (claude_json.get("mcpServers"), settings.get("mcpServers")):
             if isinstance(source, dict):
                 for name, srv in source.items():
                     servers.setdefault(name, srv)
-        self.import_mcp_servers(servers, kind="mcp-servers")
-        self.import_skills(self.source_root / "skills")
+        if self.wants("mcp"):
+            self.import_mcp_servers(servers, kind="mcp-servers")
+        if self.wants("skills"):
+            self.import_skills(self.source_root / "skills")
         commands_dir = self.source_root / "commands"
-        if commands_dir.is_dir() and any(commands_dir.glob("*.md")):
+        if self.wants("skills") and commands_dir.is_dir() and any(commands_dir.glob("*.md")):
             self.record("slash-commands", commands_dir, None, "skipped",
                         "Claude slash commands have no direct Factr equivalent — "
                         "consider converting them into skills")
+        from factr_backend import agent_import_extra as extra
+        if self.wants("bots"):
+            extra.collect_agent_definitions(self, self.source_root / "agents")
+        if self.wants("chats"):
+            extra.import_claude_chats(self)
 
     def _run_codex(self) -> None:
         config = self._load_source_mapping("config", self.source_root / "config.toml",
                                            tomllib.loads, Exception, record_missing=True)
-        self.import_context_file(self.source_root / "AGENTS.md", "agents-md")
+        if self.wants("memory"):
+            self.import_context_file(self.source_root / "AGENTS.md", "agents-md")
         mcp = config.get("mcp_servers")
-        self.import_mcp_servers(mcp if isinstance(mcp, dict) else {}, kind="mcp-servers")
+        if self.wants("mcp"):
+            self.import_mcp_servers(mcp if isinstance(mcp, dict) else {}, kind="mcp-servers")
         memories_dir = self.source_root / "memories"
-        self._import_markdown_files(
-            "memories", memories_dir,
-            sorted(memories_dir.glob("*.md")) if memories_dir.is_dir() else None,
-            "No memories directory found")
-        self.import_skills(self.source_root / "skills")
+        if self.wants("memory"):
+            self._import_markdown_files(
+                "memories", memories_dir,
+                sorted(memories_dir.glob("*.md")) if memories_dir.is_dir() else None,
+                "No memories directory found")
+        if self.wants("skills"):
+            self.import_skills(self.source_root / "skills")
+        from factr_backend import agent_import_extra as extra
+        if self.wants("chats"):
+            extra.import_codex_chats(self)
 
     _JSON_ERRORS = (json.JSONDecodeError, OSError)
 
@@ -380,6 +471,10 @@ class AgentImporter:
             if not (failed and single_file):
                 self.record(kind, source, destination, "skipped", "No importable entries found")
             return
+        self.merge_memory_entries(kind, source, destination, incoming)
+
+    def merge_memory_entries(self, kind: str, source, destination: Path, incoming: List[str]) -> None:
+        """Merge ``incoming`` entries into the memory store at ``destination`` (snapshotting it first)."""
         existing = parse_existing_memory_entries(destination)
         merged, stats = merge_entries(existing, incoming, MEMORY_CHAR_LIMIT)
         details = {"existing_entries": stats["existing"], "added_entries": stats["added"],
@@ -487,21 +582,41 @@ class AgentImporter:
             config["mcp_servers"] = existing
             dump_yaml_file(destination, config)
 
-    def import_skills(self, source_root: Path) -> None:
-        """skills/<name>/SKILL.md dirs → FACTR_CONFIG_HOME/skills/<category>/<name>."""
-        destination_root = self.target_root / "skills" / _SKILL_CATEGORY[self.agent]
+    @property
+    def engine_root(self) -> Optional[Path]:
+        """The desktop engine's home (``<profile>/engine``) when this profile has one. The app lists skills
+        and chats from there, not from the Python config home, so imports have to land in it."""
+        engine = self.target_root / "engine"
+        return engine if engine.is_dir() else None
+
+    def import_skills(self, source_root: Path, nested: bool = False) -> None:
+        """skills/<name>/SKILL.md dirs → <engine or config home>/skills/<category>/<name>. ``nested`` also
+        takes skills grouped in category folders (Hermes: skills/<category>/<name>), flattened into one."""
+        skills_base = (self.engine_root or self.target_root) / "skills"
+        destination_root = skills_base / _SKILL_CATEGORY[self.agent]
         if not source_root.is_dir():
             self.record("skills", None, destination_root, "skipped", "No skills directory found")
             return
-        skill_dirs = [p for p in sorted(source_root.iterdir())
-                      if p.is_dir() and (p / "SKILL.md").exists()]
+        if nested:
+            skill_dirs = [p.parent for p in sorted(source_root.rglob("SKILL.md"))
+                          if not any(part.startswith(".") for part in p.relative_to(source_root).parts)]
+        else:
+            skill_dirs = [p for p in sorted(source_root.iterdir())
+                          if p.is_dir() and (p / "SKILL.md").exists()]
         if not skill_dirs:
             self.record("skills", source_root, destination_root, "skipped",
                         "No skills with SKILL.md found")
             return
         from factr_backend.agent_import_sync import skill_tree_digest
+        planned: set = set()
         for skill_dir in skill_dirs:
-            destination = destination_root / skill_dir.name
+            # The app's skill registry reads one level of category (<category>/<name>), so a source's own category
+            # folders are flattened into one; a name taken by an earlier skill keeps its category as a prefix.
+            leaf = skill_dir.name
+            if leaf in planned:
+                leaf = f"{skill_dir.parent.name}-{leaf}"
+            planned.add(leaf)
+            destination = destination_root / leaf
             if destination.exists() and not self.overwrite:
                 if skill_dir.name not in self.sync_skills:
                     self.record("skill", skill_dir, destination, "conflict", "Destination skill already exists")
@@ -539,13 +654,13 @@ def import_agent_command(args) -> None:
         detected = detect_agents()
         if not detected:
             print()
-            print_error("No supported agent setup found (~/.claude or ~/.codex).")
+            print_error("No supported agent setup found (~/.claude, ~/.codex, ~/.hermes or ~/.config/opencode).")
             print_info("Specify one explicitly: factr import-agent claude-code --source /path")
             return
         if len(detected) > 1 and explicit_source is None:
             print()
             print_info("Multiple agent setups detected: " + ", ".join(detected))
-            print_info("Pick one: factr import-agent claude-code   or   factr import-agent codex")
+            print_info("Pick one: factr import-agent " + "   or   factr import-agent ".join(detected))
             return
         agent = detected[0]
     source_dir = Path(explicit_source or Path.home() / _AGENT_DEFAULT_DIRS[agent])
@@ -686,5 +801,65 @@ def backup_memory_file(path: Path) -> Optional[Path]:
     return backup
 
 def default_source_dir(agent: str) -> Path:
-    return Path.home() / _AGENT_DEFAULT_DIRS[agent]
+    return find_agent_dir(agent) or Path.home() / _AGENT_DEFAULT_DIRS[agent]
 # ---- END PLUGIN-COMPAT ----
+
+
+# --- desktop entry points ----------------------------------------------------------------------------------
+
+AGENT_LABELS = {"claude-code": "Claude Code", "codex": "Codex", "hermes": "Hermes", "opencode": "OpenCode",
+                "prime": "Prime"}
+
+
+def guess_agent(source: Path) -> Optional[str]:
+    """Which supported layout a picked folder looks like, or None."""
+    source = Path(source)
+    if (source / "config.toml").is_file() or (source / "sessions").is_dir() and (source / "AGENTS.md").exists():
+        return "codex"
+    if (source / "opencode.json").is_file() or (source / "opencode.jsonc").is_file():
+        return "opencode"
+    if (source / "CLAUDE.md").is_file() or (source / "settings.json").is_file() or (source / "projects").is_dir():
+        return "claude-code"
+    if (source / "SOUL.md").is_file() or (source / "config.yaml").is_file() or (source / "cron").is_dir():
+        return "hermes"
+    return None
+
+
+def detect_sources(home: Optional[Path] = None, env: Optional[Mapping[str, str]] = None,
+                   platform: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Every known agent with where it was found (or where it would normally live) on this machine."""
+    found: List[Dict[str, Any]] = []
+    for agent in SUPPORTED_AGENTS:
+        folder = find_agent_dir(agent, home=home, env=env, platform=platform)
+        fallback = candidate_dirs(agent, home=home, env=env, platform=platform)[-1]
+        found.append({"agent": agent, "label": AGENT_LABELS[agent], "path": str(folder or fallback),
+                      "found": folder is not None})
+    return found
+
+
+def preview_counts(report: Dict[str, Any]) -> Dict[str, int]:
+    """Items a run would bring in, per kind (a chats item counts its sessions)."""
+    counts: Dict[str, int] = {}
+    for item in report.get("items", []):
+        if item["status"] != "imported":
+            continue
+        kind = item["kind"]
+        if kind == "chats":
+            counts[kind] = int(item.get("sessions", 0))
+        elif kind != "skills":
+            counts[kind] = counts.get(kind, 0) + 1
+    return counts
+
+
+def run_import(agent: str, source: Path, target_root: Path, *, groups: Optional[Sequence[str]] = None,
+               execute: bool = False, overwrite: bool = False, profiles_mod=None) -> Dict[str, Any]:
+    """One import run for the desktop: the importer's report, plus created bot profiles when executed."""
+    from factr_backend import agent_import_extra as extra
+
+    importer = AgentImporter(agent, Path(source).resolve(), Path(target_root).resolve(),
+                             execute=execute, overwrite=overwrite, groups=groups)
+    report = importer.run()
+    report["counts"] = preview_counts(report)
+    if execute and importer.bots and profiles_mod is not None:
+        report["bots"] = extra.materialize_bots(importer, profiles_mod)
+    return report

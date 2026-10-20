@@ -1640,6 +1640,15 @@ function publishTurnLease(scope: string, activeTurn: boolean): void {
   void window.factrDesktop?.touchBackend?.(scope, { activeTurn }).catch(() => undefined)
 }
 
+/** A turn ended: the Python gateway sends session.info(running:false); the Factr-I engine (a bot's computer,
+ *  pooled engines) sends message.complete and no running:false, so the lease leaked and the bot read "Working"
+ *  forever (and its computer never idle-stopped). */
+export function isTurnSettledEvent(event: GatewayEvent): boolean {
+  const payload = event.payload as Record<string, unknown> | undefined
+
+  return event.type === 'message.complete' || (event.type === 'session.info' && payload?.running === false)
+}
+
 function releaseTerminalTurnLease(scope: string, event: GatewayEvent): void {
   const sessionId = String(event.session_id || '').trim()
 
@@ -1663,9 +1672,7 @@ function releaseTerminalTurnLease(scope: string, event: GatewayEvent): void {
     return
   }
 
-  const payload = event.payload as Record<string, unknown> | undefined
-
-  if (event.type === 'session.info' && payload?.running === false && !g.turnLeaseReleaseTimers.has(key)) {
+  if (isTurnSettledEvent(event) && !g.turnLeaseReleaseTimers.has(key)) {
     // session.info(false) is the authoritative settled edge, but auto-followup
     // emits message.start immediately after it. A short debounce lets that
     // frame cancel release while still reclaiming ordinary completed turns.

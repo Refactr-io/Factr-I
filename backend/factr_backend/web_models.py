@@ -416,6 +416,14 @@ class ProfileImport(BaseModel):
     archive: str  # profile .tar.gz on the backend's filesystem
     name: Optional[str] = None  # overrides the name inferred from the archive root
 
+class AgentImportRequest(BaseModel):
+    agent: str = "auto"  # an agent id the importer knows, or auto (guess from ``source``)
+    source: Optional[str] = None  # folder to read; the agent's default folder when omitted
+    profile: Optional[str] = None  # target profile (default when omitted)
+    groups: Optional[List[str]] = None  # IMPORT_GROUPS subset; everything when omitted
+    execute: bool = False  # False = preview only
+    overwrite: bool = False
+
 class ProfileSoulUpdate(BaseModel):
     content: str
 

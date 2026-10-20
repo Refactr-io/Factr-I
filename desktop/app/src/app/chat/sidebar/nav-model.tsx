@@ -3,11 +3,10 @@ import { useMemo } from 'react'
 
 import { Codicon } from '@/components/ui/codicon'
 import { useContributions } from '@/contrib/react/use-contributions'
-import { Apps, AppsFilled, CalendarEvent, CalendarEventFilled, Files, FilesFilled, ListCheck, ListCheckFilled, MessageCircle, MessageCircleFilled } from '@/lib/icons'
+import { Apps, AppsFilled, CalendarEvent, CalendarEventFilled, Files, FilesFilled, MessageCircle, MessageCircleFilled } from '@/lib/icons'
 import { $interfaceMode, shownInMode } from '@/store/interface-mode'
 
 import {
-  AGENTS_ROUTE,
   ARTIFACTS_ROUTE,
   CAPABILITIES_ROUTE,
   CRON_ROUTE,
@@ -61,15 +60,6 @@ export const SIDEBAR_NAV: SidebarNavItem[] = [
     filledIcon: CalendarEventFilled,
     route: CRON_ROUTE,
     keybindActionId: 'nav.cron',
-    tier: 'advanced'
-  },
-  {
-    id: 'agents',
-    label: '',
-    icon: ListCheck,
-    filledIcon: ListCheckFilled,
-    route: AGENTS_ROUTE,
-    keybindActionId: 'nav.agents',
     tier: 'advanced'
   }
 ]

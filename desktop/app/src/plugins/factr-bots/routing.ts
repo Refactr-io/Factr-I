@@ -221,14 +221,19 @@ export async function requestForBot<T = unknown>(
   options?: BotRequestOptions
 ): Promise<T> {
   const route = botConnectionRoute(bot)
+  const profile = String(bot?.name || '').trim()
+  // Passive roster batches stay on the primary; session work must select its owning engine.
+  const nativeSession = profile && method !== 'bot.chat.get_many' &&
+    (/^(bot\.(chat|group)\.|session\.|prompt\.)/.test(method) || ['request.answer', 'approval.respond', 'clarify.lock', 'image.attach_bytes', 'file.attach', 'pdf.attach'].includes(method))
 
-  if (route) {
+  if (route || (nativeSession && typeof host.requestProfile === 'function')) {
     if (typeof host.requestProfile !== 'function') {
-      throw new Error(`Cannot route ${method} for ${route.connectionId}::${route.profile}`)
+      throw new Error(`Cannot route ${method} for ${route?.connectionId}::${route?.profile}`)
     }
 
     try {
-      const routedParams = scopedBotParams(route, method, params)
+      const routedParams = route ? scopedBotParams(route, method, params) : params
+      const target = route || profile
 
       const spawnPriority =
         options?.spawnPriority ?? (PROFILE_WRITE_METHODS.has(method) ? ('foreground' as const) : undefined)
@@ -236,10 +241,10 @@ export async function requestForBot<T = unknown>(
       // Keep the three-argument shape when no options were given so older
       // desktop shells (and the arity-pinning tests) see the same call.
       return await (spawnPriority
-        ? host.requestProfile(route, method, routedParams, options?.timeoutMs, { spawnPriority })
+        ? host.requestProfile(target, method, routedParams, options?.timeoutMs, { spawnPriority })
         : options?.timeoutMs === undefined
-          ? host.requestProfile(route, method, routedParams)
-          : host.requestProfile(route, method, routedParams, options.timeoutMs))
+          ? host.requestProfile(target, method, routedParams)
+          : host.requestProfile(target, method, routedParams, options.timeoutMs))
     } catch (error) {
       // React 19 formats query errors with `(error.name || '').trim()`. IPC /
       // JSON-RPC rejections are often plain objects whose `name` is a number,

@@ -1,4 +1,4 @@
-import { type Icon, IconCompass, IconWorld } from '@tabler/icons-react'
+import { type Icon, IconCompass, IconPlayerPlayFilled, IconPlayerStopFilled, IconWorld } from '@tabler/icons-react'
 import type * as React from 'react'
 
 import {
@@ -21,6 +21,9 @@ const PHOSPHOR: Record<string, { Glyph: React.ComponentType<React.SVGProps<SVGSV
   // The old globe-on-a-stand glyphs (Phosphor and Tabler `globe`) are retired.
   'browser-window': { Glyph: IconCompass },
   globe: { Glyph: IconWorld },
+  // Solid transport glyphs for Start/Stop: the hollow codicon square reads as an unchecked checkbox.
+  'player-play-filled': { Glyph: IconPlayerPlayFilled },
+  'player-stop-filled': { Glyph: IconPlayerStopFilled },
   close: { Glyph: X },
   comment: { Glyph: ChatCircle },
   ellipsis: { Glyph: DotsThree },

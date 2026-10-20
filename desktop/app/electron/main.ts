@@ -90,6 +90,32 @@ import {
 import { decideBootstrapRepair } from './bootstrap-repair-guard'
 import { runBootstrap } from './bootstrap-runner'
 import {
+  botBackendFor,
+  computerStatus as botComputerStatus,
+  computerActive,
+  configureBotComputers,
+  destroyComputer,
+  dockerBinaryCandidates,
+  enabledCronJobs,
+  ensureComputer,
+  isBotProfile,
+  computerWanted,
+  setComputerWanted,
+  listComputers,
+  pauseComputer,
+  reconcileComputers,
+  refreshComputerRuntime,
+  resumeComputer,
+  setComputerHold,
+  stopComputer,
+  stopUnscheduledComputers,
+  touchComputer,
+  validateBotProfile
+} from './bot-computers'
+import { docker as runBotDocker } from './bot-computers'
+import { createDockerSetup } from './bot-docker-setup'
+import { prepareBotSandbox } from './bot-local-sandbox'
+import {
   BROWSER_WINDOW_HEIGHT,
   BROWSER_WINDOW_MIN_HEIGHT,
   BROWSER_WINDOW_MIN_WIDTH,
@@ -331,7 +357,7 @@ import {
   undialedSshRouteSeeds
 } from './plugin-profile-routes'
 import { clampPoolLimits, parsePoolLimits, POOL_LIMITS_DEFAULTS } from './pool-limits'
-import { createPoolRetirer } from './pool-retire'
+import { createPoolRetirer, evictionFreshMs } from './pool-retire'
 import { createPoolRetirementClient } from './pool-retire-http'
 import {
   BackgroundSlotRetryBackoff,
@@ -2540,7 +2566,7 @@ async function waitForUpdateToFinish() {
 
       await advanceBootProgress(
         'backend.update-wait',
-        'An update is finishing — Factr-I will start automatically when it completes…',
+        'An update is finishing - Factr-I will start automatically when it completes…',
         12
       )
     },
@@ -10305,6 +10331,12 @@ function profileRouteOptions(profile, request?) {
     // its own backend; absent entries inherit the primary's remote.
     ownEntry: Boolean((config.profiles || {})[key]),
     isolatedBackend: ISOLATED_BACKEND,
+    // Only the packaged build runs the Rust engine (resolveFactrBackend kind 'factr'): one profile per process.
+    // FACTR_BOT_COMPUTERS=1 forces it on (dev runs, where primary is the Python gateway), =0 turns computers off.
+    primarySingleProfile: IS_PACKAGED || process.env.FACTR_BOT_COMPUTERS === '1',
+    // A running bot computer owns its state.db (WAL shared memory is not coherent across the VM boundary), so
+    // requests for it go to its own engine, never a host-side read.
+    botComputerRunning: computerActive(key),
     requestMethod: request?.method,
     requestPath: request?.path
   }
@@ -10324,6 +10356,7 @@ async function ensureBackend(
   localBackendLifecycle.assertCanStart()
   const key = profile && String(profile).trim() ? String(profile).trim() : primaryProfileKey()
   const spawnPriority = spawnPriorityFrom(opts.spawnPriority)
+  await poolRetirer.waitForRetirement(key)
   poolRetirer.assertCanOpen(key, spawnPriority)
   const passive = Boolean(opts.passive)
 
@@ -10381,8 +10414,12 @@ async function ensureBackend(
   assertNotPassiveSpawn(passive, key)
   // The hard slot is released only after the evicted child exits. Wait for
   // that teardown before entering the spawn queue; otherwise a successful
-  // LRU choice still leaves this wake racing the old child for 30 seconds.
-  await evictLruPoolBackends(poolMaxBackends() - 1)
+  // LRU choice still leaves this wake racing the old child for 30 seconds. A foreground open of a LOCAL engine
+  // takes the least recently used idle one now (a remote source holds no process and evicts nothing it need not).
+  await evictLruPoolBackends(
+    poolMaxBackends() - 1,
+    routeOpts.profileRemoteOverride || routeOpts.globalRemote || routeOpts.primaryRemoteActive ? undefined : spawnPriority
+  )
 
   const entry = {
     process: null,
@@ -10563,7 +10600,7 @@ async function ensureRegistryBackend(
     }
 
     assertNotPassiveSpawn(passive, localRoute.poolKey)
-    await evictLruPoolBackends(poolMaxBackends() - 1)
+    await evictLruPoolBackends(poolMaxBackends() - 1, spawnPriority)
 
     const localEntry = {
       process: null,
@@ -11293,6 +11330,14 @@ function touchPoolBackend(profile, options: { activeTurn?: boolean } = {}) {
         entry.activeTurn = options.activeTurn
       }
 
+      if (entry.botComputer) {
+        touchComputer(key)
+
+        if (typeof options.activeTurn === 'boolean') {
+          setComputerHold(key, 'turn', options.activeTurn)
+        }
+      }
+
       return
     }
   }
@@ -11308,8 +11353,8 @@ function touchPoolBackend(profile, options: { activeTurn?: boolean } = {}) {
 // across N registered remote connections LRU-evict a REAL local backend that
 // was merely idle past the keepalive window. Descriptors are still reclaimed
 // by the idle reaper.
-async function evictLruPoolBackends(keep) {
-  return poolRetirer.evictTo(Math.max(0, keep), POOL_KEEPALIVE_FRESH_MS)
+async function evictLruPoolBackends(keep, priority?: LocalBackendSpawnPriority) {
+  return poolRetirer.evictTo(Math.max(0, keep), evictionFreshMs(priority, POOL_KEEPALIVE_FRESH_MS))
 }
 
 function startPoolIdleReaper() {
@@ -11436,10 +11481,14 @@ async function runPoolBackendStart(
   // remote is reachable and hand back its connection descriptor. The pool
   // entry keeps `entry.process === null`, which stopPoolBackend/evict already
   // tolerate.
-  const remote = opts.forceLocal ? null : await resolveRemoteBackend(profile, { poolKey })
+  const remote = (opts.forceLocal ? null : await resolveRemoteBackend(profile, { poolKey })) || (await botComputerRemote(profile))
   profileDeletionGate.assertCanStart(profile)
 
   if (remote) {
+    // A bot computer is registered exactly like a process-less remote entry; the pool (liveness probe, idle reap,
+    // delete teardown) already knows how to hold one. This flag only lets keepalive reach the computer's idle timer.
+    entry.botComputer = remote.source === BOT_COMPUTER_SOURCE
+
     await waitForFactr(remote.baseUrl, remote.token, undefined, remote.authMode, remote.headers)
 
     // Recorded on the entry so revalidation can probe this descriptor without
@@ -11465,6 +11514,9 @@ async function runPoolBackendStart(
 
   assertNoSecondLocalBackend(poolKey, {
     isolated: guardRoute.isolatedBackend,
+    // A single-profile primary (packaged Rust engine) cannot multiplex: this per-profile engine IS the route
+    // (no-Docker fallback for a bot profile).
+    singleProfilePrimary: guardRoute.primarySingleProfile,
     primaryRemoteActive: guardRoute.primaryRemoteActive,
     profileRemoteOverride: opts.forceLocal ? false : guardRoute.profileRemoteOverride,
     unscopableRequest: opts.unscopableRequest
@@ -11595,41 +11647,52 @@ async function runPoolBackendStart(
   assertPoolEntryStillOwned(poolKey, entry)
 
   const tokenLaunch = engineTokenLaunch(backend.kind, token)
+  if (backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)) {
+    entry.hasScheduledJobs = () => enabledCronJobs(profile) > 0
+  }
 
+  const env = {
+    ...process.env,
+    FACTR_CONFIG_HOME,
+    ...backend.env,
+    ...profileRuntimeEnv,
+    // Pin the gateway's tool/terminal cwd to the same directory we chose for
+    // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
+    // can still point at the install dir even when spawn cwd is home.
+    FACTR_DESKTOP_CWD: factrCwd,
+    TERMINAL_CWD: factrCwd,
+    ...tokenLaunch.env,
+    // Marks this dashboard backend as desktop-spawned so it runs the cron
+    // scheduler tick loop (the gateway isn't running under the app).
+    FACTR_DESKTOP: '1',
+    // Exact parent identity lets the backend self-exit after an unclean
+    // Desktop death without mistaking a reused PID for its owner. If the
+    // optional marker probe fails, retain legacy PID-only tracking.
+    ...parentIdentityEnv,
+    FACTR_WEB_DIST: webDist,
+    ...(readyFile ? { FACTR_DESKTOP_READY_FILE: readyFile } : {})
+  }
+  const sandbox = backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)
+    ? prepareBotSandbox({ profile, configHome: FACTR_CONFIG_HOME, command: backend.command,
+        args: [...backend.args, ...tokenLaunch.args], env,
+        readRoots: [path.dirname(backend.command), path.join(process.resourcesPath, 'backend-python'),
+          ...[path.join(FACTR_CONFIG_HOME, 'node')].filter(directoryExists)] })
+    : null
   const child = spawnOwnedBackend(
-    backend.command,
-    [...backend.args, ...tokenLaunch.args],
-    hiddenWindowsChildOptions({
-      cwd: factrCwd,
-      env: {
-        ...process.env,
-        FACTR_CONFIG_HOME,
-        ...backend.env,
-        ...profileRuntimeEnv,
-        // Pin the gateway's tool/terminal cwd to the same directory we chose for
-        // the child process. Inherited TERMINAL_CWD (or a stale config bridge)
-        // can still point at the install dir even when spawn cwd is home.
-        FACTR_DESKTOP_CWD: factrCwd,
-        TERMINAL_CWD: factrCwd,
-        ...tokenLaunch.env,
-        // Marks this dashboard backend as desktop-spawned so it runs the cron
-        // scheduler tick loop (the gateway isn't running under the app).
-        FACTR_DESKTOP: '1',
-        // Exact parent identity lets the backend self-exit after an unclean
-        // Desktop death without mistaking a reused PID for its owner. If the
-        // optional marker probe fails, retain legacy PID-only tracking.
-        ...parentIdentityEnv,
-        FACTR_WEB_DIST: webDist,
-        ...(readyFile ? { FACTR_DESKTOP_READY_FILE: readyFile } : {})
-      },
-      shell: backend.shell,
-      stdio: tokenLaunch.stdio
-    })
+    sandbox?.command || backend.command,
+    sandbox?.args || [...backend.args, ...tokenLaunch.args],
+    hiddenWindowsChildOptions({ cwd: sandbox?.cwd || factrCwd, env: sandbox?.env || env, shell: backend.shell, stdio: tokenLaunch.stdio,
+      ...(sandbox && !IS_WINDOWS ? { detached: true } : {}) })
   )
+  if (sandbox) {
+    child.once('exit', sandbox.cleanup)
+    child.once('error', sandbox.cleanup)
+  }
 
   tokenLaunch.deliver(child)
 
   entry.process = child
+  entry.kind = backend.kind
   entry.token = token
   registerLocalBackendExitFinalizer(backendPool, poolKey, entry, () => releaseLocalBackendSlot(entry))
   // Buffer stdout+stderr from the instant of spawn (#93608): an early crash's
@@ -11762,6 +11825,125 @@ const poolStopper = createPoolStopper({
   }
 })
 
+// ── Bot computers (bots-virtual-computers-design.md 3.3) ───────────────────
+// A local bot profile gets its own engine: a container when Docker is up, else its own host engine
+// (runPoolBackendStart below). Never both: ensure/start only runs one of them per profile at a time.
+const BOT_COMPUTER_SOURCE = 'bot-computer'
+let botMasterSecret: string | null = null
+
+// The master secret behind the per-bot tokens. Random, persisted in userData with the same policy as every other
+// desktop secret (plain by default, keychain on opt-in), and stable: a container keeps the token it was created with.
+function botComputersMasterSecret(): string {
+  if (botMasterSecret) {
+    return botMasterSecret
+  }
+
+  const file = path.join(app.getPath('userData'), 'bot-computers-secret.json')
+
+  try {
+    botMasterSecret = decryptDesktopSecret(JSON.parse(fs.readFileSync(file, 'utf8'))) || null
+  } catch {
+    botMasterSecret = null
+  }
+
+  if (!botMasterSecret) {
+    const created = crypto.randomBytes(32).toString('base64url')
+    const secret = encryptDesktopSecret(created)
+
+    if (!secret) {
+      throw new Error('Could not store the bot computer secret.')
+    }
+
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, JSON.stringify(secret), { mode: 0o600 })
+    botMasterSecret = created
+  }
+
+  return botMasterSecret
+}
+
+configureBotComputers({
+  configHome: FACTR_CONFIG_HOME,
+  masterSecret: botComputersMasterSecret,
+  waitReady: (baseUrl, token) => waitForFactr(baseUrl, token),
+  maxRunning: () => poolMaxBackends(),
+  ...(IS_PACKAGED ? { hostRunning: profile => localProfilePoolKeys(profile).some(key => {
+    const child = backendPool.get(key)?.process
+    return child && child.exitCode === null && child.signalCode === null
+  }), startBot: async profile => {
+    try { return await ensureBackend(profile, { spawnPriority: 'background' }) }
+    catch (error) { rememberLog(`Scheduled bot "${profile}" could not start: ${String(error)}`); throw error }
+  } } : {}),
+  // Where a new bot's credentials are seeded from (one-time copy): the engine home, as the engine resolves it.
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  hostEngineHome: process.env.FACTR_HOME || path.join(app.getPath('home'), '.factr', 'engine'),
+  // Idle or cap stop: drop the pool entry so the renderer parks and re-dials (which wakes it) instead of a dead socket.
+  onStopped: profile => {
+    for (const key of localProfilePoolKeys(profile)) {
+      if (backendPool.has(key)) {
+        broadcastPoolBackendRetiring(key)
+        void stopPoolBackend(key)
+      }
+    }
+  }
+})
+
+// The remote-entry descriptor for a bot's container, or null when this profile is not a bot-computer case
+// (primary profile, remote, Docker down: the host-engine path below then serves it).
+async function botComputerRemote(profile: string) {
+  const facts = {
+    ...profileRouteOptions(profile),
+    isBot: isBotProfile(FACTR_CONFIG_HOME, profile),
+    wantsComputer: computerWanted(profile),
+    disabled: process.env.FACTR_BOT_COMPUTERS === '0'
+  }
+
+  // Docker down or the image missing: no computer, the per-profile host engine path below serves the bot.
+  if ((await botBackendFor(profile, facts)) !== 'container') {
+    return null
+  }
+
+  const computer = await ensureComputer(profile)
+
+  return buildRemoteConnection(computer.url, 'token', computer.token, BOT_COMPUTER_SOURCE, `${profile} computer`, 'url')
+}
+
+// Packaged only: the bot's container engine and a host engine must never own one profile folder together.
+async function startBotComputer(profile: string) {
+  validateBotProfile(profile)
+  resumeComputer(profile)
+  const existing = backendPool.get(profile)
+
+  if (existing?.process) {
+    await stopPoolBackend(profile)
+  }
+
+  await ensureBackend(profile, { spawnPriority: 'foreground' })
+
+  return botComputerStatus(profile)
+}
+
+async function stopBotComputerQuietly(profile: string, destroy = false) {
+  try {
+    validateBotProfile(profile)
+    await (destroy ? destroyComputer(profile) : stopComputer(profile))
+  } catch (error) {
+    rememberLog(`Bot computer ${destroy ? 'destroy' : 'stop'} for "${profile}" failed: ${String(error)}`)
+  }
+}
+
+function reconcileBotComputers() {
+  let names: string[] = []
+
+  try {
+    names = fs.readdirSync(path.join(FACTR_CONFIG_HOME, 'profiles'))
+  } catch {
+    // No profiles folder yet: nothing to keep.
+  }
+
+  void reconcileComputers(names).catch(error => rememberLog(`Bot computer reconcile failed: ${String(error)}`))
+}
+
 function stopPoolBackend(profile: string): Promise<void> {
   const entry = backendPool.get(profile)
 
@@ -11804,7 +11986,10 @@ const poolRetirer = createPoolRetirer({
 localBackendLifecycle.signal.addEventListener('abort', poolRetirer.dispose, { once: true })
 
 async function teardownPoolBackendAndWait(profile) {
-  await Promise.all(localProfilePoolKeys(profile).map(key => stopPoolBackend(key)))
+  await Promise.all([
+    ...localProfilePoolKeys(profile).map(key => stopPoolBackend(key)),
+    stopBotComputerQuietly(profile)
+  ])
 }
 
 async function stopAllPoolBackends() {
@@ -11825,7 +12010,10 @@ const backendShutdown = createBackendShutdownCoordinator(async () => {
     poolIdleReaper = null
   }
 
-  await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops], 7_000)
+  // Bot computers stop with the app, except those holding enabled cron jobs: their schedules keep firing.
+  const computersStopped = stopUnscheduledComputers()
+
+  await waitForTeardown([localShutdown, waitForBackendExit(primary), pooledStops, computersStopped], 7_000)
 })
 
 const quitTeardown = createQuitTeardownCoordinator(() => app.quit())
@@ -11883,6 +12071,8 @@ async function prepareProfileDeleteRequest(request) {
   }
 
   await teardownPoolBackendAndWait(decision.profile)
+  // The bot is going away: remove its computer (and the .computer marker) before the folder is deleted.
+  await stopBotComputerQuietly(decision.profile, true)
 
   return decision.profile
 }
@@ -14255,7 +14445,7 @@ function createWindow() {
           title: 'Factr-I desktop UI was terminated',
           errorDescription:
             `The desktop UI process was terminated unexpectedly (reason: ${reason}${exit}). ` +
-            'Your sessions and the background gateway are unaffected — reload to continue.',
+            'Your sessions and the background gateway are unaffected - reload to continue.',
           reloadUrl: DEV_SERVER || pathToFileURL(resolveRendererIndex()).toString()
         })
       }
@@ -14514,6 +14704,106 @@ function revalidateSuspectPoolAfterResume() {
   )
 }
 
+// Bot computers (Docker): status, start, stop, and a "screen open" hold so the idle stop skips a watched bot.
+// Failures come back as data, never as a thrown IPC error, so the roster can render them.
+const botComputerIpc = (fn: (profile: string) => Promise<unknown>) => async (_event, profile) => {
+  try {
+    return { ok: true, status: await fn(validateBotProfile(profile)) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+// The bot relay's local tick (relay.ts): stamp `<root>/bot_relay/desktop.json` (the Python message_agent delivers through
+// the relay only while it is fresh) and count the envelopes waiting in the outbox. Plain files, no backend is woken.
+ipcMain.handle('factr:bot-relay:tick', () => {
+  try {
+    const dir = path.join(FACTR_CONFIG_HOME, 'bot_relay')
+
+    fs.mkdirSync(path.join(dir, 'outbox'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'desktop.json'), JSON.stringify({ at: Date.now() }), { mode: 0o600 })
+
+    return { ok: true, pending: fs.readdirSync(path.join(dir, 'outbox')).filter(name => name.endsWith('.json')).length }
+  } catch {
+    return { ok: false, pending: 0 }
+  }
+})
+function botSetupExecutable(name: string): string | undefined {
+  if (name === 'Docker.app') { return fs.existsSync('/Applications/Docker.app') ? '/Applications/Docker.app' : undefined }
+  if (name === 'docker' || name === 'docker.exe') { return dockerBinaryCandidates(process.platform, process.env).find(fileExists) }
+  const candidates = [
+    ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, name)),
+    ...(process.platform === 'darwin' ? ['/opt/homebrew/bin', '/usr/local/bin'].map(dir => path.join(dir, name)) : [])
+  ]
+  return candidates.find(candidate => fs.existsSync(candidate))
+}
+const botDockerSetup = createDockerSetup({
+  platform: process.platform,
+  available: name => Boolean(botSetupExecutable(name)),
+  probe: () => runBotDocker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 5000 }),
+  run: (program, args, timeout) => new Promise((resolve, reject) => {
+    execFile(botSetupExecutable(program) || program, args, { timeout, maxBuffer: 4 << 20, windowsHide: false },
+      (error, stdout, stderr) => error ? reject(Object.assign(error, { stderr: String(stderr || '') })) : resolve(String(stdout)))
+  }),
+  confirm: async plan => (await dialog.showMessageBox({
+    type: 'question', title: plan.title, message: plan.title,
+    detail: [plan.detail, ...plan.commands.map(command => [command.program, ...command.args].join(' '))].join('\n\n'),
+    buttons: [plan.title, 'Cancel'], defaultId: 0, cancelId: 1
+  })).response === 0,
+  openExternal: url => shell.openExternal(url)
+})
+ipcMain.handle('factr:bot-computer:runtime-status', () => botDockerSetup.status())
+ipcMain.handle('factr:bot-computer:setup', async () => {
+  const status = await botDockerSetup.setup()
+  refreshComputerRuntime()
+  return status
+})
+ipcMain.handle('factr:bot-computer:list', async () => {
+  try {
+    return { ok: true, computers: listComputers() }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+})
+ipcMain.handle('factr:bot-computer:status', botComputerIpc(botComputerStatus))
+ipcMain.handle('factr:bot-computer:start', botComputerIpc(startBotComputer))
+ipcMain.handle('factr:bot-computer:set-wanted', async (_event, profile, on) => {
+  try {
+    await setComputerWanted(validateBotProfile(profile), Boolean(on))
+
+    return { ok: true, status: await botComputerStatus(profile) }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+})
+ipcMain.handle(
+  'factr:bot-computer:stop',
+  botComputerIpc(async profile => {
+    await pauseComputer(profile)
+
+    return botComputerStatus(profile)
+  })
+)
+ipcMain.handle('factr:bot-computer:open-docker', async () => {
+  const app = '/Applications/Docker.app'
+
+  if (process.platform !== 'darwin' || !fs.existsSync(app)) {
+    return { ok: false, error: 'Docker Desktop is not installed at /Applications/Docker.app' }
+  }
+
+  const error = await shell.openPath(app)
+
+  return error ? { ok: false, error } : { ok: true }
+})
+ipcMain.handle('factr:bot-computer:hold', async (_event, profile, reason, on) => {
+  try {
+    setComputerHold(validateBotProfile(profile), reason === 'turn' ? 'turn' : 'view', on === true)
+
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+})
 ipcMain.handle('factr:backend:touch', async (_event, profile, options) => {
   touchPoolBackend(profile, options)
 
@@ -17362,7 +17652,7 @@ function showAboutPanelFresh() {
     app.setAboutPanelOptions({
       applicationName: APP_NAME,
       applicationVersion: skew.outOfSync
-        ? `${resolveFactrVersion()} — app build out of date, update the desktop app`
+        ? `${resolveFactrVersion()} - app build out of date, update the desktop app`
         : resolveFactrVersion(),
       copyright: 'Copyright © 2026 Refactr'
     })
@@ -18076,6 +18366,7 @@ app.whenReady().then(async () => {
   // its worker waits for the install marker to clear, then reopens every scope
   // captured by the original transaction before removing the journal entry.
   void resumeManagedSshRecoveries()
+  reconcileBotComputers()
   installApplicationMenuAfterFirstWindow({
     isMac: IS_MAC,
     buildMenu: buildApplicationMenu,

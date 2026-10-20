@@ -31,6 +31,7 @@ pub use rpc::{any_provider_configured, runtime_provider_id, runtime_saved_provid
 /// The auto chain's local-Ollama step, for the binary that probes the server.
 pub use factr_provider_core::selection::{PREFERRED_LOCAL_OLLAMA_MODEL, auto_local_ollama_model, pick_local_ollama_model};
 mod sessions_rest;
+mod ui_rest;
 mod surface_sessions;
 mod skill_slash;
 mod slash_forward;
@@ -236,6 +237,7 @@ impl Gateway {
 
     pub async fn serve(self) -> Result<()> {
         rpc::start_driver(self.config.clone(), self.hub.clone(), self.observer.clone());
+        rpc::start_bot_replies(self.config.clone(), self.hub.clone(), self.observer.clone());
         factr_host::install(self.config.features.clone(), self.hub.clone());
         // The engine's one approval gate: bash, repl and factr calls are denied unless this is installed.
         factr_base::hooks::set_approval_hook(Some(Arc::new(approvals::HubGate(self.hub.clone()))));
@@ -985,6 +987,21 @@ async fn handle(
             )
             .await
         }
+        ("POST", "/api/bot/deliver") => {
+            let body: Value = serde_json::from_slice(&read_body_max(&mut stream, &req, MAX_RUN_BODY_BYTES).await?).unwrap_or(Value::Null);
+            match rpc::deliver_bot_output(config.clone(), hub.clone(), observer.clone(), &body).await {
+                Ok(body) => respond(&mut stream, "200 OK", &body).await,
+                Err(error) => respond(&mut stream, "400 Bad Request", &error).await,
+            }
+        }
+        ("POST", "/api/health/retirement") => {
+            let body: Value = serde_json::from_slice(&read_body_max(&mut stream, &req, 4096).await?).unwrap_or(Value::Null);
+            let result = rpc::pool_retirement(config.clone(), hub.clone(), observer.clone(), &body).await;
+            match result {
+                Ok(body) => respond(&mut stream, "200 OK", &body).await,
+                Err(_) => respond(&mut stream, "503 Service Unavailable", &json!({"ok":false})).await,
+            }
+        }
         ("POST", "/api/agent/reset" | "/api/agent/interrupt") => {
             let body: Value = serde_json::from_slice(&read_body(&mut stream, &req).await?).unwrap_or(Value::Null);
             let Some(key) = body["session_key"].as_str().filter(|k| !k.is_empty()) else {
@@ -1499,6 +1516,12 @@ async fn handle(
             .await
         }
         (_, path) if path.starts_with("/api/") && config.features.is_some() => {
+            // Read-only pages the files can answer (Settings, Scheduled jobs): no Python start.
+            if token_ok && req.method == "GET" {
+                if let Some(body) = ui_rest::answer(path, req.query.as_deref().unwrap_or_default(), &bundled_defaults()) {
+                    return respond(&mut stream, "200 OK", &body).await;
+                }
+            }
             // Without feature=1, refuse to start Python for unknown probes so a
             // chat-only first paint on Windows/macOS stays Python-free.
             if bundled_startup_request(&req) && !capabilities_request(&req) {

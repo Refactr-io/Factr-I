@@ -15,6 +15,7 @@ export function SidebarPanelLabel({ children, className, dotClassName, hideDot, 
         'flex min-w-0 items-center gap-2 pl-2 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-(--theme-primary)',
         className
       )}
+      data-panel-label=""
       {...props}
     >
       {!hideDot && (

@@ -606,10 +606,25 @@ export function setSplitWeights(root: LayoutNode, splitId: string, weights: numb
  * A stored `false` is dropped for the same reason in reverse: most were written
  * by the layout's own repair paths, not by anyone choosing to see a strip.
  */
+/** Tool panes (terminal, files, changes, browser tabs) draw as cards; see renderer/tool-card.tsx. */
+export const isToolCardPane = (paneId: string): boolean =>
+  paneId === 'terminal' || paneId === 'files' || paneId === 'review' || paneId.startsWith('preview-tile:')
+
 export function migratePersistedTree(node: LayoutNode): LayoutNode {
   if (node.type === 'group') {
     const { headerHidden, ...rest } = node as GroupNode & { headerHidden?: unknown }
     const tabStrip = rest.tabStrip === 'always' || rest.tabStrip === 'never' ? rest.tabStrip : undefined
+
+    // Older layouts stacked every tool as a tab of one right sidebar. Tools are cards now: each pane of a group made
+    // only of tool panes gets a card of its own, stacked in the same slot (the first keeps the group's id).
+    if (rest.panes.length > 1 && rest.panes.every(isToolCardPane)) {
+      return split(
+        'column',
+        rest.panes.map((pane, index) => group([pane], { id: index === 0 ? rest.id : `${rest.id}-${pane}` })),
+        rest.panes.map(() => 1),
+        `spl-${rest.id}`
+      )
+    }
 
     return headerHidden === undefined && rest.tabStrip === tabStrip ? node : { ...rest, tabStrip }
   }

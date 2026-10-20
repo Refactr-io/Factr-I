@@ -9,6 +9,7 @@
 
 import { host, LruCache } from '@factr/plugin-sdk'
 
+import { listComputers } from './computer'
 import { botHandle, clearBotAttention, noteBotAttention } from './data'
 import type { ProfileRoute, RosterRow } from './types'
 
@@ -67,6 +68,22 @@ const RELAY_DELIVER_TIMEOUT_MS = RELAY_DELIVER_BACKEND_CEILING_MS + RELAY_DELIVE
 // to ONE drain. The interval poll above stays as the backstop for older
 // backends (and connections whose events don't reach the tap).
 const RELAY_PUSH_DEBOUNCE_MS = 250
+// A message between two bots on THIS install (target connection 'local') is delivered by the target bot's own engine
+// (`bot.chat.deliver`: a real turn in its Bot Chat), not a Python CLI turn. The Desktop is the only router, so while the
+// relay runs it stamps a heartbeat the Python tools check (bot_relay.relay_alive) and watches the outbox cheaply (a
+// file count in the main process, never waking a backend) so one queued message is drained at once.
+const RELAY_LOCAL_TICK_MS = 4000
+// A relayed turn can take minutes: `bot.chat.deliver` answers `pending` after ~45 s and the relay polls
+// `bot.chat.deliver_status`, so no single call outlives a request deadline.
+const RELAY_ENGINE_CALL_MS = 130_000
+// A bot with its own computer is its own relay connection: its engine is a separate backend with its own outbox,
+// roster and turn lock, and the local connection must never carry it. Mirrors tools/bot_relay.py
+// COMPUTER_CONNECTION_PREFIX (connection ids are `[A-Za-z0-9_-]{1,64}`, so a profile over 55 chars has no route).
+const COMPUTER_CONNECTION_PREFIX = 'computer-'
+const computerConnectionId = (profile: string) => `${COMPUTER_CONNECTION_PREFIX}${profile}`
+// The Rust engine holds a forwarded RPC for at most 120 s, so a relayed turn is delivered by polling: each
+// bot_relay.deliver call returns within the backend's own poll window (90 s) with `pending` until the turn is done.
+const RELAY_DELIVER_POLL_TIMEOUT_MS = 150_000
 
 /** Everything the two loops mutate. */
 interface RelayLifecycle {
@@ -77,9 +94,12 @@ interface RelayLifecycle {
    *  re-broadcast) — so remember it and re-schedule after the drain finishes. */
   drainRerun: boolean
   drainTimer: null | ReturnType<typeof setInterval>
+  /** The local outbox had mail at the last tick: the next drain runs even with a single connection. */
+  localPending: boolean
+  localTimer: null | ReturnType<typeof setInterval>
   pushDebounceTimer: null | ReturnType<typeof setTimeout>
   pushUnsub: (() => void) | null
-  rosterBusy: boolean
+  rosterFlight: Promise<void> | null
   /** Id of the sole connection whose roster clear went out; null once the peer set relays again. */
   rosterClearedFor: null | string
   rosterTimer: null | ReturnType<typeof setInterval>
@@ -90,9 +110,11 @@ const relay: RelayLifecycle = {
   drainBusy: false,
   drainRerun: false,
   drainTimer: null,
+  localPending: false,
+  localTimer: null,
   pushDebounceTimer: null,
   pushUnsub: null,
-  rosterBusy: false,
+  rosterFlight: null,
   rosterClearedFor: null,
   rosterTimer: null
 }
@@ -111,6 +133,10 @@ const relayRouteRetentions = new Map<string, () => void>()
 interface RelayConnection {
   id: string
   route: ProfileRoute
+  /** A computer that is off is a delivery target (delivering wakes it) but is never polled or pushed to. */
+  live: boolean
+  /** The bot whose computer this connection is. */
+  computerProfile?: string
 }
 
 /** One agent as pushed to a peer gateway's relay roster. */
@@ -125,10 +151,13 @@ interface RelayAgentRow {
 
 /** A queued cross-connection message drained from a gateway's outbox. */
 interface RelayEnvelope {
+  native?: boolean
+  sender_session?: string
   id?: string
   message?: string
   from_profile?: string
   from_handle?: string
+  hops?: number
   target_connection?: string
   target_profile?: string
 }
@@ -185,21 +214,48 @@ async function relayConnections(): Promise<RelayConnection[]> {
   }
 
   try {
-    const routes = await host.profileRoutes()
+    const fetched = await host.profileRoutes()
+    const routes = Array.isArray(fetched) ? fetched : []
+    const computers = await listComputers()
+    const computerProfiles = new Set(computers.map(computer => computer.profile))
     const byConnection = new Map<string, ProfileRoute>()
 
-    for (const route of Array.isArray(routes) ? routes : []) {
+    for (const route of routes) {
       const id = String(route?.connectionId || '')
 
-      if (id && !byConnection.has(id)) {
+      // A computer's profile is never the representative of the local connection: a call on its route wakes it.
+      const ownedByComputer = id === 'local' && computerProfiles.has(String(route?.profile || ''))
+
+      if (id && !ownedByComputer && !byConnection.has(id)) {
         byConnection.set(id, route)
       }
     }
 
-    return [...byConnection.entries()].map(([id, route]) => ({
+    const connections: RelayConnection[] = [...byConnection.entries()].map(([id, route]) => ({
       id,
+      live: true,
       route
     }))
+
+    for (const { profile, running } of computers) {
+      if (computerConnectionId(profile).length > 64) {
+        continue
+      }
+
+      connections.push({
+        computerProfile: profile,
+        id: computerConnectionId(profile),
+        live: running,
+        route: routes.find(route => route?.connectionId === 'local' && route?.profile === profile) ?? {
+          connectionId: 'local',
+          mode: 'local',
+          profile,
+          targetProfile: profile
+        }
+      })
+    }
+
+    return connections
   } catch {
     return []
   }
@@ -236,7 +292,8 @@ async function connectionLabels(): Promise<Map<string, string>> {
  *  definitively offline → false runtime_offline refusals (#93091 item 2). */
 async function relayAgentsOn(
   connection: RelayConnection,
-  labels: Map<string, string>
+  labels: Map<string, string>,
+  computerProfiles: Set<string> = new Set()
 ): Promise<RelayAgentRow[] | null> {
   try {
     const res = await host.requestProfile<{ profiles?: RosterRow[] }>(connection.route, 'profiles.list', {
@@ -250,8 +307,13 @@ async function relayAgentsOn(
       .map(profile => ({
         profile: String(profile?.name || ''),
         handle: botHandle(profile?.name, profile),
-        connection_id: connection.id,
-        connection_label: label,
+        // A bot with a computer lives on its own connection, wherever the local profile list reports it.
+        ...(connection.id === 'local' && computerProfiles.has(String(profile?.name || ''))
+          ? {
+              connection_id: computerConnectionId(String(profile?.name || '')),
+              connection_label: `${botHandle(profile?.name, profile)} computer`
+            }
+          : { connection_id: connection.id, connection_label: label }),
         title: String(profile?.ui_meta?.['factr-bots']?.title || profile?.display_name || ''),
         description: String(profile?.description || '')
       }))
@@ -270,14 +332,22 @@ async function relayAgentsOn(
 const RELAY_AGENTS_CACHE_MAX = 32
 const relayAgentsCache = new LruCache<string, RelayAgentRow[]>(RELAY_AGENTS_CACHE_MAX)
 
+/** A create must run a fresh sync even if the periodic sync already took its snapshot. */
+export async function refreshBotRelayRosters() {
+  await relay.rosterFlight
+  await syncRelayRosters()
+}
+
 /** Push every gateway the union roster of agents on the OTHER connections. */
-async function syncRelayRosters() {
-  if (relay.disposed || relay.rosterBusy) {
-    return
+function syncRelayRosters(): Promise<void> {
+  if (relay.disposed) {
+    return Promise.resolve()
   }
 
-  relay.rosterBusy = true
+  return relay.rosterFlight ??= pushRelayRosters()
+}
 
+async function pushRelayRosters() {
   try {
     const connections = await relayConnections()
     const labels = await connectionLabels()
@@ -316,22 +386,26 @@ async function syncRelayRosters() {
 
     relay.rosterClearedFor = null
 
-    const agentsByConnection = new Map<string, RelayAgentRow[]>()
+    const computerProfiles = new Set(connections.flatMap(connection => connection.computerProfile ?? []))
+    const rows: RelayAgentRow[] = []
     await Promise.all(
-      connections.map(async connection => {
-        const agents = await relayAgentsOn(connection, labels)
+      // A computer contributes no fetch of its own: its row comes from the local profile list (a fetch would wake it).
+      connections
+        .filter(connection => !connection.computerProfile)
+        .map(async connection => {
+          const agents = await relayAgentsOn(connection, labels, computerProfiles)
 
-        if (agents === null) {
-          // Transient fetch failure: reuse the last good rows for this
-          // connection (or contribute nothing this cycle) so the pushed
-          // roster never drops a live machine's agents — absence from a
-          // fresh roster means offline to the gateway-side fail-fast.
-          agentsByConnection.set(connection.id, relayAgentsCache.get(connection.id) || [])
-        } else {
-          relayAgentsCache.set(connection.id, agents)
-          agentsByConnection.set(connection.id, agents)
-        }
-      })
+          if (agents === null) {
+            // Transient fetch failure: reuse the last good rows for this
+            // connection (or contribute nothing this cycle) so the pushed
+            // roster never drops a live machine's agents — absence from a
+            // fresh roster means offline to the gateway-side fail-fast.
+            rows.push(...(relayAgentsCache.get(connection.id) || []))
+          } else {
+            relayAgentsCache.set(connection.id, agents)
+            rows.push(...agents)
+          }
+        })
     )
 
     // Connections gone from profileRoutes are genuinely disconnected — drop
@@ -344,27 +418,48 @@ async function syncRelayRosters() {
       }
     }
 
+    // Only live connections are pushed to: a computer that is off has no engine to push into (and a push wakes it).
     await Promise.all(
-      connections.map(async connection => {
-        const others: RelayAgentRow[] = []
+      connections
+        .filter(connection => connection.live)
+        .map(async connection => {
+          const others = rows.filter(row => row.connection_id !== connection.id)
 
-        for (const [id, agents] of agentsByConnection) {
-          if (id !== connection.id) {
-            others.push(...agents)
+          try {
+            const res = await host.requestProfile<{ count?: number }>(connection.route, 'bot_relay.roster.sync', {
+              agents: others
+            })
+
+            // A freshly started engine answers roster.sync from a boot stub ({count: 0}) until its Python backend
+            // runs. Any real drain starts it; claim what is queued (it is delivered like any drain) and push again.
+            if (connection.computerProfile && others.length > 0 && res?.count === 0) {
+              const byId = new Map(connections.map(peer => [peer.id, peer]))
+
+              for (const { envelope, sender } of await claimFrom(connection)) {
+                enqueueRelayDelivery(sender, envelope, byId)
+              }
+
+              await host.requestProfile(connection.route, 'bot_relay.roster.sync', { agents: others })
+            }
+          } catch {
+            // Older backend without the relay RPCs — skip this connection.
           }
-        }
-
-        try {
-          await host.requestProfile(connection.route, 'bot_relay.roster.sync', {
-            agents: others
-          })
-        } catch {
-          // Older backend without the relay RPCs — skip this connection.
-        }
-      })
+        })
     )
   } finally {
-    relay.rosterBusy = false
+    relay.rosterFlight = null
+  }
+}
+
+/** Claim one connection's queued envelopes (an unreachable or older gateway yields none). */
+async function claimFrom(sender: RelayConnection): Promise<RelayQueuedEnvelope[]> {
+  try {
+    const res = await host.requestProfile<{ envelopes?: RelayEnvelope[] }>(sender.route, 'bot_relay.outbox.drain', {})
+
+    return (Array.isArray(res?.envelopes) ? res.envelopes : []).map(envelope => ({ envelope, sender }))
+  } catch {
+    // Older backend without the relay RPCs — skip this connection.
+    return []
   }
 }
 
@@ -386,15 +481,19 @@ async function drainRelayOutboxes() {
   }
 
   relay.drainBusy = true
+  const forced = relay.localPending
+
+  relay.localPending = false
 
   try {
     const connections = await relayConnections()
 
     // Retention follows the relay-eligible set: with fewer than two
     // connections there is nothing to relay, so nothing stays pinned.
-    syncRelayRetention(connections.length >= 2 ? connections : [])
+    syncRelayRetention(connections.length >= 2 ? connections.filter(connection => connection.live) : [])
 
-    if (connections.length < 2) {
+    // One connection is nothing to relay BETWEEN, unless local bots have mail for each other (forced by the local tick).
+    if (connections.length < (forced ? 1 : 2)) {
       return
     }
 
@@ -409,20 +508,9 @@ async function drainRelayOutboxes() {
     // `queued_expired` for a message nothing was wrong with.
     const queued: RelayQueuedEnvelope[] = []
 
-    for (const sender of connections) {
-      try {
-        const res = await host.requestProfile<{ envelopes?: RelayEnvelope[] }>(
-          sender.route,
-          'bot_relay.outbox.drain',
-          {}
-        )
-
-        for (const envelope of Array.isArray(res?.envelopes) ? res.envelopes : []) {
-          queued.push({ envelope, sender })
-        }
-      } catch {
-        // Older backend without the relay RPCs — skip this connection.
-      }
+    // A computer that is off has nothing queued and a drain would wake it: only live connections are claimed from.
+    for (const sender of connections.filter(connection => connection.live)) {
+      queued.push(...(await claimFrom(sender)))
     }
 
     // Phase 2 — deliver, without holding the drain. Envelopes for the same
@@ -476,6 +564,91 @@ function enqueueRelayDelivery(sender: RelayConnection, envelope: RelayEnvelope, 
   })
 }
 
+const isUnknownMethod = (error: any) =>
+  /unknown method|method not found|not supported|-32601/i.test(String(error?.message || error))
+
+/** One relayed message, delivered by the target bot's OWN engine (`bot.chat.deliver`) when it has that door, else by the
+ *  gateway's `bot_relay.deliver` (a Python CLI turn: older engines, remote gateways). */
+async function deliverToTarget(
+  target: RelayConnection,
+  sender: RelayConnection,
+  envelope: RelayEnvelope,
+  envelopeId: string
+): Promise<{ reply?: string }> {
+  const profile = String(envelope?.target_profile || '')
+  const message = String(envelope?.message || '')
+  const from_profile = String(envelope?.from_profile || '')
+  const from_handle = String(envelope?.from_handle || '')
+  const from_connection = String(sender.id)
+
+  // Route to the bot's own engine: same connection, the bot's own profile.
+  const route: ProfileRoute = { ...target.route, profile, targetProfile: profile }
+  const deadline = Date.now() + RELAY_DELIVER_TIMEOUT_MS
+
+  const request = async (method: string, params: Record<string, unknown>) => {
+    for (;;) {
+      try {
+        return await host.requestProfile<EngineDelivery>(route, method, params, RELAY_ENGINE_CALL_MS, {
+          spawnPriority: 'foreground'
+        })
+      } catch (error: any) {
+        if (error?.data?.reason !== 'retiring' || Date.now() >= deadline) { throw error }
+        await new Promise(resolve => setTimeout(resolve, 150))
+      }
+    }
+  }
+  try {
+    let res = await request('bot.chat.deliver', {
+      profile,
+      text: message,
+      from_handle,
+      from_profile,
+      from_connection,
+      envelope_id: envelopeId,
+      hops: envelope?.hops ?? 0
+    })
+
+    while (res?.status === 'pending') {
+      if (Date.now() > deadline) {
+        throw Object.assign(new Error('delivery timed out'), { data: { reason: 'delivery_timeout' } })
+      }
+
+      res = await request('bot.chat.deliver_status', { envelope_id: envelopeId })
+    }
+
+    if (res?.ok === false) {
+      throw Object.assign(new Error(String(res.error || 'delivery failed')), { data: { reason: res.reason } })
+    }
+
+    return { reply: String(res?.reply || '') }
+  } catch (error: any) {
+    if (!isUnknownMethod(error)) {
+      throw error
+    }
+  }
+
+  const base = { profile, message, from_profile, from_handle, from_connection }
+  for (;;) {
+    let res: { pending?: boolean; reply?: string }
+    try {
+      res = await host.requestProfile(route, 'bot_relay.deliver', { ...base, hops: envelope.hops ?? 0, envelope_id: envelopeId }, RELAY_DELIVER_POLL_TIMEOUT_MS)
+    } catch (error: any) {
+      if (!/extra inputs are not permitted|out of sync/i.test(String(error?.message || error))) { throw error }
+      return host.requestProfile(route, 'bot_relay.deliver', base, RELAY_DELIVER_TIMEOUT_MS)
+    }
+    if (!res?.pending) { return res }
+    if (Date.now() > deadline) { throw Object.assign(new Error('delivery timed out'), { data: { reason: 'delivery_timeout' } }) }
+  }
+}
+
+interface EngineDelivery {
+  error?: string
+  ok?: boolean
+  reason?: string
+  reply?: string
+  status?: string
+}
+
 /** Deliver one claimed envelope on the target connection's own socket and post
  *  the reply (or the error) back to the sender gateway for its waiter. */
 async function deliverRelayEnvelope(
@@ -488,12 +661,32 @@ async function deliverRelayEnvelope(
 
   const postReply = async (payload: { error?: string; reason?: string; reply?: string }) => {
     try {
-      await host.requestProfile(sender.route, 'bot_relay.reply', {
-        id: envelopeId,
-        ...payload
-      })
+      // Persist first: the native engine recovers this wake after a crash or pool retirement.
+      await host.requestProfile(sender.route, 'bot_relay.reply', { id: envelopeId, ...payload })
+      if (envelope.native === true && envelope.sender_session) {
+        const profile = String(envelope.from_profile || 'default')
+        const route = { ...sender.route, profile, targetProfile: profile }
+        let reply = await host.requestProfile<EngineDelivery>(
+          route,
+          'bot.chat.reply',
+          { id: envelopeId, ...payload },
+          RELAY_ENGINE_CALL_MS,
+          { spawnPriority: 'foreground' }
+        )
+        const deadline = Date.now() + RELAY_DELIVER_TIMEOUT_MS
+        while (reply?.status === 'pending') {
+          if (Date.now() > deadline) { throw new Error('sender wake timed out; durable reply retained') }
+          reply = await host.requestProfile<EngineDelivery>(
+            route,
+            'bot.chat.deliver_status',
+            { envelope_id: `reply-${envelopeId}` },
+            RELAY_ENGINE_CALL_MS,
+            { spawnPriority: 'foreground' }
+          )
+        }
+      }
     } catch {
-      // Sender gateway unreachable — its waiter times out with guidance.
+      // The sender's engine retries the durable reply on its next scan/start.
     }
   }
 
@@ -514,18 +707,7 @@ async function deliverRelayEnvelope(
   const attentionKey = `${target.id}::${String(envelope?.target_profile || '')}`
 
   try {
-    const res = await host.requestProfile<{ reply?: string }>(
-      target.route,
-      'bot_relay.deliver',
-      {
-        profile: String(envelope?.target_profile || ''),
-        message: String(envelope?.message || ''),
-        from_profile: String(envelope?.from_profile || ''),
-        from_handle: String(envelope?.from_handle || ''),
-        from_connection: String(sender.id)
-      },
-      RELAY_DELIVER_TIMEOUT_MS
-    )
+    const res = await deliverToTarget(target, sender, envelope, envelopeId)
 
     clearBotAttention(attentionKey)
     await postReply({
@@ -567,6 +749,22 @@ function scheduleRelayPushDrain() {
   }, RELAY_PUSH_DEBOUNCE_MS)
 }
 
+/** Stamp the heartbeat and look at the local outbox without waking any backend (the main process counts the files). */
+async function localTick() {
+  if (relay.disposed) {
+    return
+  }
+
+  const tick = await (typeof window === 'undefined' ? undefined : window.factrDesktop?.botRelay?.tick?.())?.catch?.(
+    () => null
+  )
+
+  if (tick?.ok && tick.pending > 0) {
+    relay.localPending = true
+    scheduleRelayPushDrain()
+  }
+}
+
 export function startBotRelay() {
   relay.disposed = false
   relay.rosterClearedFor = null
@@ -584,6 +782,11 @@ export function startBotRelay() {
 
   if (relay.drainTimer === null) {
     relay.drainTimer = setInterval(() => void drainRelayOutboxes(), RELAY_DRAIN_INTERVAL_MS)
+  }
+
+  if (relay.localTimer === null) {
+    relay.localTimer = setInterval(() => void localTick(), RELAY_LOCAL_TICK_MS)
+    void localTick()
   }
 
   // Push path: the gateway change watcher broadcasts when an envelope hits
@@ -616,6 +819,13 @@ export function stopBotRelay() {
     clearInterval(relay.drainTimer)
     relay.drainTimer = null
   }
+
+  if (relay.localTimer !== null) {
+    clearInterval(relay.localTimer)
+    relay.localTimer = null
+  }
+
+  relay.localPending = false
 
   if (relay.pushDebounceTimer !== null) {
     clearTimeout(relay.pushDebounceTimer)

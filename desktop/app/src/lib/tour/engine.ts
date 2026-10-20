@@ -252,7 +252,7 @@ export function runTourEngine(
 
   const missing = (selectors: string[]): TourResult => ({
     error: 'No element matches selector(s): ' + selectors.join(', '),
-    hint: "The DOM may have re-rendered — re-scan with 'targets' and prefer targets marked stable.",
+    hint: "The DOM may have re-rendered - re-scan with 'targets' and prefer targets marked stable.",
     success: false
   })
 
@@ -352,7 +352,7 @@ export function runTourEngine(
     const driver = holder.driver
 
     if (!driver || !driver.isActive()) {
-      return { error: 'No tour is running — start one first.', success: false }
+      return { error: 'No tour is running - start one first.', success: false }
     }
 
     if (kind === 'next' && driver.isLastStep()) {

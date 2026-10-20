@@ -51,14 +51,14 @@ function resetStores() {
 beforeEach(resetStores)
 afterEach(cleanup)
 
-// The connecting overlay renders "CONN" + a scrambled tail inside one
-// uppercase span; match that node specifically so the recovery overlay's
-// "Lost connection…" copy doesn't read as a false positive.
-const isConnectingShown = () =>
-  screen.queryAllByText((_, el) => /^CONN[/\\|\-_=+<>~:*A-Z]*$/.test(el?.textContent?.trim() ?? '')).length > 0
+const isConnectingShown = () => Boolean(document.querySelector('[data-slot="engine-connecting"]'))
 
 const isRecoveryShown = () =>
   Boolean(screen.queryByText(/use local gateway/i) || screen.queryByText(/retry/i) || screen.queryByText(/sign in/i))
+
+const coldBoot = (phase: string) =>
+  $desktopBoot.set({ ...$desktopBoot.get(), error: null, phase, progress: 10, running: true, visible: true })
+
 
 describe('connecting overlay vs recovery surface', () => {
   it('post-boot socket drops do not re-cover the app with the initial CONNECTING overlay', async () => {
@@ -112,6 +112,8 @@ describe('connecting overlay vs recovery surface', () => {
     expect($desktopBoot.get().error).toBeNull()
     expect(isConnectingShown()).toBe(false)
     expect(isRecoveryShown()).toBe(false)
+    // Post-boot drop shows a non-blocking notice with a real action.
+    expect(screen.getByRole('button', { name: /reconnect now/i })).toBeTruthy()
   })
 
   it('soft gateway switch keeps the shell — no fullscreen CONNECTING', async () => {
@@ -171,5 +173,41 @@ describe('connecting overlay vs recovery surface', () => {
     expect(isRecoveryShown()).toBe(true)
     expect(screen.getByRole('button', { name: /gateway settings/i })).toBeTruthy()
     expect(isConnectingShown()).toBe(false)
+  })
+
+  it('cold start shows plain-words status for each phase and no old runtime text', async () => {
+    setGatewayState('idle')
+    $desktopBoot.set({ ...$desktopBoot.get(), progress: 0, running: true, visible: true, phase: 'bootstrap.start' })
+    await act(async () => {
+      render(<GatewayConnectingOverlay />)
+    })
+
+    const shown = () => document.querySelector('[data-slot="engine-connecting"]')?.textContent ?? ''
+
+    expect(shown()).toBe('Preparing engine')
+    await act(async () => coldBoot('model.load'))
+    expect(shown()).toBe('Loading model')
+    await act(async () => coldBoot('renderer.gateway.connect'))
+    expect(shown()).toBe('Connecting to engine')
+    expect(shown()).not.toMatch(/\x68ermes|conn[/\\|]/i)
+  })
+
+  it('settles away once the gateway opens and is not left covering the app', async () => {
+    setGatewayState('idle')
+    coldBoot('bootstrap.start')
+    await act(async () => {
+      render(<GatewayConnectingOverlay />)
+    })
+    expect(isConnectingShown()).toBe(true)
+    expect(document.querySelector('[data-leaving]')).toBeNull()
+
+    await act(async () => {
+      setGatewayState('open')
+      $desktopBoot.set({ ...$desktopBoot.get(), progress: 100, running: false, visible: false })
+    })
+    // Either mid-fade (data-leaving) or already gone: never interactive-blocking.
+    const el = document.querySelector('[data-slot="engine-connecting"]')
+
+    expect(el === null || el.getAttribute('data-leaving') === 'true').toBe(true)
   })
 })

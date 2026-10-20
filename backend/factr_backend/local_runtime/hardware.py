@@ -18,6 +18,7 @@ import sys
 import time
 from pathlib import Path
 
+from factr_backend.local_runtime import gpu_probe
 from factr_backend.local_runtime.estimator import HardwareBudget
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,13 @@ def _nvidia_vram() -> tuple[int, int] | None:
     return None
 
 
+def _discrete_gpu_fallback() -> "gpu_probe.GpuInfo | None":
+    """Real discrete VRAM when nvidia-smi is absent or NVML fails to initialise."""
+    with suppress(Exception):
+        return gpu_probe.windows_discrete_gpu()
+    return None
+
+
 def _cuda_driver_pool() -> "tuple[int, bool | None] | None":
     """(allocator_total_bytes, integrated_or_None) from the CUDA driver API via ctypes against the
     driver's own DLL/SO — no toolkit, no subprocess, ~ms. INTEGRATED is the vendor's own
@@ -266,6 +274,8 @@ def probe_budget(*, planning: bool = False) -> HardwareBudget:
     """
     ram_total, ram_avail = _ram_bytes()
     vram = _nvidia_vram()
+    if vram is None and (dgpu := _discrete_gpu_fallback()) is not None:
+        vram = (dgpu.vram_bytes, dgpu.vram_bytes)  # free unknown: assume all of it
 
     # Unified-memory NVIDIA: the CUDA allocator pool is the real capacity. Classification comes
     # from the driver API/engine and must not require nvidia-smi (stripped-PATH sessions lose smi
@@ -290,9 +300,11 @@ def probe_budget(*, planning: bool = False) -> HardwareBudget:
         return _uma_budget(base, unified)
 
     if vram is None:
-        # No NVIDIA device visible: Metal/Vulkan/CPU paths budget from RAM as UMA (Apple
-        # Silicon) — conservative for discrete AMD until a vendor probe lands.
-        return _uma_budget(ram_total if planning else ram_avail, ram_total)
+        if gpu_probe.is_apple_silicon():
+            return _uma_budget(ram_total if planning else ram_avail, ram_total)
+        # No discrete GPU (iGPU / CPU only): zero VRAM, everything is CPU spill. Never "unified".
+        return HardwareBudget(usable_vram_bytes=0, total_device_bytes=0,
+                              ram_available_bytes=ram_total if planning else ram_avail, uma=False)
 
     total, free = vram
     margin = max(_MARGIN_FLOOR, int(total * _MARGIN_FRACTION))

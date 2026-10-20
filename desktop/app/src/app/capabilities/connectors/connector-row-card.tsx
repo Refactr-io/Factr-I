@@ -88,7 +88,7 @@ export function ConnectorRowCard({
             type="button"
           >
             {card.name}
-            <span className="sr-only">{` — ${copy.open(card.name)}`}</span>
+            <span className="sr-only">{` - ${copy.open(card.name)}`}</span>
           </button>
 
           <span className="shrink-0 text-[0.6875rem] text-(--ui-text-tertiary)">{connectorKindWord(card, copy)}</span>

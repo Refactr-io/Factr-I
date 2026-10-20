@@ -27,7 +27,7 @@ and have not been run by the author. Where something is a guess it says so.
 | CMake | any recent | Needed by `aws-lc-sys` (pulled in by rustls via the Bedrock provider). |
 | NASM | any recent | Windows only, also for `aws-lc-sys`. CI installs it with `ilammy/setup-nasm`. |
 | Node.js | `^22.22.0`, `^24.11.0` or `>=26.0.0` | From `engines` in `desktop/package.json` and `desktop/app/package.json`. CI uses 24. npm must be `<11.10.0` or `>=11.17.0`. |
-| Python | 3.11 to 3.13 for development | `requires-python = ">=3.11,<3.14"` in `backend/pyproject.toml`. The packaged runtime is a bundled CPython 3.12.12 that `uv` downloads (see staging below). |
+| Python | 3.11 to 3.13 for development | `requires-python = ">=3.11,<3.14"` in `backend/pyproject.toml`. The packaged runtime is a bundled CPython 3.12.14 that `uv` downloads (see staging below). |
 | uv | recent | Backend environment, and the packaging step uses it to fetch the bundled Python. |
 | Git | any recent | Required: the staging step runs `git archive`, and the build embeds the commit hash. |
 | ripgrep (`rg`) | optional | Only for `scripts/gate-names.sh`. |
@@ -144,7 +144,7 @@ cd ../desktop/app && npm run stage:backend-python        # 2. Python runtime + b
 `scripts/stage-backend-python.mjs` (supports macOS arm64/x64, Linux x64 and
 Windows x64):
 
-1. runs `uv python install 3.12.12 --install-dir build/backend-python-managed`
+1. runs `uv python install 3.12.14 --install-dir build/backend-python-managed`
    (skipped when `FACTR_BACKEND_PYTHON_RUNTIME` is set);
 2. copies that runtime to `build/backend-python/runtime`;
 3. runs `uv pip install --target build/backend-python/packages --requirements backend/pyproject.toml --extra bundled`

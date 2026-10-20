@@ -24,6 +24,7 @@ import {
   clearPendingProviderOAuth,
   closeManualOnboarding,
   confirmOnboardingModel,
+  connectOpenCode,
   DEFAULT_MANUAL_ONBOARDING_REASON,
   DEFAULT_ONBOARDING_REASON,
   dismissFirstRunOnboarding,
@@ -43,6 +44,7 @@ import {
   FireworksProviderRow,
   KeyProviderRow,
   LocalModelsProviderRow,
+  OpenCodeProviderRow,
   OpenRouterProviderRow,
   ProviderRow,
   sortProviders
@@ -127,7 +129,7 @@ const API_KEY_OPTIONS: ApiKeyOption[] = [
 // other api_key provider is appended with a generic "paste {KEY}" affordance.
 // OAuth / external providers are intentionally excluded here — they go through
 // the OAuth picker / sign-in flow, not a pasted key.
-function useApiKeyCatalog(): ApiKeyOption[] {
+function useApiKeyCatalog(): { detectedOpenCode: ModelOptionProvider | null; options: ApiKeyOption[] } {
   const [rows, setRows] = useState<ModelOptionProvider[]>([])
 
   useEffect(() => {
@@ -153,6 +155,7 @@ function useApiKeyCatalog(): ApiKeyOption[] {
   }, [])
 
   return useMemo(() => {
+    const detectedOpenCode = rows.find(r => r.detected && r.slug === 'opencode') ?? null
     const curatedByEnv = new Map(API_KEY_OPTIONS.map(o => [o.envKey, o]))
     const derived: ApiKeyOption[] = []
     const seenEnv = new Set<string>(API_KEY_OPTIONS.map(o => o.envKey))
@@ -184,7 +187,7 @@ function useApiKeyCatalog(): ApiKeyOption[] {
     // long tail is scannable.
     derived.sort((a, b) => a.name.localeCompare(b.name))
 
-    return [...API_KEY_OPTIONS.filter(o => curatedByEnv.has(o.envKey)), ...derived]
+    return { detectedOpenCode, options: [...API_KEY_OPTIONS.filter(o => curatedByEnv.has(o.envKey)), ...derived] }
   }, [rows])
 }
 
@@ -391,9 +394,7 @@ export function DesktopOnboardingOverlay({
       <div
         className={cn(
           'relative w-full max-w-[37.5rem] transition-all duration-500 ease-out',
-          bare
-            ? ''
-            : 'overflow-hidden rounded-lg bg-(--ui-chat-bubble-background)',
+          bare ? '' : 'overflow-hidden rounded-lg bg-(--ui-chat-bubble-background)',
           // Bare confirm screen orchestrates its own per-element exit; the
           // carded states use the simple lift/blur dissolve.
           leaving && !bare
@@ -628,7 +629,36 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
 
   const ordered = useMemo(() => (providers ? sortProviders(providers) : []), [providers])
   const hasOauth = ordered.length > 0
-  const apiKeyOptions = useApiKeyCatalog()
+  const { detectedOpenCode, options: apiKeyOptions } = useApiKeyCatalog()
+  const [openCodeBusy, setOpenCodeBusy] = useState(false)
+  const [openCodeError, setOpenCodeError] = useState('')
+
+  // Adopt OpenCode's sign-in; with none to adopt (or on failure) land on the key form for Zen instead.
+  const connectDetectedOpenCode = async () => {
+    if (!detectedOpenCode?.adoptable) {
+      return openKeyForm('OPENCODE_ZEN_API_KEY')
+    }
+
+    setOpenCodeBusy(true)
+    setOpenCodeError('')
+    const res = await connectOpenCode(ctx)
+    setOpenCodeBusy(false)
+
+    if (!res.ok) {
+      setOpenCodeError(res.message ?? '')
+    }
+  }
+
+  const openCodeRow = detectedOpenCode ? (
+    <>
+      <OpenCodeProviderRow
+        adoptable={Boolean(detectedOpenCode.adoptable)}
+        busy={openCodeBusy}
+        onClick={() => void connectDetectedOpenCode()}
+      />
+      {openCodeError ? <p className="px-3 text-xs text-destructive">{openCodeError}</p> : null}
+    </>
+  ) : null
 
   // localEndpoint forces the key form regardless of `mode` (which a manual
   // provider refresh may flip back to 'oauth'); it preselects the local option
@@ -637,6 +667,7 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
   if (localEndpoint || mode === 'apikey' || !hasOauth) {
     return (
       <div className="grid gap-3">
+        {openCodeRow}
         <ApiKeyForm
           canGoBack={hasOauth && !localEndpoint}
           initialEnvKey={localEndpoint ? 'OPENAI_BASE_URL' : apiKeyInitialEnv}
@@ -685,6 +716,7 @@ export function Picker({ ctx }: { ctx: OnboardingContext }) {
   return (
     <div className="grid gap-2">
       <div className="grid max-h-[60dvh] gap-2 overflow-y-auto p-1">
+        {openCodeRow}
         {featured ? <FeaturedProviderRow onSelect={select} provider={featured} /> : null}
         {/* The no-account path: everything runs on this machine. Shipped
             behind the --local launch flag. (Fireworks moved into the

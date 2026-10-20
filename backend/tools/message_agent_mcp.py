@@ -1,10 +1,10 @@
 """Teammate messaging for bots whose chat runs in the Rust engine (the packaged desktop app).
 
-The engine has no ``message_agent`` tool, so each Bot-Mode bot profile gets one stdio MCP server in its OWN
-``config.yaml`` (``mcp_servers.factr_teammates``). The default profile's config is never touched, so default
-chats (and the benchmark harness) load exactly the tool list they always did.
+Legacy engines use this stdio MCP server in each Bot-Mode bot profile's OWN
+``config.yaml`` (``mcp_servers.factr_teammates``). On a Bot-Mode-managed install the default profile gets it too,
+so the user's chat can hand work to a teammate. Installs without a bot roster are unchanged.
 
-This module is the seam for a later Rust port: ``ensure_teammate_mcp`` (config), the stdio server below
+Current engines inject the native queued SDK tool and disable this alias. This compatibility module provides ``ensure_teammate_mcp`` (config), the stdio server below
 (tool surface), and ``deliver`` (transport). ``deliver`` runs the same cleanup-owning runner, per-profile turn
 lock, live-owner admission and author attribution as the Python ``message_agent`` tool, but waits for the reply and
 returns it as the tool result instead of relying on a completion notification the engine cannot consume.
@@ -25,7 +25,7 @@ from typing import Any, Optional
 
 SERVER_NAME = "factr_teammates"  # keep in step with tools.bot_relay.TEAMMATES_MCP_SERVER
 TOOL_NAME = "message_agent"
-# A teammate's turn can run for minutes; the engine's default MCP reply timeout is 30s.
+# Legacy runner budget. Engine chats use the native queued tool; MCP initialization stays bounded.
 REPLY_TIMEOUT_SECONDS = 900
 _PROTOCOL_FALLBACK = "2024-11-05"
 
@@ -41,25 +41,34 @@ def desired_server_entry() -> dict:
         command = sys.executable or "python3"
         pythonpath = str(Path(__file__).resolve().parent.parent)
     return {"command": command, "args": ["-m", "tools.message_agent_mcp"], "env": {"PYTHONPATH": pythonpath},
-            "timeout_secs": REPLY_TIMEOUT_SECONDS}
+            "timeout_secs": 10}
 
 
 def ensure_teammate_mcp(root: "Path | str") -> int:
-    """Add (or refresh) the teammate server in every Bot-Mode-managed NAMED profile's config.yaml.
-    Returns how many files were written. Never raises; the default profile is never written."""
+    """Refresh the teammate server in managed bots and the default chat when a bot roster exists.
+    Returns how many files were written. Never raises."""
     written = 0
     try:
         from tools.bot_mode_probe import _is_bot_managed, _roster
 
+        roster = _roster(Path(root))
+        if not any(_is_bot_managed(Path(d)) for _, d in roster):
+            return 0
         desired = desired_server_entry()
-        for name, profile_dir in _roster(Path(root)):
+        for name, profile_dir in roster:
             try:
                 path = Path(profile_dir) / "config.yaml"
-                if name == "default" or not path.is_file() or not _is_bot_managed(Path(profile_dir)):
+                if name != "default" and not _is_bot_managed(Path(profile_dir)):
+                    continue
+                from tools.bot_relay import has_computer
+
+                # A bot with a computer gets the entry from inside its container (computer/entrypoint.sh): a
+                # host-written absolute python path does not exist there.
+                if has_computer(profile_dir) and not os.environ.get("FACTR_BOT_COMPUTER"):
                     continue
                 import yaml
 
-                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                data = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.is_file() else {}
                 if not isinstance(data, dict):
                     continue
                 servers = data.get("mcp_servers")
@@ -140,6 +149,16 @@ def deliver(target: str, message: str, home: Optional[Path] = None) -> tuple[str
         return _run(cmd, label=f"@{profile or name} on peer '{name}'")
 
     resolved = dm._resolve_local_name(raw, list(homes), root)
+    computer_target = ""
+    if resolved is not None and resolved != me:
+        from tools.bot_relay import computer_connection_id, has_computer, local_target, relay_alive
+        if has_computer(homes[resolved]):
+            computer_target = resolved
+            raw, resolved = f"{resolved}@{computer_connection_id(resolved)}", None
+        elif relay_alive(root):
+            text = _relay_local(root, me, content, local_target(resolved, _handle(resolved)))
+            if text is not None:
+                return text
     if resolved is not None and resolved != me:
         file = dm._write_dm_file(content)
         cmd = dm._delivery_command([*bot_cli_prefix(), "-p", resolved, *BOT_CHAT_TURN_ARGS], file,
@@ -170,9 +189,29 @@ def deliver(target: str, message: str, home: Optional[Path] = None) -> tuple[str
             return _run(waiter_command(root, envelope), label=f"@{match['handle']}")
     except Exception as exc:
         return (f"Relay delivery failed: {exc}", False)
+    if computer_target:
+        from tools.bot_relay import HAS_COMPUTER_MESSAGE
+        return (f"@{_handle(computer_target)}: {HAS_COMPUTER_MESSAGE}. Do not retry.", False)
     if resolved == me:
         return ("You can't message yourself. Pick a teammate from the roster.", False)
     return (f"No teammate named '{raw}'. Teammates: {', '.join(teammates) or 'none'}.", False)
+
+
+def _relay_local(root: Path, me: str, content: str, match: dict) -> "tuple[str, bool] | None":
+    """Queue ``content`` for another bot on this install through the Desktop relay and wait for its reply.
+    None when the relay could not be used (the caller then runs the local CLI turn instead)."""
+    try:
+        from tools.bot_mode_probe import _handle
+        from tools.bot_relay import EnvelopeRefusedError, enqueue_envelope, waiter_command
+
+        try:
+            envelope = enqueue_envelope(root, target=match, message=content, sender_profile=me,
+                                        sender_handle=_handle(me))
+        except EnvelopeRefusedError as exc:
+            return (json.dumps({"error": str(exc), "reason": exc.reason}), False)
+        return _run(waiter_command(root, envelope), label=f"@{match['handle']}")
+    except Exception:
+        return None
 
 
 # ── MCP stdio server ──────────────────────────────────────────────────────────────────────────

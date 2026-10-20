@@ -17,11 +17,11 @@ import type { LocalHardware } from '@/types/factr'
 const POLL_MS = 5_000
 
 function gb(bytes: number | null | undefined): string {
-  return bytes ? `${(bytes / (1 << 30)).toFixed(0)}G` : '—'
+  return bytes ? `${(bytes / (1 << 30)).toFixed(0)}G` : '-'
 }
 
 function gbLong(bytes: number | null | undefined): string {
-  return bytes ? `${(bytes / (1 << 30)).toFixed(1)} GB` : '—'
+  return bytes ? `${(bytes / (1 << 30)).toFixed(1)} GB` : '-'
 }
 
 function MeterRow({ label, percent, value }: { label: string; percent: number | null; value: string }) {

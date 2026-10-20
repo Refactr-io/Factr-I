@@ -7,6 +7,8 @@ import {
   IconAppWindow as AppWindow,
   IconArchive as Archive,
   IconArchiveOff as ArchiveOff,
+  IconArrowsMaximize as ArrowsMaximize,
+  IconArrowsMinimize as ArrowsMinimize,
   IconArrowUp as ArrowUp,
   IconArrowUpRight as ArrowUpRight,
   IconAt as AtSign,
@@ -16,6 +18,7 @@ import {
   IconBook as Book,
   IconBookmark as Bookmark,
   IconBookmarkFilled as BookmarkFilled,
+  IconRobotFace as Bot,
   IconLayoutBottombar as BottomPanel,
   IconBox as Box,
   IconBrain as Brain,
@@ -32,6 +35,7 @@ import {
   IconChevronLeft as ChevronLeftIcon,
   IconChevronRight as ChevronRight,
   IconChevronRight as ChevronRightIcon,
+  IconChevronUp as ChevronUp,
   IconCircleArrowDownFilled as CircleArrowDownFilled,
   IconCircleArrowUp as CircleArrowUp,
   IconCircle as CircleIcon,
@@ -53,10 +57,12 @@ import {
   IconExternalLink as ExternalLink,
   IconEye as Eye,
   IconEyeOff as EyeOff,
+  IconFileDiff as FileDiff,
   IconPhoto as FileImage,
   IconFiles as Files,
   IconFilesFilled as FilesFilled,
   IconFileText as FileText,
+  IconFolder as Folder,
   IconFolderOpen as FolderOpen,
   IconGitBranch as GitBranch,
   IconGitBranch as GitBranchIcon,
@@ -65,6 +71,7 @@ import {
   IconWorld as Globe,
   IconHash as Hash,
   IconHelpCircle as HelpCircle,
+  IconHistory as History,
   IconHome as Home,
   IconHomeFilled as HomeFilled,
   IconPhoto as ImageIcon,
@@ -73,14 +80,14 @@ import {
   IconKey as KeyRound,
   IconLayersIntersect2 as Layers3,
   IconLayoutDashboard as LayoutDashboard,
+  IconLayoutSidebar as LayoutPanelLeft,
+  IconLayoutSidebarRight as LayoutPanelRight,
   IconLink as Link,
   IconLink as Link2,
   IconLink as LinkIcon,
   IconListCheck as ListCheck,
   IconListCheckFilled as ListCheckFilled,
-  IconLoader as Loader,
-  IconLoader2 as Loader2,
-  IconLoader2 as Loader2Icon,
+  IconListDetails as ListDetails,
   IconLock as Lock,
   IconLogin as LogIn,
   IconLogs as Logs,
@@ -105,6 +112,7 @@ import {
   IconPalette as Palette,
   IconLayoutBottombar as PanelBottom,
   IconLayoutSidebar as PanelLeftIcon,
+  IconLayoutSidebarRight as PanelRightIcon,
   IconLayoutNavbar as PanelTop,
   IconPlayerPause as Pause,
   IconPaw as PawPrint,
@@ -147,9 +155,11 @@ import {
   IconBolt as Zap,
   IconBoltFilled as ZapFilled,
   IconZoomIn as ZoomIn,
-  IconZoomOut as ZoomOut,
+  IconZoomOut as ZoomOut
 } from '@tabler/icons-react'
 
+// Legacy loading icon names share the pixel mark, including SVG props and refs.
+import { LoaderMark as Loader, LoaderMark as Loader2, LoaderMark as Loader2Icon } from '@/components/ui/loader-mark'
 
 export {
   Activity,
@@ -160,6 +170,8 @@ export {
   AppWindow,
   Archive,
   ArchiveOff,
+  ArrowsMaximize,
+  ArrowsMinimize,
   ArrowUp,
   ArrowUpRight,
   AtSign,
@@ -169,6 +181,7 @@ export {
   Book,
   Bookmark,
   BookmarkFilled,
+  Bot,
   BottomPanel,
   Box,
   Brain,
@@ -185,6 +198,7 @@ export {
   ChevronLeftIcon,
   ChevronRight,
   ChevronRightIcon,
+  ChevronUp,
   CircleArrowDownFilled,
   CircleArrowUp,
   CircleIcon,
@@ -206,10 +220,12 @@ export {
   ExternalLink,
   Eye,
   EyeOff,
+  FileDiff,
   FileImage,
   Files,
   FilesFilled,
   FileText,
+  Folder,
   FolderOpen,
   GitBranch,
   GitBranchIcon,
@@ -218,6 +234,7 @@ export {
   Globe,
   Hash,
   HelpCircle,
+  History,
   Home,
   HomeFilled,
   ImageIcon,
@@ -226,11 +243,14 @@ export {
   KeyRound,
   Layers3,
   LayoutDashboard,
+  LayoutPanelLeft,
+  LayoutPanelRight,
   Link,
   Link2,
   LinkIcon,
   ListCheck,
   ListCheckFilled,
+  ListDetails,
   Loader,
   Loader2,
   Loader2Icon,
@@ -258,6 +278,7 @@ export {
   Palette,
   PanelBottom,
   PanelLeftIcon,
+  PanelRightIcon,
   PanelTop,
   Pause,
   PawPrint,
@@ -306,8 +327,6 @@ export {
 import type { Icon as IconComponent } from '@tabler/icons-react'
 export type { IconComponent }
 
-
-
 /**
  * Named icon-size scale — the single source of truth for SVG icon dimensions,
  * replacing ad-hoc `h-N w-N` / `size={N}`. Use `<Icon className={iconSize.sm} />`
@@ -323,3 +342,6 @@ export const iconSize = {
 } as const
 
 export type IconSize = keyof typeof iconSize
+
+/** Rail and pane-tab marks share one 18px grid and line weight. */
+export const RAIL_ICON_PROPS = { className: 'size-[1.125rem]', size: 18, stroke: 1.5 } as const

@@ -66,17 +66,28 @@ const route = (id: string): ProfileRoute => ({
 interface RelayCall {
   connectionId: string
   method: string
+  profile?: string
   params: Record<string, unknown>
 }
 
-function respondWith(handler: (call: RelayCall) => unknown) {
+function respondWith(handler: (call: RelayCall) => unknown, { engineDoor = false } = {}) {
   const calls: RelayCall[] = []
 
   ;(hostMock.requestProfile as ReturnType<typeof vi.fn>).mockImplementation(
     async (target: ProfileRoute, method: string, params: Record<string, unknown>) => {
-      const call = { connectionId: target.connectionId, method, params: structuredClone(params ?? {}) }
+      const call = {
+        connectionId: target.connectionId,
+        method,
+        params: structuredClone(params ?? {}),
+        profile: target.profile
+      }
 
       calls.push(call)
+
+      // An older engine (and every remote gateway) has no `bot.chat.deliver`: the relay falls back to bot_relay.deliver.
+      if (!engineDoor && method.startsWith('bot.chat.')) {
+        throw new Error('unknown method bot.chat.deliver')
+      }
 
       return handler(call)
     }
@@ -968,6 +979,526 @@ describe('the drain loop does not let one delivery hold every other gateway’s 
       'env-1',
       'env-3'
     ])
+
+    stopBotRelay()
+  })
+})
+
+// A message between two bots on THIS install is delivered by the target bot's own engine (`bot.chat.deliver`: a real
+// turn in its Bot Chat), not a Python CLI turn. The relay watches the local outbox through a cheap main-process tick, so
+// it works with a single connection and never wakes a backend to look.
+describe('local bot-to-bot delivery through the target engine', () => {
+  const localRoute: ProfileRoute = { connectionId: 'local', mode: 'local', profile: 'default', targetProfile: 'default' }
+  const envelope = { id: 'a'.repeat(32), message: 'Message from 🤖 Alpha (@alpha): hi', from_handle: 'alpha', from_profile: 'alpha', hops: 1, target_connection: 'local', target_profile: 'scout' }
+
+  const setTick = (pending: () => number) => {
+    const tick = vi.fn(async () => ({ ok: true, pending: pending() }))
+
+    ;(window as any).factrDesktop = { botRelay: { tick } }
+    hostMock.profileRoutes = vi.fn(async () => [localRoute])
+
+    return tick
+  }
+
+  afterEach(() => {
+    delete (window as any).factrDesktop
+  })
+
+  it('heartbeats on every tick, and drains only when the outbox has mail (one connection is enough)', async () => {
+    let pending = 0
+    const tick = setTick(() => pending)
+    const calls = respondWith(() => ({ envelopes: [] }), { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 * 3)
+    expect(tick.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain')).toEqual([]) // no mail: no backend is asked
+
+    pending = 1
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain').length).toBe(1)
+
+    stopBotRelay()
+    tick.mockClear()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(tick).not.toHaveBeenCalled()
+  })
+
+  it("hands the message to the target bot's own engine with its hop count, and posts the reply to the sender", async () => {
+    let pending = 1
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      return call.method === 'bot.chat.deliver' ? { ok: true, reply: 'scout says hi', status: 'done' } : {}
+    }, { engineDoor: true })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    const deliver = calls.find(call => call.method === 'bot.chat.deliver')
+
+    expect([deliver?.connectionId, deliver?.profile]).toEqual(['local', 'scout'])
+    expect(deliver?.params).toEqual({
+      envelope_id: envelope.id,
+      from_connection: 'local',
+      from_handle: 'alpha',
+      from_profile: 'alpha',
+      hops: 1,
+      profile: 'scout',
+      text: envelope.message
+    })
+    expect(calls.some(call => call.method === 'bot_relay.deliver')).toBe(false) // no Python CLI turn
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params).toEqual({ id: envelope.id, reply: 'scout says hi' })
+
+    stopBotRelay()
+  })
+
+  it('retries a retiring engine with the same envelope instead of posting a user-facing failure', async () => {
+    let pending = 1
+    let attempts = 0
+    setTick(() => pending)
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') { pending = 0; return { envelopes: [envelope] } }
+      if (call.method === 'bot.chat.deliver') {
+        if (++attempts === 1) { throw Object.assign(new Error('engine is retiring'), { data: { reason: 'retiring' } }) }
+        return { ok: true, status: 'done', reply: 'rerouted' }
+      }
+      return {}
+    }, { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 200)
+    expect(attempts).toBe(2)
+    expect(calls.filter(c => c.method === 'bot.chat.deliver').map(c => c.params.envelope_id)).toEqual([envelope.id, envelope.id])
+    expect(calls.find(c => c.method === 'bot_relay.reply')?.params).toEqual({ id: envelope.id, reply: 'rerouted' })
+    expect(noteBotAttentionMock).not.toHaveBeenCalled()
+    stopBotRelay()
+  })
+
+  it('persists a native reply before waking the sender on its own engine', async () => {
+    let pending = 1
+    setTick(() => pending)
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') { pending = 0; return { envelopes: [{ ...envelope, native: true, sender_session: 'original' }] } }
+      return call.method === 'bot.chat.deliver' || call.method === 'bot.chat.reply' ? { ok: true, status: 'done', reply: 'answer' } : {}
+    }, { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+    const wake = calls.findIndex(c => c.method === 'bot.chat.reply')
+    expect(calls[wake].profile).toBe('alpha')
+    expect(calls[wake].params).toEqual({ id: envelope.id, reply: 'answer' })
+    expect(calls.findIndex(c => c.method === 'bot_relay.reply')).toBeLessThan(wake)
+    stopBotRelay()
+  })
+
+  it('polls deliver_status while the turn runs and posts one reply', async () => {
+    let pending = 1
+    let polls = 0
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      if (call.method === 'bot.chat.deliver') {
+        return { envelope_id: envelope.id, status: 'pending' }
+      }
+
+      if (call.method === 'bot.chat.deliver_status') {
+        polls += 1
+
+        return polls < 3 ? { envelope_id: envelope.id, status: 'pending' } : { ok: true, reply: 'finally', status: 'done' }
+      }
+
+      return {}
+    }, { engineDoor: true })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    expect(calls.filter(call => call.method === 'bot.chat.deliver_status').map(call => call.params)).toEqual([
+      { envelope_id: envelope.id },
+      { envelope_id: envelope.id },
+      { envelope_id: envelope.id }
+    ])
+    expect(calls.filter(call => call.method === 'bot_relay.reply').map(call => call.params.reply)).toEqual(['finally'])
+
+    stopBotRelay()
+  })
+
+  it('forwards a typed failure (an auth error) to the sender with its reason', async () => {
+    let pending = 1
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      return call.method === 'bot.chat.deliver'
+        ? { error: 'Error code: 401 invalid x-api-key', ok: false, reason: 'provider_auth_or_access', status: 'done' }
+        : {}
+    }, { engineDoor: true })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params).toEqual({
+      error: 'Error code: 401 invalid x-api-key',
+      id: envelope.id,
+      reason: 'provider_auth_or_access'
+    })
+    expect(noteBotAttentionMock).toHaveBeenCalled()
+
+    stopBotRelay()
+  })
+
+  it('falls back to the gateway bot_relay.deliver when the engine has no bot.chat.deliver', async () => {
+    let pending = 1
+    setTick(() => pending)
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain') {
+        pending = 0
+
+        return { envelopes: [envelope] }
+      }
+
+      return call.method === 'bot_relay.deliver' ? { reply: 'old engine reply' } : {}
+    }) // engineDoor off: bot.chat.* is an unknown method
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(4000 + RELAY_PUSH_DEBOUNCE_MS + 10)
+
+    expect(calls.some(call => call.method === 'bot.chat.deliver')).toBe(true)
+    expect(calls.find(call => call.method === 'bot_relay.deliver')?.params).toMatchObject({ message: envelope.message, profile: 'scout' })
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params).toEqual({ id: envelope.id, reply: 'old engine reply' })
+
+    stopBotRelay()
+  })
+
+  it('does nothing without the desktop door (a web or remote shell)', async () => {
+    hostMock.profileRoutes = vi.fn(async () => [localRoute])
+
+    const calls = respondWith(() => ({ envelopes: [] }), { engineDoor: true })
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain')).toEqual([])
+
+    stopBotRelay()
+  })
+})
+
+// A bot with its own computer (a Docker container with its own engine, outbox and turn lock) is its own relay
+// connection: `computer-<profile>`. The local connection never carries it, a computer that is off is a delivery
+// target (delivering wakes it) but is never polled, pushed to, or asked for its profile list.
+describe('bot computers are relay connections', () => {
+  const local = (profile: string): ProfileRoute => ({
+    connectionId: 'local',
+    mode: 'local',
+    profile,
+    targetProfile: profile
+  })
+
+  const setComputers = (computers: { profile: string; running: boolean }[]) => {
+    ;(window as any).factrDesktop = { botComputer: { list: vi.fn(async () => ({ ok: true, computers })) } }
+    hostMock.profileRoutes = vi.fn(async () => [local('scout'), local('default'), local('writer')])
+  }
+
+  afterEach(() => {
+    delete (window as any).factrDesktop
+  })
+
+  const profilesList = (call: RelayCall) =>
+    call.method === 'profiles.list' ? { profiles: [{ name: 'default' }, { name: 'scout' }, { name: 'writer' }] } : {}
+
+  it('refreshes a running Alpha immediately when Beta is created, without waking Beta', async () => {
+    let profiles = [{ name: 'default' }, { name: 'alpha' }]
+    setComputers([{ profile: 'alpha', running: true }])
+    const calls = respondWith(call => (call.method === 'profiles.list' ? { profiles } : {}))
+    const relay = await loadRelay()
+    relay.startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    calls.length = 0
+
+    profiles = [...profiles, { name: 'beta' }]
+    setComputers([
+      { profile: 'alpha', running: true },
+      { profile: 'beta', running: false }
+    ])
+    await relay.refreshBotRelayRosters()
+
+    const push = calls.find(call => call.method === 'bot_relay.roster.sync' && call.profile === 'alpha')
+    expect(push?.params.agents).toEqual(
+      expect.arrayContaining([expect.objectContaining({ profile: 'beta', connection_id: 'computer-beta' })])
+    )
+    expect((push?.params.agents as { profile: string }[]).some(row => row.profile === 'alpha')).toBe(false)
+    expect(calls.some(call => call.profile === 'beta')).toBe(false)
+    relay.stopBotRelay()
+  })
+
+  it('waits for an in-flight roster push and then fetches the newly created bot', async () => {
+    let profiles = [{ name: 'default' }, { name: 'alpha' }]
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    let reads = 0
+
+    setComputers([{ profile: 'alpha', running: true }])
+    const calls = respondWith(async call => {
+      if (call.method !== 'profiles.list') { return {} }
+
+      const snapshot = profiles
+
+      if (++reads === 1) { await held }
+
+      return { profiles: snapshot }
+    })
+    const relay = await loadRelay()
+
+    relay.startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    profiles = [...profiles, { name: 'beta' }]
+    setComputers([{ profile: 'alpha', running: true }, { profile: 'beta', running: false }])
+    const refreshed = relay.refreshBotRelayRosters()
+    release()
+    await refreshed
+    expect(reads).toBe(2)
+    const pushes = calls.filter(call => call.method === 'bot_relay.roster.sync' && call.profile === 'alpha')
+    expect(pushes.at(-1)?.params.agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ profile: 'beta', connection_id: 'computer-beta' })
+    ]))
+    relay.stopBotRelay()
+  })
+
+  it('pushes rosters only to live connections, with each computer as its own connection and never its own row', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: false }
+    ])
+
+    const calls = respondWith(profilesList)
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // The local connection is represented by a non-computer profile, and nothing ever touches the stopped computer.
+    expect(calls.filter(call => call.profile === 'writer')).toEqual([])
+    expect(calls.filter(call => call.method === 'profiles.list').map(call => call.profile)).toEqual(['default'])
+
+    const syncs = calls.filter(call => call.method === 'bot_relay.roster.sync')
+    const ids = (call: RelayCall) => (call.params.agents as { connection_id: string }[]).map(row => row.connection_id).sort()
+
+    expect(syncs.map(call => [call.connectionId, call.profile])).toEqual([
+      ['local', 'default'],
+      ['local', 'scout']
+    ])
+    expect(ids(syncs[0])).toEqual(['computer-scout', 'computer-writer'])
+    // scout is told about the host's default and about writer, but not about itself.
+    expect(ids(syncs[1])).toEqual(['computer-writer', 'local'])
+
+    stopBotRelay()
+  })
+
+  it('drains only running computers', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: false }
+    ])
+
+    const calls = respondWith(profilesList)
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    calls.length = 0
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    expect(calls.filter(call => call.method === 'bot_relay.outbox.drain').map(call => call.profile).sort()).toEqual([
+      'default',
+      'scout'
+    ])
+    expect(calls.some(call => call.profile === 'writer')).toBe(false)
+
+    stopBotRelay()
+  })
+
+  it('delivers to a stopped computer on its own route (waking it), tagged with the sender computer and the hop count', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: false }
+    ])
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain' && call.profile === 'scout') {
+        return {
+          envelopes: [
+            {
+              id: 'e'.repeat(32),
+              message: 'Message from scout',
+              from_handle: 'scout',
+              from_profile: 'scout',
+              hops: 1,
+              target_connection: 'computer-writer',
+              target_profile: 'writer'
+            }
+          ]
+        }
+      }
+
+      return call.method === 'bot_relay.deliver' ? { reply: 'writer says hi' } : profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    const deliver = calls.find(call => call.method === 'bot_relay.deliver')
+
+    expect([deliver?.connectionId, deliver?.profile]).toEqual(['local', 'writer'])
+    expect(deliver?.params).toMatchObject({
+      envelope_id: 'e'.repeat(32),
+      from_connection: 'computer-scout',
+      hops: 1,
+      profile: 'writer'
+    })
+
+    const reply = calls.find(call => call.method === 'bot_relay.reply')
+
+    expect([reply?.profile, reply?.params]).toEqual(['scout', { id: 'e'.repeat(32), reply: 'writer says hi' }])
+
+    stopBotRelay()
+  })
+
+  it('polls a long turn: each call returns pending until the turn is done, one reply is posted', async () => {
+    setComputers([
+      { profile: 'scout', running: true },
+      { profile: 'writer', running: true }
+    ])
+
+    let polls = 0
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain' && call.profile === 'scout') {
+        return {
+          envelopes: [{ id: 'f'.repeat(32), message: 'm', target_connection: 'computer-writer', target_profile: 'writer' }]
+        }
+      }
+
+      if (call.method === 'bot_relay.deliver') {
+        polls += 1
+
+        return polls < 3 ? { pending: true, reply: '' } : { reply: 'finally' }
+      }
+
+      return profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    const delivers = calls.filter(call => call.method === 'bot_relay.deliver')
+
+    expect(delivers).toHaveLength(3)
+    expect(new Set(delivers.map(call => call.params.envelope_id))).toEqual(new Set(['f'.repeat(32)]))
+    expect(calls.filter(call => call.method === 'bot_relay.reply').map(call => call.params.reply)).toEqual(['finally'])
+
+    stopBotRelay()
+  })
+
+  it('falls back to the blocking call for a backend that predates the poll protocol', async () => {
+    setComputers([{ profile: 'scout', running: true }])
+
+    let first = true
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.outbox.drain' && call.profile === 'default') {
+        return {
+          envelopes: [
+            { id: 'a'.repeat(32), message: 'm', hops: 1, target_connection: 'computer-scout', target_profile: 'scout' }
+          ]
+        }
+      }
+
+      if (call.method === 'bot_relay.deliver') {
+        if (first) {
+          first = false
+          throw new Error('invalid params for bot_relay.deliver: hops: Extra inputs are not permitted')
+        }
+
+        return { reply: 'old backend reply' }
+      }
+
+      return profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(RELAY_DRAIN_INTERVAL_MS)
+
+    const delivers = calls.filter(call => call.method === 'bot_relay.deliver')
+
+    expect(delivers).toHaveLength(2)
+    expect(Object.keys(delivers[1].params).sort()).toEqual(['from_connection', 'from_handle', 'from_profile', 'message', 'profile'])
+    expect(calls.find(call => call.method === 'bot_relay.reply')?.params.reply).toBe('old backend reply')
+
+    stopBotRelay()
+  })
+
+  it('gives a freshly started computer its roster even though its engine answers the first push from a boot stub', async () => {
+    setComputers([{ profile: 'scout', running: true }])
+
+    let scoutSyncs = 0
+
+    const calls = respondWith(call => {
+      if (call.method === 'bot_relay.roster.sync' && call.profile === 'scout') {
+        scoutSyncs += 1
+
+        return { count: scoutSyncs === 1 ? 0 : 1 }
+      }
+
+      return profilesList(call)
+    })
+
+    const { startBotRelay, stopBotRelay } = await loadRelay()
+
+    startBotRelay()
+    await vi.advanceTimersByTimeAsync(0)
+
+    const forScout = calls.filter(call => call.profile === 'scout').map(call => call.method)
+
+    // sync (stub, count 0) -> a drain starts the python backend -> sync again.
+    expect(forScout).toEqual(['bot_relay.roster.sync', 'bot_relay.outbox.drain', 'bot_relay.roster.sync'])
 
     stopBotRelay()
   })

@@ -999,7 +999,40 @@ fn factr_command_from(env: impl Fn(&str) -> Option<String>, home: Option<&std::p
     if let Some(cmd) = env("FACTR_BACKEND_CMD") {
         return split_factr_cmd(&cmd);
     }
-    managed_factr_command(home?)
+    managed_factr_command(home?).or_else(|| bundled_backend().map(|(python, _)| vec![python, "-m".into(), "factr_backend.main".into()]))
+}
+
+/// The desktop installer's backend: `<resources>/backend-python`, next to the `<resources>/factr/` dir that
+/// holds this executable. Returns its interpreter and the PYTHONPATH it needs (source + packages).
+pub fn bundled_backend() -> Option<(String, String)> {
+    let exe = std::env::current_exe().ok()?;
+    bundled_backend_in(&exe.parent()?.parent()?.join("backend-python"))
+}
+
+fn bundled_backend_in(root: &std::path::Path) -> Option<(String, String)> {
+    let python = if cfg!(windows) { root.join("runtime/python.exe") } else { root.join("runtime/bin/python3.12") };
+    if !python.is_file() {
+        return None;
+    }
+    let path = std::env::join_paths([root.join("source"), root.join("packages")]).ok()?;
+    Some((python.to_string_lossy().into_owned(), path.to_string_lossy().into_owned()))
+}
+
+#[cfg(test)]
+mod bundled_backend_tests {
+    #[test]
+    fn finds_the_installed_layout_only_when_the_runtime_exists() {
+        let dir = std::env::temp_dir().join(format!("factr-bundled-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(super::bundled_backend_in(&dir), None);
+        let python = if cfg!(windows) { dir.join("runtime/python.exe") } else { dir.join("runtime/bin/python3.12") };
+        std::fs::create_dir_all(python.parent().unwrap()).unwrap();
+        std::fs::write(&python, "").unwrap();
+        let (found, path) = super::bundled_backend_in(&dir).unwrap();
+        assert_eq!(found, python.to_string_lossy());
+        assert!(path.contains("source") && path.contains("packages"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]

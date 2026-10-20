@@ -13,6 +13,7 @@ call is mocked — we never actually shell out during unit tests.
 from __future__ import annotations
 
 
+import sys
 import pytest
 
 import tools.lazy_deps as ld
@@ -374,6 +375,7 @@ class TestInstallSpecs:
         (cmd, kw), = calls
         assert cmd[:3] == ["/fake/uv", "pip", "install"]
         assert "--no-config" in cmd
+        assert cmd[cmd.index("--python") + 1] == sys.executable  # never uv's default interpreter (#13)
         assert kw.get("cwd") is None
         assert "--constraint" in cmd  # core ranges still bound the plugin's resolution
 

@@ -12,6 +12,18 @@ export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar' | 'ru'
 
 /** One error-card entry: a short title and one plain sentence. Either may
  *  take the failing provider's display name (falls back to "the AI service"). */
+/** The session rail (environment, context, changes) opened from the chat header. */
+export interface SessionRailStrings {
+  changes: string
+  context: string
+  environment: string
+  noChanges: string
+  noFolder: string
+  openChanges: (count: number) => string
+  percentUsed: (percent: number) => string
+  title: string
+}
+
 export interface ErrorCardCopy {
   title: string | ((provider: string) => string)
   body: string | ((provider: string) => string)
@@ -60,6 +72,26 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
+  account: {
+    profile: (name: string) => string
+    picture: string
+    uploadPicture: string
+    removePicture: string
+    pictureInvalid: string
+  }
+
+  activity: {
+    title: string
+    runs: string
+    usage: string
+    system: string
+    engine: string
+    profile: string
+    openSession: string
+    budgetExceeded: string
+    totals: (runs: number, running: number, tokens: string) => string
+  }
+
   connectors: {
     connect: string
     retry: string
@@ -341,6 +373,13 @@ export interface Translations {
   }
 
   boot: {
+    connection: {
+      startingEngine: string
+      preparingEngine: string
+      connectingEngine: string
+      loadingModel: string
+      reconnecting: string
+    }
     ready: string
     desktopBootFailedWithMessage: (message: string) => string
     steps: {
@@ -520,6 +559,7 @@ export interface Translations {
     dismiss: string
   }
 
+  sessionRail: SessionRailStrings
   titlebar: {
     hideSidebar: string
     back: string
@@ -540,6 +580,24 @@ export interface Translations {
     resetHudLayout: string
     layoutEditor: string
     layoutEditorTitle: (modifier: string) => string
+    paneSession: string
+    paneTerminal: string
+    paneChanges: string
+    paneBrowser: string
+    paneFiles: string
+    paneMore: string
+    resetLayout: string
+    layoutSettings: string
+    toolCard: {
+      close: string
+      dockBottom: string
+      dockLeft: string
+      dockRight: string
+      dockTop: string
+      fill: string
+      move: string
+      restore: string
+    }
   }
 
   keybinds: {
@@ -790,6 +848,18 @@ export interface Translations {
       appActionsDesc: string
       appActionsLeft: string
       appActionsRight: string
+      layoutTitle: string
+      layoutDesc: string
+      layoutSwapTitle: string
+      layoutSwapDesc: string
+      layoutResetTitle: string
+      layoutResetDesc: string
+      layoutResetAction: string
+      layoutSaveTitle: string
+      layoutSaveDesc: string
+      layoutSavePlaceholder: string
+      layoutSaveAction: string
+      layoutDelete: (name: string) => string
       terminalFontTitle: string
       terminalFontDesc: string
       terminalFontPlaceholder: string
@@ -2122,6 +2192,39 @@ export interface Translations {
     deliverOptions: Record<string, string>
   }
 
+  agentImport: {
+    title: string
+    description: string
+    detected: string
+    chooseFolder: string
+    notFound: string
+    nothingToImport: string
+    target: (profile: string) => string
+    overwriteTitle: string
+    overwriteDesc: string
+    groups: Record<'bots' | 'chats' | 'cron' | 'mcp' | 'memory' | 'permissions' | 'prompt' | 'skills', { title: string; note: string }>
+    importAction: (count: number) => string
+    itemCount: (count: number) => string
+    customizeDesc: string
+    nothingFound: string
+    customize: string
+    importOne: string
+    importAll: (count: number) => string
+    importAnother: string
+    importingFrom: (name: string) => string
+    notFoundList: (names: string) => string
+    summary: Record<'bots' | 'chats' | 'cron' | 'mcp' | 'memory' | 'permissions' | 'prompt' | 'skills', (count: number) => string>
+    importing: string
+    scanning: string
+    resultTitle: string
+    resultSummary: (imported: number, skipped: number, conflicts: number, errors: number) => string
+    strippedSecrets: string
+    pausedJobs: string
+    botsCreated: string
+    done: string
+    failed: string
+    back: string
+  }
   profiles: {
     close: string
     nameHint: string
@@ -2133,6 +2236,7 @@ export interface Translations {
     /** Verb + noun: the profiles-list button and the native file-dialog titles,
      *  which stand alone. Per-profile menus use the bare `exportMenu`. */
     importProfile: string
+    importFromAgents: string
     exportProfile: string
     exportMenu: string
     imported: string
@@ -2319,6 +2423,7 @@ export interface Translations {
     failedLoad: string
     failedUpdate: string
     failedTrigger: string
+    runNow: string
     failedDelete: string
     failedSave: string
     editTitle: string
@@ -3076,6 +3181,9 @@ export interface Translations {
     connected: string
     featuredPitch: string
     fireworksPitch: string
+    openCodeTitle: string
+    openCodePitch: string
+    openCodePitchNoLogin: string
     localModelsTitle: string
     localModelsPitch: string
     openRouterPitch: string
@@ -3156,6 +3264,7 @@ export interface Translations {
       editModels: string
       connectProvider: string
       refreshModels: string
+      connectOpenCode: string
       fast: string
     }
     modelOptions: {

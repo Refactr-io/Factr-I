@@ -29,3 +29,22 @@ def test_inherit_launch_model_carries_a_custom_provider_gateway(monkeypatch, tmp
     cfg = yaml.safe_load((profile / "config.yaml").read_text())
     assert (cfg["model"]["provider"], cfg["model"]["default"]) == ("my-gateway", "my-finetune")
     assert set(cfg["providers"]) == {"my-gateway"}
+
+
+def test_inherit_endpoint_and_context_when_voice_created_the_config(monkeypatch, tmp_path):
+    home = tmp_path / "config"
+    home.mkdir()
+    monkeypatch.setenv("FACTR_CONFIG_HOME", str(home))
+    source = {"provider": "custom", "default": "local-test", "base_url": "http://127.0.0.1:11499/v1", "context_length": 32768}
+    (home / "config.yaml").write_text(yaml.safe_dump({"model": source}))
+    profile = home / "profiles" / "scout"
+    profile.mkdir(parents=True)
+    (profile / "config.yaml").write_text("voice:\n  enabled: false\n")
+    assert srv._inherit_launch_model(profile) is True
+    cfg = yaml.safe_load((profile / "config.yaml").read_text())
+    for key, value in source.items():
+        assert cfg["model"][key] == value
+    assert cfg["voice"]["enabled"] is False
+    (home / "config.yaml").write_text("model:\n  provider: custom\n  default: changed\n")
+    assert srv._inherit_launch_model(profile) is False
+    assert yaml.safe_load((profile / "config.yaml").read_text())["model"]["default"] == "local-test"

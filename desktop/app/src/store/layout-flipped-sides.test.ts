@@ -28,8 +28,9 @@ describe('side toggles follow the flip', () => {
     expect(layout.sidebarSide()).toBe('right')
     expect(layout.fileBrowserSide()).toBe('left')
 
+    // Closing the Files card never collapses the tool side: the other cards keep their own state.
     layout.setFileBrowserOpen(false)
-    expect(tree.$collapsedTreeSides.get().has('left')).toBe(true)
+    expect(tree.$collapsedTreeSides.get().has('left')).toBe(false)
     expect(tree.$collapsedTreeSides.get().has('right')).toBe(false)
 
     layout.setSidebarOpen(false)

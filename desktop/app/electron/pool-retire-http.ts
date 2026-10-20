@@ -1,4 +1,6 @@
 interface PoolBackend {
+  /** The backend kind it was spawned as. */
+  kind?: string
   process?: unknown
   port?: number | null
   token?: string | null
@@ -41,12 +43,32 @@ export function createPoolRetirementClient(requestJson: RequestJson) {
     prepare: async (_key: string, entry: PoolBackend): Promise<string | null> => {
       const reply = await request(entry, 'prepare')
 
-      return reply?.ok === true && reply.idle === true && typeof reply.token === 'string' && reply.token
-        ? reply.token
-        : null
+      if (reply?.ok === true && reply.idle === true && typeof reply.token === 'string' && reply.token) {
+        return reply.token
+      }
+
+      return null
     },
-    commit: async (_key: string, entry: PoolBackend, token: string): Promise<boolean> =>
-      (await request(entry, 'commit', token))?.ok === true,
+    commit: async (_key: string, entry: PoolBackend, token: string): Promise<boolean> => {
+      let reply = await request(entry, 'commit', token)
+      if (reply?.ok !== true) { return false }
+      const deadline = Date.now() + 60_000
+      while (reply.idle === false && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        reply = await request(entry, 'status', token)
+        if (reply?.ok !== true) { return false }
+      }
+      if (reply.idle === false) {
+        reply = await request(entry, 'cancel_turns', token)
+        if (reply?.ok !== true) { return false }
+        for (let i = 0; i < 50 && reply.idle === false; i++) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          reply = await request(entry, 'status', token)
+          if (reply?.ok !== true) { return false }
+        }
+      }
+      return reply.idle !== false
+    },
     cancel: async (_key: string, entry: PoolBackend, token: string): Promise<void> => {
       await request(entry, 'cancel', token)
     }

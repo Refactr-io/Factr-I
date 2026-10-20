@@ -115,6 +115,10 @@ def build_models_payload(
 
             rows = [r for r in rows if not _is_managed_custom(r)]
 
+    ollama_row = _ollama_row(ctx, rows)
+    if ollama_row is not None:
+        rows = rows + [ollama_row]
+
     moa_row = _moa_provider_row(ctx.current_provider)
     if moa_row is not None:
         rows = [moa_row] + _without_slug(rows, "moa")
@@ -643,6 +647,39 @@ def _apply_pricing(rows: list[dict], *, cached_only: bool = False) -> None:
             row["pricing"] = formatted
 
 
+def _managed_server_model_ids() -> list[str]:
+    """Model ids the managed llama-server router lists, any status (loaded/unloaded/loading)."""
+    try:
+        from factr_backend.local_runtime.endpoint import managed_get_json, managed_root
+
+        root = managed_root()
+        data = managed_get_json(root[0] + "/v1", root[1], "/models", 1.0).get("data") if root else None
+        return [str(m["id"]) for m in data or [] if isinstance(m, dict) and m.get("id")]
+    except Exception:
+        return []
+
+
+def _ollama_row(ctx: "ConfigContext", rows: list[dict]) -> dict | None:
+    """A running local Ollama (``/api/tags``) listed like any provider; no credential needed.
+    Skipped when the user already configured an Ollama endpoint (their row owns it)."""
+    try:
+        from factr_backend.models_local import _get_ollama_base_url, fetch_ollama_local_models
+
+        if any(_slug(r) in ("ollama", "custom:ollama") for r in rows):
+            return None
+        models = fetch_ollama_local_models(None, timeout=0.5)
+        if not models:
+            return None
+        base = _get_ollama_base_url()
+        row = _row("ollama", "Ollama", (ctx.current_provider or "").strip().lower() == "ollama",
+                   models=models, total_models=len(models), source="ollama-local", authenticated=True,
+                   auth_type="local", warning=None, api_url=base.rstrip("/") + "/v1" if "/v1" not in base else base)
+        row["is_user_defined"] = True  # explicit-only filter + aggregator dedup treat it as the user's own
+        return row
+    except Exception:
+        return None
+
+
 def _local_runtime_row(ctx: "ConfigContext") -> dict | None:
     """The ``llamacpp`` row from staged GGUFs (``None`` when none) — downloaded models must be selectable
     before the server runs (selection starts it via the runtime_provider seam). The row's id comes from
@@ -653,9 +690,15 @@ def _local_runtime_row(ctx: "ConfigContext") -> dict | None:
         from factr_backend.providers import LLAMACPP_ALIASES, LLAMACPP_PROVIDER_ID
 
         staged = staged_model_ids()
+        current = (ctx.current_provider or "").strip().lower() in LLAMACPP_ALIASES
+        # Anything the managed router serves counts whatever its load status ("unloaded" models
+        # autoload on first request), and so does the configured default: the picker must never
+        # hide the model the config already points at.
+        staged = list(staged)
+        staged += [m for m in _managed_server_model_ids() + ([ctx.current_model] if current else [])
+                   if m and m not in staged]
         if not staged:
             return None
-        current = (ctx.current_provider or "").strip().lower() in LLAMACPP_ALIASES
         if not current:
             # A LIVE session on the managed server reports provider "custom" with the managed base_url;
             # match on the endpoint so the session being chatted in still shows a selection.

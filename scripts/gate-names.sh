@@ -7,6 +7,8 @@
 # third-party names in ALLOW below
 # (npm packages, a font, model ids, math/English phrases). Letters of the
 # retired names are hex-escaped so this file does not trip itself.
+# Also exempt (files only, content scan): the agent importer and its tests, which must name the other
+# agents it reads folders from (nominative references, never branding); see IMPORTER below.
 # Also prints every image file in the tree so the art can be eyeballed.
 set -uo pipefail
 ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -18,10 +20,15 @@ PAT="(?i:\\b${W}\\b|\x70rime[ _-]?agent|\\b\x70rime\\b)|(?i:\x6acode|\x73overeig
 # brand-art file names (in addition to PAT on every path)
 ART='(?i)(caduceus|\x6eous-|\x68ermes(-frames|-logo|-icon|-mark|\.png))'
 
+# The importer reads other agents' folders, so it names those agents by design.
+IMPORTER=(-g '!backend/factr_backend/agent_import*.py' -g '!backend/factr_backend/subcommands/import_agent.py'
+          -g '!backend/tests/factr_backend/test_agent_import_extra.py' -g '!backend/tests/factr_backend/test_web_agent_import.py'
+          -g '!desktop/app/src/app/profiles/agent-import-dialog.tsx' -g '!desktop/app/src/app/profiles/agent-import-dialog.test.tsx')
+
 out="$(mktemp)"; trap 'rm -f "$out"' EXIT
 {
   rg --hidden --pcre2 --text --no-heading --line-number --color never \
-     -g '!.git' -g '!node_modules' -g '!target' -g '!target-*' -g '!.venv' -g '!dist' -g '!release' -g '!THIRD_PARTY_NOTICES.md' -e "$PAT" . || true
+     -g '!.git' -g '!node_modules' -g '!target' -g '!target-*' -g '!.venv' -g '!dist' -g '!release' -g '!THIRD_PARTY_NOTICES.md' "${IMPORTER[@]}" -e "$PAT" . || true
   # the notices file is scanned with its verbatim regions removed
   python3 -c '
 import re, sys

@@ -33,7 +33,6 @@ import { useKeybindHint } from '@/lib/keybinds/use-keybind-hint'
 import { cn } from '@/lib/utils'
 import { closeAllOpenSessionTiles, setZoneParkedTiles } from '@/store/session-states'
 
-import { $layoutEditMode, $layoutEditRevealsHidden } from '../../edit-mode'
 import { useWindowControlsOverlap } from '../../geometry'
 import { emptyPaneLifecycleState, reconcilePaneLifecycle } from '../../pane-lifecycle'
 import { hiddenPaneProps, PaneGroupContext, PaneLifecycleContext, PaneVisibleContext } from '../../pane-visibility'
@@ -90,6 +89,7 @@ import { PaneBody } from './pane-body'
 import { usePanelTitlebar } from './panel-titlebar'
 import { tabStripVisibleForZone } from './strip-visibility'
 import { useActiveTabVisible } from './tab-strip-scroll'
+import { isToolCardPane, ToolCardHeader, ToolCardShell } from './tool-card'
 import { paneChrome } from './track-model'
 import { type ZoneChrome, ZoneChromeFrame } from './zone-chrome'
 
@@ -225,6 +225,10 @@ function ZoneMenu({
   )
 }
 
+function CardFrame({ card, children }: { card: boolean; children: ReactNode }) {
+  return card ? <ToolCardShell>{children}</ToolCardShell> : <>{children}</>
+}
+
 export function TreeGroup({
   node,
   parentAxis,
@@ -259,8 +263,6 @@ export function TreeGroup({
   // HINT lives in ZoneDropOverlay so a moving pointer re-renders the tiny
   // overlay, not every zone's header/body (and not the menuDirections walk).
   const dragging = useStore($treeDragging)
-  const editMode = useStore($layoutEditMode)
-  const revealsHidden = useStore($layoutEditRevealsHidden)
   const wcOverlap = useWindowControlsOverlap(ref, !topEdge)
 
   const hiddenPanes = useStore($hiddenTreePanes)
@@ -287,7 +289,7 @@ export function TreeGroup({
   // Edit mode (in Advanced) forces toggle-hidden panes visible so they can be
   // rearranged (mirrors tree-split's paneGone) — restores itself on exit.
   const paneShown = (id: string) =>
-    Boolean(paneFor(id)) && (revealsHidden || !hiddenPanes.has(id)) && !(narrow && paneChrome(paneFor(id)).collapsible)
+    Boolean(paneFor(id)) && !hiddenPanes.has(id) && !(narrow && paneChrome(paneFor(id)).collapsible)
 
   const shown = node.panes.filter(paneShown)
   const memoryKey = workspaceScopeKey(workspaceMode, workspaceOwnerKey)
@@ -407,12 +409,18 @@ export function TreeGroup({
   // multi-tab strip cannot fit in the collapsed 28px track.
   const verticalCollapse = Boolean(node.minimized) && parentAxis === 'row' && !isEmpty
 
+  // Tool panes draw as inset cards with their own header (Claude's pane look); a stacked zone keeps its tab strip
+  // inside the card. The titlebar band above stays free for the chat header and the window drag.
+  const toolCard = !node.minimized && !isEmpty && shown.every(isToolCardPane)
+  const cardHeader = toolCard && shown.length === 1
+
   // A minimized group IS its header, so it shows one regardless.
   const headerVisible =
     !isEmpty &&
     !verticalCollapse &&
     !chrome &&
-    !(noStrip && !editMode) &&
+    !cardHeader &&
+    !noStrip &&
     (Boolean(node.minimized) || stripVisible || Boolean(pageHeader))
 
   const headerTop = TITLEBAR_HEIGHT + (tabsBelowControls && headerVisible ? 28 : 0)
@@ -490,12 +498,16 @@ export function TreeGroup({
 
   return (
     <div
-      className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-(--ui-editor-surface-background)"
+      className={cn(
+        'relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+        'bg-(--ui-editor-surface-background)',
+        toolCard && 'p-1.5'
+      )}
       data-tree-group={node.id}
       data-window-top={topEdge || undefined}
       // Advertises the visible tab strip so panes can drop their own
       // self-naming labels (see [data-pane-self-label] in styles.css).
-      data-zone-header={headerVisible || undefined}
+      data-zone-header={headerVisible || cardHeader || undefined}
       // The zone menu opens from the strip, the rail, the edit veil and the
       // body. Only the strip can name a chip, so resolve the target HERE for
       // every one of them — otherwise a right-click off the strip reused the
@@ -508,8 +520,8 @@ export function TreeGroup({
       style={
         wcOverlap
           ? { paddingTop: wcOverlap.y + wcOverlap.height }
-          : topEdge && verticalCollapse
-            ? { paddingTop: TITLEBAR_HEIGHT }
+          : topEdge && (verticalCollapse || toolCard)
+            ? { paddingTop: toolCard ? TITLEBAR_HEIGHT : TITLEBAR_HEIGHT }
             : undefined
       }
     >
@@ -569,7 +581,19 @@ export function TreeGroup({
 
       {/* Keep the header INSIDE its zone: titlebar drops use the same panel
           bounds, strip refs, focus ownership and split geometry as the body. */}
-      {(headerVisible || (topEdge && !verticalCollapse)) && (
+      {toolCard && topEdge && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-auto absolute inset-x-0 top-0 z-0 [-webkit-app-region:drag]"
+          data-window-drag-handle=""
+          style={{ height: TITLEBAR_HEIGHT }}
+        />
+      )}
+      <CardFrame card={toolCard}>
+      {cardHeader && (
+        <ToolCardHeader onClose={() => closeTab(activeId)} paneId={activeId} title={tabLabel(activeId)} />
+      )}
+      {!cardHeader && (headerVisible || (topEdge && !verticalCollapse && !toolCard)) && (
         <div
           className="relative flex min-w-0 shrink-0 bg-(--ui-sidebar-surface-background)"
           data-panel-header=""
@@ -870,35 +894,7 @@ export function TreeGroup({
           </PaneBody>
         )}
       </ZoneChromeFrame>
-
-      {/* Edit-mode veil: the BODY is a drag handle for the active pane. It
-          starts below the header so tabs/headers stay directly interactive
-          (drag any tab, right-click for the zone menu). */}
-      {editMode && !dragging && !isEmpty && !node.minimized && (
-        <ZoneMenu {...zoneMenu}>
-          <div
-            // z-50: pane CONTENT may carry its own stacked chrome (the
-            // terminal rail is z-40) — the edit veil must cover all of it.
-            // The scrim mixes the accent over the CHROME BG (not transparent)
-            // so it properly dims content in dark themes instead of leaving a
-            // barely-tinted wash; the light blur reads as "edit mode" the same
-            // way the zone editor's backdrop does.
-            className="absolute inset-x-0 bottom-0 z-50 flex cursor-grab items-center justify-center outline-1 -outline-offset-2 outline-dashed backdrop-blur-[2px]"
-            onPointerDown={e => startPaneDrag(activeId, e, undefined, undefined, tabText(activeId))}
-            style={{
-              top: topEdge ? headerTop : headerVisible ? 28 : 0,
-              background:
-                'color-mix(in srgb, var(--ui-accent) 6%, color-mix(in srgb, var(--ui-bg-chrome) 55%, transparent))',
-              outlineColor: 'color-mix(in srgb, var(--ui-accent) 55%, transparent)'
-            }}
-          >
-            <span className="flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md border border-(--ui-stroke-secondary) bg-popover px-2 py-1 text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-(--ui-text-secondary)">
-              <Codicon className="shrink-0" name="gripper" size="0.8125rem" />
-              <span className="min-w-0 truncate">{tabText(activeId)}</span>
-            </span>
-          </div>
-        </ZoneMenu>
-      )}
+      </CardFrame>
 
       {/* FancyZones drop overlay — its own component so the per-frame drop
           hint re-renders only this (tiny) node, not the whole zone. */}

@@ -16,7 +16,7 @@ import { mirrorSelection, terminalClipboardIntent } from './clipboard'
 import { terminalLinkHandler, terminalWebLinksAddon } from './links'
 import { isMacPlatform, resolveSurfaceColor, terminalTheme } from './selection'
 import { registerTerminalContextMenu } from './terminal-context-menu'
-import { prepareTerminalFontFamily } from './terminal-font'
+import { prepareTerminalFontFamily, terminalTypography } from './terminal-font'
 import { useTerminalFontController } from './use-terminal-font'
 
 // Read-only terminal for an agent background process: a write-only xterm (no PTY,
@@ -63,11 +63,7 @@ export function useAgentTerminal({ active, id, procId }: { active: boolean; id: 
       cursorBlink: false,
       disableStdin: true,
       fontFamily: latestFontFamilyRef.current,
-      fontSize: 11,
-      fontWeight: 'normal',
-      fontWeightBold: 'bold',
-      letterSpacing: 0,
-      lineHeight: 1.12,
+      ...terminalTypography(),
       linkHandler: terminalLinkHandler,
       minimumContrastRatio: 4.5,
       scrollback: 1000,

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.0.10
+
+- A bot's Docker computer is now opt-in. New bots work in a local sandbox and Docker is never asked about or started for them; the create dialog and the bot Screen offer "Give it a computer", and "Remove computer" frees its container. Idle computers stop after 5 minutes. The Screen no longer says Docker is down when only the image is missing.
+- The chat header keeps the pane icons off the left window controls, and the session-rail icon is no longer a copy of the sidebar toggle.
+- Windows/Linux issue fixes: window drag no longer closes Settings, the CLI finds the bundled backend, lazy installs use the bundled Python, bundled Python is 3.12.14 (newer SQLite), GPU detection uses real VRAM, the model picker lists local models and Ollama.
+- Engine tests no longer fail intermittently after test isolation fixes.
+- Bots keep a canonical chat on their own engine, queue attributed messages and replies, and route scheduled output back to that chat. Startup errors are bounded and visible, and idle engine retirement waits for the process to exit.
+- Bot computers support Docker setup, persistent Start/Stop, scheduled work and private local sandbox fallbacks where supported. Local fallback requires the app to remain open; group-room rounds still run in the app.
+- When OpenCode is installed, onboarding and the model picker offer to connect its Zen sign-in, with explicit consent and a key-entry fallback.
+- Settings and eligible Scheduled jobs reads use the native backend without starting Python. Enabled pets still load from their configured profile.
+- Markdown caches have source-size limits, closed inter-agent replies release their content, math loads on demand, and muted haptics skip audio warm-up. Pane title updates preserve drafts and local state.
+- Scrollbars fade after scrolling, the sidebar scrollbar sits at the panel edge, and Run history uses a history icon.
+- New shell: Terminal, Files, Changes and the Browser are separate rounded cards you toggle from the icons at the top of the chat. Each card can fill the window or move around the chat (left, right, above, below) from its header, and the chat keeps a minimum width however many are open. A session summary (project, branch, context used, changes) opens over the chat. The old layout editor is gone; layouts, swapping sidebar sides, resetting and saving your own live in Settings, Appearance, Window & layout.
+- Settings, the Command Center and the profile picture sit in the left rail. Run history and the Command Center are one Activity page. The profile picture is a rounded square you can replace with your own image.
+- Pretendard for the interface and IBM Plex Mono for code and the terminal (both bundled), a new loading grid and thinking orbs, a redesigned connecting screen, and a border beam around the composer while a turn runs.
+- HUD mode is one panel in the app's own colours: the transcript and the bar share a width, surface and corners, and it follows the light or dark theme.
+- Import from other agents (profile menus): bring skills, MCP servers, memory and instructions, scheduled jobs, bots (as profiles) and chats over from Claude Code, Codex, OpenCode, other agents' folders or any folder that looks like one. Credentials are never imported, and imported scheduled jobs arrive paused.
+
 ## v0.0.9 (2026-10-16)
 
 - ChatGPT / Codex sign-in is one click: the browser opens, you approve, and Factr-I picks the login up on its own

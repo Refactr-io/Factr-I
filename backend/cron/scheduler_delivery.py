@@ -805,7 +805,11 @@ def _deliver_to_bot_chat(job: dict, content: str, profile: str, *, deferred: Opt
     try:
         source_home = get_factr_home().resolve()
         from pathlib import Path
+        from cron.engine_bot_chat import computer_target
+        from tools.bot_mode_probe import _factr_root
+        computer = computer_target(profile, _factr_root(source_home)) if profile else None
         home = (Path(deferred["home"]) if deferred is not None else
+                _factr_root(source_home) / "profiles" / profile if computer else
                 get_profile_dir(profile) if profile else source_home).resolve()
         for_failure = for_failure or bool((deferred or {}).get("for_failure"))
         from gateway.warning_notifications import warning_notifications_enabled
@@ -826,6 +830,17 @@ def _deliver_to_bot_chat(job: dict, content: str, profile: str, *, deferred: Opt
         ).encode("utf-8")).hexdigest()
         if deferred is not None:
             key = deferred["id"]
+        if os.environ.get("FACTR_ENGINE_URL") and os.environ.get("FACTR_ENGINE_TOKEN"):
+            if suppress_notification:
+                job["_notification_all_targets_suppressed"] = True
+                return None
+            from cron.engine_bot_chat import deliver, deliver_other
+            result = (deliver(message, key) if home == source_home
+                      else deliver_other(message, key, profile, source_home))
+            target = f"bot-chat:{profile_label}"
+            job.setdefault("_bot_chat_delivery_receipts", {})[target] = {
+                "status": "settled" if result["ok"] else "failed", "delivery_id": key}
+            return None if result["ok"] else f"{target} failed [reason: {result.get('reason', 'unknown')}]: {result.get('error', 'not completed')}"
         # Read BEFORE discovery: the previous owner may have exited after accepting.
         # No receipt state, including ambiguous/failed, authorizes a CLI replay.
         receipt = read_delivery_result(home, key)
@@ -1032,9 +1047,12 @@ def _resolve_bot_chat_target(job: dict, profile_arg: str) -> Optional[dict]:
     if not profile_arg:
         return {"platform": BOT_CHAT_PLATFORM, "chat_id": "", "thread_id": None}
     try:
+        from pathlib import Path
         from factr_backend.profiles import normalize_profile_name, profile_exists
         canon = normalize_profile_name(profile_arg)
-        if not profile_exists(canon):
+        from cron.engine_bot_chat import computer_target
+        from tools.bot_mode_probe import _factr_root, _default_home
+        if not profile_exists(canon) and not computer_target(canon, _factr_root(Path(_default_home()))):
             logger.warning(
                 "Job '%s': bot-chat delivery profile '%s' not found on this "
                 "machine — skipping target",

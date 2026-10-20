@@ -30,10 +30,10 @@ import {
   writeDesktopFileText
 } from '@/lib/desktop-fs'
 import { Check, Pencil, X } from '@/lib/icons'
-import { createMemoizedMathPlugin } from '@/lib/katex-memo'
 import { isComposerChord } from '@/lib/keybinds/chords'
 import { shikiLanguageForFilename } from '@/lib/markdown-code'
 import { normalizeFilePreviewMath } from '@/lib/markdown-preprocess'
+import { useMathPlugin } from '@/lib/use-math-plugin'
 import { cn } from '@/lib/utils'
 import type { PreviewTarget } from '@/store/preview'
 import { setPreviewDirty } from '@/store/preview-edit'
@@ -45,11 +45,6 @@ const TEXT_PREVIEW_MAX_BYTES = 512 * 1024
 const SOURCE_CHUNK_LINES = 200
 const SOURCE_LINE_PX = 20
 const SOURCE_OVERSCAN_LINES = 400
-
-// Math plugin for the static file preview, configured once at module scope.
-// Mirrors the chat transcript's plugin (`markdown-text.tsx`) — same memoized
-// KaTeX wrapper, with `singleDollarTextMath: true` so `$x$` renders inline.
-const previewMathPlugin = createMemoizedMathPlugin({ singleDollarTextMath: true })
 
 type EmptyStateTone = 'neutral' | 'warning'
 
@@ -307,7 +302,7 @@ const MD_TAG_CLASSES = {
   ol: 'mb-4 list-decimal pl-6 marker:text-muted-foreground/90 last:mb-0',
   li: 'mt-1 leading-relaxed',
   blockquote: 'mb-4 border-l-2 border-border pl-3 text-muted-foreground italic last:mb-0',
-  pre: 'mb-4 overflow-hidden rounded-lg border border-border bg-card font-mono text-xs leading-relaxed last:mb-0 [&_pre]:m-0 [&_pre]:overflow-x-auto [&_pre]:bg-transparent! [&_pre]:p-3 [&_pre]:font-mono',
+  pre: 'mb-4 overflow-hidden rounded-lg border border-border bg-card type-code last:mb-0 [&_pre]:m-0 [&_pre]:overflow-x-auto [&_pre]:bg-transparent! [&_pre]:p-3 [&_pre]:font-mono',
   hr: 'my-6 border-border',
   th: 'px-3 py-2 text-left text-sm font-semibold text-foreground',
   td: 'px-3 py-2 align-top text-sm leading-relaxed',
@@ -335,7 +330,7 @@ function MarkdownCode({ className, children, ...props }: ComponentProps<'code'>)
     return (
       <code
         className={cn(
-          'rounded bg-muted px-1 py-0.5 font-mono text-[0.86em] text-pink-700 dark:text-pink-300',
+          'rounded bg-muted px-1 py-0.5 font-mono text-[length:var(--code-font-size)] text-pink-700 dark:text-pink-300',
           className
         )}
         {...props}
@@ -418,6 +413,8 @@ const MARKDOWN_COMPONENTS = {
 
 export function MarkdownPreview({ text }: { text: string }) {
   const mathText = useMemo(() => normalizeFilePreviewMath(text), [text])
+  const math = useMathPlugin(mathText)
+  const plugins = useMemo(() => (math ? { math } : {}), [math])
 
   return (
     <div className="preview-markdown mx-auto max-w-3xl px-4 py-3 text-sm text-foreground" data-selectable-text="true">
@@ -426,7 +423,7 @@ export function MarkdownPreview({ text }: { text: string }) {
         controls={false}
         mode="static"
         parseIncompleteMarkdown={false}
-        plugins={{ math: previewMathPlugin }}
+        plugins={plugins}
       >
         {mathText}
       </Streamdown>
@@ -619,7 +616,7 @@ export function SourceView({ filePath, language, text }: { filePath?: string; la
 
   return (
     <div className="h-full overflow-auto" onScroll={onScroll} ref={scrollerRef}>
-      <div className="grid min-w-max grid-cols-[auto_minmax(0,1fr)] font-mono text-[0.6875rem] leading-relaxed">
+      <div className="grid min-w-max grid-cols-[auto_minmax(0,1fr)] type-code">
         {beforeRows > 0 && <div aria-hidden className="col-span-2" style={{ height: beforeRows * SOURCE_LINE_PX }} />}
         {visibleChunks.map(chunk => (
           <Fragment key={chunk.start}>

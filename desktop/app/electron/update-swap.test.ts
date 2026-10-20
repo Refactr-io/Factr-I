@@ -294,7 +294,7 @@ exit 0
     expect(res.status).toBe(0)
     expect(fs.readFileSync(path.join(s.old, 'Contents', 'version'), 'utf8')).toBe('new')
     expect(fs.existsSync(path.join(s.updates, '0.0.9', 'rolledback'))).toBe(false)
-  })
+  }, 15_000) // The fixture sleeps 4s before shell polling and process checks finish.
 
   it('relaunches the old app when it never exits, and lets a later launch retry', () => {
     const s = setup()

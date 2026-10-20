@@ -30,15 +30,18 @@ def _detect_gpu_vendor() -> str | None:
     from factr_backend.local_runtime.hardware import _nvidia_smi_path
 
     smi = _nvidia_smi_path()
-    if smi is None:
-        return None
-    with suppress(OSError, subprocess.TimeoutExpired):
-        out = subprocess.run(
-            [smi, "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True, text=True, timeout=10)
-        if out.returncode == 0 and out.stdout.strip():
-            return "nvidia " + out.stdout.strip().splitlines()[0]
-    return None
+    if smi is not None:
+        with suppress(OSError, subprocess.TimeoutExpired):
+            out = subprocess.run(
+                [smi, "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=10)
+            if out.returncode == 0 and out.stdout.strip():
+                return "nvidia " + out.stdout.strip().splitlines()[0]
+    # NVML can fail while the card works (issue #12): fall back to the registry's real discrete GPU.
+    from factr_backend.local_runtime.hardware import _discrete_gpu_fallback
+
+    gpu = _discrete_gpu_fallback()
+    return f"{gpu.vendor} {gpu.name}" if gpu and gpu.vendor else None
 
 
 def models_dir() -> Path:

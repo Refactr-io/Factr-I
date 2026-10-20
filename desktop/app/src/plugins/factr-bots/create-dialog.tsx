@@ -43,7 +43,7 @@ import { isBackfilledFacePng } from './avatar-image'
 import { AvatarPicker } from './avatar-picker'
 import { $selectedBot } from './bot-state'
 import { createCanonicalChat } from './canonical-chat'
-import { $botMeta, botHandle, botRosterKey, filterBots, ROSTER_KEY, saveBotMeta } from './data'
+import { $botMeta, botHandle, botRosterKey, filterBots, ROSTER_KEY, saveBotMeta, withTimeout } from './data'
 import { labeled, ResizableFrame } from './dialog-parts'
 import { GROUP_CHAT_MAX_MEMBERS, mintGroupRoomId, uniqueGroupChatName, updateGroupChat } from './group-chat'
 import type { GroupChatRoom } from './group-chat'
@@ -68,6 +68,7 @@ import type {
 } from './profile-config'
 import { CapabilitiesView, capabilitiesViewRoutesConnections, CheckList } from './profile-config'
 import { deleteBot } from './profile-ops'
+import { refreshBotRelayRosters } from './relay'
 import { botRosterMeta } from './routing'
 import { composeSoul } from './soul'
 import type { BotMeta, ConnectionRow, RosterRow } from './types'
@@ -140,9 +141,10 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
   const [provider, setProvider] = useState('')
   const [soul, setSoul] = useState('')
   const [noSkills, setNoSkills] = useState(false)
+  const [wantComputer, setWantComputer] = useState(false)
   const [shareAuth, setShareAuth] = useState(true)
   const [advTab, setAdvTab] = useState('general')
-  // Where the profile is created: '' = the active gateway (unchanged default),
+  // Where the profile is created: '' = the current connection,
   // else a registry connection id — the profiles.create lands on THAT
   // machine's backend via host.requestProfile, no gateway switch. Only
   // rendered when the desktop has a multi-connection registry.
@@ -177,14 +179,20 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
     ? (connections || []).find(c => c.id === targetConnection)?.label || targetConnection
     : ''
 
-  /** Gateway RPC on the create target: the picked connection's default
-   *  backend for remote targets, the active gateway otherwise. */
+  // A focused local bot owns a sandbox, so profile management must use the
+  // root backend, just like roster reads. Keep remote and older SDK routing.
+  const localRootTarget =
+    activeConnectionId === 'local' &&
+    host.state.profile?.get?.() !== 'default' &&
+    typeof host.requestProfile === 'function'
+
+  /** Gateway RPC on the create target's root, independent of the focused bot. */
   const requestForTarget = <T,>(method: string, params: Record<string, unknown> = {}): Promise<T> =>
-    remoteTarget
+    remoteTarget || localRootTarget
       ? host.requestProfile(
           {
-            connectionId: targetConnection,
-            mode: 'remote',
+            connectionId: remoteTarget ? targetConnection : 'local',
+            mode: remoteTarget ? 'remote' : 'local',
             profile: 'default',
             targetProfile: 'default'
           },
@@ -273,6 +281,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
     setProvider('')
     setSoul('')
     setNoSkills(false)
+    setWantComputer(false)
     setShareAuth(true)
     setAdvTab('general')
     setCreatedForCaps(null)
@@ -303,12 +312,16 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
       return
     }
 
-    Promise.all([
-      requestForTarget<ProfileDescribeResponse>('profiles.describe', {
-        name: capSource
-      }),
-      requestForTarget<McpCatalogResponse>('mcp.catalog', {}).catch(() => null)
-    ])
+    withTimeout(
+      Promise.all([
+        requestForTarget<ProfileDescribeResponse>('profiles.describe', {
+          name: capSource
+        }),
+        requestForTarget<McpCatalogResponse>('mcp.catalog', {}).catch(() => null)
+      ]),
+      15_000,
+      'The gateway did not answer in time'
+    )
       .then(([res, cat]) => {
         // Full MCP menu = the profile's configured servers + the bundled
         // catalog (installable). Configured entries win on name clash.
@@ -381,7 +394,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
         return null
       }
 
-      const descriptionText = [botTitle, description].filter(Boolean).join(' — ')
+      const descriptionText = [botTitle, description].filter(Boolean).join(' - ')
       await requestForTarget('profiles.create', {
         name: slug,
         description: descriptionText,
@@ -489,6 +502,8 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
         queryKey: ROSTER_KEY
       })
 
+      await refreshBotRelayRosters()
+
       return slug
     })
 
@@ -526,6 +541,13 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
             })}" created`
       })
       const wasRemote = remoteTarget
+      const giveComputer = wantComputer && !remoteTarget
+
+      if (giveComputer) {
+        // Opt-in: only a bot asked for a computer ever starts Docker. Fire and forget; the bot works either way.
+        void window.factrDesktop?.botComputer?.setWanted?.(slug, true)
+      }
+
       reset()
       onClose()
 
@@ -687,6 +709,18 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
               value={description}
             />
           )}
+          {!remoteTarget && window.factrDesktop?.botComputer?.setWanted ? (
+            <div className="grid gap-1">
+              <label className="flex items-center gap-2 text-xs text-(--ui-text-secondary)">
+                <Checkbox checked={wantComputer} onCheckedChange={value => setWantComputer(Boolean(value))} />
+                Give this bot its own computer
+              </label>
+              <div className="pl-6 text-[0.6875rem] leading-5 text-(--ui-text-tertiary)">
+                Runs in Docker with its own desktop and browser. Off by default: without it the bot works in a sandbox
+                on your machine and Docker stays closed. You can change this any time.
+              </div>
+            </div>
+          ) : null}
           <Button
             className="flex items-center gap-1 text-xs font-medium text-(--ui-text-tertiary) hover:text-(--ui-text-secondary)"
             onClick={() => {
@@ -782,7 +816,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                     }}
                   />
                   {labeled(
-                    'SOUL.md (optional — replaces the generated persona)',
+                    'SOUL.md (optional - replaces the generated persona)',
                     <Textarea
                       className="min-h-24 font-mono text-xs leading-5"
                       onChange={event => setSoul(event.target.value)}
@@ -795,8 +829,8 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                     Share keys & accounts with the main profile
                   </label>
                   <div className="pl-6 pt-0.5 text-[0.6875rem] leading-5 text-(--ui-text-tertiary)">
-                    Subscriptions, OAuth logins, and API keys stay shared (not copied), so token refreshes never
-                    invalidate each other. Uncheck for an isolated snapshot copy.
+                    Use the launch profile's credentials where the runtime supports sharing. Isolated computers
+                    may need their own provider sign-in. Uncheck to copy supported credentials instead.
                   </div>
                   <label className="flex items-center gap-2 text-xs text-(--ui-text-secondary)">
                     <Checkbox checked={noSkills} onCheckedChange={value => setNoSkills(Boolean(value))} />
@@ -807,8 +841,8 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                 !valid || taken ? (
                   <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
                     {taken
-                      ? 'That name is taken — pick another before configuring capabilities.'
-                      : 'Name the bot first — a draft profile is created when you open this tab (discarded if you cancel).'}
+                      ? 'That name is taken - pick another before configuring capabilities.'
+                      : 'Name the bot first - a draft profile is created when you open this tab (discarded if you cancel).'}
                   </div>
                 ) : !createdForCaps ? (
                   <div className="flex justify-center py-4">
@@ -832,12 +866,12 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                   // — a message rather than rendering `undefined` as a
                   // component, which throws.
                   <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                    Skills need a newer Factr Desktop.
+                    Skills need a newer Factr-I.
                   </div>
                 )
               ) : capsFailed ? (
                 <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                  Capability catalog needs a newer gateway (restart it after updating Factr).
+                  Capability catalog needs a newer gateway (restart it after updating Factr-I).
                 </div>
               ) : !caps ? (
                 <div className="flex justify-center py-4">
@@ -846,7 +880,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
               ) : advTab === 'skills' ? (
                 noSkills ? (
                   <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                    “Create empty” is checked — no bundled skills will be installed.
+                    “Create empty” is checked - no bundled skills will be installed.
                   </div>
                 ) : (
                   <div className="grid gap-1.5">
@@ -872,7 +906,7 @@ export function CreateAgentDialog({ open, onClose, roster }: CreateAgentDialogPr
                         onToggle={(name, enabled) => toggleCap('skills', name, enabled)}
                       />
                     </div>
-                    <div className="text-[0.625rem] leading-4 text-(--ui-text-quaternary)">{`Catalog from ${caps.source} — unchecked skills are disabled after creation.`}</div>
+                    <div className="text-[0.625rem] leading-4 text-(--ui-text-quaternary)">{`Catalog from ${caps.source} - unchecked skills are disabled after creation.`}</div>
                   </div>
                 )
               ) : advTab === 'toolsets' ? (
@@ -1297,7 +1331,7 @@ export function CreateGroupChatDialog({ open, roster, onClose, onCreated }: Crea
               })
             ) : (
               <div className="px-1.5 py-3 text-center text-xs text-(--ui-text-tertiary)">
-                {query.trim() ? `No bots match “${query.trim()}”` : 'No bots yet — create one first.'}
+                {query.trim() ? `No bots match “${query.trim()}”` : 'No bots yet - create one first.'}
               </div>
             )}
           </div>

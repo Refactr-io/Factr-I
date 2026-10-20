@@ -13,14 +13,14 @@
 import { useStore } from '@nanostores/react'
 
 import { findGroup } from '@/components/pane-shell/tree/model'
-import { $activeTreeGroup, $layoutTree, isPaneVisible, revealTreePane, treePanesWithPrefix } from '@/components/pane-shell/tree/store'
+import { $activeTreeGroup, $layoutTree, revealTreePane, treePanesWithPrefix } from '@/components/pane-shell/tree/store'
 import { type MenuKit, renderActionItem } from '@/components/ui/actions-menu'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { ToolIcon } from '@/components/ui/tool-icon'
 import { translateNow } from '@/i18n'
 import { openExternalLink } from '@/lib/external-link'
 import { Browser } from '@/lib/icons'
-import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab, setFileBrowserOpen } from '@/store/layout'
+import { $rightRailActiveTabId, type RightRailTabId, selectRightRailTab } from '@/store/layout'
 import {
   $browserPages,
   $dockedPreviewTabs,
@@ -265,10 +265,8 @@ const watchPreviewTileMirror = paneMirror<{ id: string }>({
   // (#93610), turning three file opens into three ever-narrower columns.
   // A Browser is one of the right sidebar's tools: its first tab stacks into the sidebar that carries Terminal,
   // Files and Changes (anchored on Files) instead of opening a zone of its own.
-  dir: tab => (anchorFor(tab.id) ? 'center' : 'right'),
+  dir: tab => (existingPreviewAnchor(tab.id) ? 'center' : anchorFor(tab.id) ? 'top' : 'right'),
   anchor: tab => anchorFor(tab.id),
-  // First in the strip, like Codex: the Browser is what the sidebar opens on.
-  before: tab => (targetFor(tab.id)?.kind === 'url' ? 'terminal' : undefined),
   minWidth: '22rem',
   // A Browser rides the right sidebar, whose zone is a fixed-width track (that is what lets it fold on a drag).
   width: tab => (targetFor(tab.id)?.kind === 'url' ? '26rem' : undefined),
@@ -290,9 +288,5 @@ const watchPreviewTileMirror = paneMirror<{ id: string }>({
     forgetPreviewConsole(tabId)
     closeRightRailTab(tabId)
 
-    // The last Browser gone with no tool open: nothing is left to rest on, so the sidebar folds (it reopens on a fresh Browser).
-    if ($previewTabs.get().length === 0 && !['files', 'terminal', 'review'].some(isPaneVisible)) {
-      setFileBrowserOpen(false)
-    }
   }
 })

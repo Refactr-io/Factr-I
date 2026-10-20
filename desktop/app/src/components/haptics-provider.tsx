@@ -21,12 +21,16 @@ export function HapticsProvider({ children }: { children: ReactNode }) {
   // token painted. Open/close a throwaway context at idle so the real one
   // connects to an already-warm audio service in single-digit ms.
   useEffect(() => {
-    if (typeof requestIdleCallback !== 'function' || typeof AudioContext === 'undefined') {
+    if (muted || typeof requestIdleCallback !== 'function' || typeof AudioContext === 'undefined') {
       return undefined
     }
 
     const id = requestIdleCallback(
       () => {
+        if ($hapticsMuted.get()) {
+          return
+        }
+
         try {
           void new AudioContext().close().catch(() => undefined)
         } catch {
@@ -37,7 +41,7 @@ export function HapticsProvider({ children }: { children: ReactNode }) {
     )
 
     return () => cancelIdleCallback(id)
-  }, [])
+  }, [muted])
 
   return <>{children}</>
 }

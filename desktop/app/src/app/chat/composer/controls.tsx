@@ -1,9 +1,8 @@
 import { useStore } from '@nanostores/react'
-import type { OrbState } from 'thinking-orbs'
 
-import { AgentOrb } from '@/components/ui/agent-orb'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
+import { Loader } from '@/components/ui/loader'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
@@ -296,18 +295,9 @@ function ConversationPill({
             ? c.muted
             : c.listening
 
-  // One orb reads the call's state; muted shows the struck mic instead.
-  const orbState: OrbState | null = muted
-    ? null
-    : speaking
-      ? 'breathing'
-      : status === 'thinking' || status === 'transcribing'
-        ? 'solving'
-        : 'listening'
-
   return (
     <div className="ml-auto flex shrink-0 items-center gap-(--composer-control-gap)">
-      {orbState ? <AgentOrb state={orbState} /> : null}
+      {!muted ? <Loader ariaLabel={label} paused={listening || speaking} /> : null}
       {/* Keep the ear visible during voice chat — shown paused, since the
           conversation holds the mic (the one time wake must not listen). */}
       <WakeWordButton disabled={disabled} pausedForVoice />
@@ -385,7 +375,7 @@ function WakeWordButton({ disabled, pausedForVoice = false }: { disabled: boolea
       ? c.wakeWordListening(phrase)
       : c.wakeWordOff(phrase)
 
-  const tooltip = !pausedForVoice && wake.notice ? `${label} — ${wake.notice}` : label
+  const tooltip = !pausedForVoice && wake.notice ? `${label} - ${wake.notice}` : label
 
   return (
     <Tip label={tooltip} placement="control">
