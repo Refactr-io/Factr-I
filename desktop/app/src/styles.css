@@ -3174,6 +3174,43 @@ button[data-slot='aui_msg-reactions'] svg {
     border-radius var(--hud-reveal) var(--hud-ease-enter);
 }
 
+/* TRUE CIRCLES. The HUD is a transparent window, so its corners are drawn by the page alone: the global squircle
+   (superellipse) reads as a slightly pinched corner on a free-floating object, and three different radii (bar,
+   sheet, band) never lined up. One radius, round corners, on all three. */
+[data-hud-shell] {
+  --hud-radius: 14px;
+}
+
+:where([data-hud-shell] [data-slot='composer-bounds'], [data-hud-shell] [data-hud-glass], [data-hud-shell] [data-slot='composer-surface']) {
+  corner-shape: round;
+}
+
+[data-hud-shell] [data-slot='composer-surface'] {
+  border-radius: var(--hud-radius) !important;
+}
+
+[data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
+[data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: 0 0 var(--hud-radius) var(--hud-radius) !important;
+}
+
+[data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
+[data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
+  border-radius: var(--hud-radius) var(--hud-radius) 0 0 !important;
+}
+
+[data-hud-shell] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell] [data-hud-glass],
+[data-hud-shell] [data-slot='composer-bounds'] {
+  border-radius: var(--hud-radius) var(--hud-radius) 0 0;
+}
+
+[data-hud-shell][data-hud-edge='top'] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell][data-hud-edge='top'] [data-hud-glass],
+[data-hud-shell][data-hud-edge='top'] [data-slot='composer-bounds'] {
+  border-radius: 0 0 var(--hud-radius) var(--hud-radius);
+}
+
 /* WHAT ANSWERS THE CURSOR — and, because `useHudClickThrough` hands the window
    to the desktop wherever the document reports nothing under the mouse, what
    the HUD occupies as far as the rest of the screen is concerned.

@@ -144,7 +144,10 @@ export function registerHudIpc({
   })
 
   ipcMain.handle('factr:hud:frost', (_event, showing) => {
-    bandShowing = Boolean(showing)
+    // The HUD panel is opaque CSS now; a native frost would fill the whole window rectangle and show the
+    // desktop through the rounded corners. Whatever an older renderer asks for, the material stays off.
+    void showing
+    bandShowing = false
     applyHudFrost()
 
     return { ok: true }
