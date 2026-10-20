@@ -3156,19 +3156,19 @@ button[data-slot='aui_msg-reactions'] svg {
   text-shadow: none;
 }
 
-[data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
-[data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
+:root [data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
   border-radius: 0 0 var(--shape-radius-lg) var(--shape-radius-lg) !important;
   /* Joined to the sheet: the bar's lift shadow would draw a dark seam along the join. */
   box-shadow: none !important;
 }
 
-[data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
-[data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
+:root [data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
   border-radius: var(--shape-radius-lg) var(--shape-radius-lg) 0 0 !important;
 }
 
-[data-hud-shell] [data-slot='composer-surface'] {
+:root [data-hud-shell] [data-slot='composer-surface'] {
   transition:
     border-color var(--hud-reveal) var(--hud-ease-enter),
     border-radius var(--hud-reveal) var(--hud-ease-enter);
@@ -3185,17 +3185,17 @@ button[data-slot='aui_msg-reactions'] svg {
   corner-shape: round;
 }
 
-[data-hud-shell] [data-slot='composer-surface'] {
+:root [data-hud-shell] [data-slot='composer-surface'] {
   border-radius: var(--hud-radius) !important;
 }
 
-[data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
-[data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
+:root [data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-recent] [data-slot='composer-surface'] {
   border-radius: 0 0 var(--hud-radius) var(--hud-radius) !important;
 }
 
-[data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
-[data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
+:root [data-hud-shell][data-hud-edge='top'][data-hud-typing] [data-slot='composer-surface'],
+:root [data-hud-shell][data-hud-edge='top'][data-hud-recent] [data-slot='composer-surface'] {
   border-radius: var(--hud-radius) var(--hud-radius) 0 0 !important;
 }
 
@@ -3213,7 +3213,7 @@ button[data-slot='aui_msg-reactions'] svg {
 
 /* Focus keeps the same hairline as the sheet below it: the theme's primary (near-black on a light theme) drew a
    heavy outline around the whole bar, and a darker neutral still read as a frame. */
-[data-hud-shell][data-hud-typing] [data-slot='composer-surface'] {
+:root [data-hud-shell][data-hud-typing] [data-slot='composer-surface'] {
   border-color: var(--ui-stroke-secondary) !important;
 }
 
