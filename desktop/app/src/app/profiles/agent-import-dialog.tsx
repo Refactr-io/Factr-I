@@ -10,6 +10,7 @@ import {
   groupCounts,
   runAgentImport
 } from '@/api/agent-import'
+import { isFeatureSurfaceOpen, setFeatureSurfaceOpen } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -61,6 +62,10 @@ export function AgentImportDialog() {
       return
     }
 
+    // The packaged engine wakes its Python runtime only for requests marked as a feature surface.
+    const wasOpen = isFeatureSurfaceOpen()
+
+    setFeatureSurfaceOpen(true)
     setSources(null)
     setPicked(null)
     setChosen(new Set())
@@ -82,6 +87,7 @@ export function AgentImportDialog() {
 
     return () => {
       live = false
+      setFeatureSurfaceOpen(wasOpen)
     }
   }, [a.failed, open])
 

@@ -163,6 +163,8 @@ export function setFeatureSurfaceOpen(open: boolean) {
   featureSurfaceOpen = open
 }
 
+export const isFeatureSurfaceOpen = () => featureSurfaceOpen
+
 function markFeature(path: string): string {
   if (!featureSurfaceOpen || !path.startsWith('/api/') || /[?&]feature=/.test(path)) {
     return path
