@@ -1,13 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import type * as AgentImportApi from '@/api/agent-import'
 import { detectAgentImports, runAgentImport } from '@/api/agent-import'
 import { $agentImportOpen, openAgentImport } from '@/store/agent-import'
 
 import { AgentImportDialog } from './agent-import-dialog'
 
 vi.mock('@/api/agent-import', async importOriginal => ({
-  ...(await importOriginal<typeof import('@/api/agent-import')>()),
+  ...(await importOriginal<typeof AgentImportApi>()),
   detectAgentImports: vi.fn(),
   runAgentImport: vi.fn()
 }))
