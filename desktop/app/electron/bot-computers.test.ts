@@ -822,11 +822,17 @@ describe('scheduled bots', () => {
 })
 
 describe('listComputers', () => {
-  it('identifies a running managed host engine as a local sandbox without touching Docker', async () => {
+  it('identifies a running managed host engine as a local sandbox and says why it is not in Docker', async () => {
     fs.writeFileSync(path.join(home, 'profiles/scout/profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Scout\n')
     configure({ hostRunning: profile => profile === 'scout' })
-    expect(await computerStatus('scout')).toMatchObject({ state: 'no-docker', localSandbox: true })
-    expect(calls).toEqual([])
+    imageMissing = false
+    expect(await computerStatus('scout')).toMatchObject({ state: 'no-docker', localSandbox: true, imageMissing: false })
+    refreshComputerRuntime()
+    imageMissing = true
+    // Docker is up but the image is not installed: the gate must not claim Docker is down.
+    const status = await computerStatus('scout')
+    expect(status).toMatchObject({ localSandbox: true, imageMissing: true })
+    expect(status.reason).toBeUndefined()
   })
   it('includes isolated host bots, including unstarted targets, without probing or spawning Docker', () => {
     for (const profile of ['scout', 'writer']) { fs.writeFileSync(path.join(home, 'profiles', profile, 'profile.yaml'), 'ui_meta:\n  factr-bots:\n    title: Test bot\n') }

@@ -83,6 +83,8 @@ export interface ComputerStatus {
   state: ComputerState
   busy: boolean
   localSandbox?: boolean
+  /** Docker is up but the bot computer image is not installed, so the bot runs in its local sandbox. */
+  imageMissing?: boolean
   /** Set when state is 'no-docker'. */
   reason?: 'not-installed' | 'not-running'
   /** Set when state is 'on'. */
@@ -822,7 +824,15 @@ export async function computerStatus(profile: string): Promise<ComputerStatus> {
   // "Working" means a turn is running; a watched screen ('view') keeps the computer awake but is not work.
   const busy = tracked.get(profile)?.holds.has('turn') ?? false
   if (!fs.existsSync(markerPath(profile)) && isBotProfile(cfg().configHome, profile) && deps?.hostRunning?.(profile)) {
-    return { state: 'no-docker', busy, localSandbox: true, scheduledJobs: enabledCronJobs(profile) }
+    const up = await probeDocker()
+
+    return {
+      state: 'no-docker',
+      busy,
+      localSandbox: true,
+      scheduledJobs: enabledCronJobs(profile),
+      ...(up.value ? { imageMissing: !(await computerImageReady()) } : { reason: up.reason })
+    }
   }
   const probe = await probeDocker()
 

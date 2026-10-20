@@ -631,6 +631,10 @@ export function ComputerGate({ computer, onStart }: { computer: BotComputer; onS
       return { body: t.startingBody, title: t.starting }
     }
 
+    if (computer.state === 'no-docker' && computer.status.imageMissing) {
+      return { body: t.imageMissingBody, title: t.imageMissing }
+    }
+
     if (computer.state === 'no-docker') {
       return reason === 'not-installed'
         ? { action: { label: t.getDocker, run: () => void setup() }, body: t.dockerNotInstalledBody, title: t.dockerNotInstalled }

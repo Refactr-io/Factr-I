@@ -330,6 +330,8 @@ type BotsMessages = {
     onLine: (uptime: string, used: null | string, limit: null | string) => string
     failedTitle: string
     dockerNotRunning: string
+    imageMissing: string
+    imageMissingBody: string
     dockerNotRunningBody: string
     dockerNotInstalled: string
     dockerNotInstalledBody: string
@@ -656,6 +658,8 @@ const en: BotsMessages = {
     offBody: 'Start it to give this bot its own desktop.',
     onLine: (uptime, used, limit) => `On for ${uptime}${used && limit ? `, using ${used} of ${limit}` : ''}`,
     failedTitle: 'The computer did not start',
+    imageMissing: 'This bot\u2019s computer is not installed',
+    imageMissingBody: 'Docker is running, but the bot computer image is not on this machine yet. The bot works in its local sandbox meanwhile.',
     dockerNotRunning: 'Docker is not running',
     dockerNotRunningBody: 'Open Docker, then start this bot\u2019s computer.',
     dockerNotInstalled: 'Docker is not installed',
