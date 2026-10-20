@@ -332,6 +332,22 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
       const clearance = Math.round(cluster.getBoundingClientRect().right + 8 - left)
 
       node.style.paddingLeft = clearance > 0 ? `${clearance}px` : ''
+
+      // A narrow main zone (a filled Files card) can be tighter than clearance + the pane icons: let the bar run on
+      // past its right edge instead of sliding the icons under the left controls.
+      const icons = node.querySelector('[data-titlebar-cluster="right"]')?.getBoundingClientRect().width ?? 0
+      const need = Math.max(clearance, 0) + icons
+
+      const rightInset = parseFloat(getComputedStyle(node).getPropertyValue('--workspace-right')) || 0
+      const available = window.innerWidth - left - rightInset
+
+      if (available < need) {
+        node.style.right = 'auto'
+        node.style.width = `${need}px`
+      } else {
+        node.style.right = ''
+        node.style.width = ''
+      }
     }
 
     place()
@@ -371,6 +387,8 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
     return () => {
       window.clearInterval(poll)
       node.style.paddingLeft = ''
+      node.style.right = ''
+      node.style.width = ''
       window.cancelAnimationFrame(frame)
       observer.disconnect()
       cluster.removeEventListener('transitionrun', start)
