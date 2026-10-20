@@ -26,7 +26,7 @@ async function boot() {
     ['review', 'right'],
     ['terminal', 'bottom']
   ] as const) {
-    registry.register({ id, area: 'panes', data: { placement, uncloseable: id === 'workspace' }, render: () => null })
+    registry.register({ id, area: 'panes', data: { placement, uncloseable: id === 'workspace', ...(id === 'files' && { dock: { pane: 'workspace', pos: 'right' } }) }, render: () => null })
   }
 
   registerLayoutPresets()
@@ -240,4 +240,17 @@ it('a layout brings back a card that was closed (dismissed) earlier, so the tool
   expect(tree.$dismissedPanes.get().has('files')).toBe(false)
   expect(tree.isPaneVisible('files')).toBe(false) // the layout rests it: placed, but closed
   expect(JSON.stringify(tree.$layoutTree.get())).toContain('"files"')
+})
+
+it('re-opens a closed Files card in its own column under Tools left, not right of the chat', async () => {
+  const { tree, model, apply } = await boot()
+  apply('tools-left')
+  tree.setTreePaneHidden('files', false)
+  tree.dismissTreePane('files')
+  tree.revealTreePane('files')
+  const t = tree.$layoutTree.get()!
+  const files = model.findGroupOfPane(t, 'files')!
+  const parent = model.findParentSplit(t, files.id)!
+  expect(parent.orientation).toBe('column')
+  expect(model.allPaneIds(parent.children[0]!).concat(model.allPaneIds(parent.children[1]!))).toContain('terminal')
 })
