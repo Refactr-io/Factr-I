@@ -228,3 +228,16 @@ it('Tools left after a swap and a closed Files card: the Files store still agree
   expect(layout.$fileBrowserOpen.get(), 'files store').toBe(tree.isPaneVisible('files'))
   expect(tree.isPaneVisible('files')).toBe(false)
 })
+
+it('a layout brings back a card that was closed (dismissed) earlier, so the tools column keeps its anchors', async () => {
+  const { tree, apply } = await boot()
+
+  apply('tools-open')
+  tree.$dismissedPanes.set(new Set(['files'])) // what closing the card from the pane icons leaves behind
+
+  apply('tools-left')
+
+  expect(tree.$dismissedPanes.get().has('files')).toBe(false)
+  expect(tree.isPaneVisible('files')).toBe(false) // the layout rests it: placed, but closed
+  expect(JSON.stringify(tree.$layoutTree.get())).toContain('"files"')
+})

@@ -1732,6 +1732,17 @@ export function applyTree(tree: LayoutNode, presetId: string, resting: readonly 
   // a layout hands pane placement back to the app (auto-docking resumes).
   clearAllPaneSizeOverrides()
   $userPlacedPanes.set(new Set())
+
+  // A layout is a whole arrangement: every pane it places is in it again, even one closed earlier (dismissed). Left
+  // dismissed, the commit stripped the pane, and whatever docks against it (a Browser card docks above Files) lost its
+  // anchor and landed above the chat. A pane the layout rests stays closed through the hidden set instead.
+  const placed = new Set(allPaneIds(tree))
+  const dismissed = $dismissedPanes.get()
+
+  if ([...dismissed].some(id => placed.has(id))) {
+    $dismissedPanes.set(new Set([...dismissed].filter(id => !placed.has(id))))
+  }
+
   commit(previous ? adoptMissingPanes(tree, previous) : tree)
   markActivePreset(presetId)
 
