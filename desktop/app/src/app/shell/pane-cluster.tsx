@@ -18,10 +18,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { FileDiff, Folder, Globe, ListDetails, MoreVertical, Terminal } from '@/lib/icons'
+import { FileDiff, Folder, Globe, LayoutPanelLeft, LayoutPanelRight, MoreVertical, Terminal } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { toggleHud } from '@/store/hud'
-import { $fileBrowserOpen, setFileBrowserOpen } from '@/store/layout'
+import { $fileBrowserOpen, $panesFlipped, setFileBrowserOpen } from '@/store/layout'
 import { openBrowserTab } from '@/store/preview'
 import { $reviewOpen, toggleReview } from '@/store/review'
 import { $sessionRailOpen, toggleSessionRail } from '@/store/session-rail'
@@ -74,6 +74,7 @@ const visiblePreviews = () => treePanesWithPrefix(PREVIEW_PREFIX).filter(isPaneV
 export function usePaneClusterTools(): TitlebarTool[] {
   const { t } = useI18n()
   const railOpen = useStore($sessionRailOpen)
+  const flipped = useStore($panesFlipped)
   const chatWidth = useChatColumnWidth()
 
   // Re-render whenever the tree or the hidden/dismissed sets change; `isPaneVisible` reads them live.
@@ -104,7 +105,7 @@ export function usePaneClusterTools(): TitlebarTool[] {
 
   return [
     // Greyed out only when the chat column is too narrow to open it over (an open one can always be closed).
-    { ...tool('session-rail', t.titlebar.paneSession, railOpen, <ListDetails {...ICON} />, toggleSessionRail), disabled: !railOpen && chatWidth < RAIL_MIN_CHAT_PX },
+    { ...tool('session-rail', t.titlebar.paneSession, railOpen, (flipped ? <LayoutPanelLeft {...ICON} /> : <LayoutPanelRight {...ICON} />), toggleSessionRail), disabled: !railOpen && chatWidth < RAIL_MIN_CHAT_PX },
     tool('terminal', t.titlebar.paneTerminal, terminal, <Terminal {...ICON} />, () => togglePaneVisible('terminal')),
     tool('changes', t.titlebar.paneChanges, changes, <FileDiff {...ICON} />, () => toggleReview()),
     tool('browser', t.titlebar.paneBrowser, browser, <Globe {...ICON} />, () =>
