@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { hudTargetSessionId } from '@/app/hud/handoff'
+import { findGroupOfPane } from '@/components/pane-shell/tree/model'
 import {
   $dismissedPanes,
   $hiddenTreePanes,
@@ -88,6 +89,18 @@ export function usePaneClusterTools(): TitlebarTool[] {
   const changes = isPaneVisible('review')
   const files = isPaneVisible('files')
   const previews = visiblePreviews()
+
+  // TEMP-DEBUG
+  if (typeof window !== 'undefined') {
+    const tree = $layoutTree.get()
+    const dbg = (id: string) => {
+      const g = tree ? findGroupOfPane(tree, id) : null
+
+      return { dismissed: $dismissedPanes.get().has(id), hidden: $hiddenTreePanes.get().has(id), group: g ? { active: g.active, min: g.minimized, panes: g.panes } : null }
+    }
+
+    ;(window as unknown as Record<string, unknown>).__paneDebug = { review: dbg('review'), files: dbg('files'), terminal: dbg('terminal'), previews: treePanesWithPrefix(PREVIEW_PREFIX).map(id => [id, dbg(id)]) }
+  }
   const browser = previews.length > 0
 
   const tool = (id: string, label: string, active: boolean, icon: TitlebarTool['icon'], onSelect: () => void): TitlebarTool => ({

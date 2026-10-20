@@ -3178,7 +3178,7 @@ button[data-slot='aui_msg-reactions'] svg {
    (superellipse) reads as a slightly pinched corner on a free-floating object, and three different radii (bar,
    sheet, band) never lined up. One radius, round corners, on all three. */
 [data-hud-shell] {
-  --hud-radius: 14px;
+  --hud-radius: 10px; /* DESIGN-refactr: containers render at 10px; nothing above the 8px design ceiling */
 }
 
 :where([data-hud-shell] [data-slot='composer-bounds'], [data-hud-shell] [data-hud-glass], [data-hud-shell] [data-slot='composer-surface']) {
@@ -4204,4 +4204,22 @@ input[type='range'].ui-range:focus-visible::-webkit-slider-thumb {
 :where(.aui-md, [data-slot='group-chat-message-content']) :not(pre) > code {
   font-size: var(--code-font-size);
   letter-spacing: var(--tracking-code);
+}
+
+
+/* Outline strokes, tuned per theme. Light: a soft warm grey like Codex's light theme (never a dark line around a card);
+   dark: a clearly lighter hairline, so cards and the composer keep an edge against the dark canvas. One ink mix,
+   no accent tint, so every stroke in the app (cards, composer, panels, sashes) reads the same. */
+:root:root {
+  --ui-stroke-primary: color-mix(in srgb, var(--ui-base) 14%, transparent);
+  --ui-stroke-secondary: color-mix(in srgb, var(--ui-base) 9%, transparent);
+  --ui-stroke-tertiary: color-mix(in srgb, var(--ui-base) 6%, transparent);
+  --ui-stroke-quaternary: color-mix(in srgb, var(--ui-base) 4%, transparent);
+}
+
+:root:root.dark {
+  --ui-stroke-primary: color-mix(in srgb, var(--ui-base) 24%, transparent);
+  --ui-stroke-secondary: color-mix(in srgb, var(--ui-base) 16%, transparent);
+  --ui-stroke-tertiary: color-mix(in srgb, var(--ui-base) 10%, transparent);
+  --ui-stroke-quaternary: color-mix(in srgb, var(--ui-base) 6%, transparent);
 }

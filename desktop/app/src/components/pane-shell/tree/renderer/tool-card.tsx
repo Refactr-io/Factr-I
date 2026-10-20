@@ -20,7 +20,7 @@ export const isCardZone = (node: LayoutNode): boolean => {
 }
 
 const iconButton =
-  'grid size-6 shrink-0 place-items-center rounded-md text-(--ui-text-tertiary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground focus-visible:bg-(--ui-control-hover-background) focus-visible:text-foreground'
+  'grid size-6 shrink-0 place-items-center rounded-full text-(--ui-text-tertiary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground focus-visible:bg-(--ui-control-hover-background) focus-visible:text-foreground'
 
 /** The card itself: a squircle surface whose hairline is drawn above its content (a child can never cover the corner arc) that floats in the zone's gutter. */
 export function ToolCardShell({ children }: { children: ReactNode }) {
