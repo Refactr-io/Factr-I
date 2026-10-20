@@ -42,7 +42,7 @@ from factr_backend.web_server_sessions import _open_session_db_at_path
 from factr_state_health import STORAGE_CORRUPT, note_storage_error, storage_state
 from starlette.concurrency import run_in_threadpool
 from factr_backend.web_models import (
-    ProfileCreate, ProfileActiveUpdate, ProfileExport, ProfileImport, ProfileRename,
+    AgentImportRequest, ProfileCreate, ProfileActiveUpdate, ProfileExport, ProfileImport, ProfileRename,
     ProfileSoulUpdate, ProfileDescriptionUpdate, ProfileModelUpdate, ProfileDescribeAuto,
     SessionPrScanBody)
 from factr_backend.web_server_profiles import _config_profile_scope, _factr_home_scope
@@ -1038,3 +1038,52 @@ async def get_profile_desktop_overlay(name: str):
     if overlay is _MISSING:
         return {"exists": False, "desktop": None}
     return {"exists": True, "desktop": overlay}
+
+
+# --- import from other agents -----------------------------------------------------------------------------
+
+@router.get("/api/agent-import/detect")
+async def agent_import_detect():
+    """Known agents with whether their default folder exists here and what a preview would bring in."""
+    from factr_backend import agent_import as ai
+
+    def _scan():
+        rows = []
+        for row in ai.detect_sources():
+            counts: Dict[str, int] = {}
+            if row["found"]:
+                try:
+                    counts = ai.run_import(row["agent"], Path(row["path"]), get_process_factr_home())["counts"]
+                except Exception:  # noqa: BLE001 - one unreadable agent must not hide the others
+                    _log.warning("agent-import preview of %s failed", row["agent"], exc_info=True)
+            rows.append({**row, "counts": counts})
+        return rows
+
+    return {"agents": await run_in_threadpool(_scan), "groups": list(ai.IMPORT_GROUPS)}
+
+
+@router.post("/api/agent-import")
+async def agent_import_run(body: AgentImportRequest):
+    """Preview (``execute`` false) or run an import of another agent's setup into a profile."""
+    from factr_backend import agent_import as ai
+    from factr_backend import profiles as profiles_mod
+
+    agent = (body.agent or "auto").strip()
+    explicit = (body.source or "").strip()
+    if agent == "auto":
+        agent = ai.guess_agent(Path(explicit)) if explicit else None
+        if not agent:
+            raise HTTPException(status_code=400, detail="Could not tell which agent that folder belongs to.")
+    if agent not in ai.SUPPORTED_AGENTS:
+        raise HTTPException(status_code=400, detail=f"Unsupported agent: {agent}")
+    source = Path(explicit).expanduser() if explicit else ai.default_source_dir(agent)
+    if not source.is_dir():
+        raise HTTPException(status_code=404, detail=f"Folder not found: {source}")
+    groups = [g for g in (body.groups or ai.IMPORT_GROUPS) if g in ai.IMPORT_GROUPS]
+    target = _resolve_profile_dir((body.profile or "default").strip())
+
+    with _profile_errors("POST /api/agent-import failed", bad_request=(ValueError,)):
+        report = await run_in_threadpool(
+            lambda: ai.run_import(agent, source, target, groups=groups, execute=body.execute,
+                                  overwrite=body.overwrite, profiles_mod=profiles_mod))
+    return {"ok": True, **report}

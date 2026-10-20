@@ -36,6 +36,11 @@ def _iter_sync_files(agent: str, source_root: Path) -> Iterator[Path]:
         # ~/.claude.json lives NEXT TO ~/.claude/ (see AgentImporter._run_claude_code)
         paths = [source_root / "CLAUDE.md", source_root / "settings.json",
                  source_root.parent / ".claude.json"]
+    elif agent == "hermes":
+        paths = [source_root / "SOUL.md", source_root / "config.yaml", source_root / "cron" / "jobs.json"]
+        paths.extend(sorted((source_root / "memories").glob("*.md")))
+    elif agent == "opencode":
+        paths = [source_root / "opencode.json", source_root / "opencode.jsonc", source_root / "AGENTS.md"]
     else:
         paths = [source_root / "AGENTS.md", source_root / "config.toml"]
         paths.extend(sorted((source_root / "memories").glob("*.md")))
