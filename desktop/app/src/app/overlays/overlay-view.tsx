@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useRef } from 'react'
 
 import { TITLEBAR_HEIGHT } from '@/app/shell/titlebar'
 import { TitlebarIcon } from '@/app/shell/titlebar-icon'
@@ -42,6 +42,8 @@ export function OverlayView({
   rootClassName,
   titlebarActions
 }: OverlayViewProps) {
+  const downOnBackdrop = useRef(false)
+
   const closeOverlay = () => {
     triggerHaptic('close')
     onClose()
@@ -89,10 +91,16 @@ export function OverlayView({
       // leak into the hidden composer (and the overlay's own bare-key shortcuts,
       // e.g. star map's Space, keep working).
       data-overlay-surface=""
+      // Close only on a full click that started AND ended on the backdrop, and
+      // never from the title-bar band: that strip is the window's drag region,
+      // and dragging the window must not read as a click outside.
       onClick={event => {
-        if (event.target === event.currentTarget) {
+        if (event.target === event.currentTarget && event.clientY > TITLEBAR_HEIGHT && downOnBackdrop.current) {
           closeOverlay()
         }
+      }}
+      onPointerDown={event => {
+        downOnBackdrop.current = event.target === event.currentTarget && event.clientY > TITLEBAR_HEIGHT
       }}
       role="presentation"
       // Window-level chrome: overlays always clear the real titlebar. The
