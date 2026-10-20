@@ -1,4 +1,5 @@
 import { useStore } from '@nanostores/react'
+import { computed } from 'nanostores'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -7,6 +8,7 @@ import {
   $dismissedPanes,
   $hiddenTreePanes,
   $layoutTree,
+  $paneVisible,
   closeTreePane,
   isPaneVisible,
   revealTreePane,
@@ -67,6 +69,11 @@ function useChatColumnWidth(): number {
 /** Browser tabs are dynamic preview tiles: the Browser is "open" when any of them is on screen. */
 const visiblePreviews = () => treePanesWithPrefix(PREVIEW_PREFIX).filter(isPaneVisible)
 
+const $TERMINAL_SHOWN = $paneVisible('terminal')
+const $REVIEW_SHOWN = $paneVisible('review')
+const $FILES_SHOWN = $paneVisible('files')
+const $BROWSER_SHOWN = computed([$layoutTree, $dismissedPanes, $hiddenTreePanes], () => visiblePreviews().length > 0)
+
 /**
  * The pane cluster at the top of the chat column, in Claude's order: session rail, then terminal, changes,
  * browser, files. Each button toggles a pane that lives in the layout tree; the active pill reads the tree.
@@ -77,19 +84,14 @@ export function usePaneClusterTools(): TitlebarTool[] {
   const flipped = useStore($panesFlipped)
   const chatWidth = useChatColumnWidth()
 
-  // Re-render whenever the tree or the hidden/dismissed sets change; `isPaneVisible` reads them live.
-  useStore($layoutTree)
-  useStore($hiddenTreePanes)
-  useStore($dismissedPanes)
-
   // What is on screen is the truth for every pill: a store can read open while its card was dismissed or never
-  // placed (a layout that rests it), and the button must never claim a card that is not there.
-  const terminal = isPaneVisible('terminal')
-  const changes = isPaneVisible('review')
-  const files = isPaneVisible('files')
-  const previews = visiblePreviews()
-  const browser = previews.length > 0
-
+  // placed (a layout that rests it), and the button must never claim a card that is not there. These are reactive
+  // atoms on purpose: a plain `isPaneVisible('files')` call has constant arguments, so the React Compiler caches
+  // its first answer and the button never changes again.
+  const terminal = useStore($TERMINAL_SHOWN)
+  const changes = useStore($REVIEW_SHOWN)
+  const files = useStore($FILES_SHOWN)
+  const browser = useStore($BROWSER_SHOWN)
 
   const tool = (id: string, label: string, active: boolean, icon: TitlebarTool['icon'], onSelect: () => void): TitlebarTool => ({
     active,
@@ -121,9 +123,16 @@ export function usePaneClusterTools(): TitlebarTool[] {
         revealTreePane('review')
       }
     }),
-    tool('browser', t.titlebar.paneBrowser, browser, <Globe {...ICON} />, () =>
-      browser ? previews.forEach(closeTreePane) : openBrowserTab()
-    ),
+    tool('browser', t.titlebar.paneBrowser, browser, <Globe {...ICON} />, () => {
+      // Read at click time: the tabs can change between renders.
+      const open = visiblePreviews()
+
+      if (open.length > 0) {
+        open.forEach(closeTreePane)
+      } else {
+        openBrowserTab()
+      }
+    }),
     tool('files', t.titlebar.paneFiles, files, <Folder {...ICON} />, () => {
       if (files) {
         // Close through the store too: closing only the card left the flag open, and every later layout read
