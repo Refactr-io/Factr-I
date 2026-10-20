@@ -694,6 +694,7 @@ def _local_runtime_row(ctx: "ConfigContext") -> dict | None:
         # Anything the managed router serves counts whatever its load status ("unloaded" models
         # autoload on first request), and so does the configured default: the picker must never
         # hide the model the config already points at.
+        staged = list(staged)
         staged += [m for m in _managed_server_model_ids() + ([ctx.current_model] if current else [])
                    if m and m not in staged]
         if not staged:
