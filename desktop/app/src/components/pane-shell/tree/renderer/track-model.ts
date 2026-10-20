@@ -299,7 +299,13 @@ export function fixedTrackSize(node: LayoutNode, axis: 'row' | 'column', ctx: Tr
     return sizes.length === 1 ? sizes[0] : `calc(${sizes.join(' + ')})`
   }
 
-  // Across the axis a flex child just stretches; the fixed ones set the size.
+  // Across the axis a flex child just stretches; the fixed ones set the size. But a column holding the chat
+  // (a main-bearing, size-less child) is flex at heart, same as a zone with the workspace stacked in: otherwise a card
+  // docked above or below the chat hands its own declared width (a Files card's 237px) to the whole column.
+  if (visible.some((child, i) => sizes[i] === null && allPaneIds(child).some(id => paneChrome(ctx.paneFor(id)).placement === 'main'))) {
+    return null
+  }
+
   return cssMax(sizes) ?? null
 }
 

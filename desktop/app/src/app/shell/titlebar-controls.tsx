@@ -359,12 +359,17 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
       place()
     }
 
+    // The chat zone's element is replaced when panes dock around it, so the observer above can end up on a node that
+    // is gone; a slow poll and the layout stores keep the padding right whatever moved.
+    const poll = window.setInterval(place, 200)
+
     cluster.addEventListener('transitionrun', start)
     cluster.addEventListener('transitionend', stop)
     cluster.addEventListener('transitioncancel', stop)
     window.addEventListener('resize', place)
 
     return () => {
+      window.clearInterval(poll)
       node.style.paddingLeft = ''
       window.cancelAnimationFrame(frame)
       observer.disconnect()
