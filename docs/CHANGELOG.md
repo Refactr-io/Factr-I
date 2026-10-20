@@ -9,6 +9,11 @@
 - Settings and eligible Scheduled jobs reads use the native backend without starting Python. Enabled pets still load from their configured profile.
 - Markdown caches have source-size limits, closed inter-agent replies release their content, math loads on demand, and muted haptics skip audio warm-up. Pane title updates preserve drafts and local state.
 - Scrollbars fade after scrolling, the sidebar scrollbar sits at the panel edge, and Run history uses a history icon.
+- New shell: Terminal, Files, Changes and the Browser are separate rounded cards you toggle from the icons at the top of the chat. Each card can fill the window or move around the chat (left, right, above, below) from its header, and the chat keeps a minimum width however many are open. A session summary (project, branch, context used, changes) opens over the chat. The old layout editor is gone; layouts, swapping sidebar sides, resetting and saving your own live in Settings, Appearance, Window & layout.
+- Settings, the Command Center and the profile picture sit in the left rail. Run history and the Command Center are one Activity page. The profile picture is a rounded square you can replace with your own image.
+- Pretendard for the interface and IBM Plex Mono for code and the terminal (both bundled), a new loading grid and thinking orbs, a redesigned connecting screen, and a border beam around the composer while a turn runs.
+- HUD mode is one panel in the app's own colours: the transcript and the bar share a width, surface and corners, and it follows the light or dark theme.
+- Import from other agents (profile menus): bring skills, MCP servers, memory and instructions, scheduled jobs, bots (as profiles) and chats over from Claude Code, Codex, Hermes, OpenCode or any folder that looks like one. Credentials are never imported, and imported scheduled jobs arrive paused.
 
 ## v0.0.9 (2026-10-16)
 
