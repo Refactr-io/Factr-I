@@ -393,6 +393,12 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
           )}
 
           {show('window-layout') && (
+            <div id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.appActions)}>
+              <LayoutPicker />
+            </div>
+          )}
+
+          {show('window-layout') && (
             <ListRow
               action={
                 <SegmentedControl
@@ -442,12 +448,6 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
               description={a.tabStripDesc}
               title={a.tabStripTitle}
             />
-          )}
-
-          {show('window-layout') && (
-            <div id={appearanceSettingElementId(APPEARANCE_SETTING_IDS.appActions)}>
-              <LayoutPicker />
-            </div>
           )}
 
           {show('window-layout') && (

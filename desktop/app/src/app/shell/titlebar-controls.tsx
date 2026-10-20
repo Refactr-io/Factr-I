@@ -22,7 +22,7 @@ import { NEW_SESSION_TITLE, sessionTitle } from '@/lib/chat-runtime'
 import { triggerHaptic } from '@/lib/haptics'
 import { cn } from '@/lib/utils'
 import { $interfaceMode, shownInMode, type Tiered } from '@/store/interface-mode'
-import { $panesFlipped, $sidebarOpen, toggleSidebarOpen } from '@/store/layout'
+import { $panesFlipped, $sidebarOpen, togglePanesFlipped, toggleSidebarOpen } from '@/store/layout'
 import { $sessionTitleOverrides } from '@/store/read-only-sessions'
 import { $sessions, sessionMatchesStoredId } from '@/store/session'
 import { $unreadSessionCount } from '@/store/session-dot-state'
@@ -144,6 +144,17 @@ export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControl
     }
   }
 
+  const swapTool: TitlebarTool = {
+    icon: <TitlebarIcon name="arrow-swap" />,
+    id: 'swap-sides',
+    label: t.titlebar.swapSidebarSides,
+    onSelect: () => {
+      triggerHaptic('tap')
+      togglePanesFlipped()
+    },
+    tour: 'swap-sides'
+  }
+
   const view = appViewForPath(location.pathname)
 
   // Route changes can replace measured clusters without resizing the panels.
@@ -194,7 +205,7 @@ export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControl
     )
   }
 
-  const visibleLeftTools = [backTool, forwardTool, sidebarTool, ...leftTools].filter(visibleTool)
+  const visibleLeftTools = [backTool, forwardTool, sidebarTool, swapTool, ...leftTools].filter(visibleTool)
   const visiblePaneTools = tools.filter(visibleTool)
 
   return (
@@ -301,25 +312,26 @@ function TitlebarPartitionDashes() {
   )
 }
 
-/** Keeps the title clear of the left cluster (back, forward, sidebar toggle) when the sidebar is folded and the
- *  chat column slides under it. Everything else is pure CSS: the header is pinned to the main zone's edges. */
+/** Keeps the header's left end clear of the left cluster (native window buttons, back, forward, sidebar toggle,
+ *  swap). The chat column can start under that cluster - the sidebar folded, or sidebars swapped with the cluster of
+ *  pane icons sitting at the column's left edge - so the header pads itself past it, whichever of the title and the
+ *  pane icons is at the left. Everything else is pure CSS: the header is pinned to the main zone's edges. */
 function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolean) {
   const sidebarOpen = useStore($sidebarOpen)
 
   useEffect(() => {
     const node = ref.current
     const cluster = document.querySelector('[data-titlebar-cluster="left"]') as HTMLElement | null
-    const title = node?.querySelector('[data-titlebar-chat-title-text]') as HTMLElement | null
 
-    if (!node || !title || !cluster || !enabled) {
+    if (!node || !cluster || !enabled) {
       return
     }
 
     const place = () => {
       const left = node.getBoundingClientRect().left
-      const clearance = cluster.getBoundingClientRect().right + 12 - left
+      const clearance = Math.round(cluster.getBoundingClientRect().right + 8 - left)
 
-      title.style.paddingLeft = `${Math.max(16, Math.round(clearance))}px`
+      node.style.paddingLeft = clearance > 0 ? `${clearance}px` : ''
     }
 
     place()
@@ -353,6 +365,7 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
     window.addEventListener('resize', place)
 
     return () => {
+      node.style.paddingLeft = ''
       window.cancelAnimationFrame(frame)
       observer.disconnect()
       cluster.removeEventListener('transitionrun', start)
@@ -382,7 +395,7 @@ function TitlebarChatHeader({ children, flipped }: { children: ReactNode; flippe
   // While a pane is in Fill the chat is out of the way, so its title is too.
   const visible = !filled && (focusedIsTile || appViewForPath(pathname) === 'chat')
 
-  useLeftClearance(ref, visible && !flipped)
+  useLeftClearance(ref, true)
 
   const session = focusedId ? sessions.find(s => sessionMatchesStoredId(s, focusedId)) : null
   // A session the list does not carry (a cron run) names itself from its resume reply.

@@ -145,7 +145,7 @@ export function PaneClusterMore() {
       </Tip>
       <DropdownMenuContent align="end" className="min-w-48">
         <DropdownMenuItem onSelect={() => toggleHud(hudTargetSessionId())}>{t.titlebar.enterHud}</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate(SETTINGS_ROUTE)}>{t.titlebar.layoutSettings}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate(`${SETTINGS_ROUTE}?tab=config:appearance&page=window-layout`)}>{t.titlebar.layoutSettings}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
