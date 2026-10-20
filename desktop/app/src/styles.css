@@ -3109,15 +3109,51 @@ button[data-slot='aui_msg-reactions'] svg {
   border-radius: 0 0 var(--shape-radius-lg) var(--shape-radius-lg);
 }
 
-/* ONE CARD. The bar and the transcript band read as two unrelated objects: a band narrower than the bar left the bar's
-   shoulders hanging past it, and the corners that meet were both rounded, so a notch showed at each side. The band is
-   the bar's width, and while it is on screen the bar squares the corners that join it - the silhouette is a single
-   rounded rectangle with a light bar at one end. Your own lines drop the gold tint for a softer white: still told
-   apart from the agent's, no longer a second colour on the band. */
+/* ONE PANEL, THE APP'S OWN.
+   The HUD read as three unrelated objects: a light bar, a near-black scrim narrower than it, and white text with a
+   gold tint and a hard drop shadow fading out through a gradient. It looked like a game overlay bolted onto a
+   different app. It is now one rounded panel in the app's own surface and ink - the transcript and the bar share
+   a width, a fill, a hairline and a radius, so it reads as a single object, light or dark with the theme.
+
+   - The sheet paints the card surface (the same token as the bar), with a hairline on its free sides.
+   - The panel is on screen whenever the transcript is (a recent turn or the caret in the composer), not only on
+     focus, so a reply never floats as bare text over whatever is behind the window.
+   - Ink is the theme's. Your lines are the secondary tone; the agent's are primary. No shadow, no tint.
+   - The bar squares the corners that join the sheet and the sheet is flush with it. */
 [data-hud-shell],
 :root[data-factr-glass-on] [data-hud-shell] {
   --hud-band-inset: 0px;
-  --hud-overlay-ink-user: rgb(255 255 255 / 0.62);
+}
+
+[data-hud-shell] [data-hud-glass],
+[data-hud-shell][data-hud-typing] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell] [data-hud-glass],
+:root[data-factr-glass-on] [data-hud-shell][data-hud-typing] [data-hud-glass] {
+  background: var(--dt-card) !important;
+  border: 1px solid var(--ui-stroke-secondary);
+  border-bottom-width: 0;
+}
+
+[data-hud-shell][data-hud-edge='top'] [data-hud-glass] {
+  border-top-width: 0;
+  border-bottom-width: 1px;
+}
+
+[data-hud-shell][data-hud-recent] [data-hud-glass] {
+  translate: none;
+  opacity: 1;
+  transition-duration: var(--hud-reveal);
+}
+
+[data-hud-shell] [data-slot='composer-bounds'] {
+  --hud-overlay-ink: var(--ui-text-primary);
+  --hud-overlay-ink-user: var(--ui-text-secondary);
+  --hud-top-fade: 0.75rem;
+  text-shadow: none;
+}
+
+[data-hud-shell] [data-slot='composer-bounds'] * {
+  text-shadow: none;
 }
 
 [data-hud-shell][data-hud-typing] [data-slot='composer-surface'],
