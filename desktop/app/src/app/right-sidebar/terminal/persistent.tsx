@@ -260,10 +260,16 @@ export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalP
 
     const handleResize = () => scheduleMeasure('window-resize')
 
+    // A preset or fill can move the slot (its ancestors reflow) without
+    // resizing it or touching an observed attribute, leaving the overlay on
+    // the old rect. A cheap poll catches whatever the observers miss.
+    const poll = window.setInterval(() => scheduleMeasure('poll'), 250)
+
     window.addEventListener('resize', handleResize)
 
     return () => {
       stopped = true
+      window.clearInterval(poll)
       cancelFrame()
       observer?.disconnect()
       positionObserver?.disconnect()
