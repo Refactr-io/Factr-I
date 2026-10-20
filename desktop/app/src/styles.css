@@ -3211,10 +3211,10 @@ button[data-slot='aui_msg-reactions'] svg {
   border-radius: 0 0 var(--hud-radius) var(--hud-radius);
 }
 
-/* Focus is a neutral step, not the theme's primary: near-black on a light theme drew a heavy outline around the
-   whole bar. The same hairline, one tone stronger. */
+/* Focus keeps the same hairline as the sheet below it: the theme's primary (near-black on a light theme) drew a
+   heavy outline around the whole bar, and a darker neutral still read as a frame. */
 [data-hud-shell][data-hud-typing] [data-slot='composer-surface'] {
-  border-color: var(--ui-text-quaternary) !important;
+  border-color: var(--ui-stroke-secondary) !important;
 }
 
 /* WHAT ANSWERS THE CURSOR — and, because `useHudClickThrough` hands the window
