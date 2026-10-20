@@ -316,6 +316,8 @@ function TitlebarPartitionDashes() {
  *  swap). The chat column can start under that cluster - the sidebar folded, or sidebars swapped with the cluster of
  *  pane icons sitting at the column's left edge - so the header pads itself past it, whichever of the title and the
  *  pane icons is at the left. Everything else is pure CSS: the header is pinned to the main zone's edges. */
+const PINNED_RIGHT = 'var(--workspace-right, 0px)'
+
 function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolean) {
   const sidebarOpen = useStore($sidebarOpen)
 
@@ -338,15 +340,13 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
       const icons = node.querySelector('[data-titlebar-cluster="right"]')?.getBoundingClientRect().width ?? 0
       const need = Math.max(clearance, 0) + icons
 
-      const rightInset = parseFloat(getComputedStyle(node).getPropertyValue('--workspace-right')) || 0
-      const available = window.innerWidth - left - rightInset
+      node.style.right = PINNED_RIGHT
+      node.style.width = ''
+      const available = node.getBoundingClientRect().width
 
       if (available < need) {
         node.style.right = 'auto'
         node.style.width = `${need}px`
-      } else {
-        node.style.right = ''
-        node.style.width = ''
       }
     }
 
@@ -387,7 +387,7 @@ function useLeftClearance(ref: RefObject<HTMLDivElement | null>, enabled: boolea
     return () => {
       window.clearInterval(poll)
       node.style.paddingLeft = ''
-      node.style.right = ''
+      node.style.right = PINNED_RIGHT
       node.style.width = ''
       window.cancelAnimationFrame(frame)
       observer.disconnect()
@@ -432,7 +432,7 @@ function TitlebarChatHeader({ children, flipped }: { children: ReactNode; flippe
       )}
       data-titlebar-chat-header=""
       ref={ref}
-      style={{ height: TITLEBAR_HEIGHT, left: 'var(--workspace-left, 0px)', right: 'var(--workspace-right, 0px)' }}
+      style={{ height: TITLEBAR_HEIGHT, left: 'var(--workspace-left, 0px)', right: PINNED_RIGHT }}
     >
       {visible ? (
         <span
