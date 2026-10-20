@@ -256,25 +256,40 @@ export function publishWorkspaceGeometry(): () => void {
     }
   }
 
-  // Tree mutations move zones without resizing them (⌘\ flip) — re-measure a
-  // frame later, after the DOM committed. RO covers width changes (sash drags,
-  // side collapses); window resize covers the rest.
-  const unsubTree = $layoutTree.listen(() => requestAnimationFrame(measure))
+  // Tree mutations move zones without resizing them (the ⌘\ flip, a dock move): the ResizeObserver never fires for a
+  // pure position change, and React commits after the store notifies. So a change watches the geometry frame by frame
+  // until the motion has settled - a write only happens when a number actually changed.
+  let settleUntil = 0
+  let settleFrame = 0
+
+  const settle = (ms = 600) => {
+    settleUntil = performance.now() + ms
+
+    if (settleFrame) {
+      return
+    }
+
+    const tick = () => {
+      measure()
+      settleFrame = performance.now() < settleUntil ? requestAnimationFrame(tick) : 0
+    }
+
+    settleFrame = requestAnimationFrame(tick)
+  }
+
+  const unsubTree = $layoutTree.listen(() => settle())
   // Drag released → publish the final geometry the deferral above skipped.
-  onSashDragEnd = () => requestAnimationFrame(measure)
+  onSashDragEnd = () => settle(200)
   window.addEventListener('resize', measure)
   measure()
 
-  // Fill moves the workspace edges while the cards animate: re-measure as the motion settles.
-  const unsubFill = $maximizedPane.listen(() => {
-    for (const delay of [0, 120, 320]) {
-      window.setTimeout(measure, delay)
-    }
-  })
+  // Fill moves the workspace edges while the cards animate: keep measuring as the motion settles.
+  const unsubFill = $maximizedPane.listen(() => settle())
 
   return () => {
     unsubTree()
     unsubFill()
+    cancelAnimationFrame(settleFrame)
     onSashDragEnd = null
     window.removeEventListener('resize', measure)
     ro.disconnect()

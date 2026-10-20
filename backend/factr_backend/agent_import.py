@@ -521,10 +521,18 @@ class AgentImporter:
             config["mcp_servers"] = existing
             dump_yaml_file(destination, config)
 
+    @property
+    def engine_root(self) -> Optional[Path]:
+        """The desktop engine's home (``<profile>/engine``) when this profile has one. The app lists skills
+        and chats from there, not from the Python config home, so imports have to land in it."""
+        engine = self.target_root / "engine"
+        return engine if engine.is_dir() else None
+
     def import_skills(self, source_root: Path, nested: bool = False) -> None:
         """skills/<name>/SKILL.md dirs → FACTR_CONFIG_HOME/skills/<category>/<name>. ``nested`` also
         takes skills grouped in category folders (Hermes: skills/<category>/<name>), keeping the layout."""
-        destination_root = self.target_root / "skills" / _SKILL_CATEGORY[self.agent]
+        skills_base = (self.engine_root or self.target_root) / "skills"
+        destination_root = skills_base / _SKILL_CATEGORY[self.agent]
         if not source_root.is_dir():
             self.record("skills", None, destination_root, "skipped", "No skills directory found")
             return

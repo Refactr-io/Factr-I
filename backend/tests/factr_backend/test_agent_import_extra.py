@@ -241,3 +241,30 @@ def test_real_hermes_home_round_trip(tmp_path):
     jobs = json.loads((tmp_path / "factr/cron/jobs.json").read_text())["jobs"]
     assert {j["name"] for j in jobs} >= {"inbox-digest", "standup-prep"} and not any(j["enabled"] for j in jobs)
     assert (tmp_path / "factr/skills/hermes-imports/skill-creator/SKILL.md").exists()
+
+
+def test_with_an_engine_home_skills_and_chats_go_where_the_app_reads_them(tmp_path):
+    """The desktop lists skills and chats from <profile>/engine, not from the Python config home."""
+    target = tmp_path / "factr"
+    (target / "engine").mkdir(parents=True)
+    root = tmp_path / "claude"
+    _write(root / "skills" / "tidy" / "SKILL.md", "---\nname: tidy\n---\nbody")
+    _claude_session(root, "s1", [
+        {"type": "user", "timestamp": "2026-01-01T10:00:00Z", "message": {"role": "user", "content": "Plan it"}},
+        {"type": "assistant", "timestamp": "2026-01-01T10:00:05Z", "message": {"role": "assistant", "content": [{"type": "text", "text": "Sure."}]}}])
+    report = run_import("claude-code", root, target, execute=True, groups=["skills", "chats"])
+    assert report["summary"]["error"] == 0
+    assert (target / "engine/skills/claude-code-imports/tidy/SKILL.md").exists()
+    assert not (target / "skills").exists() and not (target / "state.db").exists()
+    files = list((target / "engine/sessions").glob("session_*.json"))
+    assert len(files) == 1
+    doc = json.loads(files[0].read_text())
+    assert doc["id"] == files[0].stem and doc["custom_title"] == "Plan it (from claude-code)"
+    assert [(m["role"], m["content"][0]["text"]) for m in doc["messages"]] == [("user", "Plan it"), ("assistant", "Sure.")]
+    assert doc["created_at"].endswith("Z") and len(doc["created_at"]) == 27 and doc["status"] == "Closed"
+    row = _conn(target / "engine/session-metadata-v1.sqlite3").execute(
+        "SELECT session_id, custom_title FROM recent_sessions").fetchall()
+    assert row == [(doc["id"], "Plan it (from claude-code)")]
+    again = run_import("claude-code", root, target, execute=True, groups=["chats"])
+    assert [i for i in again["items"] if i["kind"] == "chats"][0]["sessions"] == 0
+    assert len(list((target / "engine/sessions").glob("session_*.json"))) == 1

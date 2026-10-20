@@ -432,11 +432,92 @@ def _count_session_files(imp) -> int:
         return 0
 
 
+_ENGINE_NAMES = ("maple", "otter", "heron", "willow", "cedar", "finch", "birch", "lynx", "sorrel", "wren",
+                 "alder", "marten", "ibis", "larch", "quail", "rowan", "stoat", "tern", "vole", "yarrow")
+
+
+def _iso_z(ts: float) -> str:
+    return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def write_engine_session(engine: Path, agent: str, session: Dict[str, Any], turns: List[Dict[str, Any]]) -> bool:
+    """Write one chat in the desktop engine's own session format (``sessions/session_<name>_<ms>_<id>.json`` plus
+    its row in ``session-metadata-v1.sqlite3``), the store the sidebar lists. The id is derived from the source
+    chat, so a second import finds it and leaves it alone. Returns False when it already exists."""
+    import hashlib
+
+    digest = hashlib.sha256(f"{agent}:{session['id']}".encode()).hexdigest()
+    started = turns[0]["ts"]
+    ms = int(started * 1000)
+    short = _ENGINE_NAMES[int(digest[:4], 16) % len(_ENGINE_NAMES)]
+    session_id = f"session_{short}_{ms}_{digest[:16]}"
+    sessions_dir = engine / "sessions"
+    path = sessions_dir / f"{session_id}.json"
+    if path.exists():
+        return False
+    title = re.sub(r"\s+", " ", session.get("title") or next((t["text"] for t in turns if t["role"] == "user"), "")).strip()[:80]
+    title = f"{title} (from {agent})" if title else f"Chat from {agent}"
+    last = turns[-1]["ts"]
+    working_dir = session.get("cwd") or str(Path.home())
+    messages = []
+    for index, turn in enumerate(turns):
+        mid = int(digest[index % 48:index % 48 + 16], 16) if index < 48 else index
+        messages.append({"id": f"message_{int(turn['ts'] * 1000)}_{mid}", "role": turn["role"],
+                         "content": [{"type": "text", "text": turn["text"][:MAX_CHAT_TEXT]}],
+                         "timestamp": _iso_z(turn["ts"])})
+    doc = {"id": session_id, "parent_id": None, "title": None, "custom_title": title,
+           "created_at": _iso_z(started), "updated_at": _iso_z(last), "last_active_at": _iso_z(last),
+           "provider_key": "openai", "model": "imported", "reasoning_effort": "medium", "is_canary": False,
+           "is_debug": False, "working_dir": working_dir, "short_name": short, "status": "Closed", "last_pid": 0,
+           "saved": False, "env_snapshots": [], "messages": messages}
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, json.dumps(doc) + "\n")
+    db = engine / "session-metadata-v1.sqlite3"
+    conn = sqlite3.connect(db, timeout=5)
+    try:
+        conn.execute("CREATE TABLE IF NOT EXISTS recent_sessions (session_id TEXT PRIMARY KEY NOT NULL, working_dir TEXT, "
+                     "generated_title TEXT, custom_title TEXT, todo_title TEXT, updated_at_ms INTEGER NOT NULL, "
+                     "last_active_at_ms INTEGER, saved INTEGER NOT NULL DEFAULT 0, save_label TEXT)")
+        conn.execute("INSERT OR REPLACE INTO recent_sessions (session_id, working_dir, custom_title, updated_at_ms, "
+                     "last_active_at_ms, saved) VALUES (?, ?, ?, ?, ?, 0)",
+                     (session_id, working_dir, title, int(last * 1000), int(last * 1000)))
+        conn.commit()
+    finally:
+        conn.close()
+    return True
+
+
+def _import_engine_chats(imp, engine: Path, sessions: Iterator[Dict[str, Any]], total: int) -> None:
+    destination = engine / "sessions"
+    if not imp.execute:
+        imp.record("chats", imp.source_root, destination, "imported", "Would import chats",
+                   sessions=min(total, MAX_CHAT_SESSIONS), found=total)
+        return
+    imported = skipped = messages = 0
+    for session in sessions:
+        if imported >= MAX_CHAT_SESSIONS:
+            break
+        turns = [m for m in session["messages"] if m["text"].strip()]
+        if len(turns) < 2:
+            skipped += 1
+            continue
+        if write_engine_session(engine, imp.agent, session, turns):
+            imported += 1
+            messages += len(turns)
+        else:
+            skipped += 1
+    imp.record("chats", imp.source_root, destination, "imported", "", sessions=imported, messages=messages,
+               skipped=skipped)
+
+
 def _import_chats(imp, sessions: Iterator[Dict[str, Any]]) -> None:
     destination = imp.target_root / "state.db"
     total = _count_session_files(imp)
     if total == 0:
         imp.record("chats", None, destination, "skipped", "No chats found")
+        return
+    if imp.engine_root is not None:
+        _import_engine_chats(imp, imp.engine_root, sessions, total)
         return
     if not imp.execute:
         imp.record("chats", imp.source_root, destination, "imported", "Would import chats",
