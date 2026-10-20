@@ -5,6 +5,7 @@ import {
   type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useId,
@@ -114,6 +115,30 @@ import {
   selectionLinkLabel
 } from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
+
+/** The beam that rides the composer's border while a turn runs. Not in the HUD: that bar owns its own corners, and a
+ *  wrapper clipping it with another radius is what made them elliptical there. */
+function ComposerBeam({
+  active,
+  children,
+  enabled,
+  theme
+}: {
+  active: boolean
+  children: ReactNode
+  enabled: boolean
+  theme: 'dark' | 'light'
+}) {
+  if (!enabled) {
+    return <>{children}</>
+  }
+
+  return (
+    <BorderBeam active={active} borderRadius={16} className="w-full rounded-[inherit]" colorVariant="mono" strength={0.7} theme={theme}>
+      {children}
+    </BorderBeam>
+  )
+}
 
 export function ChatBar({
   busy,
@@ -1441,14 +1466,7 @@ export function ChatBar({
                   onToggle={toggleStatusDrawer}
                 />
               )}
-              <BorderBeam
-                active={busy && !hudMode && !reduceMotion}
-                borderRadius={16}
-                className="w-full rounded-[inherit]"
-                colorVariant="mono"
-                strength={0.7}
-                theme={resolvedMode}
-              >
+              <ComposerBeam active={busy && !reduceMotion} enabled={!hudMode} theme={resolvedMode}>
               <div
                 className={cn(
                   // grid-cols-[minmax(0,1fr)]: the implicit `auto` column sized
@@ -1564,7 +1582,7 @@ export function ChatBar({
                   <ContribSlot area={COMPOSER_AREAS.bottom} />
                 </div>
               </div>
-              </BorderBeam>
+              </ComposerBeam>
             </div>
           </ComposerPrimitive.Root>
           {/* Underside: chrome-free strip BELOW the composer. Outside the root
