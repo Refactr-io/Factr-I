@@ -252,6 +252,7 @@ describe('docker create args', () => {
       '-v', '/h/profiles/scout:/data/profiles/scout',
       '-e', 'FACTR_BOT=scout',
       '-e', 'FACTR_ENGINE_TOKEN',
+      ...computerHostArgs('scout'), // empty off Linux
       IMAGE
     ])
     expect(args.join(' ')).not.toContain(deriveBotToken('scout'))
