@@ -22,6 +22,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { Loader2 } from '@/lib/icons'
 import { resolveProfileColor } from '@/lib/profile-color'
 import { cn } from '@/lib/utils'
+import { openAgentImport } from '@/store/agent-import'
 import {
   $activeConnectionId,
   $connectionsRegistry,
@@ -285,6 +286,10 @@ export function ProfileSwitcher({
           <DropdownMenuItem onSelect={() => void runImportProfileFlow()}>
             <Codicon aria-hidden="true" name="cloud-download" size="0.875rem" />
             <span className="truncate">{p.importProfile}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={openAgentImport}>
+            <Codicon aria-hidden="true" name="references" size="0.875rem" />
+            <span className="truncate">{p.importFromAgents}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => navigate(PROFILES_ROUTE)}>
             <Codicon aria-hidden="true" name="settings-gear" size="0.875rem" />

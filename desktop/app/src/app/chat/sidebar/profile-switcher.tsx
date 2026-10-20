@@ -59,6 +59,7 @@ import {
   reorderStepHaptic
 } from '@/lib/reorder'
 import { cn } from '@/lib/utils'
+import { openAgentImport } from '@/store/agent-import'
 import {
   $activeConnectionId,
   $connectionsRegistry,
@@ -803,6 +804,10 @@ function ProfileDropdown({
         <DropdownMenuItem onSelect={onImport}>
           <Codicon aria-hidden="true" name="cloud-download" size="0.875rem" />
           <span className="truncate">{p.importProfile}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={openAgentImport}>
+          <Codicon aria-hidden="true" name="references" size="0.875rem" />
+          <span className="truncate">{p.importFromAgents}</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuRadioGroup onValueChange={name => name && onSelect(name)} value={value}>

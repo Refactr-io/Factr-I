@@ -2578,6 +2578,40 @@ export const en: Translations = {
     }
   },
 
+  agentImport: {
+    title: 'Import from other agents',
+    description: 'Bring your setup over from Claude Code, Codex, Hermes, OpenCode or any folder that looks like one. Credentials are never imported.',
+    detected: 'Found on this computer',
+    chooseFolder: 'Choose a folder…',
+    notFound: 'Not found',
+    nothingToImport: 'Nothing to import from here.',
+    target: profile => `Into the ${profile} profile`,
+    overwriteTitle: 'Replace what already exists',
+    overwriteDesc: 'Items with the same name are replaced. Off, they are left alone and reported.',
+    groups: {
+      skills: { title: 'Skills', note: 'Copied into the profile, grouped by where they came from.' },
+      mcp: { title: 'MCP servers', note: 'Keys and tokens are left out; add them again after.' },
+      memory: { title: 'Memory and instructions', note: 'CLAUDE.md, AGENTS.md and memory files, merged into your memory.' },
+      prompt: { title: 'System prompt', note: 'Your SOUL.md is kept unless you choose to replace it.' },
+      cron: { title: 'Scheduled jobs', note: 'Arrive paused. Review each one, then resume it.' },
+      bots: { title: 'Bots', note: 'Each agent definition or profile becomes a profile of its own.' },
+      chats: { title: 'Chats', note: 'Your conversations, as history you can open and continue.' },
+      permissions: { title: 'Command rules', note: 'Allow and deny lists, mapped to the closest equivalent.' }
+    },
+    importAction: count => (count === 1 ? 'Import 1 item' : `Import ${count} items`),
+    itemCount: count => (count === 1 ? '1 item' : `${count} items`),
+    importing: 'Importing…',
+    scanning: 'Looking for other agents…',
+    resultTitle: 'Import finished',
+    resultSummary: (imported, skipped, conflicts, errors) =>
+      `${imported} imported, ${skipped} skipped, ${conflicts} already existed${errors ? `, ${errors} failed` : ''}`,
+    strippedSecrets: 'Left out because they look like credentials. Add them again where needed:',
+    pausedJobs: 'Imported jobs are paused until you resume them.',
+    botsCreated: 'Profiles created',
+    done: 'Done',
+    failed: 'The import failed',
+    back: 'Back'
+  },
   profiles: {
     close: 'Close profiles',
     nameHint: 'Lowercase letters, digits, hyphens, and underscores. Must start with a letter or digit.',
@@ -2587,6 +2621,7 @@ export const en: Translations = {
     loading: 'Loading profiles...',
     newProfile: 'New profile',
     importProfile: 'Import profile…',
+    importFromAgents: 'Import from other agents…',
     exportProfile: 'Export profile…',
     imported: 'Profile imported',
     exported: 'Profile exported',

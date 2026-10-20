@@ -114,6 +114,7 @@ import { SidebarBrandRow } from '../chat/sidebar/brand-row'
 import { SidebarRail } from '../chat/sidebar/rail'
 import { AppContextMenu } from '../context-menu/app-context-menu'
 import { HudShell } from '../hud/hud-shell'
+import { AgentImportDialog } from '../profiles/agent-import-dialog'
 import { $terminalTakeover, setTerminalTakeover } from '../right-sidebar/store'
 import { $workspaceIsPage, WORKSPACE_PAGE_HEADER_AREA } from '../routes'
 import { UpdateNotices } from '../shell/update-notices'
@@ -851,6 +852,7 @@ export function ContribController() {
     >
       <ContribWiring>
         <AppContextMenu />
+        <AgentImportDialog />
         <div
           className="flex h-screen min-h-0 w-screen flex-col bg-(--shell-window-bg) text-(--ui-text-primary)"
           // Window-glass hook: this div and the sidebar-wrapper above it are

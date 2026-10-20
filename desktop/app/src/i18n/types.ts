@@ -2192,6 +2192,30 @@ export interface Translations {
     deliverOptions: Record<string, string>
   }
 
+  agentImport: {
+    title: string
+    description: string
+    detected: string
+    chooseFolder: string
+    notFound: string
+    nothingToImport: string
+    target: (profile: string) => string
+    overwriteTitle: string
+    overwriteDesc: string
+    groups: Record<'bots' | 'chats' | 'cron' | 'mcp' | 'memory' | 'permissions' | 'prompt' | 'skills', { title: string; note: string }>
+    importAction: (count: number) => string
+    itemCount: (count: number) => string
+    importing: string
+    scanning: string
+    resultTitle: string
+    resultSummary: (imported: number, skipped: number, conflicts: number, errors: number) => string
+    strippedSecrets: string
+    pausedJobs: string
+    botsCreated: string
+    done: string
+    failed: string
+    back: string
+  }
   profiles: {
     close: string
     nameHint: string
@@ -2203,6 +2227,7 @@ export interface Translations {
     /** Verb + noun: the profiles-list button and the native file-dialog titles,
      *  which stand alone. Per-profile menus use the bare `exportMenu`. */
     importProfile: string
+    importFromAgents: string
     exportProfile: string
     exportMenu: string
     imported: string
