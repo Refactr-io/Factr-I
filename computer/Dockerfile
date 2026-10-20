@@ -3,7 +3,7 @@
 # Build from the repo root:  docker build -f computer/Dockerfile -t bots-factr-bot-computer:dev .
 
 ARG RUST_IMAGE=rust:1.98-bookworm
-ARG PYTHON_VERSION=3.12.12
+ARG PYTHON_VERSION=3.12.14
 
 # ---- Stage 1: the Rust engine (`factr`) -----------------------------------------------------
 FROM ${RUST_IMAGE} AS engine
