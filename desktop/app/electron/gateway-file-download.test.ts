@@ -299,8 +299,8 @@ test('gatewayFileRequestPaths keeps streaming and fallback requests on the same 
   )
 
   assert.deepEqual(paths, {
-    dataUrl: '/api/fs/read-data-url?path=%2Fsrv%2Foutput%2Fimage+one.png&profile=research',
-    download: '/api/fs/download?path=%2Fsrv%2Foutput%2Fimage+one.png&profile=research'
+    dataUrl: '/api/fs/read-data-url?path=%2Fsrv%2Foutput%2Fimage+one.png&feature=1&profile=research',
+    download: '/api/fs/download?path=%2Fsrv%2Foutput%2Fimage+one.png&feature=1&profile=research'
   })
 })
 

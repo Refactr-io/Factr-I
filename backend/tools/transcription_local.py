@@ -179,6 +179,31 @@ def _create_whisper_model(model_name: str, *, device: str, compute_type: str):
         ) from exc
 
 
+def _ensure_av_open_compat() -> None:
+    """faster-whisper 1.2.1 calls ``av.open(..., metadata_errors=...)``, an argument PyAV 19 removed.
+    Drop that one keyword when the installed PyAV rejects it, so a stale or user-upgraded ``av``
+    cannot break dictation. Idempotent; a no-op when ``av`` is absent or already accepts it."""
+    try:
+        import av
+    except Exception:
+        return
+    orig = getattr(av, "open", None)
+    if orig is None or getattr(orig, "_factr_compat", False):
+        return
+
+    def _open(*args, **kwargs):
+        try:
+            return orig(*args, **kwargs)
+        except TypeError as exc:
+            if "metadata_errors" not in kwargs or "metadata_errors" not in str(exc):
+                raise
+            kwargs.pop("metadata_errors")
+            return orig(*args, **kwargs)
+
+    _open._factr_compat = True
+    av.open = _open
+
+
 def _load_local_whisper_model(model_name: str, device: str = "auto", compute_type: str = "auto"):
     """Load faster-whisper with graceful CUDA → CPU fallback. ``device="auto"`` picks CUDA
     whenever the ctranslate2 wheel ships CUDA libs, even on hosts without the NVIDIA runtime (WSL2,
@@ -188,6 +213,7 @@ def _load_local_whisper_model(model_name: str, device: str = "auto", compute_typ
     ``device`` / ``compute_type`` default to ``"auto"`` so the historical behaviour is unchanged; pass
     explicit values from ``stt.local.device`` / ``stt.local.compute_type`` to pin a configuration (#9088).
     """
+    _ensure_av_open_compat()  # every model load, not just the dictation path
     force_cpu = _should_force_faster_whisper_cpu()
     if force_cpu:
         # Importing ctranslate2 can itself abort on Apple Silicon/Rosetta when

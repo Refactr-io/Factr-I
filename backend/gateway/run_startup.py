@@ -1206,6 +1206,14 @@ class GatewayStartupMixin:
             logger.warning("\u2717 %s failed to connect", platform.value)
             # A failed connect() may have allocated ClientSessions / poll tasks / subprocesses.
             await self._safe_adapter_disconnect(adapter, platform)
+            if skip_message := adapter.startup_skip_message:
+                # Enabled but not set up yet (WhatsApp before pairing): skip it, keep the gateway up.
+                logger.warning("%s skipped: %s", platform.value, skip_message)
+                self._update_platform_runtime_status(
+                    platform.value, platform_state="inactive", error_code=adapter.fatal_error_code,
+                    error_message=skip_message,
+                )
+                continue
             if not adapter.has_fatal_error:
                 # No fatal error info means likely a transient issue -- queue for retry
                 self._startup_queue_transient_failure(

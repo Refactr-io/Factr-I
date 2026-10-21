@@ -13,6 +13,7 @@ import { $voiceConversationStartRequest, takeVoiceConversationStart } from '@/st
 import { resetBrowseState } from '@/store/composer-input-history'
 import { $gateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
+import { $sessionStates } from '@/store/session-states'
 import { $voiceLiveStatus, refreshVoiceLiveStatus, selectedVoiceChatMode } from '@/store/voice-live'
 import { $autoSpeakReplies, $voiceStopPhrase, setAutoSpeakReplies } from '@/store/voice-prefs'
 import { resumeWakeAfterVoice } from '@/store/wake-word'
@@ -27,6 +28,35 @@ import { useAutoSpeakReplies } from './use-auto-speak-replies'
 import { useVoiceConversation } from './use-voice-conversation'
 import { useVoiceLiveConversation } from './use-voice-live-conversation'
 import { useVoiceRecorder } from './use-voice-recorder'
+
+const storedIdOf = (runtimeId: null | string | undefined) =>
+  runtimeId ? ($sessionStates.get()[runtimeId]?.storedSessionId ?? null) : null
+
+/**
+ * True when voice was running and the composer moved to a different conversation (or a blank chat).
+ * `previousStored`/`nextStored` are the stored-session ids behind the runtime ids: a runtime swap inside
+ * the same conversation (submit recovery, rebuilt runtime) keeps the call going, and so does a blank
+ * chat getting its first session (previous is null).
+ */
+export function shouldResetVoiceForSession({
+  nextRuntime,
+  nextStored,
+  owned,
+  previousRuntime,
+  previousStored
+}: {
+  nextRuntime: null | string | undefined
+  nextStored: null | string | undefined
+  owned: boolean
+  previousRuntime: null | string | undefined
+  previousStored: null | string | undefined
+}) {
+  if (!owned || !previousRuntime || previousRuntime === nextRuntime) {
+    return false
+  }
+
+  return !(previousStored && previousStored === nextStored)
+}
 
 interface UseComposerVoiceArgs {
   busy: boolean
@@ -99,7 +129,12 @@ export function useComposerVoice({
     previousSessionIdRef.current = sessionId
   }, [sessionId])
 
-  const { dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
+  const {
+    cancel: cancelDictation,
+    dictate,
+    voiceActivityState,
+    voiceStatus
+  } = useVoiceRecorder({
     focusInput,
     maxRecordingSeconds,
     onTranscript: insertText,
@@ -240,6 +275,46 @@ export function useComposerVoice({
   })
 
   const conversation = liveEngineActive ? liveConversation : chainedConversation
+  const conversationRef = useRef(conversation)
+
+  conversationRef.current = conversation
+
+  // Voice belongs to the conversation it started in. Moving to another one (or a blank chat) ends the
+  // call, drops dictation and silences playback, so End/Stop never carry over. Only a composer that
+  // owned voice at the previous commit resets, so side tiles never cut another composer's audio.
+  const voiceSessionRef = useRef({ owned: false, runtime: sessionId, stored: storedIdOf(sessionId) })
+  const cancelDictationRef = useRef(cancelDictation)
+
+  cancelDictationRef.current = cancelDictation
+
+   
+  useEffect(() => {
+    const prev = voiceSessionRef.current
+
+    if (
+      shouldResetVoiceForSession({
+        nextRuntime: sessionId,
+        nextStored: storedIdOf(sessionId),
+        owned: prev.owned,
+        previousRuntime: prev.runtime,
+        previousStored: prev.stored
+      })
+    ) {
+      setVoiceConversationActive(false)
+      void conversationRef.current.end()
+      cancelDictationRef.current()
+    }
+  }, [sessionId])
+
+  // Runs after the reset effect on every commit: the NEXT session change sees what this one owned.
+  // eslint-disable-next-line no-restricted-syntax -- commit-time snapshot of imperative state
+  useEffect(() => {
+    voiceSessionRef.current = {
+      owned: voiceConversationActive || voiceStatus !== 'idle',
+      runtime: sessionId,
+      stored: storedIdOf(sessionId)
+    }
+  })
 
   /** Turn the conversation on with the engine `voice.voice_chat_mode` selects,
    *  decided in the same state batch so the other engine never sees a frame of

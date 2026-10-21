@@ -31,7 +31,7 @@ from tools.transcription_audio import (
     _validate_audio_file, _validate_audio_file_size, _validate_audio_source_file)
 from tools.transcription_local import (
     _get_idle_unload_seconds, _has_local_command, _join_confident_segments,
-    _load_local_whisper_model, _looks_like_cuda_lib_error, _normalize_local_model,
+    _ensure_av_open_compat, _load_local_whisper_model, _looks_like_cuda_lib_error, _normalize_local_model,
     _transcribe_local_command, _try_lazy_install_stt, build_local_transcribe_kwargs)
 # The ``_transcribe_<provider>`` handlers are looked up in this module's globals by _dispatch_stt_provider.
 from tools.transcription_cloud import (  # noqa: F401  (handlers dispatched via globals())
@@ -341,6 +341,7 @@ def _transcribe_local(
     """Transcribe using faster-whisper (local, free)."""
     if not _HAS_FASTER_WHISPER and not _try_lazy_install_stt():
         return _error_result("faster-whisper not installed")
+    _ensure_av_open_compat()
     try:
         stt_config = _load_stt_config()
         local_cfg = stt_config.get("local") or {}

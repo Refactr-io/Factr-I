@@ -200,16 +200,25 @@ export async function artifactImageSrc(value: string): Promise<string> {
   return resolveMediaDisplaySrc(value)
 }
 
-function artifactLabel(value: string): string {
+/** Percent-decode a display name; a malformed sequence (a lone `%`) keeps the raw text. */
+function decodeLabel(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+export function artifactLabel(value: string): string {
   try {
     const url = new URL(value)
     const item = url.pathname.split('/').filter(Boolean).pop()
 
-    return item || value
+    return item ? decodeLabel(item) : value
   } catch {
     const parts = value.split(/[\\/]/).filter(Boolean)
 
-    return parts.pop() || value
+    return decodeLabel(parts.pop() || value)
   }
 }
 

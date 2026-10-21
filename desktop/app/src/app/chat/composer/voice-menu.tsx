@@ -143,7 +143,9 @@ export function VoiceMenu({
           <DropdownMenuCheckboxItem
             checked={dictating}
             className={dropdownMenuRow}
-            disabled={disabled || !state.voice.enabled || voiceStatus === 'transcribing'}
+            disabled={
+              voiceStatus === 'transcribing' || (voiceStatus !== 'recording' && (disabled || !state.voice.enabled))
+            }
             onSelect={event => {
               // Keep the menu open: dictation is a mode you watch, and closing
               // on select hides the recording state the trigger just entered.
@@ -212,7 +214,7 @@ export function DictateButton({
       <Button
         aria-label={label}
         className={cn(GHOST_ICON_BTN, 'p-0', dictating && DICTATING_ICON_BTN)}
-        disabled={disabled || !state.voice.enabled || voiceStatus === 'transcribing'}
+        disabled={voiceStatus === 'transcribing' || (voiceStatus !== 'recording' && (disabled || !state.voice.enabled))}
         onClick={() => {
           triggerHaptic(dictating ? 'close' : 'open')
           onDictate()

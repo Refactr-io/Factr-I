@@ -322,7 +322,6 @@ function ConversationPill({
         <Button
           aria-label={c.stopListening}
           className="h-(--composer-control-size) shrink-0 gap-2 rounded-md px-3 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-          disabled={disabled}
           onClick={() => {
             triggerHaptic('submit')
             onStopTurn()
@@ -337,7 +336,6 @@ function ConversationPill({
       <Button
         aria-label={c.endConversation}
         className="h-(--composer-control-size) gap-2 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-        disabled={disabled}
         onClick={() => {
           triggerHaptic('close')
           onEnd()

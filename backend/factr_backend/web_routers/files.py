@@ -27,7 +27,8 @@ from fastapi.responses import FileResponse
 from factr_backend._subprocess_compat import windows_hide_flags
 from factr_backend.web_deps import late
 from factr_backend.web_server_files import (
-    _fs_path, _managed_file_entry, _managed_response_meta, _resolve_managed_path,
+    _fs_path, _managed_file_entry, _managed_files_policy, _managed_response_meta, _path_is_under,
+    _resolve_managed_path,
 )
 from factr_backend.web_models import (
     ChatImageUpload, FsWriteText, ManagedDirectoryCreate, ManagedFileDelete, ManagedFileUpload,
@@ -75,7 +76,7 @@ _SENSITIVE_MANAGED_FILE_BASENAMES = frozenset({
 # match). The browser can descend into subdirs, so a basename-only guard would
 # still expose ``mcp-tokens/<server>.json``; match on ANY path component so the
 # trees are blocked wherever they sit under the root, no FACTR_CONFIG_HOME resolution.
-_SENSITIVE_MANAGED_DIR_NAMES = frozenset({"mcp-tokens", "pairing"})
+_SENSITIVE_MANAGED_DIR_NAMES = frozenset({"mcp-tokens", "pairing", "vault", "browser-profile"})
 
 
 def _is_sensitive_filename(name: str) -> bool:
@@ -172,6 +173,13 @@ def _fs_regular_file(path: Path) -> tuple[Path, os.stat_result]:
     if _is_sensitive_path(target):
         raise HTTPException(status_code=403, detail="Access to sensitive files is not allowed")
     return target, st
+
+
+def _fs_require_inside_managed_root(target: Path, request: Request) -> None:
+    """A deployment locked to a files root (hosted /opt/data, FACTR_DASHBOARD_FILES_ROOT) serves nothing outside it."""
+    policy = _managed_files_policy(request, create_root=False)
+    if policy.locked_root is not None and not _path_is_under(policy.locked_root, target):
+        raise HTTPException(status_code=403, detail="Path outside managed files root")
 
 
 def _fs_read_bytes(target: Path, limit: Optional[int] = None) -> bytes:
@@ -715,23 +723,27 @@ async def _fs_download_path(path: str, profile: Optional[str], session_id: Optio
 
 @router.get("/api/fs/read-data-url")
 async def fs_read_data_url(
-    path: str, profile: Optional[str] = None, session_id: Optional[str] = None,
+    request: Request, path: str, profile: Optional[str] = None, session_id: Optional[str] = None,
 ):
     from factr_backend.web_server import _FS_DATA_URL_MAX_BYTES
     target, st = _fs_regular_file(await _fs_download_path(path, profile, session_id))
+    _fs_require_inside_managed_root(target, request)
     if st.st_size > _FS_DATA_URL_MAX_BYTES:
         raise HTTPException(status_code=413, detail="File too large")
-    encoded = await asyncio.to_thread(
-        lambda: base64.b64encode(_fs_read_bytes(target)).decode("ascii"),
-    )
+    # Read one byte past the cap so a file that grew since the stat above is still refused.
+    raw = await asyncio.to_thread(_fs_read_bytes, target, _FS_DATA_URL_MAX_BYTES + 1)
+    if len(raw) > _FS_DATA_URL_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
+    encoded = base64.b64encode(raw).decode("ascii")
     return {"dataUrl": f"data:{_fs_mime_type(target)};base64,{encoded}"}
 
 
 @router.get("/api/fs/download")
 async def fs_download(
-    path: str, profile: Optional[str] = None, session_id: Optional[str] = None,
+    request: Request, path: str, profile: Optional[str] = None, session_id: Optional[str] = None,
 ):
     target, _st = _fs_regular_file(await _fs_download_path(path, profile, session_id))
+    _fs_require_inside_managed_root(target, request)
     return FileResponse(
         path=str(target),
         media_type=_fs_mime_type(target),

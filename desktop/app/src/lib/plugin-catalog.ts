@@ -1,19 +1,16 @@
 /**
  * The curated Factr plugin catalog as the Desktop sees it.
  *
- * The Capabilities → Plugins tab embeds the docs-site catalog page
- * (`CATALOG_PICKER_URL`) as a one-click picker; that page renders
- * `PLUGIN_CATALOG_URL` (`/docs/api/plugins.json`, generated from the repo's
- * `plugin-catalog/` directory at site build). A `factr://plugin/install?catalog=<name>`
- * deep link resolves against the SAME document so a link and an in-app pick
- * always agree on the repo, subdir and reviewed pin for a name.
+ * The Capabilities → Plugins tab lists the entries the backend reads from the repo's
+ * `plugin-catalog/` directory (`/api/dashboard/plugins/catalog`) and offers a one-click install.
+ * A `factr://plugin/install?catalog=<name>` deep link resolves against `PLUGIN_CATALOG_URL`
+ * (`/docs/api/plugins.json`, generated from the same directory at site build).
  *
  * Everything here only classifies — nothing installs. Callers open the Install
  * Plugin dialog, which still requires the user's explicit confirmation.
  */
 
 export const CATALOG_ORIGIN = 'https://github.com/Refactr-io/Factr-I'
-export const CATALOG_PICKER_URL = `${CATALOG_ORIGIN}/docs/plugins?embed=picker`
 export const PLUGIN_CATALOG_URL = `${CATALOG_ORIGIN}/docs/api/plugins.json`
 
 /** Catalog names are directory names under `plugin-catalog/`; anything else is not a lookup key. */
@@ -95,4 +92,42 @@ export async function lookupPluginCatalogEntry(
   const match = rows.map(asEntry).find(entry => entry?.name === trimmed)
 
   return match ? { ok: true, entry: match } : { ok: false, error: 'unknown' }
+}
+
+import type { ProfileScope } from '@/api/client'
+
+/** A catalog row as the Plugins tab shows it: the install fields plus what the card needs. */
+export interface PluginCatalogRow extends PluginCatalogEntry {
+  description: string
+  title: string
+  tier: string
+}
+
+/** The curated entries the connected backend ships with, merged with what is installed. */
+export async function fetchPluginCatalogRows(profile?: ProfileScope): Promise<PluginCatalogRow[]> {
+  const { capabilityScoped, factrApi } = await import('@/api/client')
+
+  // feature=1: the packaged engine only starts Python for marked requests, and this tab can also be a chat tile.
+  const body = await factrApi<{ entries?: unknown }>({
+    ...capabilityScoped(profile),
+    path: '/api/dashboard/plugins/catalog?feature=1'
+  })
+
+  const entries = Array.isArray(body?.entries) ? body.entries : []
+
+  return entries.flatMap(raw => {
+    const entry = asEntry(raw)
+    const row = raw as Record<string, unknown>
+
+    return entry
+      ? [
+          {
+            ...entry,
+            description: typeof row.description === 'string' ? row.description : '',
+            tier: typeof row.tier === 'string' ? row.tier : 'community',
+            title: typeof row.title === 'string' && row.title ? row.title : entry.name
+          }
+        ]
+      : []
+  })
 }

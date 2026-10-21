@@ -1,13 +1,5 @@
 import { useStore } from '@nanostores/react'
-import {
-  memo,
-  type ReactNode,
-  type PointerEvent as ReactPointerEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
+import { memo, type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { setEnvVar } from '@/api/config'
 import { useGatewayRequest } from '@/app/gateway/hooks/use-gateway-request'
@@ -21,7 +13,6 @@ import type { ProfileScope } from '@/factr'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { FolderOpen, Loader2, Monitor, Package, RefreshCw, Trash2 } from '@/lib/icons'
-import { CATALOG_ORIGIN, CATALOG_PICKER_URL } from '@/lib/plugin-catalog'
 import { cn } from '@/lib/utils'
 import {
   $agentPluginBusy,
@@ -41,8 +32,6 @@ import {
 } from '@/store/agent-plugins'
 import { confirm } from '@/store/confirm'
 import { notify, notifyError } from '@/store/notifications'
-import { $paneHeightOverride, setPaneHeightOverride } from '@/store/panes'
-import { openCatalogPluginInstall } from '@/store/plugin-catalog-install'
 import { openPluginInstallRequest } from '@/store/plugin-install-request'
 import { $connection } from '@/store/session'
 
@@ -50,37 +39,9 @@ import { PanelEmpty } from '../../overlays/panel'
 import { Pill } from '../../settings/primitives'
 import { useDeepLinkHighlight } from '../../settings/use-deep-link-highlight'
 
+import { PluginCatalogList } from './plugin-catalog-list'
 import { mergePluginPackages, type PackageKind, type PluginPackage } from './plugin-packages'
 import { PluginSettingsForm } from './plugin-settings-form'
-
-// The REAL Plugin Catalog page (docs site) embedded as a one-click picker.
-// `?embed=picker` hides the docs chrome and adds "+ Add to this Agent" per card, which posts
-//   { type: 'factr-plugin-pick', name, repo, sha, subdir, tier, installCmd }
-// to the parent window. We validate the origin and open the shared
-// dual-target install modal (agent half → catalog-pinned install into the
-// scoped profile; desktop half → this app), so unified packages install both
-// halves in one flow. URLs live in `@/lib/plugin-catalog` so the
-// `factr://plugin/install?catalog=` deep link resolves against the same feed.
-
-// Catalog viewport: persisted through the shared pane store, dragged from the
-// section's TOP edge ("pull the catalog up"), clamped so neither the catalog
-// nor the plugin list above can vanish.
-const CATALOG_PANE_ID = 'capabilities-plugin-catalog'
-const CATALOG_DEFAULT_PX = 380
-const CATALOG_MIN_PX = 120
-const CATALOG_MAX_VH = 0.75
-const CATALOG_COLLAPSED_PX = 4
-const CATALOG_LIST_RESERVED_PX = 176
-
-interface PluginPickMessage {
-  installCmd?: string
-  name?: string
-  repo?: string
-  sha?: string
-  subdir?: string
-  tier?: string
-  type?: string
-}
 
 /** Deep-link anchor for a package row (`/capabilities?tab=plugins&plugin=<key>`).
  *  Accepts the agent key, the agent name, or the desktop record id. */
@@ -533,86 +494,13 @@ export const PluginsTab = memo(function PluginsTab({
 
   useDeepLinkHighlight({ param: 'plugin', ready: () => true, elementId: pluginElementId })
 
-  // Catalog picker viewport (persisted height, collapse toggle, top-edge sash).
-  const heightOverride = useStore($paneHeightOverride(CATALOG_PANE_ID))
-  const height = heightOverride ?? CATALOG_DEFAULT_PX
-  const open = height > CATALOG_COLLAPSED_PX
-  const [pickerMounted, setPickerMounted] = useState(open)
-  const [dragging, setDragging] = useState(false)
-  const sectionRef = useRef<HTMLElement>(null)
-
-  if (open && !pickerMounted) {
-    setPickerMounted(true)
-  }
-
-  const startDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) {
-      return
-    }
-
-    event.preventDefault()
-    const startY = event.clientY
-    const startHeight = height
-    const column = sectionRef.current?.parentElement
-    const columnMax = column ? column.clientHeight - CATALOG_LIST_RESERVED_PX : Number.POSITIVE_INFINITY
-    const max = Math.max(CATALOG_MIN_PX, Math.round(Math.min(window.innerHeight * CATALOG_MAX_VH, columnMax)))
-    setDragging(true)
-
-    const onMove = (move: globalThis.PointerEvent) => {
-      setPaneHeightOverride(
-        CATALOG_PANE_ID,
-        Math.round(Math.min(max, Math.max(CATALOG_MIN_PX, startHeight + (startY - move.clientY))))
-      )
-    }
-
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      setDragging(false)
-    }
-
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp, { once: true })
-  }
-
-  useEffect(() => {
-    if (!open) {
-      return undefined
-    }
-
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== CATALOG_ORIGIN) {
-        return
-      }
-
-      const data = event.data as null | PluginPickMessage
-
-      if (!data || data.type !== 'factr-plugin-pick' || !data.name || !data.repo) {
-        return
-      }
-
-      // Already-installed short-circuit + the dialog itself live in the shared
-      // helper so a catalog deep link behaves identically to this pick.
-      openCatalogPluginInstall(
-        {
-          name: String(data.name),
-          repo: String(data.repo),
-          sha: data.sha ? String(data.sha) : undefined,
-          subdir: data.subdir ? String(data.subdir) : undefined
-        },
-        scope
-      )
-    }
-
-    window.addEventListener('message', onMessage)
-
-    return () => window.removeEventListener('message', onMessage)
-  }, [open, p, scope])
+  const [catalogOpen, setCatalogOpen] = useState(true)
 
   const agentBusy = (row: AgentPluginRow) => busyKey === (row.key ?? row.name) || busyKey === row.name
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-32 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Header: what the two columns mean, and the controls that act on
             the whole page (install, folder, rescan). */}
         <div className="flex flex-wrap items-start justify-between gap-3 px-3 pt-3 pb-2">
@@ -782,63 +670,18 @@ export const PluginsTab = memo(function PluginsTab({
         )}
       </div>
 
-      <section
-        className="relative flex min-h-9 flex-col overflow-hidden border-t border-(--ui-stroke-secondary)"
-        ref={sectionRef}
-      >
-        <div
-          className="group/catsash absolute inset-x-0 top-0 z-10 h-1 -translate-y-1/2 cursor-row-resize"
-          data-testid="plugin-catalog-sash"
-          onDoubleClick={() => setPaneHeightOverride(CATALOG_PANE_ID, undefined)}
-          onPointerDown={startDrag}
-        >
-          <div
-            className={cn(
-              'absolute inset-x-0 top-1/2 h-px -translate-y-1/2 transition-colors',
-              dragging ? 'bg-(--ui-stroke-secondary)' : 'group-hover/catsash:bg-(--ui-stroke-secondary)'
-            )}
-          />
-        </div>
+      <section className="flex max-h-[45%] shrink-0 flex-col border-t border-(--ui-stroke-secondary)">
         <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
           <span className="text-[0.625rem] font-medium tracking-wide uppercase text-(--ui-text-quaternary)">
             {p.catalogTitle}
           </span>
-          <Button onClick={() => setPaneHeightOverride(CATALOG_PANE_ID, open ? 0 : undefined)} size="xs" variant="text">
-            {open ? p.catalogHide : p.catalogBrowse}
+          <Button onClick={() => setCatalogOpen(open => !open)} size="xs" variant="text">
+            {catalogOpen ? p.catalogHide : p.catalogBrowse}
           </Button>
         </div>
-        {pickerMounted && (
-          <div className={cn('flex min-h-0 flex-col gap-1 px-3 pb-2', !open && 'hidden')}>
-            <div
-              className="squircle-surface"
-              style={{
-                border: '1px solid var(--ui-stroke-secondary)',
-                borderRadius: 'var(--shape-radius-lg)',
-                flex: `0 1 ${height}px`,
-                maxWidth: '100%',
-                minHeight: 0,
-                minWidth: 320,
-                overflow: 'hidden',
-                position: 'relative',
-                width: '100%'
-              }}
-            >
-              <iframe
-                sandbox="allow-scripts allow-same-origin"
-                src={CATALOG_PICKER_URL}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  height: '133.34%',
-                  pointerEvents: dragging ? 'none' : 'auto',
-                  transform: 'scale(0.75)',
-                  transformOrigin: 'top left',
-                  width: '133.34%'
-                }}
-                title={p.catalogTitle}
-              />
-            </div>
-            <p className="shrink-0 px-1 text-[0.625rem] leading-4 text-(--ui-text-quaternary)">{p.catalogHint}</p>
+        {catalogOpen && (
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+            <PluginCatalogList profile={profile} scope={scope} />
           </div>
         )}
       </section>
