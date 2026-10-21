@@ -304,6 +304,18 @@ test('gatewayFileRequestPaths keeps streaming and fallback requests on the same 
   })
 })
 
+test('gatewayFileRequestPaths encodes Windows drive and UNC paths and always marks the request as a feature', () => {
+  const identity = (requestPath: string) => requestPath
+  const drive = gatewayFileRequestPaths('C:\\Users\\me\\My Report (1).pdf', identity, 's1')
+  const unc = gatewayFileRequestPaths('\\\\server\\share\\a b.pdf', identity)
+
+  assert.equal(
+    drive.download,
+    '/api/fs/download?path=C%3A%5CUsers%5Cme%5CMy%20Report%20(1).pdf&session_id=s1&feature=1'
+  )
+  assert.equal(unc.dataUrl, '/api/fs/read-data-url?path=%5C%5Cserver%5Cshare%5Ca%20b.pdf&feature=1')
+})
+
 test('isNotFoundError matches only HTTP 404', () => {
   const notFound: any = new Error('404: missing')
 

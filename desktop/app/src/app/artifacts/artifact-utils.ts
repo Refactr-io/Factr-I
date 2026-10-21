@@ -210,16 +210,17 @@ function decodeLabel(value: string): string {
 }
 
 export function artifactLabel(value: string): string {
+  // A Windows drive path (`C:\\dir\\a%20b.pdf`) parses as a URL with scheme `c:`; treat it as a path.
+  const isUrl = /^[a-z][a-z0-9+.-]+:/i.test(value)
+  let name: string
+
   try {
-    const url = new URL(value)
-    const item = url.pathname.split('/').filter(Boolean).pop()
-
-    return item ? decodeLabel(item) : value
+    name = (isUrl ? new URL(value).pathname : value).split(/[\\/]/).filter(Boolean).pop() ?? ''
   } catch {
-    const parts = value.split(/[\\/]/).filter(Boolean)
-
-    return decodeLabel(parts.pop() || value)
+    name = value.split(/[\\/]/).filter(Boolean).pop() ?? ''
   }
+
+  return name ? decodeLabel(name) : value
 }
 
 function normalizeArtifactTimestamp(timestamp: null | number | undefined): null | number {

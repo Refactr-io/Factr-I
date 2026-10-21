@@ -118,6 +118,9 @@ jobs:
           tests/test_atomic_write_fsync_dir_target.py
           tests/factr_backend/test_plugin_manifest_v2.py
           tests/factr_backend/test_api_mode_aliases.py
+          tests/tools/test_av_open_compat.py
+          tests/factr_backend/test_web_server_fs.py
+          tests/gateway/test_whatsapp_unpaired_skip.py
       - name: Job summary
         if: always() && runner.os == 'Windows'
         shell: bash

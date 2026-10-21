@@ -122,9 +122,14 @@ def test_fs_endpoints_require_auth(tmp_path):
 def test_fs_readers_resolve_dotdot_and_symlinks_before_the_sensitive_check(client, tmp_path, endpoint):
     (tmp_path / ".env").write_text("SECRET=1")
     (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "link.txt").symlink_to(tmp_path / ".env")
+    raws = [str(tmp_path / "docs" / ".." / ".env")]
+    try:
+        (tmp_path / "docs" / "link.txt").symlink_to(tmp_path / ".env")
+        raws.append(str(tmp_path / "docs" / "link.txt"))
+    except OSError:  # Windows without symlink privilege
+        pass
 
-    for raw in (str(tmp_path / "docs" / ".." / ".env"), str(tmp_path / "docs" / "link.txt")):
+    for raw in raws:
         response = client.get(endpoint, params={"path": raw})
         assert response.status_code == 403, raw
         assert "SECRET" not in response.text
