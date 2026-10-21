@@ -77,6 +77,13 @@ export function useVoiceRecorder({
     }
   }
 
+  /** Drop an in-flight recording without transcribing it (session switch, teardown). */
+  const cancel = () => {
+    clearTimers()
+    handle.cancel()
+    setVoiceStatus('idle')
+  }
+
   const start = async () => {
     if (!onTranscribeAudio) {
       notify({ kind: 'warning', title: voiceCopy.unavailable, message: voiceCopy.transcriptionUnavailable })
@@ -112,5 +119,5 @@ export function useVoiceRecorder({
     status: voiceStatus
   }
 
-  return { dictate, voiceActivityState, voiceStatus }
+  return { cancel, dictate, voiceActivityState, voiceStatus }
 }

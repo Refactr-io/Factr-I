@@ -8,6 +8,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { adoptSpokenReplySession, markAssistantIdSpoken, resolveSpokenReply } from '@/lib/spoken-reply'
 import { CONVERSATION_LEASE, READ_ALOUD_LEASE, syncTtsLease } from '@/lib/tts-lease'
 import { toLiveHistory } from '@/lib/voice-live'
+import { stopVoicePlayback } from '@/lib/voice-playback'
 import { clearWakeIndicator, syncWakeIndicatorWithVoice } from '@/lib/wake-indicator'
 import { $voiceConversationStartRequest, takeVoiceConversationStart } from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
@@ -27,6 +28,11 @@ import { useAutoSpeakReplies } from './use-auto-speak-replies'
 import { useVoiceConversation } from './use-voice-conversation'
 import { useVoiceLiveConversation } from './use-voice-live-conversation'
 import { useVoiceRecorder } from './use-voice-recorder'
+
+/** True when the composer moved off a real session onto a different one (or a blank chat). */
+export function shouldResetVoiceForSession(previous: null | string | undefined, next: null | string | undefined) {
+  return Boolean(previous) && previous !== next
+}
 
 interface UseComposerVoiceArgs {
   busy: boolean
@@ -99,7 +105,7 @@ export function useComposerVoice({
     previousSessionIdRef.current = sessionId
   }, [sessionId])
 
-  const { dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
+  const { cancel: cancelDictation, dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
     focusInput,
     maxRecordingSeconds,
     onTranscript: insertText,
@@ -240,6 +246,26 @@ export function useComposerVoice({
   })
 
   const conversation = liveEngineActive ? liveConversation : chainedConversation
+  const conversationRef = useRef(conversation)
+
+  conversationRef.current = conversation
+
+  // Voice belongs to the session it started in. Leaving one for another (or for a blank new chat)
+  // ends the call, drops any dictation and silences playback, so the End/Stop controls never carry
+  // over. A first message in a blank chat (null -> id) keeps the call going.
+  const voiceSessionRef = useRef(sessionId)
+
+  // eslint-disable-next-line no-restricted-syntax -- session-switch teardown of imperative recorder/playback state
+  useEffect(() => {
+    if (shouldResetVoiceForSession(voiceSessionRef.current, sessionId)) {
+      setVoiceConversationActive(false)
+      void conversationRef.current.end()
+      cancelDictation()
+      stopVoicePlayback()
+    }
+
+    voiceSessionRef.current = sessionId
+  }, [cancelDictation, sessionId])
 
   /** Turn the conversation on with the engine `voice.voice_chat_mode` selects,
    *  decided in the same state batch so the other engine never sees a frame of

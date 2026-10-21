@@ -218,4 +218,41 @@ describe('wake-word ear visibility', () => {
     const ear = screen.getByLabelText('Wake word: "hey factr", paused during voice chat')
     expect((ear as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('keeps End and Stop clickable while the composer is disabled, so a call can always be closed', () => {
+    const onEnd = vi.fn()
+    const onStopTurn = vi.fn()
+
+    renderControls({
+      conversation: {
+        active: true,
+        level: 0,
+        muted: false,
+        onEnd,
+        onStart: vi.fn(),
+        onStopTurn,
+        onToggleMute: vi.fn(),
+        status: 'listening'
+      },
+      disabled: true
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'End voice conversation' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stop listening and send' }))
+    expect(onEnd).toHaveBeenCalledTimes(1)
+    expect(onStopTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets a recording be stopped even when the composer is disabled', () => {
+    const onDictate = vi.fn()
+
+    renderControls({
+      disabled: true,
+      onDictate,
+      state: { ...state, voice: { active: false, enabled: true } },
+      voiceStatus: 'recording'
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop dictation' }))
+    expect(onDictate).toHaveBeenCalledTimes(1)
+  })
 })
