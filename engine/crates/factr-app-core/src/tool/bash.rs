@@ -1015,6 +1015,17 @@ impl Tool for BashTool {
 
         crate::checkpoint::before_bash(&ctx, &params.command).await;
 
+        // Optional output reduction (`terminal.reduce_output`, off by default; fail-open). The gate above
+        // and the checkpoint already saw the original command.
+        let reduced = if run_in_background {
+            false
+        } else if let Some(rewritten) = super::output_reduction::reduced_command(&params.command).await {
+            params.command = rewritten;
+            true
+        } else {
+            false
+        };
+
         #[cfg(unix)]
         if let Some(wrapped) = wrap_repo_cargo_commands(&params.command, ctx.working_dir.as_deref())
         {
@@ -1048,6 +1059,10 @@ impl Tool for BashTool {
         if let Some(hint) = hint {
             output.output.push_str("\n\n");
             output.output.push_str(hint);
+        }
+        if reduced {
+            output.output.push_str("\n\n");
+            output.output.push_str(super::output_reduction::REDUCED_MARKER);
         }
         Ok(output)
     }

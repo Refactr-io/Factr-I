@@ -1412,3 +1412,57 @@ async fn a_background_task_ignores_the_foreground_timeout() {
     }
     assert!(output.contains("survived") && !output.contains("timed out"), "{output}");
 }
+
+#[cfg(unix)]
+mod output_reduction_integration {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// Runs `command` through the real bash tool with a fake `rtk` and the given config.yaml text.
+    async fn run_with(config_yaml: &str, rtk_script: &str, command: &str) -> String {
+        let _env = factr_base::storage::lock_test_env();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.yaml"), config_yaml).unwrap();
+        let rtk = dir.path().join("rtk-fake");
+        std::fs::write(&rtk, format!("#!/bin/sh\n{rtk_script}\n")).unwrap();
+        std::fs::set_permissions(&rtk, std::fs::Permissions::from_mode(0o755)).unwrap();
+        unsafe {
+            std::env::set_var("FACTR_CONFIG_HOME", dir.path());
+            std::env::set_var("FACTR_RTK_BIN", &rtk);
+        }
+        crate::tool::output_reduction::reset_missing_cache();
+        let out = BashTool::new()
+            .execute(json!({"command": command}), make_ctx(None))
+            .await
+            .expect("bash runs")
+            .output;
+        unsafe {
+            std::env::remove_var("FACTR_CONFIG_HOME");
+            std::env::remove_var("FACTR_RTK_BIN");
+        }
+        out
+    }
+
+    const REWRITE_TO_PRINTF: &str = r#"printf 'printf REDUCED'"#;
+
+    #[tokio::test]
+    async fn setting_off_runs_the_original_command_and_adds_nothing() {
+        let out = run_with("terminal: {max_memory_mb: 4096}\n", REWRITE_TO_PRINTF, "printf original").await;
+        assert_eq!(out.trim_end(), "original");
+        let out = run_with("terminal: {reduce_output: false}\n", REWRITE_TO_PRINTF, "printf original").await;
+        assert_eq!(out.trim_end(), "original");
+    }
+
+    #[tokio::test]
+    async fn setting_on_runs_the_rewrite_and_marks_the_output() {
+        let out = run_with("terminal: {reduce_output: true}\n", REWRITE_TO_PRINTF, "printf original").await;
+        assert!(out.starts_with("REDUCED"), "{out}");
+        assert!(out.ends_with(crate::tool::output_reduction::REDUCED_MARKER), "{out}");
+    }
+
+    #[tokio::test]
+    async fn setting_on_but_rtk_failing_is_the_original_command() {
+        let out = run_with("terminal: {reduce_output: true}\n", "exit 3", "printf original").await;
+        assert_eq!(out.trim_end(), "original");
+    }
+}

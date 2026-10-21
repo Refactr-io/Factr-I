@@ -50,6 +50,12 @@ impl Web {
 pub struct Terminal {
     /// `terminal.max_memory_mb`: resident-memory cap of one command's process group.
     pub max_memory_mb: Option<u64>,
+    /// `terminal.reduce_output`: route shell commands through the `rtk` CLI (when installed) so their
+    /// output is shorter. Off unless set.
+    pub reduce_output: bool,
+    /// `terminal.reduce_output_timeout_ms`: how long the rewrite lookup may take before the command
+    /// runs unchanged. Clamped to 100..=10000; 1500 when unset.
+    pub reduce_output_timeout_ms: Option<u64>,
 }
 
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
@@ -315,7 +321,11 @@ impl FactrConfig {
             },
             memory: Memory { enabled: path(&root, "memory.memory_enabled").and_then(Value::as_bool) },
             web: Web { backend: path(&root, "web.backend").and_then(as_text), search_backend: path(&root, "web.search_backend").and_then(as_text) },
-            terminal: Terminal { max_memory_mb: path(&root, "terminal.max_memory_mb").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0) },
+            terminal: Terminal {
+                max_memory_mb: path(&root, "terminal.max_memory_mb").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
+                reduce_output: path(&root, "terminal.reduce_output").and_then(as_bool).unwrap_or(false),
+                reduce_output_timeout_ms: path(&root, "terminal.reduce_output_timeout_ms").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).map(|n| n.clamp(100, 10_000)),
+            },
             checkpoints: Checkpoints {
                 enabled: path(&root, "checkpoints.enabled").and_then(as_bool),
                 max_snapshots: path(&root, "checkpoints.max_snapshots").and_then(as_i64),
@@ -514,6 +524,17 @@ mod tests {
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: 0}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: -5}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("model: x").memory, Memory::default());
+    }
+
+    #[test]
+    fn output_reduction_is_off_unless_set_and_its_timeout_is_clamped() {
+        assert!(!FactrConfig::parse("").terminal.reduce_output);
+        assert!(!FactrConfig::parse("terminal: {max_memory_mb: 1}").terminal.reduce_output);
+        assert!(FactrConfig::parse("terminal: {reduce_output: true}").terminal.reduce_output);
+        assert!(FactrConfig::parse("terminal: {reduce_output: 'on'}").terminal.reduce_output);
+        assert_eq!(FactrConfig::parse("terminal: {reduce_output_timeout_ms: 1}").terminal.reduce_output_timeout_ms, Some(100));
+        assert_eq!(FactrConfig::parse("terminal: {reduce_output_timeout_ms: 999999}").terminal.reduce_output_timeout_ms, Some(10_000));
+        assert_eq!(FactrConfig::parse("terminal: {}").terminal.reduce_output_timeout_ms, None);
     }
 
     #[test]
