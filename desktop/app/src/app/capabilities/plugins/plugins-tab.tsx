@@ -681,7 +681,7 @@ export const PluginsTab = memo(function PluginsTab({
         </div>
         {catalogOpen && (
           <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
-            <PluginCatalogList scope={scope} />
+            <PluginCatalogList profile={profile} scope={scope} />
           </div>
         )}
       </section>

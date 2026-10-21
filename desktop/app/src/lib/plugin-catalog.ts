@@ -94,19 +94,25 @@ export async function lookupPluginCatalogEntry(
   return match ? { ok: true, entry: match } : { ok: false, error: 'unknown' }
 }
 
+import type { ProfileScope } from '@/api/client'
+
 /** A catalog row as the Plugins tab shows it: the install fields plus what the card needs. */
 export interface PluginCatalogRow extends PluginCatalogEntry {
   description: string
-  installed: boolean
   title: string
   tier: string
-  updateAvailable: boolean
 }
 
 /** The curated entries the connected backend ships with, merged with what is installed. */
-export async function fetchPluginCatalogRows(): Promise<PluginCatalogRow[]> {
-  const { factrApi } = await import('@/api/client')
-  const body = await factrApi<{ entries?: unknown }>({ path: '/api/dashboard/plugins/catalog' })
+export async function fetchPluginCatalogRows(profile?: ProfileScope): Promise<PluginCatalogRow[]> {
+  const { capabilityScoped, factrApi } = await import('@/api/client')
+
+  // feature=1: the packaged engine only starts Python for marked requests, and this tab can also be a chat tile.
+  const body = await factrApi<{ entries?: unknown }>({
+    ...capabilityScoped(profile),
+    path: '/api/dashboard/plugins/catalog?feature=1'
+  })
+
   const entries = Array.isArray(body?.entries) ? body.entries : []
 
   return entries.flatMap(raw => {
@@ -118,10 +124,8 @@ export async function fetchPluginCatalogRows(): Promise<PluginCatalogRow[]> {
           {
             ...entry,
             description: typeof row.description === 'string' ? row.description : '',
-            installed: row.installed === true,
             tier: typeof row.tier === 'string' ? row.tier : 'community',
-            title: typeof row.title === 'string' && row.title ? row.title : entry.name,
-            updateAvailable: row.update_available === true
+            title: typeof row.title === 'string' && row.title ? row.title : entry.name
           }
         ]
       : []

@@ -2111,6 +2111,7 @@ class BasePlatformAdapter(ABC):
         self._running = True
         self._fatal_error_code = self._fatal_error_message = None
         self._fatal_error_retryable = True
+        self._startup_skip_message = None
         if self.send_path_degraded:
             self._mark_degraded()
         else:
@@ -2137,9 +2138,13 @@ class BasePlatformAdapter(ABC):
     # state, not a fatal error: the runner skips it with a warning and keeps the gateway running.
     startup_skip_message = property(lambda self: getattr(self, "_startup_skip_message", None))
 
-    def _set_startup_skipped(self, message: str) -> None:
+    def _set_startup_skipped(self, code: str, message: str) -> None:
+        """Startup skips the platform with a warning. The non-retryable error is kept so any reconnect path
+        (mid-run unpair, secondary profiles) parks it exactly as before instead of retrying forever."""
         self._running = False
         self._startup_skip_message = message
+        self._fatal_error_code, self._fatal_error_message = code, message
+        self._fatal_error_retryable = False
 
     def _set_fatal_error(self, code: str, message: str, *, retryable: bool) -> None:
         self._running = False

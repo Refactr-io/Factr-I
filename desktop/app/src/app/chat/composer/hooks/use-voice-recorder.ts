@@ -26,6 +26,8 @@ export function useVoiceRecorder({
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle')
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const startedAtRef = useRef(0)
+  // Bumped by cancel(): a stop/start still in flight then drops its result instead of touching a new session.
+  const epochRef = useRef(0)
   const intervalRef = useRef<number | null>(null)
   const timeoutRef = useRef<number | null>(null)
 
@@ -45,7 +47,12 @@ export function useVoiceRecorder({
 
   const stop = async () => {
     clearTimers()
+    const epoch = epochRef.current
     const result = await handle.stop()
+
+    if (epoch !== epochRef.current) {
+      return
+    }
 
     if (!result) {
       setVoiceStatus('idle')
@@ -64,6 +71,10 @@ export function useVoiceRecorder({
     try {
       const transcript = (await onTranscribeAudio(result.audio)).trim()
 
+      if (epoch !== epochRef.current) {
+        return
+      }
+
       if (!transcript) {
         notify({ kind: 'warning', title: voiceCopy.noSpeechDetected, message: voiceCopy.tryRecordingAgain })
       } else {
@@ -72,13 +83,16 @@ export function useVoiceRecorder({
     } catch (error) {
       notifyError(error, voiceCopy.transcriptionFailed)
     } finally {
-      setVoiceStatus('idle')
-      focusInput()
+      if (epoch === epochRef.current) {
+        setVoiceStatus('idle')
+        focusInput()
+      }
     }
   }
 
   /** Drop an in-flight recording without transcribing it (session switch, teardown). */
   const cancel = () => {
+    epochRef.current += 1
     clearTimers()
     handle.cancel()
     setVoiceStatus('idle')
@@ -91,8 +105,17 @@ export function useVoiceRecorder({
       return
     }
 
+    const epoch = epochRef.current
+
     try {
       await handle.start({ onError: error => notifyError(error, voiceCopy.recordingFailed) })
+
+      if (epoch !== epochRef.current) {
+        handle.cancel()
+
+        return
+      }
+
       startedAtRef.current = Date.now()
       setElapsedSeconds(0)
       setVoiceStatus('recording')

@@ -1210,7 +1210,8 @@ class GatewayStartupMixin:
                 # Enabled but not set up yet (WhatsApp before pairing): skip it, keep the gateway up.
                 logger.warning("%s skipped: %s", platform.value, skip_message)
                 self._update_platform_runtime_status(
-                    platform.value, platform_state="inactive", error_code=None, error_message=skip_message,
+                    platform.value, platform_state="inactive", error_code=adapter.fatal_error_code,
+                    error_message=skip_message,
                 )
                 continue
             if not adapter.has_fatal_error:

@@ -713,18 +713,20 @@ export function liveStatusPollDue(now: number, lastRunAt: number, anySessionActi
   return anySessionActive || now - lastRunAt >= LIVE_SESSION_STATUS_IDLE_POLL_INTERVAL_MS
 }
 
-function visiblePoll(intervalMs: number, tick: () => void): () => void {
-  const run = () => {
+/** `interval` ticks come from the timer; `focus` ticks from regaining focus or visibility. */
+function visiblePoll(intervalMs: number, tick: (reason: 'focus' | 'interval') => void): () => void {
+  const run = (reason: 'focus' | 'interval' = 'interval') => {
     // On macOS an unfocused or app-hidden BrowserWindow commonly remains
     // `visibilityState === "visible"`. Visibility alone therefore kept every
     // safety-net gateway poll alive while the user was in another app. These
     // are stale-data backstops, not the live event path, so pause them until
     // the window is actually being viewed and catch up immediately on focus.
     if (windowIsActivelyViewed({ focused: document.hasFocus(), visibilityState: document.visibilityState })) {
-      tick()
+      tick(reason)
     }
   }
 
+  const onFocus = () => run('focus')
   let intervalId = window.setInterval(run, batteryPollInterval(intervalMs, $onBattery.get()))
 
   const unsubscribeBattery = $onBattery.listen(onBattery => {
@@ -732,14 +734,14 @@ function visiblePoll(intervalMs: number, tick: () => void): () => void {
     intervalId = window.setInterval(run, batteryPollInterval(intervalMs, onBattery))
   })
 
-  document.addEventListener('visibilitychange', run)
-  window.addEventListener('focus', run)
+  document.addEventListener('visibilitychange', onFocus)
+  window.addEventListener('focus', onFocus)
 
   return () => {
     unsubscribeBattery()
     window.clearInterval(intervalId)
-    document.removeEventListener('visibilitychange', run)
-    window.removeEventListener('focus', run)
+    document.removeEventListener('visibilitychange', onFocus)
+    window.removeEventListener('focus', onFocus)
   }
 }
 
@@ -980,12 +982,12 @@ export function useBackgroundSync({
 
     const dispose = visiblePoll(
       changeEventsAvailable ? LIVE_SESSION_STATUS_BACKSTOP_INTERVAL_MS : LIVE_SESSION_STATUS_POLL_INTERVAL_MS,
-      () => {
+      reason => {
         const anyActive = Object.values($sessionStates.get()).some(
           state => state.busy || state.needsInput || state.awaitingResponse
         )
 
-        if (changeEventsAvailable || liveStatusPollDue(Date.now(), lastPolledAt, anyActive)) {
+        if (changeEventsAvailable || reason === 'focus' || liveStatusPollDue(Date.now(), lastPolledAt, anyActive)) {
           void refreshLiveStatuses()
         }
       }

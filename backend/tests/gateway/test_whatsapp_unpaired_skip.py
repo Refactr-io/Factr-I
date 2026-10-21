@@ -26,13 +26,14 @@ def _unpaired_adapter(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_unpaired_connect_is_a_skip_not_a_fatal_error(tmp_path, monkeypatch):
+async def test_unpaired_connect_is_a_skip_that_reconnect_paths_park(tmp_path, monkeypatch):
     monkeypatch.setattr("plugins.platforms.whatsapp.adapter.check_whatsapp_requirements", lambda: True)
     adapter = _unpaired_adapter(tmp_path)
 
     assert await adapter.connect() is False
-    assert adapter.has_fatal_error is False
     assert "not paired" in adapter.startup_skip_message
+    # Reconnect paths still see a non-retryable error, so a mid-run unpair is parked, not retried forever.
+    assert adapter.fatal_error_code == "whatsapp_not_paired" and adapter.fatal_error_retryable is False
 
 
 @pytest.mark.asyncio

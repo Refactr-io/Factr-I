@@ -474,7 +474,7 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
             if not ok():
                 logger.warning(*warn_args)
                 if code == "whatsapp_not_paired":
-                    self._set_startup_skipped(message)
+                    self._set_startup_skipped(code, message)
                 else:
                     self._set_fatal_error(code, message, retryable=False)
                 return False

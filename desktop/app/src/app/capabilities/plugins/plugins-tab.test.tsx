@@ -19,12 +19,10 @@ vi.mock('@/lib/plugin-catalog', async importOriginal => ({
 function catalogRow(name: string, extra: Record<string, unknown> = {}) {
   return {
     description: '',
-    installed: false,
     name,
     repo: `https://github.com/example/${name}`,
     tier: 'community',
     title: name,
-    updateAvailable: false,
     ...extra
   }
 }
@@ -64,7 +62,8 @@ describe('PluginsTab', () => {
     $agentPlugins.set([])
     $agentPluginsStatus.set('ready')
     closePluginInstallRequest()
-    requestGateway.mockClear()
+    requestGateway.mockReset()
+    requestGateway.mockResolvedValue({ plugins: [] })
     catalogRows = []
   })
 
@@ -326,7 +325,9 @@ describe('PluginsTab catalog UX', () => {
     $agentPlugins.set([])
     $agentPluginsStatus.set('ready')
     closePluginInstallRequest()
-    requestGateway.mockClear()
+    requestGateway.mockReset()
+    requestGateway.mockResolvedValue({ plugins: [] })
+    catalogRows = []
   })
 
   afterEach(cleanup)
@@ -473,8 +474,8 @@ describe('PluginsTab catalog UX', () => {
         version: '1.0.0'
       }
     ])
-
-    catalogRows = [catalogRow('demo-weather', { installed: true })]
+    requestGateway.mockResolvedValue({ plugins: $agentPlugins.get() } as never)
+    catalogRows = [catalogRow('demo-weather')]
     render(<PluginsTab profile={null} />)
 
     // An installed, current entry offers no install: its button is disabled and no modal opens.
@@ -499,8 +500,8 @@ describe('PluginsTab catalog UX', () => {
         version: '1.0.0'
       }
     ])
-
-    catalogRows = [catalogRow('demo-weather', { installed: true, updateAvailable: true })]
+    requestGateway.mockResolvedValue({ plugins: $agentPlugins.get() } as never)
+    catalogRows = [catalogRow('demo-weather')]
     render(<PluginsTab profile={null} />)
     await clickCatalogInstall('demo-weather')
 

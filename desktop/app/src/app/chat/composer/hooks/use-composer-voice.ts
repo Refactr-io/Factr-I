@@ -8,12 +8,12 @@ import { triggerHaptic } from '@/lib/haptics'
 import { adoptSpokenReplySession, markAssistantIdSpoken, resolveSpokenReply } from '@/lib/spoken-reply'
 import { CONVERSATION_LEASE, READ_ALOUD_LEASE, syncTtsLease } from '@/lib/tts-lease'
 import { toLiveHistory } from '@/lib/voice-live'
-import { stopVoicePlayback } from '@/lib/voice-playback'
 import { clearWakeIndicator, syncWakeIndicatorWithVoice } from '@/lib/wake-indicator'
 import { $voiceConversationStartRequest, takeVoiceConversationStart } from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
 import { $gateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
+import { $sessionStates } from '@/store/session-states'
 import { $voiceLiveStatus, refreshVoiceLiveStatus, selectedVoiceChatMode } from '@/store/voice-live'
 import { $autoSpeakReplies, $voiceStopPhrase, setAutoSpeakReplies } from '@/store/voice-prefs'
 import { resumeWakeAfterVoice } from '@/store/wake-word'
@@ -29,9 +29,33 @@ import { useVoiceConversation } from './use-voice-conversation'
 import { useVoiceLiveConversation } from './use-voice-live-conversation'
 import { useVoiceRecorder } from './use-voice-recorder'
 
-/** True when the composer moved off a real session onto a different one (or a blank chat). */
-export function shouldResetVoiceForSession(previous: null | string | undefined, next: null | string | undefined) {
-  return Boolean(previous) && previous !== next
+const storedIdOf = (runtimeId: null | string | undefined) =>
+  runtimeId ? ($sessionStates.get()[runtimeId]?.storedSessionId ?? null) : null
+
+/**
+ * True when voice was running and the composer moved to a different conversation (or a blank chat).
+ * `previousStored`/`nextStored` are the stored-session ids behind the runtime ids: a runtime swap inside
+ * the same conversation (submit recovery, rebuilt runtime) keeps the call going, and so does a blank
+ * chat getting its first session (previous is null).
+ */
+export function shouldResetVoiceForSession({
+  nextRuntime,
+  nextStored,
+  owned,
+  previousRuntime,
+  previousStored
+}: {
+  nextRuntime: null | string | undefined
+  nextStored: null | string | undefined
+  owned: boolean
+  previousRuntime: null | string | undefined
+  previousStored: null | string | undefined
+}) {
+  if (!owned || !previousRuntime || previousRuntime === nextRuntime) {
+    return false
+  }
+
+  return !(previousStored && previousStored === nextStored)
 }
 
 interface UseComposerVoiceArgs {
@@ -105,7 +129,12 @@ export function useComposerVoice({
     previousSessionIdRef.current = sessionId
   }, [sessionId])
 
-  const { cancel: cancelDictation, dictate, voiceActivityState, voiceStatus } = useVoiceRecorder({
+  const {
+    cancel: cancelDictation,
+    dictate,
+    voiceActivityState,
+    voiceStatus
+  } = useVoiceRecorder({
     focusInput,
     maxRecordingSeconds,
     onTranscript: insertText,
@@ -250,22 +279,42 @@ export function useComposerVoice({
 
   conversationRef.current = conversation
 
-  // Voice belongs to the session it started in. Leaving one for another (or for a blank new chat)
-  // ends the call, drops any dictation and silences playback, so the End/Stop controls never carry
-  // over. A first message in a blank chat (null -> id) keeps the call going.
-  const voiceSessionRef = useRef(sessionId)
+  // Voice belongs to the conversation it started in. Moving to another one (or a blank chat) ends the
+  // call, drops dictation and silences playback, so End/Stop never carry over. Only a composer that
+  // owned voice at the previous commit resets, so side tiles never cut another composer's audio.
+  const voiceSessionRef = useRef({ owned: false, runtime: sessionId, stored: storedIdOf(sessionId) })
+  const cancelDictationRef = useRef(cancelDictation)
 
-  // eslint-disable-next-line no-restricted-syntax -- session-switch teardown of imperative recorder/playback state
+  cancelDictationRef.current = cancelDictation
+
+   
   useEffect(() => {
-    if (shouldResetVoiceForSession(voiceSessionRef.current, sessionId)) {
+    const prev = voiceSessionRef.current
+
+    if (
+      shouldResetVoiceForSession({
+        nextRuntime: sessionId,
+        nextStored: storedIdOf(sessionId),
+        owned: prev.owned,
+        previousRuntime: prev.runtime,
+        previousStored: prev.stored
+      })
+    ) {
       setVoiceConversationActive(false)
       void conversationRef.current.end()
-      cancelDictation()
-      stopVoicePlayback()
+      cancelDictationRef.current()
     }
+  }, [sessionId])
 
-    voiceSessionRef.current = sessionId
-  }, [cancelDictation, sessionId])
+  // Runs after the reset effect on every commit: the NEXT session change sees what this one owned.
+  // eslint-disable-next-line no-restricted-syntax -- commit-time snapshot of imperative state
+  useEffect(() => {
+    voiceSessionRef.current = {
+      owned: voiceConversationActive || voiceStatus !== 'idle',
+      runtime: sessionId,
+      stored: storedIdOf(sessionId)
+    }
+  })
 
   /** Turn the conversation on with the engine `voice.voice_chat_mode` selects,
    *  decided in the same state batch so the other engine never sees a frame of
