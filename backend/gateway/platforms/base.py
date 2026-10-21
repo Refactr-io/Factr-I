@@ -2133,6 +2133,14 @@ class BasePlatformAdapter(ABC):
             self._write_runtime_status_safe(
                 "disconnected", platform_state="disconnected", error_code=None, error_message=None)
 
+    # A platform that is enabled but not set up yet (e.g. WhatsApp before pairing) is a normal first-run
+    # state, not a fatal error: the runner skips it with a warning and keeps the gateway running.
+    startup_skip_message = property(lambda self: getattr(self, "_startup_skip_message", None))
+
+    def _set_startup_skipped(self, message: str) -> None:
+        self._running = False
+        self._startup_skip_message = message
+
     def _set_fatal_error(self, code: str, message: str, *, retryable: bool) -> None:
         self._running = False
         self._fatal_error_code, self._fatal_error_message = code, message

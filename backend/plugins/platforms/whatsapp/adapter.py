@@ -456,7 +456,9 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
         return True
 
     def _preflight(self) -> bool:
-        """Node + bridge script + creds.json present, else a non-retryable fatal error (an unpaired bridge only prints QR codes; retries would pay 30s each)."""
+        """Node + bridge script + creds.json present. Missing Node/bridge is a non-retryable fatal error; a missing
+        pairing is the normal first-run state, so the platform is skipped with a warning instead (an unpaired
+        bridge only prints QR codes; retries would pay 30s each)."""
         bridge_path = Path(self._bridge_script)
         creds_path = self._session_path / "creds.json"
         checks = (
@@ -471,7 +473,10 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
         for ok, warn_args, code, message in checks:
             if not ok():
                 logger.warning(*warn_args)
-                self._set_fatal_error(code, message, retryable=False)
+                if code == "whatsapp_not_paired":
+                    self._set_startup_skipped(message)
+                else:
+                    self._set_fatal_error(code, message, retryable=False)
                 return False
         logger.info("[%s] Bridge found at %s", self.name, bridge_path)
         return True
