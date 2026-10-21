@@ -140,3 +140,30 @@ def test_fs_read_data_url_returns_data_url_and_enforces_cap(client, tmp_path, mo
     assert ok.status_code == 200 and ok.json()["dataUrl"].startswith("data:application/pdf;base64,")
     monkeypatch.setattr(web_server, "_FS_DATA_URL_MAX_BYTES", 3)
     assert client.get("/api/fs/read-data-url", params={"path": str(target)}).status_code == 413
+
+
+@pytest.mark.parametrize("endpoint", ["/api/fs/read-data-url", "/api/fs/download"])
+@pytest.mark.parametrize("relative", ["vault/vault.key", "browser-profile/Default/Cookies"])
+def test_fs_readers_reject_vault_and_browser_profile(client, tmp_path, endpoint, relative):
+    target = tmp_path / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("SECRET=1")
+
+    response = client.get(endpoint, params={"path": str(target)})
+
+    assert response.status_code == 403
+    assert "SECRET" not in response.text
+
+
+@pytest.mark.parametrize("endpoint", ["/api/fs/read-data-url", "/api/fs/download"])
+def test_fs_readers_stay_inside_a_locked_files_root(client, tmp_path, monkeypatch, endpoint):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "ok.txt").write_text("ok")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("nope")
+    monkeypatch.setenv("FACTR_DASHBOARD_FILES_ROOT", str(root))
+
+    assert client.get(endpoint, params={"path": str(root / "ok.txt")}).status_code == 200
+    assert client.get(endpoint, params={"path": str(outside)}).status_code == 403
+    assert client.get(endpoint, params={"path": str(root / ".." / "outside.txt")}).status_code == 403
