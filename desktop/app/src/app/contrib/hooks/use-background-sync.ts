@@ -457,6 +457,9 @@ const ACTIVE_MESSAGING_SESSION_BACKSTOP_INTERVAL_MS = 30_000
 // alarming (and clicking the row appeared to "fix" it by touching the live
 // session). This snapshot is small and already polled at 1.5s by the TUI.
 const LIVE_SESSION_STATUS_POLL_INTERVAL_MS = 1_500
+// A gateway without change events (the native engine) can only be polled. Nothing to track while no
+// session is working, so that poll relaxes to this gap instead of hitting the backend every 1.5s forever.
+const LIVE_SESSION_STATUS_IDLE_POLL_INTERVAL_MS = 15_000
 // With change events the snapshot re-pulls on every sessions.changed tick, so
 // the interval only covers the degraded-socket edge the stream can't replay
 // (see rehydrateLiveSessionStatuses) — 30s is plenty for that.
@@ -704,6 +707,12 @@ export function windowIsActivelyViewed({
   return visibilityState === 'visible' && focused
 }
 
+/** Whether the no-change-events live-status poll should fire now: every tick while a session is
+ *  working or awaiting a response, otherwise only once the idle gap has passed. */
+export function liveStatusPollDue(now: number, lastRunAt: number, anySessionActive: boolean): boolean {
+  return anySessionActive || now - lastRunAt >= LIVE_SESSION_STATUS_IDLE_POLL_INTERVAL_MS
+}
+
 function visiblePoll(intervalMs: number, tick: () => void): () => void {
   const run = () => {
     // On macOS an unfocused or app-hidden BrowserWindow commonly remains
@@ -924,6 +933,7 @@ export function useBackgroundSync({
 
     let cancelled = false
     let inFlight = false
+    let lastPolledAt = 0
     let refreshPending = false
 
     const refreshLiveStatuses = async () => {
@@ -938,6 +948,7 @@ export function useBackgroundSync({
       }
 
       inFlight = true
+      lastPolledAt = Date.now()
       const stateAtRequest = $sessionStates.get()
 
       try {
@@ -969,7 +980,15 @@ export function useBackgroundSync({
 
     const dispose = visiblePoll(
       changeEventsAvailable ? LIVE_SESSION_STATUS_BACKSTOP_INTERVAL_MS : LIVE_SESSION_STATUS_POLL_INTERVAL_MS,
-      () => void refreshLiveStatuses()
+      () => {
+        const anyActive = Object.values($sessionStates.get()).some(
+          state => state.busy || state.needsInput || state.awaitingResponse
+        )
+
+        if (changeEventsAvailable || liveStatusPollDue(Date.now(), lastPolledAt, anyActive)) {
+          void refreshLiveStatuses()
+        }
+      }
     )
 
     void refreshLiveStatuses()
