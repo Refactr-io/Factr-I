@@ -189,7 +189,7 @@ def _pip_hook(module, label, installing, args, manual, on_install=(), always=())
 _PIP_POST_SETUP_HOOKS: dict = {
     "faster_whisper": _pip_hook(
         "faster_whisper", "faster-whisper", "Installing faster-whisper (model ~150MB downloads on first use)...",
-        ["-U", "faster-whisper", "--quiet"], "uv pip install -U faster-whisper",
+        ["faster-whisper==1.2.1", "av==17.0.0", "--quiet"], "uv pip install faster-whisper==1.2.1 av==17.0.0",
         on_install=("Model sizes: tiny, base (default), small, medium, large-v3",
                     "Change via stt.local.model in ~/.factr/config.yaml")),
     "kittentts": _pip_hook(
