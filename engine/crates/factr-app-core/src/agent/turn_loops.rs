@@ -91,6 +91,10 @@ impl Agent {
                 logging::warn(&format!("Subagent iteration limit ({cap}) reached; stopping the turn"));
                 break;
             }
+            if let Some(message) = self.budget_stop() {
+                logging::warn(&message);
+                break;
+            }
             let repaired = self.repair_missing_tool_outputs();
             if repaired > 0 {
                 logging::warn(&format!(

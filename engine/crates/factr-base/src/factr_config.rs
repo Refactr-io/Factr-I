@@ -58,6 +58,17 @@ pub struct Terminal {
     pub reduce_output_timeout_ms: Option<u64>,
 }
 
+/// `budget.*`: an optional hard stop on what one session may spend. Both unset (the default) means no
+/// limit and the engine never looks at usage.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Budget {
+    /// `budget.max_cost_usd`: stop starting new requests once the session's estimated spend reaches it.
+    /// Only enforced for routes that can be priced per token.
+    pub max_cost_usd: Option<f64>,
+    /// `budget.max_tokens`: stop once the session's input plus output tokens reach this.
+    pub max_tokens: Option<u64>,
+}
+
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Checkpoints {
@@ -153,6 +164,7 @@ pub struct FactrConfig {
     pub web: Web,
     pub terminal: Terminal,
     pub checkpoints: Checkpoints,
+    pub budget: Budget,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
     pub delegation: Delegation,
@@ -325,6 +337,10 @@ impl FactrConfig {
                 max_memory_mb: path(&root, "terminal.max_memory_mb").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
                 reduce_output: path(&root, "terminal.reduce_output").and_then(as_bool).unwrap_or(false),
                 reduce_output_timeout_ms: path(&root, "terminal.reduce_output_timeout_ms").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).map(|n| n.clamp(100, 10_000)),
+            },
+            budget: Budget {
+                max_cost_usd: path(&root, "budget.max_cost_usd").and_then(as_f64).filter(|n| n.is_finite() && *n > 0.0),
+                max_tokens: path(&root, "budget.max_tokens").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
             },
             checkpoints: Checkpoints {
                 enabled: path(&root, "checkpoints.enabled").and_then(as_bool),
@@ -524,6 +540,13 @@ mod tests {
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: 0}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: -5}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("model: x").memory, Memory::default());
+    }
+
+    #[test]
+    fn budget_is_unset_unless_positive_numbers_are_given() {
+        assert_eq!(FactrConfig::parse("").budget, Budget::default());
+        assert_eq!(FactrConfig::parse("budget: {max_cost_usd: 0, max_tokens: -1}").budget, Budget::default());
+        assert_eq!(FactrConfig::parse("budget: {max_cost_usd: '2.5', max_tokens: 500000}").budget, Budget { max_cost_usd: Some(2.5), max_tokens: Some(500_000) });
     }
 
     #[test]
