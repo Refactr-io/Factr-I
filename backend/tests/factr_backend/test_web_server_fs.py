@@ -116,3 +116,27 @@ def test_fs_endpoints_require_auth(tmp_path):
     assert list_response.status_code == 401
     assert read_response.status_code == 401
     assert default_response.status_code == 401
+
+
+@pytest.mark.parametrize("endpoint", ["/api/fs/read-data-url", "/api/fs/download"])
+def test_fs_readers_resolve_dotdot_and_symlinks_before_the_sensitive_check(client, tmp_path, endpoint):
+    (tmp_path / ".env").write_text("SECRET=1")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "link.txt").symlink_to(tmp_path / ".env")
+
+    for raw in (str(tmp_path / "docs" / ".." / ".env"), str(tmp_path / "docs" / "link.txt")):
+        response = client.get(endpoint, params={"path": raw})
+        assert response.status_code == 403, raw
+        assert "SECRET" not in response.text
+
+    assert client.get(endpoint, params={"path": str(tmp_path / "docs" / ".." / "missing.pdf")}).status_code == 404
+    assert client.get(endpoint, params={"path": str(tmp_path / "docs")}).status_code in (400, 404)
+
+
+def test_fs_read_data_url_returns_data_url_and_enforces_cap(client, tmp_path, monkeypatch):
+    target = tmp_path / "a.pdf"
+    target.write_bytes(b"%PDF-1")
+    ok = client.get("/api/fs/read-data-url", params={"path": str(target)})
+    assert ok.status_code == 200 and ok.json()["dataUrl"].startswith("data:application/pdf;base64,")
+    monkeypatch.setattr(web_server, "_FS_DATA_URL_MAX_BYTES", 3)
+    assert client.get("/api/fs/read-data-url", params={"path": str(target)}).status_code == 413

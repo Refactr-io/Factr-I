@@ -104,7 +104,9 @@ export function gatewayFileRequestPaths(
   sessionId?: string
 ): GatewayFileRequestPaths {
   const encodedPath = encodeURIComponent(filePath)
-  const session = sessionId === undefined ? '' : `&session_id=${encodeURIComponent(sessionId)}`
+  // The packaged engine answers /api/fs/* with 404 feature_not_requested (a boot probe) unless the
+  // request carries feature=1; both routes are user actions, so say so.
+  const session = `${sessionId === undefined ? '' : `&session_id=${encodeURIComponent(sessionId)}`}&feature=1`
 
   return {
     dataUrl: scopePath(`/api/fs/read-data-url?path=${encodedPath}${session}`),

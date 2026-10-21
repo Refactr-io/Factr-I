@@ -592,7 +592,11 @@ fn capabilities_request(req: &Request) -> bool {
         // (Settings > Messaging > Restart polls gateway-restart).
         // `GET /api/model/recommended-default` is sent only after a sign-in or key save succeeded
         // (onboarding's model confirm), never at boot.
-        return under("/api/tools/toolsets")
+        // `GET /api/fs/download` and `/api/fs/read-data-url` are the Download / Open-in-preview buttons
+        // on a gateway-hosted file: a click, never a boot probe.
+        return path == "/api/fs/download"
+            || path == "/api/fs/read-data-url"
+            || under("/api/tools/toolsets")
             || under("/api/tools/computer-use")
             || under("/api/actions")
             || oauth_action
@@ -1763,6 +1767,8 @@ mod capabilities_gate_tests {
             ("GET", "/api/profiles/default/soul"),
             ("PUT", "/api/profiles/default/soul"),
             ("POST", "/api/browser/act"),
+            ("GET", "/api/fs/download"),
+            ("GET", "/api/fs/read-data-url"),
         ] {
             assert!(capabilities_request(&req(method, path)), "{method} {path}");
         }
