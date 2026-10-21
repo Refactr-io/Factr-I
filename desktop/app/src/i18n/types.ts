@@ -1800,7 +1800,12 @@ export interface Translations {
       catalogTitle: string
       catalogBrowse: string
       catalogHide: string
-      catalogHint: string
+      catalogLoading: string
+      catalogLoadFailed: string
+      catalogEmpty: string
+      catalogInstall: string
+      catalogInstalled: string
+      catalogUpdate: string
       alreadyInstalled: (name: string) => string
       catalogProvenance: (sha: string) => string
       pinnedProvenance: (sha: string) => string

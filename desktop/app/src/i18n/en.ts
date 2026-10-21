@@ -2060,9 +2060,13 @@ export const en: Translations = {
       },
       catalogTitle: 'Plugin catalog',
       catalogBrowse: 'Browse',
-      catalogHide: 'Hide the catalog browser',
-      catalogHint:
-        'Hit "+ Add to this Agent" on any plugin. Reviewed entries install at their pinned commit into the selected profile. Bundled agent+desktop plugins offer both halves.',
+      catalogHide: 'Hide',
+      catalogLoading: 'Loading the catalog...',
+      catalogLoadFailed: 'Could not load the plugin catalog.',
+      catalogEmpty: 'No curated plugins are listed yet. Use Install from Git to add one.',
+      catalogInstall: 'Install',
+      catalogInstalled: 'Installed',
+      catalogUpdate: 'Update',
       alreadyInstalled: (name: string) => `${name} is already installed in this profile.`,
       catalogProvenance: (sha: string) => `Installed from the Factr-I catalog${sha ? ` at pin ${sha}` : ''}.`,
       pinnedProvenance: (sha: string) =>
