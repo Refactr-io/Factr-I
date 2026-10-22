@@ -83,7 +83,9 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
         let mut bytes = Vec::new();
         tokio::io::AsyncReadExt::read_to_end(&mut stdout, &mut bytes).await.ok()?;
         let status = child.wait().await.ok()?;
-        status.success().then_some(bytes)
+        // 0: rewritten. 3: rewritten, and rtk's own permission rules say "ask": the approval gate already
+        // judged the original command, so it is still usable. 1 (no equivalent), 2 (deny) and the rest: run as is.
+        matches!(status.code(), Some(0 | 3)).then_some(bytes)
     };
     let bytes = tokio::time::timeout(timeout, run).await.ok().flatten()?;
     let rewritten = String::from_utf8(bytes).ok()?.trim().to_string();
@@ -127,6 +129,17 @@ mod tests {
             assert_eq!(rewrite("git status", Duration::from_secs(5)).await.as_deref(), Some("rtk git status"));
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn rewritten_with_the_ask_exit_code_is_still_used_but_deny_and_no_equivalent_are_not() {
+        with_fake(r#"echo "rtk $2"; exit 3"#, || async {
+            assert_eq!(rewrite("git status", Duration::from_secs(5)).await.as_deref(), Some("rtk git status"));
+        })
+        .await;
+        for code in [1, 2, 4] {
+            with_fake(&format!(r#"echo "rtk $2"; exit {code}"#), || async { assert_eq!(rewrite("git status", Duration::from_secs(5)).await, None) }).await;
+        }
     }
 
     #[tokio::test]
