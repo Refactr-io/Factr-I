@@ -129,7 +129,6 @@ async fn repl_is_deferred_until_loaded() {
 /// Points `FACTR_CONFIG_HOME` at a config with (or without) `tools.routing` until dropped.
 struct RoutingConfig {
     dir: std::path::PathBuf,
-    before: Option<std::ffi::OsString>,
 }
 
 impl RoutingConfig {
@@ -137,18 +136,14 @@ impl RoutingConfig {
         let dir = std::env::temp_dir().join(format!("routing-{}-{}", std::process::id(), rand::random::<u64>()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("config.yaml"), if on { "tools: {routing: true}\n" } else { "" }).unwrap();
-        let before = std::env::var_os("FACTR_CONFIG_HOME");
         crate::env::set_var("FACTR_CONFIG_HOME", &dir);
-        Self { dir, before }
+        Self { dir }
     }
 }
 
 impl Drop for RoutingConfig {
     fn drop(&mut self) {
-        match self.before.take() {
-            Some(v) => crate::env::set_var("FACTR_CONFIG_HOME", v),
-            None => crate::env::remove_var("FACTR_CONFIG_HOME"),
-        }
+        crate::env::remove_var("FACTR_CONFIG_HOME");
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }

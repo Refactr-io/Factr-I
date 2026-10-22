@@ -92,6 +92,30 @@ pub struct ToolsView {
     pub routing: bool,
 }
 
+/// `local_models.*`: guardrails for models served on this machine or the local network.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct LocalModels {
+    /// `local_models.silence_timeout_secs`: how long a local endpoint may stay silent before the stream is
+    /// treated as dead. Raises the normal limit for local endpoints only; unset leaves it alone.
+    pub silence_timeout_secs: Option<u64>,
+}
+
+/// True when `api_base` points at this machine or a private network address.
+pub fn is_local_endpoint(api_base: &str) -> bool {
+    let Some(host) = url::Url::parse(api_base).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)) else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
+        Err(_) => false,
+    }
+}
+
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Checkpoints {
@@ -189,6 +213,7 @@ pub struct FactrConfig {
     pub checkpoints: Checkpoints,
     pub budget: Budget,
     pub tools: ToolsView,
+    pub local_models: LocalModels,
     pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
@@ -374,6 +399,9 @@ impl FactrConfig {
                     .filter_map(as_text)
                     .take(100)
                     .collect(),
+            },
+            local_models: LocalModels {
+                silence_timeout_secs: path(&root, "local_models.silence_timeout_secs").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0).map(|n| n.min(7200)),
             },
             tools: ToolsView { routing: path(&root, "tools.routing").and_then(as_bool).unwrap_or(false) },
             budget: Budget {
@@ -589,6 +617,24 @@ mod tests {
         let c = FactrConfig::parse("approvals:\n  gui_automation_ask: true\n  always_ask: ['^cargo publish', '  ']\n").approval_extras;
         assert!(c.gui_automation_ask);
         assert_eq!(c.always_ask, vec!["^cargo publish".to_string()]);
+    }
+
+    #[test]
+    fn local_endpoints_are_recognised_and_hosted_ones_are_not() {
+        for local in ["http://localhost:11434/v1", "http://127.0.0.1:1234/v1", "http://[::1]:8080", "http://192.168.1.20:8000/v1", "http://10.0.0.5/v1", "http://172.16.4.1/v1", "http://box.local:9/v1"] {
+            assert!(is_local_endpoint(local), "{local}");
+        }
+        for hosted in ["https://api.openai.com/v1", "https://openrouter.ai/api/v1", "http://172.32.0.1/v1", "not a url", ""] {
+            assert!(!is_local_endpoint(hosted), "{hosted}");
+        }
+    }
+
+    #[test]
+    fn the_local_silence_timeout_is_unset_unless_positive_and_capped() {
+        assert_eq!(FactrConfig::parse("").local_models.silence_timeout_secs, None);
+        assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 0}").local_models.silence_timeout_secs, None);
+        assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 900}").local_models.silence_timeout_secs, Some(900));
+        assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 999999}").local_models.silence_timeout_secs, Some(7200));
     }
 
     #[test]

@@ -19,6 +19,16 @@ fn local_endpoint_troubleshooting_hint(api_base: &str, model: &str) -> &'static 
     "Hint: check network connectivity, DNS/TLS, that the base URL includes the API version (usually /v1), and that the model exists on the provider."
 }
 
+/// The silence limit for this endpoint: `local_models.silence_timeout_secs` raises it for a model served on
+/// this machine or network (slow hardware can think quietly for minutes), never lowers it, and leaves
+/// hosted endpoints alone.
+fn local_silence_timeout(api_base: &str, base: std::time::Duration) -> std::time::Duration {
+    match factr_base::factr_config::current().local_models.silence_timeout_secs {
+        Some(secs) if factr_base::factr_config::is_local_endpoint(api_base) => base.max(std::time::Duration::from_secs(secs)),
+        _ => base,
+    }
+}
+
 // ============================================================================
 // SSE Stream Parser
 // ============================================================================
@@ -175,7 +185,7 @@ async fn stream_response(
         }))
         .await;
     let connect_start = std::time::Instant::now();
-    let stream_idle_timeout = factr_base::provider::stream_idle_timeout();
+    let stream_idle_timeout = local_silence_timeout(&api_base, factr_base::provider::stream_idle_timeout());
 
     let url = format!("{}/chat/completions", api_base);
     let mut req = apply_kimi_coding_agent_headers(
@@ -400,5 +410,35 @@ mod tests {
         assert!(is_retryable_error(
             "chat request failed\n  status: 429 unknown\n  response: {}"
         ));
+    }
+}
+
+#[cfg(test)]
+mod local_silence_tests {
+    use super::local_silence_timeout;
+    use std::time::Duration;
+
+    #[test]
+    fn unset_changes_nothing_and_the_setting_only_raises_local_endpoints() {
+        let _env = factr_base::storage::lock_test_env();
+        let dir = std::env::temp_dir().join(format!("silence-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let before = std::env::var_os("FACTR_CONFIG_HOME");
+        let base = Duration::from_secs(180);
+        factr_base::env::set_var("FACTR_CONFIG_HOME", &dir);
+        // Setting absent: identical for every endpoint.
+        assert_eq!(local_silence_timeout("http://localhost:11434/v1", base), base);
+        std::fs::write(dir.join("config.yaml"), "local_models: {silence_timeout_secs: 900}\n").unwrap();
+        assert_eq!(local_silence_timeout("http://localhost:11434/v1", base), Duration::from_secs(900));
+        assert_eq!(local_silence_timeout("http://192.168.1.9:8000/v1", base), Duration::from_secs(900));
+        assert_eq!(local_silence_timeout("https://api.openai.com/v1", base), base, "hosted endpoints are left alone");
+        // It never lowers the limit.
+        std::fs::write(dir.join("config.yaml"), "local_models: {silence_timeout_secs: 60}\n").unwrap();
+        assert_eq!(local_silence_timeout("http://localhost:11434/v1", base), base);
+        match before {
+            Some(v) => factr_base::env::set_var("FACTR_CONFIG_HOME", v),
+            None => factr_base::env::remove_var("FACTR_CONFIG_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
