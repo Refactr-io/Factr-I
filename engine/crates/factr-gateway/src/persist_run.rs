@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use std::time::Duration;
 
 const DEFAULT_RETRIES: i64 = 3;
+const STALE_AFTER: Duration = Duration::from_secs(3600);
 
 /// `FACTR_PERSIST=0|1` overrides `persistence.enabled` (default on).
 pub(crate) fn enabled() -> bool {
@@ -29,6 +30,8 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
     if checks.is_empty() {
         return false;
     }
+    // Rows of runs that died or lost the cleanup race (a gate finishing after its run timed out).
+    let _ = store.purge_stale_unattended(STALE_AFTER.as_millis() as i64);
     let retries = factr_base::factr_config::current().persistence.max_retries.map_or(DEFAULT_RETRIES, i64::from);
     // One check may use up to a third of the run (at least a minute); the wall budget leaves room for one more.
     let gate_secs = (timeout.as_secs() / 3).clamp(60, 900) as i64;
@@ -77,14 +80,16 @@ impl Usage {
     }
 }
 
-/// End of the run: what the check did, then the goal row and its checkpoint pins are removed.
+/// End of the run: what the check did, then the goal row and its checkpoint pins are removed. A gate still
+/// running at a timeout may write its row back afterwards; `start` purges such leftovers, and the driver
+/// never reads an unattended goal.
 pub(crate) fn finish(store: &ControlStore, session_id: &str) -> Value {
     let goal = store.get_goal(session_id).ok().flatten();
     let report = goal.as_ref().map_or(Value::Null, |g| {
         json!({
             "check_passed": g.status == GoalStatus::Done,
             "turns": g.turns_used,
-            "stopped": g.paused_reason,
+            "stopped": g.paused_reason.clone().or_else(|| (g.status == GoalStatus::Active).then(|| "the run ended while the check was still failing".to_string())),
             "attempts": g.attempt_log,
         })
     });

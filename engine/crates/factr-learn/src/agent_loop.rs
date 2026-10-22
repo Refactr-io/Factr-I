@@ -158,7 +158,7 @@ pub fn run_command(command: &str, cwd: Option<&Path>, timeout: Duration) -> Gate
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(err) => {
-            return GateResult { passed: false, exit_code: 127, output: format!("failed to spawn gate: {err}") };
+            return GateResult { passed: false, exit_code: 127, output: format!("failed to spawn gate: {err}"), failing_report: false };
         }
     };
     // Keep only the tail of each stream while draining.
@@ -207,8 +207,10 @@ pub fn run_command(command: &str, cwd: Option<&Path>, timeout: Duration) -> Gate
     if timed_out {
         text.push_str(&format!("\ngate timed out after {}s", timeout.as_secs()));
     }
+    // The report is read before the display tail is cut, so a long diagnostic cannot push a failing verdict out.
+    let failing_report = crate::goal_ratchet::report_failed(&text);
     let output = text.chars().rev().take(3000).collect::<String>().chars().rev().collect();
-    GateResult { passed: code == 0, exit_code: code, output }
+    GateResult { passed: code == 0, exit_code: code, output, failing_report }
 }
 
 #[derive(Debug, Clone)]
@@ -216,6 +218,8 @@ pub struct GateResult {
     pub passed: bool,
     pub exit_code: i64,
     pub output: String,
+    /// A structured report in the full output says the check failed (see `goal_ratchet::report_failed`).
+    pub failing_report: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1100,6 +1104,26 @@ impl ControlStore {
         Ok(())
     }
 
+    /// Delete unattended goals untouched for `older_than_ms`: a run that died mid-turn (or whose cleanup lost a
+    /// race with its last gate) leaves a row nothing else would ever clear.
+    pub fn purge_stale_unattended(&self, older_than_ms: i64) -> Result<usize> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let cutoff = now_ms() - older_than_ms;
+        let mut stale = Vec::new();
+        let mut stmt = conn.prepare("SELECT session_id, state, updated_at_ms FROM session_goals")?;
+        for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))? {
+            let (id, state, updated) = row?;
+            if updated < cutoff && serde_json::from_str::<Value>(&state).is_ok_and(|v| v["unattended"] == true) {
+                stale.push(id);
+            }
+        }
+        drop(stmt);
+        for id in &stale {
+            conn.execute("DELETE FROM session_goals WHERE session_id=?1", [id])?;
+        }
+        Ok(stale.len())
+    }
+
     /// Sessions with an active goal or scheduler: the
     /// gateway driver's work list (empty means it has nothing to wake for).
     pub fn active_sessions(&self) -> Result<Vec<String>> {
@@ -1182,7 +1206,7 @@ fn run_gates_early(goal: &mut SessionGoal, cwd: Option<&Path>, o: &mut TurnObs) 
     let mut results = Vec::new();
     for gate in &mut goal.gates {
         let mut result = run_gate(gate, cwd);
-        result.passed = result.passed && !crate::goal_ratchet::report_failed(&result.output);
+        result.passed = result.passed && !result.failing_report;
         o.scores.insert(command_key(&gate.command), score_of(result.passed, &result.output));
         o.verified |= result.passed;
         if !result.passed {
@@ -1241,6 +1265,8 @@ pub fn after_turn_in(
 
     if let Some(mut goal) = store.get_goal(session_id)? {
         if goal.status == GoalStatus::Active {
+            // An unattended run has no driver to resume a parked goal: it never waits on subagents.
+            let subagents_running = subagents_running && !goal.unattended;
             goal.turns_used += 1;
             goal.tokens_used += tokens_this_turn;
             let mut o = obs.unwrap_or_default();
@@ -2337,6 +2363,31 @@ mod tests {
         assert!(g.completion_verification.unwrap().contains("the task's check passed"));
         assert!(g.attempt_log.last().unwrap().contains("ver=pass"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failing_report_followed_by_long_diagnostics_still_fails_and_a_run_never_parks_on_subagents() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "echo '{\"exec_acc\": false}'; head -c 6000 /dev/zero | tr '\\0' x; echo", 1);
+        // Sub-agents running would park an attended goal with no continuation; an unattended run goes on.
+        assert!(matches!(after_turn(&store, "u", 0, true, false).unwrap(), Some(Continuation::Goal(_))), "the report beyond the 3000-char tail still fails the gate");
+        assert!(!store.get_goal("u").unwrap().unwrap().waiting_on_subagents);
+    }
+
+    #[test]
+    fn stale_unattended_goals_are_purged_and_attended_ones_never() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "old", "true", 1);
+        let mut attended = SessionGoal::new("mine");
+        attended.updated_at_ms = 1;
+        store.set_goal("mine", Some(&attended)).unwrap();
+        let mut old = store.get_goal("old").unwrap().unwrap();
+        old.updated_at_ms = 1;
+        store.set_goal("old", Some(&old)).unwrap();
+        unattended(&store, "fresh", "true", 1);
+        assert_eq!(store.purge_stale_unattended(3_600_000).unwrap(), 1);
+        assert!(store.get_goal("old").unwrap().is_none() && store.get_goal("fresh").unwrap().is_some() && store.get_goal("mine").unwrap().is_some());
     }
 
     #[cfg(unix)]

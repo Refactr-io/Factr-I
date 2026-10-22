@@ -3996,6 +3996,11 @@ pub(crate) async fn agent_run(
             Ok(Ok(payload)) => {
                 let mut reply = turn_reply(&payload, &session_id, opts.surface);
                 if !persistence.is_null() {
+                    // The run's outcome is the check's: a finished turn that leaves the check failing is a failed run.
+                    if persistence["check_passed"] == false && reply["ok"] == true {
+                        reply["ok"] = json!(false);
+                        reply["error"] = json!(format!("the task's check did not pass: {}", persistence["stopped"].as_str().unwrap_or("it still fails")));
+                    }
                     reply["persistence"] = persistence;
                 }
                 reply

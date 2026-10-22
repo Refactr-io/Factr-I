@@ -149,9 +149,9 @@ pub fn parse_counts(out: &str) -> Option<(u32, u32)> {
 }
 
 /// A boolean field with one of these words in its name is a pass/fail verdict (`"exec_acc": false`).
-const VERDICT_KEYS: [&str; 10] = ["acc", "pass", "ok", "correct", "success", "valid", "match", "equal", "allclose", "verified"];
+const VERDICT_KEYS: [&str; 13] = ["acc", "pass", "passed", "passes", "ok", "correct", "success", "valid", "match", "matches", "equal", "allclose", "verified"];
 /// An integer field named like this counts failures (`"failed": 2`).
-const FAIL_COUNT_KEYS: [&str; 7] = ["failed", "failures", "failure", "errors", "mismatch", "mismatches", "num_failed"];
+const FAIL_COUNT_KEYS: [&str; 6] = ["failed", "failures", "failure", "errors", "mismatch", "mismatches"];
 
 /// `"key": true|false|N` pairs of a JSON-looking report, key lowercased and value as written.
 fn report_fields(out: &str) -> Vec<(String, String)> {
@@ -176,11 +176,13 @@ fn report_fields(out: &str) -> Vec<(String, String)> {
 /// check that exits 0 and prints its result (an evaluator script).
 pub fn report_failed(out: &str) -> bool {
     report_fields(out).iter().any(|(key, value)| {
-        let counter = FAIL_COUNT_KEYS.iter().any(|k| key == k || key.ends_with(&format!("_{k}")) || key.starts_with(&format!("{k}_")));
-        if counter {
+        // Whole words only: `exec_acc` is a verdict, `use_fp16_accumulation` is a setting.
+        let words: Vec<&str> = key.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+        let has = |list: &[&str]| words.iter().any(|w| list.contains(w));
+        if has(&FAIL_COUNT_KEYS) {
             value.parse::<u64>().is_ok_and(|n| n > 0)
         } else {
-            value == "false" && VERDICT_KEYS.iter().any(|k| key.contains(k))
+            value == "false" && has(&VERDICT_KEYS)
         }
     })
 }
@@ -437,7 +439,7 @@ mod tests {
         for failing in [r#"{"call_acc": true, "exec_acc": false}"#, r#"{"failed": 2, "passed": 7}"#, r#"{"num_failed": 1}"#, "result {\"all_correct\": false}"] {
             assert!(report_failed(failing), "{failing}");
         }
-        for fine in [r#"{"exec_acc": true}"#, r#"{"failed": 0, "passed": 4}"#, r#"{"accuracy": 0.2, "success_rate": 0.0}"#, "plain text, no report", r#"{"debug": false}"#, ""] {
+        for fine in [r#"{"exec_acc": true, "use_fp16_accumulation": false}"#, r#"{"failed": 0, "passed": 4}"#, r#"{"accuracy": 0.2, "success_rate": 0.0}"#, "plain text, no report", r#"{"debug": false}"#, ""] {
             assert!(!report_failed(fine), "{fine}");
         }
     }
