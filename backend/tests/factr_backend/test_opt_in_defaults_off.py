@@ -12,6 +12,7 @@ def test_new_controls_are_off_by_default():
     assert DEFAULT_CONFIG["approvals"]["always_ask"] == []
     assert DEFAULT_CONFIG["budget"] == {"max_cost_usd": 0, "max_tokens": 0}
     assert DEFAULT_CONFIG["local_models"] == {"silence_timeout_secs": 0}
+    assert DEFAULT_CONFIG["observability"] == {"otlp_endpoint": ""}
 
 
 def test_every_new_setting_appears_in_the_settings_schema():
@@ -19,5 +20,6 @@ def test_every_new_setting_appears_in_the_settings_schema():
         "terminal.reduce_output", "terminal.reduce_output_timeout_ms", "tools.routing", "compression.deterministic",
         "compression.llm_second_pass", "approvals.gui_automation_ask", "approvals.always_ask",
         "budget.max_cost_usd", "budget.max_tokens", "local_models.silence_timeout_secs",
+        "observability.otlp_endpoint",
     ):
         assert CONFIG_SCHEMA[key]["description"] and "→" not in CONFIG_SCHEMA[key]["description"], key

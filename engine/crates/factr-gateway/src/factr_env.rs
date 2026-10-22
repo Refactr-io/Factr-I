@@ -109,7 +109,7 @@ fn resolve_in(home: &Path, key: &str) -> Option<String> {
     parse(&std::fs::read_to_string(home.join(".env")).ok()?, key)
 }
 
-fn resolve(key: &str) -> Option<String> {
+pub(crate) fn resolve(key: &str) -> Option<String> {
     resolve_in(&factr_base::factr_config::home()?, key)
 }
 

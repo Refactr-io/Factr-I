@@ -12,6 +12,7 @@ const PLACEMENT: Record<string, string> = {
   'compression.deterministic': 'memory',
   'compression.llm_second_pass': 'memory',
   'local_models.silence_timeout_secs': 'advanced',
+  'observability.otlp_endpoint': 'advanced',
   'terminal.reduce_output': 'advanced',
   'terminal.reduce_output_timeout_ms': 'advanced',
   'tools.routing': 'advanced'

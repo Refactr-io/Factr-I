@@ -450,6 +450,9 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   localModels: {
     silenceTimeoutSecs: 'Local Model Silence Limit (s)'
   },
+  observability: {
+    otlpEndpoint: 'Trace Export Address (OTLP)'
+  },
   tools: {
     routing: 'Tool Routing'
   },
@@ -645,6 +648,10 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   localModels: {
     silenceTimeoutSecs:
       'How long a model on this machine or network may stay silent before its stream is treated as dead. 0 keeps the normal limit.'
+  },
+  observability: {
+    otlpEndpoint:
+      'Send finished turns as OpenTelemetry traces to this OTLP/HTTP address, for example http://localhost:4318. Only ids, counts, durations, statuses and model names are sent, never prompts or replies. Leave blank to keep it off. A key for the receiver goes in the FACTR_OTLP_HEADERS environment variable (name=value).'
   },
   tools: {
     routing:
@@ -856,6 +863,7 @@ export const SECTIONS: DesktopConfigSection[] = [
       'budget.max_cost_usd',
       'budget.max_tokens',
       'local_models.silence_timeout_secs',
+      'observability.otlp_endpoint',
       'terminal.docker_image',
       'terminal.singularity_image',
       'terminal.modal_image',

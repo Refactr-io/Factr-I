@@ -89,7 +89,8 @@ const CONFIG_SUBPAGE_DEFINITIONS: Record<string, ConfigSubpageDefinition[]> = {
         'agent.service_tier',
         'budget.max_cost_usd',
         'budget.max_tokens',
-        'local_models.silence_timeout_secs'
+        'local_models.silence_timeout_secs',
+        'observability.otlp_endpoint'
       ]
     },
     { id: 'tools', labelKey: 'advancedTools', fields: ['toolsets', 'agent.tool_use_enforcement', 'tools.routing'] },

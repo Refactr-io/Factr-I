@@ -100,6 +100,13 @@ pub struct LocalModels {
     pub silence_timeout_secs: Option<u64>,
 }
 
+/// `observability.*`: where finished turns are exported as OpenTelemetry traces (off unless an endpoint is set).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ObservabilityExport {
+    /// `observability.otlp_endpoint`: an OTLP/HTTP base URL (`http(s)://host:4318`); the traces go to `/v1/traces`.
+    pub otlp_endpoint: Option<String>,
+}
+
 /// True when `api_base` points at this machine or a private network address.
 pub fn is_local_endpoint(api_base: &str) -> bool {
     let Some(host) = url::Url::parse(api_base).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)) else {
@@ -214,6 +221,7 @@ pub struct FactrConfig {
     pub budget: Budget,
     pub tools: ToolsView,
     pub local_models: LocalModels,
+    pub observability_export: ObservabilityExport,
     pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
@@ -400,6 +408,9 @@ impl FactrConfig {
                     .take(100)
                     .collect(),
             },
+            observability_export: ObservabilityExport {
+                otlp_endpoint: path(&root, "observability.otlp_endpoint").and_then(as_text).map(|u| u.trim().trim_end_matches('/').to_string()).filter(|u| u.starts_with("http://") || u.starts_with("https://")),
+            },
             local_models: LocalModels {
                 silence_timeout_secs: path(&root, "local_models.silence_timeout_secs").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0).map(|n| n.min(7200)),
             },
@@ -504,6 +515,17 @@ pub fn load_from(dir: &Path) -> Arc<FactrConfig> {
 /// The live config for this process (`$FACTR_CONFIG_HOME`).
 pub fn current() -> Arc<FactrConfig> {
     home().map(|dir| load_from(&dir)).unwrap_or_default()
+}
+
+/// `a=b, c=d` into pairs (at most 10, names and values trimmed, empty names dropped): the form of
+/// `FACTR_OTLP_HEADERS`, which carries credentials and so lives in the environment (`.env`), not config.yaml.
+pub fn parse_headers(raw: &str) -> Vec<(String, String)> {
+    raw.split(',')
+        .filter_map(|pair| pair.split_once('='))
+        .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+        .filter(|(k, _)| !k.is_empty())
+        .take(10)
+        .collect()
 }
 
 #[cfg(test)]
@@ -631,6 +653,17 @@ mod tests {
         let c = FactrConfig::parse("approvals:\n  gui_automation_ask: true\n  always_ask: ['^cargo publish', '  ']\n").approval_extras;
         assert!(c.gui_automation_ask);
         assert_eq!(c.always_ask, vec!["^cargo publish".to_string()]);
+    }
+
+    #[test]
+    fn the_otlp_export_needs_an_http_endpoint_and_reads_standard_header_pairs() {
+        assert_eq!(FactrConfig::parse("").observability_export, ObservabilityExport::default());
+        let c = FactrConfig::parse("observability:\n  otlp_endpoint: ' https://cloud.example.com:4318/ '\n").observability_export;
+        assert_eq!(c.otlp_endpoint.as_deref(), Some("https://cloud.example.com:4318"));
+        assert_eq!(parse_headers("Authorization=Basic abc, x-team = t1,=bad, novalue"), vec![("Authorization".to_string(), "Basic abc".to_string()), ("x-team".to_string(), "t1".to_string())]);
+        for bad in ["ftp://x", "localhost:4318", ""] {
+            assert_eq!(FactrConfig::parse(&format!("observability: {{otlp_endpoint: '{bad}'}}")).observability_export.otlp_endpoint, None, "{bad}");
+        }
     }
 
     #[test]
