@@ -2,7 +2,7 @@
   "name": "factr-desktop",
   "productName": "Factr-I",
   "private": true,
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "Native desktop shell for Factr-I.",
   "author": "Refactr",
   "repository": {

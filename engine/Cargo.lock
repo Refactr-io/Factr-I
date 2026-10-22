@@ -1687,7 +1687,7 @@ dependencies = [
 
 [[package]]
 name = "factr-cli"
-version = "0.0.11"
+version = "0.0.12"
 dependencies = [
  "anyhow",
  "async-stream",
