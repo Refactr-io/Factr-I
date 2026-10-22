@@ -86,6 +86,8 @@ export interface ApprovalRequest extends KeyedPrompt {
   allowPermanent?: boolean
   choices?: string[]
   command: string
+  /** Where the command runs, when the engine said (else the session's working directory is shown). */
+  cwd?: string
   description: string
   requestId?: string
   serverRequestId?: string
@@ -96,10 +98,23 @@ interface ApprovalGateway {
   request: (method: string, params: Record<string, unknown>) => Promise<unknown>
 }
 
+/** The whole command when the engine shortened `command` for the prompt, else `command`. */
+export function approvalCommandText(payload: object): string {
+  const { command, command_full: full } = payload as { command?: unknown; command_full?: unknown }
+
+  if (typeof full === 'string' && full) {
+    return full
+  }
+
+  return typeof command === 'string' ? command : ''
+}
+
 interface PendingApprovalPayload {
   allow_permanent?: boolean
   choices?: unknown
   command?: unknown
+  command_full?: unknown
+  cwd?: unknown
   description?: unknown
   request_id?: unknown
   smart_denied?: boolean
@@ -327,7 +342,8 @@ export async function replayPendingApproval(gateway: ApprovalGateway | null, ses
         choices: Array.isArray(pending.choices)
           ? pending.choices.filter(choice => typeof choice === 'string')
           : undefined,
-        command: typeof pending.command === 'string' ? pending.command : '',
+        command: approvalCommandText(pending),
+        cwd: typeof pending.cwd === 'string' && pending.cwd ? pending.cwd : undefined,
         description: typeof pending.description === 'string' ? pending.description : 'dangerous command',
         requestId: pending.request_id,
         sessionId,

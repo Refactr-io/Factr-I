@@ -1,15 +1,16 @@
 import { readActivePreview } from '@/app/chat/right-rail/preview-reader'
-import { playSfx } from '@/lib/sfx'
 import { readActiveTerminal } from '@/app/right-sidebar/terminal/buffer'
 import { pendingClarifyToolPayload } from '@/app/session/hooks/use-session-actions/restore-pending-clarify'
 import { translateNow } from '@/i18n'
 import { restorePendingClarifyToolCall } from '@/lib/chat-messages'
 import type { PreviewActAction } from '@/lib/preview-act/act-in-page'
+import { playSfx } from '@/lib/sfx'
 import type { TourAction, TourStep } from '@/lib/tour'
 import { normalizeChoices, normalizeQuestions, setClarifyRequest, warnDroppedChoices } from '@/store/clarify'
 import type { ScopedServerRequest } from '@/store/gateway'
 import { dispatchNativeNotification } from '@/store/native-notifications'
 import {
+  approvalCommandText,
   receiveApprovalRequest,
   setSecretRequest,
   setSudoRequest,
@@ -216,7 +217,7 @@ const clarify: Handler = ctx => {
 const approval: Handler = ctx => {
   const { request, sessionId } = ctx
   const p = request.params
-  const command = str(p.command)
+  const command = approvalCommandText(p)
   const description = str(p.description) || 'dangerous command'
 
   rememberServerRequest(request)
@@ -227,6 +228,7 @@ const approval: Handler = ctx => {
       ? p.choices.filter((choice): choice is string => typeof choice === 'string')
       : undefined,
     command,
+    cwd: str(p.cwd) || undefined,
     description,
     // The approval queue's own id — `approval.pending` / `approval.received` / `approval.respond` key on it.
     requestId: str(p.request_id) || undefined,
