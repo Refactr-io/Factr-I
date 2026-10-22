@@ -5,6 +5,7 @@ use crate::approvals::{Client, Hub};
 use crate::learn::Trigger;
 use crate::map::{self, Out, SessionState};
 use crate::observability::Observer;
+use crate::persist_run;
 use crate::rewind;
 use crate::{Config, LINK_PIPE_BYTES};
 use anyhow::{Context, Result, anyhow, bail};
@@ -3907,6 +3908,10 @@ pub(crate) async fn agent_run(
         // the unattended policy (Factr config, else deny and park for the desktop).
         hub.mark_headless(&session_id, opts.surface).await;
 
+        // A one-shot run whose task names its check keeps going, through the goal machinery, while it fails.
+        let control = conn.control_store().await;
+        let persisting = session_key.is_none() && persist_run::enabled() && control.as_deref().is_some_and(|store| persist_run::start(store, &session_id, prompt, timeout));
+
         let outcome = tokio::time::timeout(timeout, async {
             conn.dispatch(
                 "prompt.submit",
@@ -3914,6 +3919,9 @@ pub(crate) async fn agent_run(
             )
             .await
             .map_err(|e| anyhow!(e.message))?;
+            // With a goal, the run is over when `turn_done` (which runs the gate and sends the next prompt)
+            // reports the goal no longer active; otherwise at the first completed turn.
+            let (mut last, mut usage) = (None::<Value>, persist_run::Usage::default());
             while let Some(msg) = ws_out.recv().await {
                 let Message::Text(text) = msg else { continue };
                 let Ok(frame) = serde_json::from_str::<Value>(&text) else {
@@ -3922,9 +3930,21 @@ pub(crate) async fn agent_run(
                 if frame["method"] != "event" || frame["params"]["session_id"] != session_id.as_str() {
                     continue;
                 }
-                if frame["params"]["type"] == "message.complete" {
-                    let payload = frame["params"]["payload"].clone();
-                    return Ok(payload);
+                match frame["params"]["type"].as_str() {
+                    Some("message.complete") => {
+                        let payload = frame["params"]["payload"].clone();
+                        if !persisting {
+                            return Ok(payload);
+                        }
+                        usage.add(&payload["usage"]);
+                        last = Some(payload);
+                    }
+                    Some("session.control.update") if persisting && last.is_some() && !persist_run::goal_active(&frame["params"]["payload"]["control"]) => {
+                        let mut payload = last.take().unwrap_or_default();
+                        usage.apply(&mut payload);
+                        return Ok(payload);
+                    }
+                    _ => {}
                 }
             }
             bail!("engine connection closed before the turn finished")
@@ -3968,8 +3988,18 @@ pub(crate) async fn agent_run(
         if opts.surface == "cron" {
             crate::surface_sessions::prune_cron(&conn.config, crate::observability::now()).await;
         }
+        let persistence = match control.as_deref().filter(|_| persisting) {
+            Some(store) => persist_run::finish(store, &session_id),
+            None => Value::Null,
+        };
         Ok(match outcome {
-            Ok(Ok(payload)) => turn_reply(&payload, &session_id, opts.surface),
+            Ok(Ok(payload)) => {
+                let mut reply = turn_reply(&payload, &session_id, opts.surface);
+                if !persistence.is_null() {
+                    reply["persistence"] = persistence;
+                }
+                reply
+            }
             Ok(Err(err)) => {
                 json!({ "ok": false, "text": "", "error": err.to_string(), "session_id": session_id })
             }

@@ -485,6 +485,8 @@ pub(super) fn turn_done(conn: Arc<Conn>, session_id: String, payload: Value) {
                 Ok(None) => {}
                 Err(err) => eprintln!("factr: after_error_turn for {session_id}: {err:#}"),
             }
+            // A headless run waits for the goal's state after every turn, errors included.
+            conn.emit_control(&session_id).await;
             return poke();
         }
         let subagents_running = conn.child_sessions_running(&session_id).await;

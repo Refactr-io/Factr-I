@@ -11,7 +11,6 @@ mod prompting;
 pub(crate) use prompting::forget_addenda;
 mod provider;
 mod budget;
-mod persist;
 mod repeat_guard;
 mod rewind_stack;
 mod auto_verify;

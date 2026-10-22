@@ -12,6 +12,7 @@ pub mod host;
 pub use factr_base::migrate;
 pub mod refine;
 pub mod skill_files;
+pub mod task_check;
 mod worker;
 
 pub use host::{LlmQuery, ReplHost, RunOutput};

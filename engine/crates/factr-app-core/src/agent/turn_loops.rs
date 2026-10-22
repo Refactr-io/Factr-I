@@ -952,7 +952,6 @@ impl Agent {
                     && {
                         stop_nudge.set_late(deadline.past_70());
                         stop_nudge.set_half(deadline.past_50());
-                        stop_nudge.set_budget_used(deadline.fraction());
                         stop_nudge.on_text_only_stop(&self.session.id, &text_content)
                     }
                 {

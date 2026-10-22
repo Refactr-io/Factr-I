@@ -91,8 +91,7 @@ const CONFIG_SUBPAGE_DEFINITIONS: Record<string, ConfigSubpageDefinition[]> = {
         'budget.max_tokens',
         'local_models.silence_timeout_secs',
         'persistence.enabled',
-        'persistence.max_nudges',
-        'persistence.budget_fraction'
+        'persistence.max_retries'
       ]
     },
     { id: 'tools', labelKey: 'advancedTools', fields: ['toolsets', 'agent.tool_use_enforcement', 'tools.routing'] },

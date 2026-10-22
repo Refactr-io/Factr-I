@@ -13,8 +13,7 @@ const PLACEMENT: Record<string, string> = {
   'compression.llm_second_pass': 'memory',
   'local_models.silence_timeout_secs': 'advanced',
   'persistence.enabled': 'advanced',
-  'persistence.max_nudges': 'advanced',
-  'persistence.budget_fraction': 'advanced',
+  'persistence.max_retries': 'advanced',
   'terminal.reduce_output': 'advanced',
   'terminal.reduce_output_timeout_ms': 'advanced',
   'tools.routing': 'advanced'

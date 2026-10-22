@@ -148,6 +148,43 @@ pub fn parse_counts(out: &str) -> Option<(u32, u32)> {
     seen.then_some((p, f))
 }
 
+/// A boolean field with one of these words in its name is a pass/fail verdict (`"exec_acc": false`).
+const VERDICT_KEYS: [&str; 10] = ["acc", "pass", "ok", "correct", "success", "valid", "match", "equal", "allclose", "verified"];
+/// An integer field named like this counts failures (`"failed": 2`).
+const FAIL_COUNT_KEYS: [&str; 7] = ["failed", "failures", "failure", "errors", "mismatch", "mismatches", "num_failed"];
+
+/// `"key": true|false|N` pairs of a JSON-looking report, key lowercased and value as written.
+fn report_fields(out: &str) -> Vec<(String, String)> {
+    let mut fields = Vec::new();
+    let mut rest = out;
+    while let Some(open) = rest.find('"') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('"') else { break };
+        let (key, tail) = (&after[..close], after[close + 1..].trim_start());
+        rest = &after[close + 1..];
+        let Some(value) = tail.strip_prefix(':').map(str::trim_start) else { continue };
+        let word: String = value.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+        if key.len() <= 40 && (word == "true" || word == "false" || (!word.is_empty() && word.chars().all(|c| c.is_ascii_digit()))) {
+            fields.push((key.to_ascii_lowercase(), word));
+        }
+    }
+    fields
+}
+
+/// A structured report in the output says the check failed: a verdict field that is `false`, or a failure
+/// counter above zero. Numeric scores never decide, and output without such fields says nothing. For a
+/// check that exits 0 and prints its result (an evaluator script).
+pub fn report_failed(out: &str) -> bool {
+    report_fields(out).iter().any(|(key, value)| {
+        let counter = FAIL_COUNT_KEYS.iter().any(|k| key == k || key.ends_with(&format!("_{k}")) || key.starts_with(&format!("{k}_")));
+        if counter {
+            value.parse::<u64>().is_ok_and(|n| n > 0)
+        } else {
+            value == "false" && VERDICT_KEYS.iter().any(|k| key.contains(k))
+        }
+    })
+}
+
 /// Correctness first: a non-zero exit never scores as passing.
 pub fn score_of(ok: bool, out: &str) -> (u32, u32) {
     match (parse_counts(out), ok) {
@@ -299,6 +336,11 @@ impl SessionGoal {
         }
     }
 
+    /// Release every checkpoint pin of this goal (a run that owned it is over and keeps none).
+    pub fn release_checkpoints(&self, session: &str) {
+        self.prune_refs(session, None);
+    }
+
     /// The final best checkpoint ref, kept when a goal completes.
     pub(crate) fn final_ref(&self) -> Option<&str> {
         self.last_good_ref().map(|c| c.git_ref.as_str())
@@ -337,7 +379,7 @@ impl SessionGoal {
 
     /// Plateau episode not yet supervised and the gap since the last call is met.
     pub fn supervisor_due(&self) -> bool {
-        self.plateaued() && !self.sup_episode && self.sup_turn.is_none_or(|t| self.turns_used - t >= SUPERVISOR_GAP)
+        !self.unattended && self.plateaued() && !self.sup_episode && self.sup_turn.is_none_or(|t| self.turns_used - t >= SUPERVISOR_GAP)
     }
 
     /// (system, user) for the one supervisor call: compact lineage, <= ~1.5k tokens.
@@ -388,5 +430,15 @@ mod tests {
         assert!(run(false, &["add", "-A"]));
         assert!(marker.exists(), "control: plain git does run it, so this test can fail");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_report_that_says_failed_fails_a_check_that_exited_zero_and_scores_never_decide() {
+        for failing in [r#"{"call_acc": true, "exec_acc": false}"#, r#"{"failed": 2, "passed": 7}"#, r#"{"num_failed": 1}"#, "result {\"all_correct\": false}"] {
+            assert!(report_failed(failing), "{failing}");
+        }
+        for fine in [r#"{"exec_acc": true}"#, r#"{"failed": 0, "passed": 4}"#, r#"{"accuracy": 0.2, "success_rate": 0.0}"#, "plain text, no report", r#"{"debug": false}"#, ""] {
+            assert!(!report_failed(fine), "{fine}");
+        }
     }
 }
