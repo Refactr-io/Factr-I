@@ -499,6 +499,10 @@ impl StopNudge {
             return;
         }
         let out = output.unwrap_or("");
+        // A call the engine refused never ran: it says nothing about the check.
+        if out.trim_start().starts_with("[Error] Error: Tool call blocked") {
+            return;
+        }
         // Only a command the task named, a test runner, or one that printed a structured pass/fail report.
         let report = !is_viewer(command) && super::persist::json_recognised(out);
         if super::persist::is_named_check(&self.persist.task_checks, command) || looks_like_test_run(command) || report {
