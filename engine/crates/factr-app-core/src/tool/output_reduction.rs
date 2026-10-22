@@ -20,8 +20,27 @@ const MISSING_BACKOFF: Duration = Duration::from_secs(30);
 
 static MISSING_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 
-fn rtk_program() -> String {
-    factr_base::factr_config::env_text("FACTR_RTK_BIN").unwrap_or_else(|| "rtk".to_string())
+/// Where to look for the rtk binary: an explicit `FACTR_RTK_BIN`, else the PATH, else the usual install
+/// folders (a desktop app launched from the Dock does not inherit the shell's PATH).
+fn rtk_candidates(home: Option<&std::path::Path>) -> Vec<String> {
+    if let Some(explicit) = factr_base::factr_config::env_text("FACTR_RTK_BIN") {
+        return vec![explicit];
+    }
+    let mut found = vec!["rtk".to_string()];
+    let exe = if cfg!(windows) { "rtk.exe" } else { "rtk" };
+    let folders = [
+        home.map(|h| h.join(".local").join("bin")),
+        home.map(|h| h.join(".cargo").join("bin")),
+        Some(std::path::PathBuf::from("/opt/homebrew/bin")),
+        Some(std::path::PathBuf::from("/usr/local/bin")),
+    ];
+    for folder in folders.into_iter().flatten() {
+        let path = folder.join(exe);
+        if path.is_file() {
+            found.push(path.to_string_lossy().into_owned());
+        }
+    }
+    found
 }
 
 /// The command to run instead of `command`, or `None` to run it unchanged.
@@ -42,22 +61,22 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
     if MISSING_UNTIL.lock().ok().and_then(|g| *g).is_some_and(|until| Instant::now() < until) {
         return None;
     }
-    let mut child = match Command::new(rtk_program())
-        .arg("rewrite")
-        .arg(trimmed)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(_) => {
-            if let Ok(mut guard) = MISSING_UNTIL.lock() {
-                *guard = Some(Instant::now() + MISSING_BACKOFF);
-            }
-            return None;
+    let spawned = rtk_candidates(factr_base::platform::user_home_dir().as_deref()).into_iter().find_map(|program| {
+        Command::new(program)
+            .arg("rewrite")
+            .arg(trimmed)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .ok()
+    });
+    let Some(mut child) = spawned else {
+        if let Ok(mut guard) = MISSING_UNTIL.lock() {
+            *guard = Some(Instant::now() + MISSING_BACKOFF);
         }
+        return None;
     };
     let mut stdout = child.stdout.take()?;
     let run = async {
@@ -121,6 +140,23 @@ mod tests {
             assert_eq!(rewrite("   ", Duration::from_secs(5)).await, None);
         })
         .await;
+    }
+
+    #[test]
+    fn candidates_put_the_path_first_then_the_usual_install_folders_and_honour_the_override() {
+        let _env = factr_base::storage::lock_test_env();
+        factr_base::env::remove_var("FACTR_RTK_BIN");
+        let home = tempfile::tempdir().unwrap();
+        let local = home.path().join(".local").join("bin");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::write(local.join("rtk"), "").unwrap();
+        let found = rtk_candidates(Some(home.path()));
+        assert_eq!(found[0], "rtk");
+        assert!(found.iter().any(|c| c.ends_with(".local/bin/rtk")), "{found:?}");
+        assert!(!found.iter().any(|c| c.contains(".cargo")), "only folders that hold the binary are listed");
+        factr_base::env::set_var("FACTR_RTK_BIN", "/custom/rtk");
+        assert_eq!(rtk_candidates(Some(home.path())), vec!["/custom/rtk".to_string()]);
+        factr_base::env::remove_var("FACTR_RTK_BIN");
     }
 
     #[tokio::test]

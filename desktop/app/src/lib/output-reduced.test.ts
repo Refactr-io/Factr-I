@@ -7,6 +7,7 @@ describe('isOutputReduced', () => {
     expect(isOutputReduced(`ok\n\n${OUTPUT_REDUCED_MARKER}`)).toBe(true)
     expect(isOutputReduced(`ok\n\n${OUTPUT_REDUCED_MARKER}\n`)).toBe(true)
     expect(isOutputReduced({ output: `x ${OUTPUT_REDUCED_MARKER}` })).toBe(true)
+    expect(isOutputReduced({ result: `x ${OUTPUT_REDUCED_MARKER}`, duration_s: 1 })).toBe(true)
   })
 
   it('ignores results that merely mention it, and anything that is not text', () => {

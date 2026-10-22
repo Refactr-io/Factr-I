@@ -10,6 +10,8 @@ export function isOutputReduced(result: unknown): boolean {
         ? String(
             (result as Record<string, unknown>).output ??
               (result as Record<string, unknown>).result_text ??
+              (result as Record<string, unknown>).result ??
+              (result as Record<string, unknown>).text ??
               (result as Record<string, unknown>).stdout ??
               ''
           )
