@@ -185,9 +185,10 @@ export default async function beforePack(context) {
       copyFileSync(binary, path.join(staged, binaryName))
       chmodSync(path.join(staged, binaryName), 0o755)
       // The pinned, checksum-verified rtk beside the engine (opt-in output shortening; the engine never looks elsewhere).
-      for (const stale of ['rtk', 'rtk.exe', 'RTK-LICENSE']) rmSync(path.join(staged, stale), { force: true })
+      const rtkDir = path.join(staged, 'rtk-bin')
+      rmSync(rtkDir, { recursive: true, force: true })
       if (RTK_ASSETS[`${platform}-${archName}`]) {
-        await stageRtk({ platform, arch: archName, outDir: staged })
+        await stageRtk({ platform, arch: archName, outDir: rtkDir })
       } else {
         console.warn(`[before-pack] no pinned rtk build for ${platform}-${archName}; shipping without it`)
       }

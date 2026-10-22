@@ -20,14 +20,17 @@ const MISSING_BACKOFF: Duration = Duration::from_secs(30);
 
 static MISSING_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 
-/// The rtk binary shipped with the app, next to the engine executable (`resources/factr/rtk`). An explicit
-/// `FACTR_RTK_BIN` replaces it (tests). The PATH is never searched: only the pinned, verified build runs.
+/// The rtk binary shipped with the app, next to the engine executable (`resources/factr/rtk-bin/rtk`). An explicit
+/// `FACTR_RTK_BIN` replaces it in debug and test builds only. The PATH is never searched: release builds
+/// run only the pinned, verified copy.
 fn rtk_binary() -> Option<std::path::PathBuf> {
+    #[cfg(any(test, debug_assertions))]
     if let Some(explicit) = factr_base::factr_config::env_text("FACTR_RTK_BIN") {
         return Some(explicit.into());
     }
     let exe = if cfg!(windows) { "rtk.exe" } else { "rtk" };
-    std::env::current_exe().ok()?.parent().map(|dir| dir.join(exe)).filter(|p| p.is_file())
+    // A folder of its own: the rewritten command puts it on PATH and must not expose the engine binary next to it.
+    std::env::current_exe().ok()?.parent().map(|dir| dir.join("rtk-bin").join(exe)).filter(|p| p.is_file())
 }
 
 /// The command to run instead of `command`, or `None` to run it unchanged.
@@ -87,25 +90,30 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
 fn rtk_env() -> Vec<(&'static str, String)> {
     let state = factr_base::factr_config::home().map(|h| h.join("rtk"));
     let at = |name: &str| state.as_ref().map(|d| d.join(name).to_string_lossy().into_owned());
-    let mut env = vec![("RTK_TELEMETRY_DISABLED", "1".to_string())];
+    // RTK_NO_TOML: a checked-out project's own rtk filters never change what the bundled rtk does.
+    let mut env = vec![("RTK_TELEMETRY_DISABLED", "1".to_string()), ("RTK_NO_TOML", "1".to_string())];
     env.extend(at("history.db").map(|v| ("RTK_DB_PATH", v)));
     env.extend(at("recall.db").map(|v| ("RTK_RECALL_DB", v)));
     env.extend(at("tee").map(|v| ("RTK_TEE_DIR", v)));
     env
 }
 
-/// The rewritten command calls `rtk` by name and the user's shell does not know where the bundled copy
-/// lives: put its folder on the command's PATH, and give it the same switches as the rewrite call.
+/// The rewritten command calls `rtk` by name. Define `rtk` as a function for the bundled absolute path (it
+/// wins over the PATH and over any inherited `rtk` function, and leaves the PATH alone), and give it the
+/// same switches as the rewrite call.
 fn with_rtk_on_path(rewritten: &str, program: &std::path::Path) -> String {
     let quote = |v: &str| format!("'{}'", v.replace('\'', "'\"'\"'"));
-    let Some(dir) = program.parent().filter(|dir| dir.is_absolute()) else { return rewritten.to_string() };
+    if !program.is_absolute() {
+        return rewritten.to_string();
+    }
     let vars: String = rtk_env().iter().map(|(k, v)| format!(" {k}={}", quote(v))).collect();
-    format!("export PATH={}:\"$PATH\"{vars}; {rewritten}", quote(&dir.to_string_lossy()))
+    format!("rtk() {{ {} \"$@\"; }}; export{vars}; {rewritten}", quote(&program.to_string_lossy()))
 }
 
-/// True when a reduced command failed because the shell could not find `rtk` itself.
+/// True when a reduced command failed because the shell could not start `rtk` itself (missing, not
+/// executable, blocked by the OS): the original command then runs once.
 pub(crate) fn rtk_missing_at_run(output: &str) -> bool {
-    output.contains("rtk: command not found") || output.contains("rtk: not found")
+    ["rtk: command not found", "rtk: not found", "rtk: Permission denied", "rtk: cannot execute", "rtk: Operation not permitted", "rtk: No such file or directory"].iter().any(|m| output.contains(m))
 }
 
 /// Forget a recorded "rtk is missing" (tests, and a settings change).
@@ -142,7 +150,7 @@ mod tests {
     #[tokio::test]
     async fn a_successful_rewrite_is_returned() {
         with_fake(r#"[ "$1" = rewrite ] && echo "rtk $2" && exit 0; exit 1"#, || async {
-            assert!(rewrite("git status", Duration::from_secs(5)).await.is_some_and(|r| r.starts_with("export PATH=") && r.ends_with("; rtk git status")));
+            assert!(rewrite("git status", Duration::from_secs(5)).await.is_some_and(|r| r.starts_with("rtk() {") && r.ends_with("; rtk git status")));
         })
         .await;
     }
@@ -150,7 +158,7 @@ mod tests {
     #[tokio::test]
     async fn rewritten_with_the_ask_exit_code_is_still_used_but_deny_and_no_equivalent_are_not() {
         with_fake(r#"echo "rtk $2"; exit 3"#, || async {
-            assert!(rewrite("git status", Duration::from_secs(5)).await.is_some_and(|r| r.starts_with("export PATH=") && r.ends_with("; rtk git status")));
+            assert!(rewrite("git status", Duration::from_secs(5)).await.is_some_and(|r| r.starts_with("rtk() {") && r.ends_with("; rtk git status")));
         })
         .await;
         for code in [1, 2, 4] {
@@ -183,12 +191,12 @@ mod tests {
     }
 
     #[test]
-    fn the_command_gets_the_bundled_folder_on_its_path_and_rtk_telemetry_off() {
-        let r = with_rtk_on_path("rtk git status", std::path::Path::new("/app/Resources/factr/rtk"));
-        assert!(r.starts_with("export PATH='/app/Resources/factr':\"$PATH\" RTK_TELEMETRY_DISABLED='1'"), "{r}");
+    fn the_command_calls_the_bundled_rtk_by_absolute_path_with_telemetry_off() {
+        let r = with_rtk_on_path("rtk git status", std::path::Path::new("/app/Resources/factr/rtk-bin/rtk"));
+        assert!(r.starts_with("rtk() { '/app/Resources/factr/rtk-bin/rtk' \"$@\"; }; export RTK_TELEMETRY_DISABLED='1' RTK_NO_TOML='1'"), "{r}");
         assert!(r.ends_with("; rtk git status"));
         assert_eq!(with_rtk_on_path("rtk git status", std::path::Path::new("rtk")), "rtk git status");
-        assert!(with_rtk_on_path("rtk ls", std::path::Path::new("/tmp/it's/rtk")).contains(r#"'/tmp/it'"'"'s'"#));
+        assert!(with_rtk_on_path("rtk ls", std::path::Path::new("/tmp/it's/rtk")).contains(r#"'/tmp/it'"'"'s/rtk'"#));
     }
 
     #[test]
@@ -209,6 +217,7 @@ mod tests {
     fn a_missing_rtk_at_run_time_is_recognised() {
         assert!(rtk_missing_at_run("bash: rtk: command not found\n\nExit code: 127"));
         assert!(rtk_missing_at_run("sh: 1: rtk: not found"));
+        assert!(rtk_missing_at_run("sh: /app/rtk-bin/rtk: Permission denied"));
         assert!(!rtk_missing_at_run("fatal: not a git repository"));
     }
 
@@ -229,6 +238,9 @@ mod tests {
         let Ok(real) = std::env::var("FACTR_TEST_REAL_RTK") else { return };
         let _env = factr_base::storage::lock_test_env();
         let (profile, factr_home, repo) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let real_home = std::env::var_os("HOME");
+        factr_base::env::set_var("HOME", profile.path());
+        factr_base::env::set_var("XDG_DATA_HOME", profile.path().join("xdg"));
         factr_base::env::set_var("FACTR_RTK_BIN", &real);
         factr_base::env::set_var("FACTR_CONFIG_HOME", factr_home.path());
         reset_missing_cache();
@@ -237,12 +249,16 @@ mod tests {
         let rewritten = rewrite("git status", Duration::from_secs(10)).await.expect("rtk rewrites git status");
         assert!(rewritten.ends_with("; rtk git status"), "{rewritten}");
         assert_eq!(rewrite("definitely-not-a-known-tool --x", Duration::from_secs(10)).await, None, "no equivalent: run unchanged");
-        let run = std::process::Command::new("sh").arg("-c").arg(&rewritten).current_dir(repo.path()).env("HOME", profile.path()).output().unwrap();
+        let run = std::process::Command::new("sh").arg("-c").arg(&rewritten).current_dir(repo.path()).output().unwrap();
         assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
         assert!(factr_home.path().join("rtk").join("history.db").is_file(), "history stays in the Factr home");
         assert_eq!(std::fs::read_dir(profile.path()).unwrap().count(), 0, "nothing is written to the user's profile");
         factr_base::env::remove_var("FACTR_RTK_BIN");
         factr_base::env::remove_var("FACTR_CONFIG_HOME");
+        factr_base::env::remove_var("XDG_DATA_HOME");
+        if let Some(h) = real_home {
+            factr_base::env::set_var("HOME", h);
+        }
         reset_missing_cache();
     }
 }
