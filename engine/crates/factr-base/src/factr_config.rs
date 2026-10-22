@@ -69,6 +69,17 @@ pub struct Budget {
     pub max_tokens: Option<u64>,
 }
 
+/// `approvals.*` keys that add questions (never remove any): both are off/empty unless set.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ApprovalExtras {
+    /// `approvals.gui_automation_ask`: ask before commands that drive other apps or edit the agent's own
+    /// approval and config files.
+    pub gui_automation_ask: bool,
+    /// `approvals.always_ask`: regular expressions; a shell command matching one is asked about every
+    /// time, whatever grants exist. Entries are trimmed; empty ones are dropped.
+    pub always_ask: Vec<String>,
+}
+
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Checkpoints {
@@ -165,6 +176,7 @@ pub struct FactrConfig {
     pub terminal: Terminal,
     pub checkpoints: Checkpoints,
     pub budget: Budget,
+    pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
     pub delegation: Delegation,
@@ -337,6 +349,16 @@ impl FactrConfig {
                 max_memory_mb: path(&root, "terminal.max_memory_mb").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
                 reduce_output: path(&root, "terminal.reduce_output").and_then(as_bool).unwrap_or(false),
                 reduce_output_timeout_ms: path(&root, "terminal.reduce_output_timeout_ms").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).map(|n| n.clamp(100, 10_000)),
+            },
+            approval_extras: ApprovalExtras {
+                gui_automation_ask: path(&root, "approvals.gui_automation_ask").and_then(as_bool).unwrap_or(false),
+                always_ask: path(&root, "approvals.always_ask")
+                    .and_then(Value::as_sequence)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(as_text)
+                    .take(100)
+                    .collect(),
             },
             budget: Budget {
                 max_cost_usd: path(&root, "budget.max_cost_usd").and_then(as_f64).filter(|n| n.is_finite() && *n > 0.0),
@@ -540,6 +562,15 @@ mod tests {
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: 0}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: -5}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("model: x").memory, Memory::default());
+    }
+
+    #[test]
+    fn approval_extras_are_off_unless_set() {
+        assert_eq!(FactrConfig::parse("").approval_extras, ApprovalExtras::default());
+        assert_eq!(FactrConfig::parse("approvals: {mode: manual}").approval_extras, ApprovalExtras::default());
+        let c = FactrConfig::parse("approvals:\n  gui_automation_ask: true\n  always_ask: ['^cargo publish', '  ']\n").approval_extras;
+        assert!(c.gui_automation_ask);
+        assert_eq!(c.always_ask, vec!["^cargo publish".to_string()]);
     }
 
     #[test]

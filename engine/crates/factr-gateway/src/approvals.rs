@@ -224,10 +224,26 @@ fn allow_permanently_with(home: &Path, command: &str, cwd: Option<&Path>, mut be
 /// a command that pipes paths into a delete.
 fn risk_category(command: &str) -> String {
     let assessment = factr_command_risk::assess(command, &factr_command_risk::RiskContext::from_env(None));
-    let mut reasons: Vec<&str> = assessment.findings.iter().map(|f| f.reason.as_str()).collect();
+    let mut reasons: Vec<String> = assessment.findings.iter().map(|f| f.reason.clone()).collect();
+    // An extra question the user switched on is its own kind: a session grant for plain commands must
+    // not wave it through.
+    if let Some(extra) = crate::approval_extras::extra_ask_reason(command) {
+        reasons.push(extra);
+    }
     reasons.sort_unstable();
     reasons.dedup();
     if reasons.is_empty() { "general".into() } else { reasons.join(" | ") }
+}
+
+/// What the person needs to judge a prompt: where the command runs, and the whole command when the
+/// shortened one in `command` cut it. Additive; clients that do not know the fields ignore them.
+fn add_run_context(params: &mut Value, command: &str, cwd: Option<&Path>) {
+    if let Some(cwd) = cwd {
+        params["cwd"] = json!(cwd.to_string_lossy());
+    }
+    if command.chars().nth(4000).is_some() {
+        params["command_full"] = json!(command);
+    }
 }
 
 /// A desktop connection able to show prompts.
@@ -389,13 +405,15 @@ impl Hub {
         let surface = self.headless.lock().await.get(session_id).copied().unwrap_or("goal");
         let granted = self.once_grants.lock().await.remove(&(session_id.to_string(), command.to_string())) || self.sticky(session_id, command, cwd).await;
         let home = factr_base::factr_config::home();
-        let allowlisted = home.as_deref().is_some_and(|home| allowlisted(home, command, cwd));
-        if granted || allowlisted || home.is_some_and(|home| policy_allows(&home, surface)) {
+        // A user's always-ask pattern is never waved through by an allowlist, a policy or the workdir rule.
+        let force_ask = reason.starts_with(crate::approval_extras::USER_PREFIX);
+        let allowlisted = !force_ask && home.as_deref().is_some_and(|home| allowlisted(home, command, cwd));
+        if granted || allowlisted || (!force_ask && home.is_some_and(|home| policy_allows(&home, surface))) {
             self.audit(session_id, tool, command, "once", if granted { "user-later" } else if allowlisted { "allowlist" } else { "policy" });
             return "once".into();
         }
         // Tidying the session's own working directory needs no one's approval.
-        if cwd.is_some_and(|cwd| factr_command_risk::confined_to_workdir(command, &factr_command_risk::RiskContext::from_env(Some(cwd.to_path_buf())))) {
+        if !force_ask && cwd.is_some_and(|cwd| factr_command_risk::confined_to_workdir(command, &factr_command_risk::RiskContext::from_env(Some(cwd.to_path_buf())))) {
             self.audit(session_id, tool, command, "once", "workdir");
             return "once".into();
         }
@@ -419,6 +437,8 @@ impl Hub {
             "allow_session": true,
             "unattended": true,
         });
+        let mut params = params;
+        add_run_context(&mut params, command, cwd);
         let evicted: Option<(String, String)>;
         {
             let mut shown = self.shown.lock().await;
@@ -530,13 +550,14 @@ impl Hub {
             self.audit(session_id, tool, command, "once", "yolo");
             return "once".into();
         }
-        if home.as_deref().is_some_and(|home| allowlisted(home, command, cwd)) || self.sticky(session_id, command, cwd).await {
+        let force_ask = reason.starts_with(crate::approval_extras::USER_PREFIX);
+        if !force_ask && (home.as_deref().is_some_and(|home| allowlisted(home, command, cwd)) || self.sticky(session_id, command, cwd).await) {
             self.audit(session_id, tool, command, "always", "allowlist");
             return "always".into();
         }
         // A shell command's grant is keyed on what kind of risk it carries; any other tool's on the tool.
         let category = if tool == "bash" { risk_category(command) } else { format!("tool:{tool}") };
-        if self.session_grants.lock().await.contains(&(session_id.to_string(), category.clone())) {
+        if !force_ask && self.session_grants.lock().await.contains(&(session_id.to_string(), category.clone())) {
             let choice = "session".to_string();
             self.audit(session_id, tool, command, &choice, "session-grant");
             return choice;
@@ -563,6 +584,8 @@ impl Hub {
             "allow_permanent": true,
             "allow_session": true,
         });
+        let mut params = params;
+        add_run_context(&mut params, command, cwd);
         self.shown.lock().await.insert(request_id.clone(), (prompt_session.clone(), params.clone()));
         let frame = json!({ "jsonrpc": "2.0", "id": request_id, "method": "approval", "params": params }).to_string();
         for client in &clients {
@@ -727,16 +750,18 @@ pub(crate) mod gate {
     pub(super) fn decide(command: &str, justification: Option<&str>, cwd: Option<PathBuf>) -> Decision {
         use factr_app_core::tool::BashVerdict;
         let ask = |reason: String| Decision::Ask { summary: command.to_string(), reason };
-        let factr = crate::dangerous::dangerous_reason(command);
+        let factr = crate::dangerous::dangerous_reason(command)
+            .map(str::to_string)
+            .or_else(|| crate::approval_extras::extra_ask_reason(command));
         let broad = cwd.as_deref().is_some_and(super::broad_folder);
         match factr_app_core::tool::bash_verdict(command, justification, cwd) {
             BashVerdict::Refuse(text) => Decision::Block(text),
             BashVerdict::Run => match factr {
-                Some(reason) => ask(reason.to_string()),
+                Some(reason) => ask(reason),
                 None if broad && destructive_anywhere(command) => ask(BROAD_FOLDER_DELETE.into()),
                 None => Decision::Allow,
             },
-            BashVerdict::Ask(reason) => ask(factr.map(str::to_string).unwrap_or(reason)),
+            BashVerdict::Ask(reason) => ask(factr.unwrap_or(reason)),
         }
     }
 
@@ -1524,5 +1549,78 @@ mod tests {
         let id = request_id(next_message(&mut rx).await);
         assert!(hub.answer(&id, "deny").await);
         assert!(asked.await.unwrap().is_err());
+    }
+
+    // ---- extra questions the user can switch on (approvals.gui_automation_ask / always_ask) ----
+
+    fn write_config(config: &TestConfig, yaml: &str) {
+        std::fs::write(config.home.join("config.yaml"), yaml).unwrap();
+    }
+
+    #[test]
+    fn with_nothing_configured_the_gate_is_exactly_as_before() {
+        let _config = TestConfig::new();
+        for cmd in ["osascript -e 'beep'", "open -a Safari", "cargo publish", "ls -la", "xdotool key a"] {
+            assert_eq!(gate::decide(cmd, None, None), gate::Decision::Allow, "{cmd}");
+        }
+    }
+
+    #[test]
+    fn gui_automation_asks_only_when_switched_on_and_never_unblocks_a_refusal() {
+        let config = TestConfig::new();
+        write_config(&config, "approvals: {gui_automation_ask: true}\n");
+        assert!(matches!(gate::decide("osascript -e 'beep'", None, None), gate::Decision::Ask { .. }));
+        assert!(matches!(gate::decide("open -a Safari", None, None), gate::Decision::Ask { .. }));
+        assert_eq!(gate::decide("ls -la", None, None), gate::Decision::Allow);
+        // A catastrophic command stays refused, with or without the switch.
+        assert!(matches!(gate::decide("rm -rf / ; osascript -e beep", None, None), gate::Decision::Block(_) | gate::Decision::Ask { .. }));
+    }
+
+    #[tokio::test]
+    async fn a_user_pattern_is_asked_every_time_even_after_a_session_grant() {
+        let config = TestConfig::new();
+        write_config(&config, "approvals:\n  always_ask: ['^cargo publish']\n");
+        let hub = Arc::new(Hub::default());
+        let (_c, mut rx) = client(&hub, "s1").await;
+        let reason = match gate::decide("cargo publish", None, None) {
+            gate::Decision::Ask { reason, .. } => reason,
+            other => panic!("{other:?}"),
+        };
+        assert!(reason.starts_with(crate::approval_extras::USER_PREFIX));
+        // The person answers "session" the first time...
+        let first = tokio::spawn({
+            let hub = hub.clone();
+            let reason = reason.clone();
+            async move { hub.decide_in("s1", "bash", "cargo publish", &reason, Some(Path::new("/work/project"))).await }
+        });
+        let frame = next_message(&mut rx).await;
+        let Message::Text(text) = &frame else { panic!() };
+        let sent: Value = serde_json::from_str(text).unwrap();
+        // The prompt carries where it runs, and the full command only when the short one was cut.
+        assert_eq!(sent["params"]["cwd"], "/work/project");
+        assert!(sent["params"].get("command_full").is_none());
+        hub.answer(&request_id(frame), "session").await;
+        assert_eq!(first.await.unwrap(), "session");
+        // ...and the same kind of command is asked about again: grants do not apply to a user pattern.
+        let second = tokio::spawn({
+            let hub = hub.clone();
+            async move { hub.decide_in("s1", "bash", "cargo publish", &reason, None).await }
+        });
+        let again = next_message(&mut rx).await;
+        hub.answer(&request_id(again), "deny").await;
+        assert_eq!(second.await.unwrap(), "deny");
+    }
+
+    #[test]
+    fn a_long_command_is_sent_whole_beside_the_shortened_one() {
+        let mut params = json!({"command": "x"});
+        let long = "a".repeat(4500);
+        add_run_context(&mut params, &long, None);
+        assert_eq!(params["command_full"].as_str().unwrap().len(), 4500);
+        assert!(params.get("cwd").is_none());
+        let mut short = json!({"command": "x"});
+        add_run_context(&mut short, "ls", Some(Path::new("/w")));
+        assert_eq!(short["cwd"], "/w");
+        assert!(short.get("command_full").is_none());
     }
 }
