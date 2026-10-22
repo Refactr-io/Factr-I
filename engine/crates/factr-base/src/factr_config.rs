@@ -610,6 +610,20 @@ mod tests {
         assert_eq!(FactrConfig::parse("model: x").memory, Memory::default());
     }
 
+    /// The release's promise: with nothing configured, none of the opt-in controls does anything.
+    #[test]
+    fn every_opt_in_control_is_off_in_an_empty_or_unrelated_config() {
+        for yaml in ["", "model: x\n", "terminal: {backend: local}\napprovals: {mode: smart}\ncompression: {threshold: 0.5}\n"] {
+            let c = FactrConfig::parse(yaml);
+            assert!(!c.terminal.reduce_output, "{yaml}");
+            assert!(!c.tools.routing, "{yaml}");
+            assert_eq!(c.budget, Budget::default(), "{yaml}");
+            assert_eq!(c.approval_extras, ApprovalExtras::default(), "{yaml}");
+            assert_eq!(c.local_models, LocalModels::default(), "{yaml}");
+            assert_eq!(c.compression.deterministic.unwrap_or(false), false, "{yaml}");
+        }
+    }
+
     #[test]
     fn approval_extras_are_off_unless_set() {
         assert_eq!(FactrConfig::parse("").approval_extras, ApprovalExtras::default());
