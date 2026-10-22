@@ -1472,8 +1472,8 @@ mod output_reduction_integration {
 
     #[tokio::test]
     async fn a_reduced_command_that_cannot_find_rtk_falls_back_to_the_original() {
-        // The fake rewrites to a call of `rtk`, which no shell can find: the original must run instead.
-        let script = r#"[ "$2" = "printf original-7f3a" ] && printf 'rtk printf REDUCED' && exit 0; exit 1"#;
+        // The fake rewrites to a call of `rtk` on a PATH that cannot hold it: the original must run instead.
+        let script = r#"[ "$2" = "printf original-7f3a" ] && printf 'PATH=/nonexistent-dir; rtk printf REDUCED' && exit 0; exit 1"#;
         let out = run_with("terminal: {reduce_output: true}\n", script, SENTINEL).await;
         assert_eq!(out.trim_end(), "original-7f3a", "{out}");
         assert!(!out.contains(crate::tool::output_reduction::REDUCED_MARKER));
