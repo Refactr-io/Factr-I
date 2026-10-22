@@ -105,10 +105,16 @@ impl QualityGate {
 
 /// Run a quality gate in `cwd`. A passed gate means only that gate passed.
 pub fn run_gate(gate: &mut QualityGate, cwd: Option<&Path>) -> GateResult {
+    run_gate_reporting(gate, cwd).0
+}
+
+/// `run_gate`, and whether a structured report in the whole output says the check failed (see
+/// `goal_ratchet::report_failed`; read before the display tail is cut).
+fn run_gate_reporting(gate: &mut QualityGate, cwd: Option<&Path>) -> (GateResult, bool) {
     gate.attempts += 1;
-    let r = run_command(&gate.command, cwd, Duration::from_secs(gate.timeout_seconds.max(1) as u64));
+    let (r, failing_report) = run_command_reporting(&gate.command, cwd, Duration::from_secs(gate.timeout_seconds.max(1) as u64));
     gate.last_exit_code = Some(r.exit_code);
-    r
+    (r, failing_report)
 }
 
 /// The shell invocation for a gate or one-shot command: `bash -c` (else `/bin/sh -c`) on Unix, `cmd.exe /D /S /C` on Windows
@@ -141,6 +147,10 @@ fn shell_command(command: &str) -> Command {
 /// separate threads (no buffer deadlock); on timeout the whole group is killed.
 /// `output` is the last 3000 chars of stdout+stderr (exit 124 = timeout).
 pub fn run_command(command: &str, cwd: Option<&Path>, timeout: Duration) -> GateResult {
+    run_command_reporting(command, cwd, timeout).0
+}
+
+fn run_command_reporting(command: &str, cwd: Option<&Path>, timeout: Duration) -> (GateResult, bool) {
     use std::io::Read;
     let mut cmd = shell_command(command);
     cmd.stdin(std::process::Stdio::null())
@@ -158,7 +168,7 @@ pub fn run_command(command: &str, cwd: Option<&Path>, timeout: Duration) -> Gate
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(err) => {
-            return GateResult { passed: false, exit_code: 127, output: format!("failed to spawn gate: {err}") };
+            return (GateResult { passed: false, exit_code: 127, output: format!("failed to spawn gate: {err}") }, false);
         }
     };
     // Keep only the tail of each stream while draining.
@@ -207,8 +217,10 @@ pub fn run_command(command: &str, cwd: Option<&Path>, timeout: Duration) -> Gate
     if timed_out {
         text.push_str(&format!("\ngate timed out after {}s", timeout.as_secs()));
     }
+    // The report is read before the display tail is cut, so a long diagnostic cannot push a failing verdict out.
+    let failing_report = crate::goal_ratchet::report_failed(&text);
     let output = text.chars().rev().take(3000).collect::<String>().chars().rev().collect();
-    GateResult { passed: code == 0, exit_code: code, output }
+    (GateResult { passed: code == 0, exit_code: code, output }, failing_report)
 }
 
 #[derive(Debug, Clone)]
@@ -294,6 +306,9 @@ pub struct SessionGoal {
     /// The model asked to complete while quality gates exist: the verification it cited, held until
     /// the gates have run at the end of the turn (see `after_turn_in`).
     pub completion_pending: Option<String>,
+    /// Owned by an unattended run (`persistence`): the host runs the gates, decides completion when they
+    /// pass, never calls a supervisor, and no window or driver continues it. Never shown as the user's goal.
+    pub unattended: bool,
 }
 
 /// Attempt-log bounds (NVIDIA AVO long-horizon harness: a small, bounded
@@ -302,6 +317,10 @@ pub const MAX_ATTEMPT_LOG: usize = 8;
 pub const MAX_ATTEMPT_LEN: usize = 80;
 /// Consecutive auto-recorded turns examined for plateau detection.
 pub const PLATEAU_TURNS: usize = 3;
+/// An unattended goal's automatic token ceiling: this many times its first turn's fresh tokens, within the bounds.
+const AUTO_CEILING_FACTOR: i64 = 5;
+const AUTO_CEILING_MIN: i64 = 400_000;
+const AUTO_CEILING_MAX: i64 = 2_000_000;
 
 /// What the engine observed in one turn, accumulated from `tool.complete`
 /// events (no model call, no prompt tokens).
@@ -402,6 +421,7 @@ impl SessionGoal {
             wait_pid: None,
             wait_reason: None,
             completion_pending: None,
+            unattended: false,
         }
     }
 
@@ -538,6 +558,7 @@ impl SessionGoal {
             "wait_pid": self.wait_pid,
             "wait_reason": self.wait_reason,
             "completion_pending": self.completion_pending,
+            "unattended": self.unattended,
         })
     }
 
@@ -597,6 +618,7 @@ impl SessionGoal {
             wait_pid: v["wait_pid"].as_i64(),
             wait_reason: v["wait_reason"].as_str().map(str::to_string),
             completion_pending: v["completion_pending"].as_str().map(str::to_string),
+            unattended: v["unattended"].as_bool().unwrap_or(false),
         })
     }
 
@@ -670,6 +692,14 @@ impl SessionGoal {
         } else {
             String::new()
         };
+        if self.unattended {
+            let checks = self.gates.iter().map(|g| format!("`{}`", g.command)).collect::<Vec<_>>().join(", ");
+            return format!(
+                "[The task's check still fails]\nThe host re-runs {checks} after every turn and ends the task when it passes; session_goal calls are not needed.{log_block}{steer}\n\n\
+                 Find the cause in the output below, change one thing, run the check yourself to see the result, and stop only when it passes. \
+                 If you cannot make it pass, say plainly what passes, what does not and why, and stop."
+            );
+        }
         let contract = self.contract_block();
         let contract = if contract.is_empty() { String::new() } else { format!("\nCompletion contract:\n{contract}") };
         format!(
@@ -1086,6 +1116,26 @@ impl ControlStore {
         Ok(())
     }
 
+    /// Delete unattended goals untouched for `older_than_ms`: a run that died mid-turn (or whose cleanup lost a
+    /// race with its last gate) leaves a row nothing else would ever clear.
+    pub fn purge_stale_unattended(&self, older_than_ms: i64) -> Result<usize> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let cutoff = now_ms() - older_than_ms;
+        let mut stale = Vec::new();
+        let mut stmt = conn.prepare("SELECT session_id, state, updated_at_ms FROM session_goals")?;
+        for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))? {
+            let (id, state, updated) = row?;
+            if updated < cutoff && serde_json::from_str::<Value>(&state).is_ok_and(|v| v["unattended"] == true) {
+                stale.push(id);
+            }
+        }
+        drop(stmt);
+        for id in &stale {
+            conn.execute("DELETE FROM session_goals WHERE session_id=?1", [id])?;
+        }
+        Ok(stale.len())
+    }
+
     /// Sessions with an active goal or scheduler: the
     /// gateway driver's work list (empty means it has nothing to wake for).
     pub fn active_sessions(&self) -> Result<Vec<String>> {
@@ -1095,7 +1145,7 @@ impl ControlStore {
             let mut stmt = conn.prepare(&format!("SELECT session_id, state FROM {table}"))?;
             for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
                 let (id, state) = row?;
-                if serde_json::from_str::<Value>(&state).is_ok_and(|v| v["status"] == "active") {
+                if serde_json::from_str::<Value>(&state).is_ok_and(|v| v["status"] == "active" && v["unattended"] != true) {
                     ids.insert(id);
                 }
             }
@@ -1160,6 +1210,30 @@ impl ControlStore {
     }
 }
 
+/// An unattended goal's gates, run at the start of the turn boundary and in order up to the first failure.
+/// A gate passes when it exits 0 and prints no failing report; its result enters this turn's observation
+/// (score and verification) so the ratchet and the attempt log record the host's own run. The results are
+/// handed back for the gate loop, which must not run them twice.
+fn run_gates_early(goal: &mut SessionGoal, cwd: Option<&Path>, o: &mut TurnObs) -> std::vec::IntoIter<GateResult> {
+    let mut results = Vec::new();
+    for gate in &mut goal.gates {
+        let (mut result, failing_report) = run_gate_reporting(gate, cwd);
+        result.passed = result.passed && !failing_report;
+        o.scores.insert(command_key(&gate.command), score_of(result.passed, &result.output));
+        o.verified |= result.passed;
+        if !result.passed {
+            o.failed += 1;
+            o.first_err.get_or_insert_with(|| normalize_error(&result.output));
+        }
+        let stop = !result.passed;
+        results.push(result);
+        if stop {
+            break;
+        }
+    }
+    results.into_iter()
+}
+
 /// What the gateway should inject after a completed turn, if anything.
 #[derive(Debug, Clone)]
 pub enum Continuation {
@@ -1203,9 +1277,18 @@ pub fn after_turn_in(
 
     if let Some(mut goal) = store.get_goal(session_id)? {
         if goal.status == GoalStatus::Active {
+            // An unattended run has no driver to resume a parked goal: it never waits on subagents.
+            let subagents_running = subagents_running && !goal.unattended;
             goal.turns_used += 1;
             goal.tokens_used += tokens_this_turn;
-            let o = obs.unwrap_or_default();
+            // A stuck unattended task cannot run away: with no ceiling set, the first turn sets one.
+            if goal.unattended && goal.token_budget.is_none() {
+                goal.token_budget = Some(tokens_this_turn.saturating_mul(AUTO_CEILING_FACTOR).clamp(AUTO_CEILING_MIN, AUTO_CEILING_MAX));
+            }
+            let mut o = obs.unwrap_or_default();
+            // An unattended run's gates run first, so their result (the host's own, not the model's claim) is what
+            // the attempt log and the ratchet record.
+            let mut early = if goal.unattended && !subagents_running { run_gates_early(&mut goal, cwd, &mut o) } else { Vec::new().into_iter() };
             goal.record_attempt(format!(
                 "auto t{} f{} | files={} | ver={} | err={}",
                 o.tools,
@@ -1232,7 +1315,7 @@ pub fn after_turn_in(
             if !goal.gates.is_empty() {
                 let mut failed: Option<(String, String)> = None;
                 for gate in &mut goal.gates {
-                    let result = run_gate(gate, cwd);
+                    let result = early.next().unwrap_or_else(|| run_gate(gate, cwd));
                     if result.passed {
                         gate.attempts = 0;
                     } else {
@@ -1243,7 +1326,9 @@ pub fn after_turn_in(
                 match failed {
                     None => {
                         let commands: Vec<&str> = goal.gates.iter().map(|g| g.command.as_str()).collect();
-                        if let Some(verification) = goal.completion_pending.take() {
+                        // An unattended run is complete when its gates pass: the host decides, not the model.
+                        let host_verdict = goal.unattended.then(|| "the task's check passed".to_string());
+                        if let Some(verification) = goal.completion_pending.take().or(host_verdict) {
                             goal.prune_refs(session_id, goal.final_ref());
                             goal.status = GoalStatus::Done;
                             goal.last_verdict = Some("done".into());
@@ -1266,12 +1351,14 @@ pub fn after_turn_in(
                         }
                         gate_note = format!(
                             "\n\n[Quality gate failed] `{command}`\nGate output (tail):\n```\n{}\n```\nFix the problem so the gate passes; the goal cannot complete until every gate does.",
-                            output.chars().take(2000).collect::<String>()
+                            output.chars().rev().take(2000).collect::<Vec<_>>().into_iter().rev().collect::<String>()
                         );
                     }
                 }
             }
-            if let Some(reason) = goal.out_of_budget() {
+            // No progress (the same failure, or no file changes, for several turns in a row) ends an unattended run.
+            let stalled = goal.unattended && goal.plateaued();
+            if let Some(reason) = goal.out_of_budget().or(stalled.then_some("no progress")) {
                 goal.status = GoalStatus::Paused;
                 goal.paused_reason = Some(format!(
                     "{}/{} turns used ({})",
@@ -2254,6 +2341,127 @@ mod tests {
         assert!(after_turn(&store, "f", 0, false, false).unwrap().is_none());
         let g = store.get_goal("f").unwrap().unwrap();
         assert!(g.status == GoalStatus::Paused && g.paused_reason.unwrap().contains("still failing after 1 retries"));
+    }
+
+    fn unattended(store: &ControlStore, sid: &str, command: &str, retries: i64) {
+        let mut goal = SessionGoal::new("task check");
+        goal.unattended = true;
+        goal.max_turns = 0;
+        let mut gate = QualityGate::new(command);
+        gate.max_retries = retries;
+        goal.gates.push(gate);
+        store.set_goal(sid, Some(&goal)).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unattended_goal_runs_its_check_itself_and_ends_when_it_passes() {
+        let dir = std::env::temp_dir().join(format!("unattended-goal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Exits 0 but reports a failure until `fixed` exists; the report is the verdict.
+        std::fs::write(dir.join("check.sh"), "#!/bin/sh\nif [ -f fixed ]; then echo '{\"exec_acc\": true}'; else echo '{\"exec_acc\": false, \"detail\": \"row 3 differs\"}'; fi\n").unwrap();
+        std::fs::set_permissions(dir.join("check.sh"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "./check.sh", 3);
+        assert!(store.active_sessions().unwrap().is_empty(), "no driver or window continues an unattended goal");
+        let next = after_turn_in(&store, "u", 10, false, false, Some(&dir)).unwrap();
+        let Some(Continuation::Goal(prompt)) = next else { panic!("a failing check continues the run") };
+        assert!(prompt.contains("check still fails") && prompt.contains("session_goal calls are not needed"), "{prompt}");
+        assert!(prompt.contains("[Quality gate failed]") && prompt.contains("row 3 differs"), "the failed output comes back: {prompt}");
+        let g = store.get_goal("u").unwrap().unwrap();
+        assert_eq!(g.status, GoalStatus::Active);
+        assert_eq!(g.best.get("./check.sh"), None, "a failing check is not the best score yet");
+        assert!(g.attempt_log.last().unwrap().contains("ver=none"), "{:?}", g.attempt_log);
+        // The model fixes it: the host's next run passes and the goal is done without any model call.
+        std::fs::write(dir.join("fixed"), "").unwrap();
+        assert!(after_turn_in(&store, "u", 10, false, false, Some(&dir)).unwrap().is_none());
+        let g = store.get_goal("u").unwrap().unwrap();
+        assert_eq!(g.status, GoalStatus::Done);
+        assert!(g.completion_verification.unwrap().contains("the task's check passed"));
+        assert!(g.attempt_log.last().unwrap().contains("ver=pass"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failing_report_followed_by_long_diagnostics_still_fails_and_a_run_never_parks_on_subagents() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "echo '{\"exec_acc\": false}'; head -c 6000 /dev/zero | tr '\\0' x; echo", 1);
+        // Sub-agents running would park an attended goal with no continuation; an unattended run goes on.
+        assert!(matches!(after_turn(&store, "u", 0, true, false).unwrap(), Some(Continuation::Goal(_))), "the report beyond the 3000-char tail still fails the gate");
+        assert!(!store.get_goal("u").unwrap().unwrap().waiting_on_subagents);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unattended_goal_gets_a_token_ceiling_from_its_first_turn_and_stops_at_it() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "echo '{\"failed\": 1}'", 9);
+        // First turn used 100k fresh tokens: the ceiling is 5x, but never below 400k.
+        assert!(matches!(after_turn(&store, "u", 100_000, false, false).unwrap(), Some(Continuation::Goal(_))));
+        assert_eq!(store.get_goal("u").unwrap().unwrap().token_budget, Some(500_000));
+        // The next turn takes it past the ceiling: the run stops with the reason.
+        assert!(after_turn(&store, "u", 450_000, false, false).unwrap().is_none());
+        let g = store.get_goal("u").unwrap().unwrap();
+        assert!(g.status == GoalStatus::Paused && g.paused_reason.clone().unwrap().contains("token budget"), "{:?}", g.paused_reason);
+        // A tiny first turn still gets the floor, a huge one the cap; a ceiling set up front is kept.
+        unattended(&store, "small", "echo '{\"failed\": 1}'", 9);
+        after_turn(&store, "small", 1_000, false, false).unwrap();
+        assert_eq!(store.get_goal("small").unwrap().unwrap().token_budget, Some(400_000));
+        unattended(&store, "big", "echo '{\"failed\": 1}'", 9);
+        after_turn(&store, "big", 9_000_000, false, false).unwrap();
+        assert_eq!(store.get_goal("big").unwrap().unwrap().token_budget, Some(2_000_000));
+        let mut fixed = SessionGoal::new("t");
+        fixed.unattended = true;
+        fixed.token_budget = Some(123_456);
+        fixed.gates.push(QualityGate::new("false"));
+        store.set_goal("fixed", Some(&fixed)).unwrap();
+        after_turn(&store, "fixed", 10, false, false).unwrap();
+        assert_eq!(store.get_goal("fixed").unwrap().unwrap().token_budget, Some(123_456));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unattended_run_that_makes_no_progress_stops_before_its_retries_run_out() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "echo 'same failure'; exit 1", 9);
+        for _ in 0..2 {
+            assert!(matches!(after_turn(&store, "u", 0, false, false).unwrap(), Some(Continuation::Goal(_))));
+        }
+        // Three turns with the same failure and no file changes: stop, whatever retries are left.
+        assert!(after_turn(&store, "u", 0, false, false).unwrap().is_none());
+        let g = store.get_goal("u").unwrap().unwrap();
+        assert!(g.status == GoalStatus::Paused && g.paused_reason.clone().unwrap().contains("no progress"), "{:?}", g.paused_reason);
+    }
+
+    #[test]
+    fn stale_unattended_goals_are_purged_and_attended_ones_never() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "old", "true", 1);
+        let mut attended = SessionGoal::new("mine");
+        attended.updated_at_ms = 1;
+        store.set_goal("mine", Some(&attended)).unwrap();
+        let mut old = store.get_goal("old").unwrap().unwrap();
+        old.updated_at_ms = 1;
+        store.set_goal("old", Some(&old)).unwrap();
+        unattended(&store, "fresh", "true", 1);
+        assert_eq!(store.purge_stale_unattended(3_600_000).unwrap(), 1);
+        assert!(store.get_goal("old").unwrap().is_none() && store.get_goal("fresh").unwrap().is_some() && store.get_goal("mine").unwrap().is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unattended_goal_gives_up_after_its_retries_and_never_calls_a_supervisor() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "echo '{\"failed\": 2}'", 2);
+        for _ in 0..2 {
+            assert!(matches!(after_turn(&store, "u", 0, false, false).unwrap(), Some(Continuation::Goal(_))));
+        }
+        assert!(after_turn(&store, "u", 0, false, false).unwrap().is_none(), "retries spent");
+        let g = store.get_goal("u").unwrap().unwrap();
+        assert!(g.status == GoalStatus::Paused && g.paused_reason.clone().unwrap().contains("still failing after 2 retries"));
+        assert!(!g.supervisor_due(), "an unattended goal never asks a supervisor");
     }
 
     #[test]

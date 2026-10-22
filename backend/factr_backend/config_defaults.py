@@ -1634,6 +1634,14 @@ DEFAULT_CONFIG = {
     #   timeout and failing closed.
     # timeout: seconds before an unanswered prompt fails closed (CLI and gateway). 60s
     #   proved too tight for Telegram/Discord push notifications, hence 300.
+    # An unattended run (POST /api/agent/run) whose task names a check ("test with ./eval") is given an
+    # implicit goal with that check as its gate: the host runs it after every turn and the run goes on while
+    # it fails (max_retries retries, within the run's time limit). Interactive chats are unaffected.
+    "persistence": {
+        "enabled": True,
+        "max_retries": 3,
+        "max_tokens": 0,  # fresh-token ceiling for one persisting run; 0 = automatic (5x the first turn, 400k to 2M)
+    },
     # Optional hard stop on what one session may spend. 0 = no limit.
     "budget": {
         "max_cost_usd": 0,
