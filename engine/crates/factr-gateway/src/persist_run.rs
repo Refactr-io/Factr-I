@@ -24,6 +24,12 @@ pub(crate) fn enabled() -> bool {
     }
 }
 
+/// A positive integer from the environment (`FACTR_PERSIST_MAX_RETRIES`, `..._MAX_TOKENS`, `..._MAX_SECONDS`): the
+/// top-priority override of the matching `persistence.*` setting, for runners that set only the environment.
+fn env_number(name: &str) -> Option<u64> {
+    factr_base::factr_config::env_text(name)?.parse::<u64>().ok().filter(|n| *n > 0)
+}
+
 /// Create the run's goal when the task names a check. `true` when the run is persisting.
 pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeout: Duration) -> bool {
     let checks = task_check_commands(prompt);
@@ -32,15 +38,16 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
     }
     // Rows of runs that died or lost the cleanup race (a gate finishing after its run timed out).
     let _ = store.purge_stale_unattended(STALE_AFTER.as_millis() as i64);
-    let retries = factr_base::factr_config::current().persistence.max_retries.map_or(DEFAULT_RETRIES, i64::from);
+    let settings = factr_base::factr_config::current().persistence.clone();
+    let retries = env_number("FACTR_PERSIST_MAX_RETRIES").map(|n| n.min(10)).or(settings.max_retries.map(u64::from)).map_or(DEFAULT_RETRIES, |n| n as i64);
     // One check may use up to a third of the run (at least a minute); the wall budget leaves room for one more.
     let gate_secs = (timeout.as_secs() / 3).clamp(60, 900) as i64;
     let mut goal = SessionGoal::new(format!("the task's check: {}", checks.join(", ")));
     goal.unattended = true;
     goal.max_turns = 0;
     // A fixed ceiling of fresh tokens, or (0) the automatic one set after the first turn.
-    goal.token_budget = factr_base::factr_config::current().persistence.max_tokens.map(|n| n as i64);
-    goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, factr_base::factr_config::current().persistence.max_seconds));
+    goal.token_budget = env_number("FACTR_PERSIST_MAX_TOKENS").or(settings.max_tokens).map(|n| n as i64);
+    goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, env_number("FACTR_PERSIST_MAX_SECONDS").or(settings.max_seconds)));
     goal.gates = checks
         .into_iter()
         .map(|command| {
