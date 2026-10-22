@@ -105,6 +105,9 @@ export function isLocalEndpointError(raw: null | string | undefined): boolean {
   return LOCAL_HOST_RE.test(endpoint ?? text) || /\bOllama hint\b/.test(text)
 }
 
+/** The engine's stop message when budget.max_tokens or budget.max_cost_usd is used up. */
+const BUDGET_REACHED_RE = /\bBudget reached:/i
+
 /** A plain descriptor for a raw provider error, or null when the text is not one we can read. */
 export function inferErrorSurface(raw: null | string | undefined): ErrorSurface | null {
   const text = raw?.trim()
@@ -122,6 +125,10 @@ export function inferErrorSurface(raw: null | string | undefined): ErrorSurface 
     return knownSavedProvider
       ? { code: 'provider_unusable', layer: 'provider', retryable: false }
       : { code: 'no_provider', layer: 'auth', retryable: false }
+  }
+
+  if (BUDGET_REACHED_RE.test(text)) {
+    return { code: 'budget_reached', layer: 'runtime', retryable: false }
   }
 
   const providerText = PROVIDER_CONTEXT_RE.test(text)

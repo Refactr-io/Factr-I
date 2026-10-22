@@ -9,7 +9,7 @@ Backend selection, in order:
 
 1. `websearch.engine` / `FACTR_WEBSEARCH_ENGINE`: `duckduckgo` (default), `bing`, `searxng`.
 2. `websearch.fallback_engines` / `FACTR_WEBSEARCH_FALLBACK_ENGINES`: tried when the first returns nothing.
-3. A key-based backend from `web.backend` (checked first when configured; any failure falls through to the keyless chain).
+3. A key-based backend from `web.backend` / `web.search_backend` (`tavily`, `exa`, `firecrawl`, `brave`, `serper`, `linkup`; checked first when configured; any failure falls through to the keyless chain). Without a name the first of tavily, exa, firecrawl, brave that has a key is used; serper and linkup are only used when named. `web.search_fallback: true` tries every other keyed backend after a failure, skipping one that failed in the last 5 minutes. Base URL overrides: `TAVILY_BASE_URL`, `FIRECRAWL_API_URL`, `SERPER_BASE_URL`, `LINKUP_BASE_URL`.
 4. `websearch.last_resort_wikipedia` / `FACTR_WEBSEARCH_LAST_RESORT_WIKIPEDIA` (default on): Wikipedia opensearch when everything else is empty.
 
 Related: `websearch.searxng_url` / `FACTR_SEARXNG_URL`, `websearch.bing_api_key` / `FACTR_BING_API_KEY`

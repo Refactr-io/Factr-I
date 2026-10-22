@@ -2,6 +2,7 @@
 
 #[path = "observability/operations.rs"]
 mod operations;
+mod otlp;
 mod schema;
 
 use operations::{
@@ -430,7 +431,14 @@ impl Observer {
                         }
                     }
                     let count = batch.len();
-                    if let Err(err) = write_batch(&mut db, batch) {
+                    let finished: Vec<String> = batch.iter().filter_map(|op| if let Op::RunEnd { id, .. } = op { Some(id.clone()) } else { None }).collect();
+                    let written = write_batch(&mut db, batch);
+                    if written.is_ok() {
+                        for run in &finished {
+                            otlp::turn_finished(&writer_home, run);
+                        }
+                    }
+                    if let Err(err) = written {
                         dropped.fetch_add(count as u64, Ordering::Relaxed);
                         eprintln!("factr-observability: write failed: {err}");
                     }

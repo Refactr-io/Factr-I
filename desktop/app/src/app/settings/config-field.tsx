@@ -173,16 +173,9 @@ export function ConfigField({
 
   if (schema.type === 'list') {
     return row(
-      <Input
+      <ListInput
         className={cn(CONTROL_TEXT, 'min-w-64')}
-        onChange={e =>
-          onChange(
-            e.target.value
-              .split(',')
-              .map(s => s.trim())
-              .filter(Boolean)
-          )
-        }
+        onChange={onChange}
         placeholder={c.commaSeparated}
         value={Array.isArray(value) ? value.join(', ') : String(value ?? '')}
       />
@@ -231,6 +224,42 @@ export function ConfigField({
 }
 
 /** Integer bounds for number settings that have a meaningful limit; others stay free-form. */
+export function parseList(raw: string): string[] {
+  return raw
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+// Keeps what the user is typing while the field is focused. Rendering the parsed list on every
+// keystroke would trim away each space and comma as it is typed, so "git push" could never be entered.
+function ListInput({
+  className,
+  onChange,
+  placeholder,
+  value
+}: {
+  className?: string
+  onChange: (next: string[]) => void
+  placeholder?: string
+  value: string
+}) {
+  const [draft, setDraft] = useState<null | string>(null)
+
+  return (
+    <Input
+      className={className}
+      onBlur={() => setDraft(null)}
+      onChange={e => {
+        setDraft(e.target.value)
+        onChange(parseList(e.target.value))
+      }}
+      placeholder={placeholder}
+      value={draft ?? value}
+    />
+  )
+}
+
 export function numberBoundsForKey(schemaKey: string): { max: number; min: number } | null {
   return schemaKey === 'model_context_length' ? { max: 10_000_000, min: 0 } : null
 }

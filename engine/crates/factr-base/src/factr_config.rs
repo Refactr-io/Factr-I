@@ -35,11 +35,14 @@ pub struct Memory {
     pub enabled: Option<bool>,
 }
 
-/// `web.*`: which key-based search backend (`tavily|exa|firecrawl|brave`) to use.
+/// `web.*`: which key-based search backend (`tavily|exa|firecrawl|brave|serper|linkup`) to use.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Web {
     pub backend: Option<String>,
     pub search_backend: Option<String>,
+    /// `web.search_fallback`: when the chosen key-based backend fails, try the other backends that have a
+    /// key (a recently failed one is skipped for a few minutes). Off unless set.
+    pub search_fallback: bool,
 }
 
 impl Web {
@@ -98,6 +101,19 @@ pub struct LocalModels {
     /// `local_models.silence_timeout_secs`: how long a local endpoint may stay silent before the stream is
     /// treated as dead. Raises the normal limit for local endpoints only; unset leaves it alone.
     pub silence_timeout_secs: Option<u64>,
+}
+
+/// `monitoring.export.otlp.*`: the operator-configured OTLP destination (shared with the backend's gateway-health
+/// export). When `enabled` with an endpoint, finished turns are also exported there as traces.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ObservabilityExport {
+    /// `monitoring.export.otlp.enabled` (off unless true).
+    pub enabled: bool,
+    /// `monitoring.export.otlp.endpoint`: an OTLP/HTTP base URL (`http(s)://host:4318`); traces go to `/v1/traces`.
+    pub endpoint: Option<String>,
+    /// `monitoring.export.otlp.headers_env`: header name to the NAME of the environment variable (or `.env` entry)
+    /// holding its value; secrets never sit in config.yaml.
+    pub headers_env: Vec<(String, String)>,
 }
 
 /// True when `api_base` points at this machine or a private network address.
@@ -227,6 +243,7 @@ pub struct FactrConfig {
     pub tools: ToolsView,
     pub persistence: Persistence,
     pub local_models: LocalModels,
+    pub observability_export: ObservabilityExport,
     pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
@@ -397,7 +414,11 @@ impl FactrConfig {
                 llm_second_pass: path(&root, "compression.llm_second_pass").and_then(as_bool),
             },
             memory: Memory { enabled: path(&root, "memory.memory_enabled").and_then(Value::as_bool) },
-            web: Web { backend: path(&root, "web.backend").and_then(as_text), search_backend: path(&root, "web.search_backend").and_then(as_text) },
+            web: Web {
+                backend: path(&root, "web.backend").and_then(as_text),
+                search_backend: path(&root, "web.search_backend").and_then(as_text),
+                search_fallback: path(&root, "web.search_fallback").and_then(as_bool).unwrap_or(false),
+            },
             terminal: Terminal {
                 max_memory_mb: path(&root, "terminal.max_memory_mb").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
                 reduce_output: path(&root, "terminal.reduce_output").and_then(as_bool).unwrap_or(false),
@@ -411,6 +432,17 @@ impl FactrConfig {
                     .flatten()
                     .filter_map(as_text)
                     .take(100)
+                    .collect(),
+            },
+            observability_export: ObservabilityExport {
+                enabled: path(&root, "monitoring.export.otlp.enabled").and_then(as_bool).unwrap_or(false),
+                endpoint: path(&root, "monitoring.export.otlp.endpoint").and_then(as_text).map(|u| u.trim().trim_end_matches('/').to_string()).filter(|u| u.starts_with("http://") || u.starts_with("https://")),
+                headers_env: path(&root, "monitoring.export.otlp.headers_env")
+                    .and_then(Value::as_mapping)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(k, v)| Some((as_text(k)?, as_text(v)?)))
+                    .take(10)
                     .collect(),
             },
             local_models: LocalModels {
@@ -626,6 +658,8 @@ mod tests {
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: 0}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: -5}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("model: x").memory, Memory::default());
+        assert!(!FactrConfig::parse("web: {backend: exa}").web.search_fallback, "fallback is opt-in");
+        assert!(FactrConfig::parse("web: {search_fallback: true}").web.search_fallback);
     }
 
     /// The release's promise: with nothing configured, none of the opt-in controls does anything.
@@ -634,6 +668,7 @@ mod tests {
         for yaml in ["", "model: x\n", "terminal: {backend: local}\napprovals: {mode: smart}\ncompression: {threshold: 0.5}\n"] {
             let c = FactrConfig::parse(yaml);
             assert!(!c.terminal.reduce_output, "{yaml}");
+            assert!(!c.web.search_fallback, "{yaml}");
             assert!(!c.tools.routing, "{yaml}");
             assert_eq!(c.budget, Budget::default(), "{yaml}");
             assert_eq!(c.approval_extras, ApprovalExtras::default(), "{yaml}");
@@ -650,6 +685,18 @@ mod tests {
         let c = FactrConfig::parse("approvals:\n  gui_automation_ask: true\n  always_ask: ['^cargo publish', '  ']\n").approval_extras;
         assert!(c.gui_automation_ask);
         assert_eq!(c.always_ask, vec!["^cargo publish".to_string()]);
+    }
+
+    #[test]
+    fn the_otlp_export_needs_an_http_endpoint_and_reads_standard_header_pairs() {
+        assert_eq!(FactrConfig::parse("").observability_export, ObservabilityExport::default());
+        let c = FactrConfig::parse("monitoring:\n  export:\n    otlp:\n      enabled: true\n      endpoint: ' https://cloud.example.com:4318/ '\n      headers_env: {x-api-key: MY_OTLP_KEY}\n").observability_export;
+        assert!(c.enabled);
+        assert_eq!(c.endpoint.as_deref(), Some("https://cloud.example.com:4318"));
+        assert_eq!(c.headers_env, vec![("x-api-key".to_string(), "MY_OTLP_KEY".to_string())]);
+        for bad in ["ftp://x", "localhost:4318", ""] {
+            assert_eq!(FactrConfig::parse(&format!("monitoring: {{export: {{otlp: {{enabled: true, endpoint: '{bad}'}}}}}}")).observability_export.endpoint, None, "{bad}");
+        }
     }
 
     #[test]

@@ -114,6 +114,14 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "How long a local model may stay silent before its stream is treated as dead (0 = default)",
         "category": "agent",
     },
+    "monitoring.export.otlp.enabled": {
+        "description": "Export to your OpenTelemetry collector: finished turns as traces (ids, counts, durations, statuses and model names only, never prompts or replies) and the gateway health data",
+        "category": "agent",
+    },
+    "monitoring.export.otlp.endpoint": {
+        "description": "OTLP/HTTP address of the collector, e.g. http://localhost:4318 (used when export is enabled). Header values come from environment variables named in monitoring.export.otlp.headers_env",
+        "category": "agent",
+    },
     "timezone": _select(
         "IANA timezone (e.g. America/New_York). Blank uses the system timezone.",
         *_timezone_options(), searchable=True, clearable=True,
