@@ -30,7 +30,15 @@ import {
   Zap
 } from '@/lib/icons'
 import { runtimeReadinessDisplay, type RuntimeReadinessResult } from '@/lib/runtime-readiness'
-import { cacheHitLabel, contextBarLabel, LiveDuration, tokensPerSecondLabel, usageContextLabel } from '@/lib/statusbar'
+import {
+  cacheHitLabel,
+  contextBarLabel,
+  LiveDuration,
+  rateLimitLabel,
+  tokensPerSecondLabel,
+  turnUsageLabel,
+  usageContextLabel
+} from '@/lib/statusbar'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { resolveVersionStatus } from '@/lib/version-status'
@@ -311,6 +319,8 @@ export function useStatusbarItems({
   // ticks mid-turn, message.complete after) — no extra RPC, no polling.
   const cacheHit = cacheHitLabel(currentUsage)
   const tokensPerSecond = tokensPerSecondLabel(currentUsage)
+  const turnUsage = turnUsageLabel(currentUsage)
+  const rateLimit = rateLimitLabel(currentUsage)
 
   const approvalModeItem = useApprovalModeStatusbarItem(activeGatewayProfile, requestGateway)
   const systemResourcesItem = useSystemResourcesStatusbarItem()
@@ -659,6 +669,25 @@ export function useStatusbarItems({
         variant: 'menu'
       },
       {
+        // Self-hiding until the first call of a turn reports: nothing to show, nothing on the bar.
+        hidden: !turnUsage,
+        icon: <Hash className="size-3" />,
+        id: 'turn-usage',
+        label: turnUsage,
+        title: copy.turnUsageTitle,
+        toggleLabel: copy.toggleTurnUsage,
+        variant: 'text'
+      },
+      {
+        hidden: !rateLimit,
+        icon: <Activity className="size-3" />,
+        id: 'rate-limit',
+        label: rateLimit,
+        title: copy.rateLimitTitle,
+        toggleLabel: copy.toggleRateLimit,
+        variant: 'text'
+      },
+      {
         icon: <Layers3 className="size-3" />,
         id: 'cache-hit-rate',
         // Same never-self-hide rule as the context meter: opted in means a
@@ -727,8 +756,10 @@ export function useStatusbarItems({
       gatewayState,
       systemResourcesItem,
       terminalShowing,
+      rateLimit,
       tokensPerSecond,
-      turnStartedAt
+      turnStartedAt,
+      turnUsage
     ]
   )
 

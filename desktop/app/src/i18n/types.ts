@@ -3360,6 +3360,8 @@ export interface Translations {
       toggleApprovalMode: string
       toggleBackendVersion: string
       toggleCacheHitRate: string
+      toggleTurnUsage: string
+      toggleRateLimit: string
       toggleCommandCenter: string
       toggleContextUsage: string
       toggleRunningTimer: string
@@ -3368,6 +3370,8 @@ export interface Translations {
       toggleTokensPerSecond: string
       toggleVersion: string
       toggleWorkspace: string
+      turnUsageTitle: string
+      rateLimitTitle: string
       cacheHitRateTitle: string
       tokensPerSecondTitle: string
       agents: string
@@ -3861,6 +3865,8 @@ export interface Translations {
         unavailable: string
       }
       outputAlt: string
+      outputReduced: string
+      outputReducedTitle: string
       rawResponse: string
       copyActivity: string
       recoveredOne: string
