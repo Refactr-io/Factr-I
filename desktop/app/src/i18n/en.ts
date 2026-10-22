@@ -4334,6 +4334,10 @@ export const en: Translations = {
         streaming: 'The connection dropped before the reply finished. Retry to send it again.'
       },
       errorCodes: {
+        budget_reached: {
+          title: 'Session budget reached',
+          body: 'This session used up its budget. Raise or clear the limit in Settings > Advanced > Agent limits, then send your message again.'
+        },
         no_provider: {
           title: 'No AI provider is connected yet',
           body: 'Open Settings > Providers (or sign in) to choose one.'

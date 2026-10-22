@@ -61,7 +61,9 @@ export const ERROR_CODE_KEYS = [
   'provider_model_not_installed',
   'provider_rate_limited',
   'provider_server_error',
-  'provider_unusable'
+  'provider_unusable',
+  // The session budget (budget.max_tokens / budget.max_cost_usd) stopped the turn: retrying cannot help.
+  'budget_reached'
 ] as const
 
 export type ErrorCodeKey = (typeof ERROR_CODE_KEYS)[number]
@@ -258,6 +260,7 @@ const SWITCH_PROVIDER_LAYERS: readonly ErrorSurfaceLayer[] = ['auth', 'billing',
 // an unchanged retry is known to reproduce it for the user (too long a
 // conversation, a blocked prompt, a chat another surface owns).
 const CODE_PLANS: Partial<Record<ErrorCodeKey, Partial<ErrorRecoveryPlan>>> = {
+  budget_reached: { retry: false },
   SESSION_NOT_OWNED: { retry: false, startNewSession: true },
   content_policy_blocked: { editMessage: true, retry: false },
   context_overflow: { compress: true, retry: false, startNewSession: true },
