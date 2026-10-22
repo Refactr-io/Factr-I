@@ -392,6 +392,11 @@ pub fn observe_tool(session_id: &str, name: &str, args: &Value, result: &str) {
         l.rsplit_once("xit code: ").is_some_and(|(_, code)| code.trim() != "0")
     });
     let failed = result.starts_with("Error:") || nonzero_exit;
+    if name == "bash" {
+        if let Some(line) = args["command"].as_str() {
+            crate::check_memo::note_observed(session_id, line, result);
+        }
+    }
     let cmd = args["command"].as_str().unwrap_or("").to_lowercase();
     let verify_cmd = name == "bash" && crate::goal_ratchet::is_verify_command(&cmd);
     let mut map = turn_obs().lock().unwrap_or_else(|e| e.into_inner());
@@ -1253,10 +1258,19 @@ impl ControlStore {
 /// A gate passes when it exits 0 and prints no failing report; its result enters this turn's observation
 /// (score and verification) so the ratchet and the attempt log record the host's own run. The results are
 /// handed back for the gate loop, which must not run them twice.
-fn run_gates_early(goal: &mut SessionGoal, cwd: Option<&Path>, o: &mut TurnObs) -> std::vec::IntoIter<GateResult> {
+fn run_gates_early(goal: &mut SessionGoal, cwd: Option<&Path>, o: &mut TurnObs, session: &str) -> std::vec::IntoIter<GateResult> {
     let mut results = Vec::new();
     for gate in &mut goal.gates {
-        let (mut result, failing_report) = run_gate_reporting(gate, cwd);
+        // The model (or the engine, right after a change) already ran this check on these exact sources.
+        let known = crate::check_memo::recall(session, &gate.command);
+        let (mut result, failing_report) = match known {
+            Some((passed, exit_code, output)) => {
+                gate.attempts += 1;
+                gate.last_exit_code = Some(exit_code);
+                (GateResult { passed, exit_code, output }, false)
+            }
+            None => run_gate_reporting(gate, cwd),
+        };
         result.passed = result.passed && !failing_report;
         o.scores.insert(command_key(&gate.command), score_of(result.passed, &result.output));
         o.verified |= result.passed;
@@ -1327,7 +1341,7 @@ pub fn after_turn_in(
             let mut o = obs.unwrap_or_default();
             // An unattended run's gates run first, so their result (the host's own, not the model's claim) is what
             // the attempt log and the ratchet record.
-            let mut early = if goal.unattended && !subagents_running { run_gates_early(&mut goal, cwd, &mut o) } else { Vec::new().into_iter() };
+            let mut early = if goal.unattended && !subagents_running { run_gates_early(&mut goal, cwd, &mut o, session_id) } else { Vec::new().into_iter() };
             goal.record_attempt(format!(
                 "auto t{} f{} | files={} | ver={} | err={}",
                 o.tools,

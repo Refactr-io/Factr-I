@@ -33,11 +33,11 @@ fn env_number(name: &str) -> Option<u64> {
     factr_base::factr_config::env_text(name)?.parse::<u64>().ok().filter(|n| *n > 0)
 }
 
-/// Create the run's goal when the task names a check. `true` when the run is persisting.
-pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeout: Duration) -> bool {
+/// Create the run's goal when the task names a check: the check commands when the run is persisting.
+pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, cwd: Option<&str>, timeout: Duration) -> Option<Vec<String>> {
     let checks = task_check_commands(prompt);
     if checks.is_empty() {
-        return false;
+        return None;
     }
     // Rows of runs that died or lost the cleanup race (a gate finishing after its run timed out).
     let _ = store.purge_stale_unattended(STALE_AFTER.as_millis() as i64);
@@ -52,7 +52,8 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
     goal.token_budget = env_number("FACTR_PERSIST_MAX_TOKENS").or(settings.max_tokens).map(|n| n as i64);
     goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, env_number("FACTR_PERSIST_MAX_SECONDS").or(settings.max_seconds).or(Some(DEFAULT_MAX_SECONDS))));
     goal.gates = checks
-        .into_iter()
+        .iter()
+        .cloned()
         .map(|command| {
             let mut gate = QualityGate::new(command);
             gate.max_retries = retries;
@@ -62,7 +63,49 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
         .collect();
     // Terser turns (a faster run) unless the user chose a verbosity.
     factr_base::run_hints::set_text_verbosity(session_id, "low");
-    store.set_goal(session_id, Some(&goal)).is_ok()
+    let gates: Vec<(String, u64)> = goal.gates.iter().map(|g| (g.command.clone(), g.timeout_seconds.max(1) as u64)).collect();
+    factr_learn::check_memo::register(session_id, &gates, cwd.map(std::path::Path::new));
+    store.set_goal(session_id, Some(&goal)).is_ok().then_some(checks)
+}
+
+/// A one-off system reminder for a persisting run, from the flags that are on (all default off):
+/// `FACTR_PERSIST_AUTOCHECK=1` tells the model the engine runs the check after every change and appends the result;
+/// `FACTR_PERSIST_ORIENT=1` lists the working directory and shows the start of the check script, so the model need
+/// not spend calls on `ls` and `read`.
+pub(crate) fn reminder(existing: Option<&str>, checks: &[String], cwd: Option<&str>) -> Option<String> {
+    let mut parts: Vec<String> = existing.map(str::to_string).into_iter().collect();
+    let list = checks.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+    if factr_learn::check_memo::autocheck_enabled() {
+        parts.push(format!("The engine runs {list} itself after every file change you make and appends the result to that change's output, and again when you stop. Do not run it yourself and do not re-read a file you just wrote: read the appended result, then fix what it points to or stop."));
+    }
+    if factr_base::factr_config::env_bool("FACTR_PERSIST_ORIENT").unwrap_or(false) {
+        if let Some(dir) = cwd.map(std::path::Path::new) {
+            parts.push(orientation(dir, checks));
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+/// The working directory's files and the start of the first check that is a small text file in it.
+fn orientation(dir: &std::path::Path, checks: &[String]) -> String {
+    let mut files: Vec<String> = std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().filter_map(|e| Some(format!("{} ({} B)", e.file_name().to_str()?, e.metadata().ok()?.len()))).collect())
+        .unwrap_or_default();
+    files.sort();
+    files.truncate(40);
+    let mut text = format!("Working directory now: {}.", if files.is_empty() { "empty".to_string() } else { files.join(", ") });
+    let script = checks.iter().find_map(|c| {
+        let first = c.split_whitespace().next()?.trim_start_matches("./");
+        let path = dir.join(first);
+        let meta = std::fs::metadata(&path).ok().filter(|m| m.is_file() && m.len() <= 4096)?;
+        let body = std::fs::read_to_string(&path).ok()?;
+        Some((first.to_string(), body, meta.len()))
+    });
+    if let Some((name, body, _)) = script {
+        let head: String = body.chars().take(1200).collect();
+        text.push_str(&format!(" The start of `{name}`:\n```\n{head}\n```"));
+    }
+    text
 }
 
 /// The run's wall budget for persisting: its time limit minus one more check (at least half of it), which
@@ -132,6 +175,7 @@ pub(crate) fn finish(store: &ControlStore, session_id: &str) -> Value {
     }
     let _ = store.forget_session(session_id);
     factr_base::run_hints::clear(session_id);
+    factr_learn::check_memo::forget(session_id);
     report
 }
 
@@ -145,9 +189,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = ControlStore::open(&dir).unwrap();
-        assert!(!start(&store, "none", "Fix the bug in this directory.", Duration::from_secs(600)));
+        assert!(start(&store, "none", "Fix the bug in this directory.", None, Duration::from_secs(600)).is_none());
         assert!(store.get_goal("none").unwrap().is_none());
-        assert!(start(&store, "s", "Fix it. Test with ./run_check.sh and make it pass.", Duration::from_secs(900)));
+        assert_eq!(start(&store, "s", "Fix it. Test with ./run_check.sh and make it pass.", None, Duration::from_secs(900)), Some(vec!["./run_check.sh".to_string()]));
         let goal = store.get_goal("s").unwrap().unwrap();
         assert!(goal.unattended && goal.max_turns == 0);
         assert_eq!(goal.gates.len(), 1);
@@ -157,6 +201,31 @@ mod tests {
         finish(&store, "s");
         assert_eq!(factr_base::run_hints::text_verbosity(Some("s")), None, "the hint ends with the run");
         assert!(store.active_sessions().unwrap().is_empty(), "the driver never picks up a run's goal");
+    }
+
+    #[test]
+    fn the_reminder_says_what_the_flags_say_and_nothing_when_they_are_off() {
+        let _env = factr_base::storage::lock_test_env();
+        let dir = std::env::temp_dir().join(format!("persist-reminder-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("eval"), "#!/bin/sh\necho check-body\n").unwrap();
+        std::fs::write(dir.join("solution.py"), "x").unwrap();
+        let checks = vec!["./eval".to_string()];
+        let cwd = dir.to_str();
+        factr_base::env::remove_var("FACTR_PERSIST_AUTOCHECK");
+        factr_base::env::remove_var("FACTR_PERSIST_ORIENT");
+        assert_eq!(reminder(None, &checks, cwd), None);
+        assert_eq!(reminder(Some("keep"), &checks, cwd).as_deref(), Some("keep"));
+        factr_base::env::set_var("FACTR_PERSIST_ORIENT", "1");
+        let oriented = reminder(None, &checks, cwd).unwrap();
+        assert!(oriented.contains("eval (") && oriented.contains("solution.py (1 B)") && oriented.contains("check-body"), "{oriented}");
+        factr_base::env::set_var("FACTR_PERSIST_AUTOCHECK", "1");
+        let both = reminder(Some("keep"), &checks, cwd).unwrap();
+        assert!(both.starts_with("keep") && both.contains("runs `./eval` itself") || both.contains("runs `./eval`"), "{both}");
+        factr_base::env::remove_var("FACTR_PERSIST_AUTOCHECK");
+        factr_base::env::remove_var("FACTR_PERSIST_ORIENT");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -203,7 +272,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = ControlStore::open(&dir).unwrap();
-        start(&store, "s", "Test with ./check.sh", Duration::from_secs(600));
+        start(&store, "s", "Test with ./check.sh", None, Duration::from_secs(600));
         let mut goal = store.get_goal("s").unwrap().unwrap();
         goal.status = GoalStatus::Done;
         goal.turns_used = 2;

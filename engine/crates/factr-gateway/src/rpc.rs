@@ -3902,7 +3902,8 @@ pub(crate) async fn agent_run(
         }
         // A one-shot run whose task names its check keeps going, through the goal machinery, while it fails.
         let control = conn.control_store().await;
-        let persisting = session_key.is_none() && persist_run::enabled() && control.as_deref().is_some_and(|store| persist_run::start(store, &session_id, prompt, timeout));
+        let checks = if session_key.is_none() && persist_run::enabled() { control.as_deref().and_then(|store| persist_run::start(store, &session_id, prompt, cwd, timeout)) } else { None };
+        let persisting = checks.is_some();
 
         // A cron job's toolset policy holds for the whole run (fails closed: no policy, no run). A persisting run
         // may be limited to the tools a write-and-check task needs (`FACTR_PERSIST_TOOLS=minimal`, off by default).
@@ -3920,7 +3921,7 @@ pub(crate) async fn agent_run(
         let outcome = tokio::time::timeout(timeout, async {
             conn.dispatch(
                 "prompt.submit",
-                &json!({ "session_id": session_id, "text": prompt, "system_reminder": opts.instructions }),
+                &json!({ "session_id": session_id, "text": prompt, "system_reminder": match &checks { Some(c) => persist_run::reminder(opts.instructions, c, cwd), None => opts.instructions.map(str::to_string) } }),
             )
             .await
             .map_err(|e| anyhow!(e.message))?;
