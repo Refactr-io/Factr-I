@@ -87,7 +87,8 @@ export function turnUsageLabel(usage: UsageStats): string {
   }
 
   // Anthropic reports cache tokens beside the prompt, OpenAI inside it: show the full prompt either way.
-  const prompt = turn.cache_read > turn.input ? turn.input + turn.cache_read + turn.cache_write : turn.input
+  const prompt =
+    turn.prompt ?? (turn.cache_read > turn.input ? turn.input + turn.cache_read + turn.cache_write : turn.input)
 
   const parts = [
     turn.cache_read > 0

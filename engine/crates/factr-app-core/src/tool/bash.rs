@@ -1017,11 +1017,23 @@ impl Tool for BashTool {
 
         // Optional output reduction (`terminal.reduce_output`, off by default; fail-open). The gate above
         // and the checkpoint already saw the original command.
-        let reduced = if run_in_background {
+        // The repo's cargo wrapper (a shell function) would be bypassed by `rtk cargo ...`, so cargo commands
+        // in such a repo keep running as written. A rewrite that the destructive-command gate would refuse
+        // is dropped too.
+        #[cfg(unix)]
+        let cargo_wrapper_applies =
+            params.command.contains("cargo") && wrap_repo_cargo_commands(&params.command, ctx.working_dir.as_deref()).is_some();
+        #[cfg(not(unix))]
+        let cargo_wrapper_applies = false;
+        let reduced = if run_in_background || cargo_wrapper_applies {
             false
         } else if let Some(rewritten) = super::output_reduction::reduced_command(&params.command).await {
-            params.command = rewritten;
-            true
+            if destructive_command_refusal(&rewritten, params.justification.as_deref(), ctx.working_dir.clone()).is_none() {
+                params.command = rewritten;
+                true
+            } else {
+                false
+            }
         } else {
             false
         };

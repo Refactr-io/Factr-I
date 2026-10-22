@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 /// (tool, phrases that route to it). Phrases are lower-case substrings of the user's text.
 const ROUTES: &[(&str, &[&str])] = &[
     ("webfetch", &["http://", "https://", "www."]),
-    ("websearch", &["search the web", "web search", "search online", "look it up online", "latest news", "google it"]),
+    ("websearch", &["search the web", "web search", "search online", "look it up online", "latest news", "search it online please"]),
     ("browser", &["in the browser", "open a browser", "headless browser", "click the button", "take a screenshot of the page"]),
     ("delegate", &["subagent", "sub-agent", "in parallel agents", "spawn an agent", "spawn agents"]),
     ("todo", &["todo list", "to-do list", "task list", "checklist"]),

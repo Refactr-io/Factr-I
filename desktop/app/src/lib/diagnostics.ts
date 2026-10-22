@@ -5,7 +5,7 @@ const REDACTED = '[redacted]'
 
 // Keys whose value is a secret by name, wherever they sit in the config.
 const SECRET_KEY =
-  /(^|[_\-.])(api[_-]?key|key|token|secret|password|passwd|credential|credentials|auth|authorization|bearer|cookie|session[_-]?id|private|signature|salt|pin)($|[_\-.])|apikey|accesskey|secretkey|_key$|_token$/i
+  /(^|[_\-.])(api[_-]?key|key|token|secret|password|passwd|pass|passphrase|pwd|credential|credentials|auth|authorization|bearer|cookie|session[_-]?id|private|signature|salt|pin|jwt|dsn|webhook|webhook[_-]?url|connection[_-]?string|license)($|[_\-.])|apikey|accesskey|secretkey|_key$|_token$/i
 
 // Secret-looking text inside any string value.
 const SECRET_TEXT: RegExp[] = [
@@ -17,11 +17,13 @@ const SECRET_TEXT: RegExp[] = [
   /\bAIza[0-9A-Za-z_-]{30,}/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
   /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi,
-  /\b[0-9a-f]{40,}\b/gi
+  /\b[0-9a-f]{32,}\b/gi,
+  /\b\d{8,10}:[A-Za-z0-9_-]{30,}\b/g,
+  /\b(api[_-]?key|x-api-key|token|secret|password|passwd|auth(?:orization)?)(["']?\s*[:=]\s*["']?)[^\s"',;&]{4,}/gi
 ]
 
-const URL_CREDENTIALS = /(\b[a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+(?::[^/\s@]*)?@/gi
-const URL_SECRET_QUERY = /([?&](?:api[_-]?key|key|token|access[_-]?token|secret|sig|signature|password)=)[^&\s#]+/gi
+const URL_CREDENTIALS = /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/]*@/gi
+const URL_SECRET_QUERY = /([?&][^=&#\s]*?(?:key|token|secret|sig|signature|password|auth|code)=)[^&\s#]+/gi
 
 /** Redact secret-looking text in one string; also folds the user's home directory to `~`. */
 export function redactText(text: string, home = ''): string {
@@ -52,13 +54,17 @@ export function redactValue(value: unknown, home = '', key = '', depth = 0): unk
     return REDACTED
   }
 
+  // Anything under a secret-named key is secret as a whole: strings, numbers, lists and nested objects.
+  if (key && SECRET_KEY.test(key) && value !== null && value !== undefined && value !== '') {
+    return REDACTED
+  }
+
   if (typeof value === 'string') {
-    return value && key && SECRET_KEY.test(key) ? REDACTED : redactText(value, home)
+    return redactText(value, home)
   }
 
   if (Array.isArray(value)) {
-    // A list under a secret-named key (api_keys: [...]) is secret as a whole.
-    return key && SECRET_KEY.test(key) ? REDACTED : value.map(item => redactValue(item, home, '', depth + 1))
+    return value.map(item => redactValue(item, home, '', depth + 1))
   }
 
   if (value && typeof value === 'object') {

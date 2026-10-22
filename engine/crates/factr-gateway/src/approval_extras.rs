@@ -30,32 +30,55 @@ fn gui_rules() -> Vec<(String, &'static str)> {
     ]
 }
 
-/// Why `command` deserves an extra question, if it does.
-pub(crate) fn extra_ask_reason(command: &str) -> Option<String> {
+fn warn_once(pattern: &str, error: &fancy_regex::Error) {
+    static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    if let Ok(mut seen) = SEEN.lock()
+        && !seen.iter().any(|p| p == pattern)
+    {
+        seen.push(pattern.to_string());
+        eprintln!("[factr] approvals.always_ask: ignoring invalid pattern {pattern:?}: {error}");
+    }
+}
+
+fn variants(command: &str) -> [String; 2] {
+    [command.to_string(), crate::dangerous::normalize(command)]
+}
+
+/// The user's own always-ask match for `command`: the reason starts with [`USER_PREFIX`].
+pub(crate) fn user_ask_reason(command: &str) -> Option<String> {
     let cfg = factr_base::factr_config::current();
-    let extras = &cfg.approval_extras;
-    if !extras.gui_automation_ask && extras.always_ask.is_empty() {
+    if cfg.approval_extras.always_ask.is_empty() {
         return None;
     }
-    let variants = [command.to_string(), crate::dangerous::normalize(command)];
-    let hit = |re: &Regex| variants.iter().any(|v| re.is_match(v).unwrap_or(false));
-    for pattern in &extras.always_ask {
+    let variants = variants(command);
+    for pattern in &cfg.approval_extras.always_ask {
         match Regex::new(&format!("(?is){pattern}")) {
-            Ok(re) if hit(&re) => return Some(format!("{USER_PREFIX}: {pattern}")),
+            Ok(re) if variants.iter().any(|v| re.is_match(v).unwrap_or(false)) => return Some(format!("{USER_PREFIX}: {pattern}")),
             Ok(_) => {}
-            Err(error) => eprintln!("[factr] approvals.always_ask: ignoring invalid pattern {pattern:?}: {error}"),
-        }
-    }
-    if extras.gui_automation_ask {
-        // Quotes around a program name do not change what runs: also look at the command with them removed.
-        let dequoted = command.replace(['"', '\'', '\\'], "");
-        for (pattern, description) in gui_rules() {
-            if Regex::new(&format!("(?is){pattern}")).is_ok_and(|re| hit(&re) || re.is_match(&dequoted).unwrap_or(false)) {
-                return Some(description.to_string());
-            }
+            Err(error) => warn_once(pattern, &error),
         }
     }
     None
+}
+
+/// The built-in GUI-automation / own-config question for `command` (needs `approvals.gui_automation_ask`).
+pub(crate) fn gui_ask_reason(command: &str) -> Option<String> {
+    if !factr_base::factr_config::current().approval_extras.gui_automation_ask {
+        return None;
+    }
+    let variants = variants(command);
+    // Quotes around a program name do not change what runs: also look at the command with them removed.
+    let dequoted = command.replace(['"', '\'', '\\'], "");
+    gui_rules().into_iter().find_map(|(pattern, description)| {
+        Regex::new(&format!("(?is){pattern}"))
+            .is_ok_and(|re| variants.iter().any(|v| re.is_match(v).unwrap_or(false)) || re.is_match(&dequoted).unwrap_or(false))
+            .then(|| description.to_string())
+    })
+}
+
+/// Why `command` deserves an extra question, if it does (the user's own pattern first).
+pub(crate) fn extra_ask_reason(command: &str) -> Option<String> {
+    user_ask_reason(command).or_else(|| gui_ask_reason(command))
 }
 
 #[cfg(test)]
@@ -104,8 +127,8 @@ mod tests {
                 "true & osascript -e beep",
                 "true && xdotool key a",
                 "ls | cliclick c:100,100",
-                "open -a Slack",
-                "open -na 'Google Chrome' --args x",
+                "open -a SomeApp",
+                "open -na 'Some Browser' --args x",
                 "nohup osascript -e beep",
                 "PoWeRsHeLl.EXE -c \"(New-Object -com wscript.shell).SendKeys('x')\"",
                 "powershell -Command \"[System.Windows.Automation.AutomationElement]::RootElement\"",

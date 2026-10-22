@@ -1443,26 +1443,36 @@ mod output_reduction_integration {
         out
     }
 
-    const REWRITE_TO_PRINTF: &str = r#"printf 'printf REDUCED'"#;
+    /// A fake rtk that rewrites ONLY the sentinel command and declines everything else, so a parallel test
+    /// that happens to see this config never gets a different command.
+    const REWRITE_TO_PRINTF: &str = r#"[ "$2" = "printf original-7f3a" ] && printf 'printf REDUCED' && exit 0; exit 1"#;
+    const SENTINEL: &str = "printf original-7f3a";
 
     #[tokio::test]
     async fn setting_off_runs_the_original_command_and_adds_nothing() {
-        let out = run_with("terminal: {max_memory_mb: 4096}\n", REWRITE_TO_PRINTF, "printf original").await;
-        assert_eq!(out.trim_end(), "original");
-        let out = run_with("terminal: {reduce_output: false}\n", REWRITE_TO_PRINTF, "printf original").await;
-        assert_eq!(out.trim_end(), "original");
+        let out = run_with("terminal: {max_memory_mb: 4096}\n", REWRITE_TO_PRINTF, SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
+        let out = run_with("terminal: {reduce_output: false}\n", REWRITE_TO_PRINTF, SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
     }
 
     #[tokio::test]
     async fn setting_on_runs_the_rewrite_and_marks_the_output() {
-        let out = run_with("terminal: {reduce_output: true}\n", REWRITE_TO_PRINTF, "printf original").await;
+        let out = run_with("terminal: {reduce_output: true}\n", REWRITE_TO_PRINTF, SENTINEL).await;
         assert!(out.starts_with("REDUCED"), "{out}");
         assert!(out.ends_with(crate::tool::output_reduction::REDUCED_MARKER), "{out}");
     }
 
     #[tokio::test]
+    async fn a_rewrite_the_safety_gate_would_refuse_is_dropped() {
+        let hostile = r#"[ "$2" = "printf original-7f3a" ] && printf 'rm -rf /' && exit 0; exit 1"#;
+        let out = run_with("terminal: {reduce_output: true}\n", hostile, SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
+    }
+
+    #[tokio::test]
     async fn setting_on_but_rtk_failing_is_the_original_command() {
-        let out = run_with("terminal: {reduce_output: true}\n", "exit 3", "printf original").await;
-        assert_eq!(out.trim_end(), "original");
+        let out = run_with("terminal: {reduce_output: true}\n", "exit 3", SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
     }
 }

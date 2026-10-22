@@ -27,6 +27,12 @@ describe('turnUsageLabel', () => {
     expect(turnUsageLabel({ ...base, turn })).toBe('10.3k in (9k cached) · 100 out')
   })
 
+  it('trusts the engine-normalised prompt size when it sends one', () => {
+    const turn = { cache_read: 3000, cache_write: 0, calls: 1, input: 5000, output: 100, prompt: 8000 }
+
+    expect(turnUsageLabel({ ...base, turn })).toBe('8k in (3k cached) · 100 out')
+  })
+
   it('omits the cached part when nothing was cached', () => {
     expect(turnUsageLabel({ ...base, turn: { cache_read: 0, cache_write: 0, calls: 1, input: 500, output: 50 } })).toBe(
       '500 in · 50 out'

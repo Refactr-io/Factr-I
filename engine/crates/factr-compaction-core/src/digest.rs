@@ -80,8 +80,8 @@ pub fn digest(messages: &[Message], first_index: usize, previous: Option<&str>, 
     }
     let last = first_index + messages.len() - 1;
     let header = format!(
-        "Earlier conversation, messages #{first_index}-#{last}, condensed without a model. Each line starts with the \\
-         message number; the exact text of message N is session_search (load_tools first if needed) with scope current \\
+        "Earlier conversation, messages #{first_index}-#{last}, condensed without a model. Each line starts with the \
+         message number; the exact text of message N is session_search (load_tools first if needed) with scope current \
          and turns {{start: N, end: N+1}}."
     );
     let files_line = (!files.is_empty()).then(|| format!("Files touched: {}", files.join(", ")));
@@ -91,6 +91,20 @@ pub fn digest(messages: &[Message], first_index: usize, previous: Option<&str>, 
         tail.push_str(line);
     }
     let previous = previous.map(str::trim).filter(|p| !p.is_empty());
+    // An earlier digest never takes more than half the budget: its oldest part is cut first, so a chain of
+    // digests cannot grow without bound.
+    let previous_cut;
+    let previous = match previous {
+        Some(p) if p.len() > max_chars / 2 => {
+            let mut start = p.len() - max_chars / 2;
+            while !p.is_char_boundary(start) {
+                start += 1;
+            }
+            previous_cut = format!("... {}", &p[start..]);
+            Some(previous_cut.as_str())
+        }
+        other => other,
+    };
     let fixed = header.len() + tail.len() + previous.map_or(0, |p| p.len() + 2) + 2;
     let mut budget = max_chars.saturating_sub(fixed);
     // Newest lines win: walk from the end and keep what fits.
@@ -185,6 +199,20 @@ mod tests {
         assert!(out.contains("messages #0-#49"));
         assert!(out.contains("[#49]") && !out.contains("[#0]"));
         assert!(out.contains("older lines omitted"));
+    }
+
+    #[test]
+    fn a_long_previous_digest_is_cut_so_the_chain_stays_bounded() {
+        let big_previous = format!("{}\nold lines", "é".repeat(5_000));
+        let out = digest(&[text(Role::User, "next")], 7, Some(&big_previous), 2_000).unwrap();
+        assert!(out.len() <= 2_000 + 200, "{}", out.len());
+        assert!(out.contains("[#7] user: next") && out.contains("old lines"));
+    }
+
+    #[test]
+    fn the_header_has_no_stray_escapes_or_indentation() {
+        let out = digest(&[text(Role::User, "hi")], 0, None, 5_000).unwrap();
+        assert!(!out.contains('\\') && !out.contains("  message number"), "{out}");
     }
 
     #[test]

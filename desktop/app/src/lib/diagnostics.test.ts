@@ -12,16 +12,18 @@ const SECRETS = [
   'AIza' + 'C'.repeat(35),
   ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0NTY3ODkwIn0', 'dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'].join('.'),
   'f'.repeat(48),
+  'a1b2c3d4'.repeat(4),
+  '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw',
   'hunter2-super-secret',
   's3cr3tP@ss'
 ]
 
 describe('redaction', () => {
   it('removes every secret shape from free text', () => {
-    const text = SECRETS.slice(0, 8).join(' | ')
+    const text = SECRETS.slice(0, 10).join(' | ')
     const out = redactText(text)
 
-    for (const secret of SECRETS.slice(0, 8)) {
+    for (const secret of SECRETS.slice(0, 10)) {
       expect(out).not.toContain(secret)
     }
   })
@@ -34,6 +36,19 @@ describe('redaction', () => {
     expect(out).not.toContain('zzz')
     expect(out).toContain('example.com/v1')
     expect(out).toContain('model=x')
+  })
+
+  it('hides key=value secrets in error text, whole passwords with @, and prefixed query names', () => {
+    const out = redactText(
+      'x-api-key: abcd1234efgh token=zzzz9999 {"api_key":"qqqq8888"} https://u:p@ss@host.test/p?client_secret=csval&auth=aval&code=cval&ok=1'
+    )
+
+    for (const leaked of ['abcd1234efgh', 'zzzz9999', 'qqqq8888', 'p@ss', 'ss@host', 'csval', 'aval', 'cval']) {
+      expect(out).not.toContain(leaked)
+    }
+
+    expect(out).toContain('host.test/p')
+    expect(out).toContain('ok=1')
   })
 
   it('folds any user home directory to ~', () => {
@@ -51,11 +66,14 @@ describe('redaction', () => {
       providers: [{ name: 'a', token: SECRETS[1] }],
       mcp: {
         servers: {
-          x: { env: { GITHUB_TOKEN: SECRETS[1], PATH: '/usr/bin' }, headers: { Authorization: 'Bearer ' + SECRETS[2] } }
+          x: { env: { CI_TOKEN: SECRETS[1], PATH: '/usr/bin' }, headers: { Authorization: 'Bearer ' + SECRETS[2] } }
         }
       },
-      tts: { elevenlabs: { api_keys: [SECRETS[3]] } },
+      tts: { voice: { api_keys: [SECRETS[3]] } },
       pin: 1234,
+      credentials: { user: 'plain-user-name', pass: 'plain-looking-pw' },
+      chat: { webhook_url: 'https://hooks.test/services/T000/B000/XXXXXXXX' },
+      token: { access: 'plain-access-value', refresh: 'plain-refresh-value' },
       custom: { env: { MY_SERVICE_VALUE: 'plain-looking-secret-value' } },
       terminal: { reduce_output: true }
     }
@@ -64,6 +82,16 @@ describe('redaction', () => {
 
     for (const secret of SECRETS) {
       expect(out).not.toContain(secret)
+    }
+
+    for (const plain of [
+      'plain-user-name',
+      'plain-looking-pw',
+      'XXXXXXXX',
+      'plain-access-value',
+      'plain-refresh-value'
+    ]) {
+      expect(out).not.toContain(plain)
     }
 
     expect(out).not.toContain('plain-looking-secret-value')

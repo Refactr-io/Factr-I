@@ -26,8 +26,9 @@ fn rtk_program() -> String {
 
 /// The command to run instead of `command`, or `None` to run it unchanged.
 pub(crate) async fn reduced_command(command: &str) -> Option<String> {
+    // rtk rewrites POSIX shell commands; the Windows shell tool runs cmd.exe syntax.
     let terminal = factr_base::factr_config::current().terminal.clone();
-    if !terminal.reduce_output {
+    if cfg!(windows) || !terminal.reduce_output {
         return None;
     }
     rewrite(command, Duration::from_millis(terminal.reduce_output_timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS))).await

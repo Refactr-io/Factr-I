@@ -95,7 +95,7 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "category": "agent",
     },
     "budget.max_tokens": {
-        "description": "Stop a session after this many input plus output tokens (0 = no limit)",
+        "description": "Stop a session after this many fresh input plus output tokens, not counting cached prompt tokens (0 = no limit)",
         "category": "agent",
     },
     "local_models.silence_timeout_secs": {

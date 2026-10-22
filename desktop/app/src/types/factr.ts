@@ -751,6 +751,8 @@ export interface TurnUsage {
   cost_usd?: number
   input: number
   output: number
+  /** Full prompt size, cached tokens included (the engine knows how its provider reports them). */
+  prompt?: number
 }
 
 export interface RateLimitInfo {

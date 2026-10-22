@@ -73,7 +73,7 @@ async function copyDiagnostics(a: Translations['settings']['about'], appVersion:
     let config: unknown
 
     try {
-      config = await getFactrConfigRecord()
+      config = await getFactrConfigRecord(undefined, { includeDefaults: false })
     } catch {
       config = { note: 'settings unavailable' }
     }

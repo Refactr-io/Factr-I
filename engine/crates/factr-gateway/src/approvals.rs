@@ -750,9 +750,11 @@ pub(crate) mod gate {
     pub(super) fn decide(command: &str, justification: Option<&str>, cwd: Option<PathBuf>) -> Decision {
         use factr_app_core::tool::BashVerdict;
         let ask = |reason: String| Decision::Ask { summary: command.to_string(), reason };
-        let factr = crate::dangerous::dangerous_reason(command)
-            .map(str::to_string)
-            .or_else(|| crate::approval_extras::extra_ask_reason(command));
+        // The user's own always-ask match leads, so the hub can tell it must be asked every time even when a
+        // built-in pattern matches too.
+        let factr = crate::approval_extras::user_ask_reason(command)
+            .or_else(|| crate::dangerous::dangerous_reason(command).map(str::to_string))
+            .or_else(|| crate::approval_extras::gui_ask_reason(command));
         let broad = cwd.as_deref().is_some_and(super::broad_folder);
         match factr_app_core::tool::bash_verdict(command, justification, cwd) {
             BashVerdict::Refuse(text) => Decision::Block(text),
@@ -1609,6 +1611,26 @@ mod tests {
         let again = next_message(&mut rx).await;
         hub.answer(&request_id(again), "deny").await;
         assert_eq!(second.await.unwrap(), "deny");
+    }
+
+    #[tokio::test]
+    async fn a_user_pattern_wins_over_a_built_in_match_and_still_ignores_grants() {
+        let config = TestConfig::new();
+        write_config(&config, "approvals:\n  always_ask: ['rm -rf /srv/data']\n");
+        let reason = match gate::decide("rm -rf /srv/data", None, None) {
+            gate::Decision::Ask { reason, .. } => reason,
+            other => panic!("{other:?}"),
+        };
+        assert!(reason.starts_with(crate::approval_extras::USER_PREFIX), "{reason}");
+    }
+
+    #[test]
+    fn extras_never_unblock_a_refusal_in_any_setting() {
+        for yaml in ["", "approvals: {gui_automation_ask: false}\n", "approvals: {gui_automation_ask: true, always_ask: ['rm']}\n"] {
+            let config = TestConfig::new();
+            write_config(&config, yaml);
+            assert!(matches!(gate::decide("rm -rf / --no-preserve-root", None, None), gate::Decision::Block(_)), "{yaml}");
+        }
     }
 
     #[test]

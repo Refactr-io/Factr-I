@@ -111,22 +111,28 @@ impl Usage {
         }
     }
 
+    /// Prompt size with the cache counted in, whichever way the provider reports it.
+    fn prompt_tokens(&self, anthropic: bool) -> u64 {
+        if anthropic || self.cache_write > 0 || self.cache_read > self.input { self.input + self.cache_read + self.cache_write } else { self.input }
+    }
+
     /// Share of the prompt served from the provider's cache, 0-100. Providers either report cache
     /// tokens inside `input` (OpenAI) or beside it (Anthropic); more cached than input means beside.
-    fn cache_hit_pct(&self) -> Option<f64> {
-        let prompt = if self.cache_read > self.input { self.input + self.cache_read + self.cache_write } else { self.input };
+    fn cache_hit_pct(&self, anthropic: bool) -> Option<f64> {
+        let prompt = self.prompt_tokens(anthropic);
         (self.cache_read > 0 && prompt > 0).then(|| (self.cache_read as f64 / prompt as f64 * 100.0).clamp(0.0, 100.0))
     }
 
-    fn json(&self) -> Value {
+    fn json(&self, anthropic: bool) -> Value {
         let mut v = json!({
             "input": self.input, "output": self.output,
             "cache_read": self.cache_read, "cache_write": self.cache_write, "calls": self.calls,
         });
+        v["prompt"] = json!(self.prompt_tokens(anthropic));
         if let Some(cost) = self.cost_usd {
             v["cost_usd"] = json!(cost);
         }
-        if let Some(pct) = self.cache_hit_pct() {
+        if let Some(pct) = self.cache_hit_pct(anthropic) {
             v["cache_hit_pct"] = json!(pct.round());
         }
         v
@@ -151,6 +157,8 @@ impl SessionState {
 
     pub fn usage_json(&self) -> Value {
         let u = &self.usage;
+        // Anthropic reports cache tokens beside the prompt, never inside it.
+        let anthropic = self.provider.as_deref().is_some_and(|p| p.to_ascii_lowercase().contains("anthropic") || p.to_ascii_lowercase().contains("claude"));
         let mut v = json!({
             "model": self.model.clone().unwrap_or_default(),
             "input": u.input,
@@ -162,12 +170,12 @@ impl SessionState {
             "calls": u.calls,
             "cache_read": u.cache_read,
             "cache_write": u.cache_write,
-            "turn": self.last_turn.json(),
+            "turn": self.last_turn.json(anthropic),
         });
         if let Some(cost) = u.cost_usd {
             v["cost_usd"] = json!(cost);
         }
-        if let Some(pct) = u.cache_hit_pct() {
+        if let Some(pct) = u.cache_hit_pct(anthropic) {
             v["cache_hit_pct"] = json!(pct.round());
         }
         if let Some(limit) = rate_limit_json() {
@@ -741,11 +749,16 @@ mod tests {
     fn cache_hit_share_handles_both_provider_conventions() {
         let mut beside = Usage::default();
         beside.add(100, 10, 900, 0, None); // Anthropic style: cache beside input
-        assert_eq!(beside.cache_hit_pct(), Some(90.0));
+        assert_eq!(beside.cache_hit_pct(false), Some(90.0));
         let mut inside = Usage::default();
         inside.add(1000, 10, 250, 0, None); // OpenAI style: cache inside input
-        assert_eq!(inside.cache_hit_pct(), Some(25.0));
-        assert_eq!(Usage::default().cache_hit_pct(), None);
+        assert_eq!(inside.cache_hit_pct(false), Some(25.0));
+        assert_eq!(Usage::default().cache_hit_pct(false), None);
+        // Anthropic with fewer cached than fresh tokens: the prompt is input + cache, not input alone.
+        let mut few_cached = Usage::default();
+        few_cached.add(5000, 10, 4000, 0, None);
+        assert_eq!(few_cached.cache_hit_pct(true).map(f64::round), Some(44.0));
+        assert_eq!(few_cached.cache_hit_pct(false).map(f64::round), Some(80.0));
     }
 
     #[test]
