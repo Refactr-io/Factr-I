@@ -28,3 +28,4 @@ test_durations.json
 # editors
 .idea
 .vscode
+*.tsbuildinfo

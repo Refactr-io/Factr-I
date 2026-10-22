@@ -1423,7 +1423,7 @@ mod output_reduction_integration {
         let _env = factr_base::storage::lock_test_env();
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("config.yaml"), config_yaml).unwrap();
-        let rtk = dir.path().join("rtk-fake");
+        let rtk = dir.path().join("rtk");
         std::fs::write(&rtk, format!("#!/bin/sh\n{rtk_script}\n")).unwrap();
         std::fs::set_permissions(&rtk, std::fs::Permissions::from_mode(0o755)).unwrap();
         unsafe {
@@ -1472,8 +1472,8 @@ mod output_reduction_integration {
 
     #[tokio::test]
     async fn a_reduced_command_that_cannot_find_rtk_falls_back_to_the_original() {
-        // The fake rewrites to a call of `rtk` on a PATH that cannot hold it: the original must run instead.
-        let script = r#"[ "$2" = "printf original-7f3a" ] && printf 'PATH=/nonexistent-dir; rtk printf REDUCED' && exit 0; exit 1"#;
+        // The fake rewrites to a call of `rtk` and then disappears, as a damaged install would: the original must run instead.
+        let script = r#"[ "$2" = "printf original-7f3a" ] && printf 'rtk printf REDUCED' && rm -- "$0" && exit 0; exit 1"#;
         let out = run_with("terminal: {reduce_output: true}\n", script, SENTINEL).await;
         assert_eq!(out.trim_end(), "original-7f3a", "{out}");
         assert!(!out.contains(crate::tool::output_reduction::REDUCED_MARKER));

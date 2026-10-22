@@ -64,6 +64,7 @@ import { Arch } from 'electron-builder'
 import { removeDirSync, stageNodePty, stageGetWindows } from './stage-native-deps.mjs'
 import { buildHudModifierMonitor } from './build-hud-modifier-monitor.mjs'
 import { writeFactrManifest } from './factr-manifest.mjs'
+import { RTK_ASSETS, stageRtk } from './stage-rtk.mjs'
 import { badSymlinks, integrityPath, verifyIntegrity } from './stage-backend-python.mjs'
 
 export function cleanStaleAppOutDir(appOutDir) {
@@ -183,6 +184,14 @@ export default async function beforePack(context) {
       mkdirSync(staged, { recursive: true })
       copyFileSync(binary, path.join(staged, binaryName))
       chmodSync(path.join(staged, binaryName), 0o755)
+      // The pinned, checksum-verified rtk beside the engine (opt-in output shortening; the engine never looks elsewhere).
+      const rtkDir = path.join(staged, 'rtk-bin')
+      rmSync(rtkDir, { recursive: true, force: true })
+      if (RTK_ASSETS[`${platform}-${archName}`]) {
+        await stageRtk({ platform, arch: archName, outDir: rtkDir })
+      } else {
+        console.warn(`[before-pack] no pinned rtk build for ${platform}-${archName}; shipping without it`)
+      }
       // One manifest for engine + Python + Factr source, checked by the app at launch.
       const manifest = writeFactrManifest({
         binary: path.join(staged, binaryName),

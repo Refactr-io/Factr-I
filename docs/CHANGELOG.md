@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Shorter shell output now uses the pinned `rtk` 1.0.1 build that ships inside the app (Apache-2.0, checksum-verified at build time) instead of looking for one on your PATH. It still does nothing unless `terminal.reduce_output` is on, its usage data stays in the Factr data folder and its telemetry is switched off.
+
 ## v0.0.11
 
 New controls. Everything below that could change what the agent does is off until you switch it on (Settings), and leaves the default behaviour exactly as it was.

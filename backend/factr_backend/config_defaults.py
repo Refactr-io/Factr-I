@@ -276,8 +276,8 @@ DEFAULT_CONFIG = {
 
     "terminal": {
         "backend": "local",
-        # Run shell commands through the `rtk` CLI when it is installed so their output is shorter.
-        # Off by default; falls back to the plain command whenever rtk is missing or fails.
+        # Run shell commands through the bundled `rtk` tool so their output is shorter.
+        # Off by default; falls back to the plain command whenever rtk fails.
         "reduce_output": False,
         "reduce_output_timeout_ms": 1500,
         "modal_mode": "auto",

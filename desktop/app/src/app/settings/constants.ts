@@ -416,7 +416,7 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   },
   terminal: {
     reduceOutput: 'Shorter Command Output (rtk)',
-    reduceOutputTimeoutMs: 'rtk Lookup Timeout (ms)',
+    reduceOutputTimeoutMs: 'rtk Rewrite Timeout (ms)',
     cwd: 'Working Directory',
     backend: 'Execution Backend',
     timeout: 'Command Timeout',
@@ -614,7 +614,7 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   },
   terminal: {
     reduceOutput:
-      'Run shell commands through the rtk command-line tool, when it is installed, so their output is shorter. Falls back to the plain command if rtk is missing or fails. Off by default.',
+      'Run shell commands through the rtk tool that ships with the app so their output is shorter and uses fewer tokens. Falls back to the plain command if rtk fails. Off by default; rtk usage data stays on this computer.',
     reduceOutputTimeoutMs: 'How long to wait for rtk to rewrite a command before running it unchanged.',
     cwd: 'Default project folder for tool and terminal work.',
     persistentShell: 'Keep shell state between commands when the backend supports it.',
