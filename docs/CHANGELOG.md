@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- When a session budget stops a reply, the message says "Session budget reached" and where to raise the limit (Settings > Advanced > Agent limits), and no longer offers a Retry that cannot work.
 - Shorter shell output now uses the pinned `rtk` 1.0.1 build that ships inside the app (Apache-2.0, checksum-verified at build time) instead of looking for one on your PATH. It still does nothing unless `terminal.reduce_output` is on, its usage data stays in the Factr data folder and its telemetry is switched off.
 
 ## v0.0.11

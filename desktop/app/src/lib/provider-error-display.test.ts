@@ -220,3 +220,16 @@ describe('a saved provider whose model or credentials the engine could not use',
     expect(isUnsupportedModelError(undefined)).toBe(false)
   })
 })
+
+describe('budget stop', () => {
+  const raw =
+    'Budget reached: this session has used 18 tokens of its 15 token limit (budget.max_tokens). Raise or clear the limit in Settings to continue.'
+
+  it('reads the engine budget message as its own, non-retryable failure', () => {
+    const surface = inferErrorSurface(raw)
+
+    expect(surface).toMatchObject({ code: 'budget_reached', retryable: false })
+    expect(errorRecoveryPlan(surface).retry).toBe(false)
+    expect(errorCardText(thread, surface).title).toBe('Session budget reached')
+  })
+})
