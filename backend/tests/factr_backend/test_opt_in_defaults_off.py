@@ -13,6 +13,8 @@ def test_new_controls_are_off_by_default():
     assert DEFAULT_CONFIG["budget"] == {"max_cost_usd": 0, "max_tokens": 0}
     assert DEFAULT_CONFIG["local_models"] == {"silence_timeout_secs": 0}
     assert DEFAULT_CONFIG["monitoring"]["export"]["otlp"] == {"enabled": False, "endpoint": "", "headers_env": {}}
+    # Not opt-in: on for unattended runs whose task names a check (interactive chat is untouched).
+    assert DEFAULT_CONFIG["persistence"] == {"enabled": True, "max_retries": 3, "max_tokens": 0}
 
 
 def test_every_new_setting_appears_in_the_settings_schema():
@@ -21,5 +23,6 @@ def test_every_new_setting_appears_in_the_settings_schema():
         "compression.llm_second_pass", "approvals.gui_automation_ask", "approvals.always_ask",
         "budget.max_cost_usd", "budget.max_tokens", "local_models.silence_timeout_secs",
         "monitoring.export.otlp.enabled", "monitoring.export.otlp.endpoint",
+        "persistence.enabled", "persistence.max_retries", "persistence.max_tokens",
     ):
         assert CONFIG_SCHEMA[key]["description"] and "→" not in CONFIG_SCHEMA[key]["description"], key

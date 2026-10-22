@@ -463,9 +463,12 @@ pub(super) fn turn_done(conn: Arc<Conn>, session_id: String, payload: Value) {
             }
         }
         let usage = &payload["usage"];
-        let tokens = usage["total"]
+        let total = usage["total"]
             .as_u64()
             .unwrap_or_else(|| usage["input"].as_u64().unwrap_or(0) + usage["output"].as_u64().unwrap_or(0)) as i64;
+        // An unattended run's ceiling counts fresh tokens (cached re-reads excluded), as `budget.max_tokens` does.
+        let fresh = (usage["input"].as_i64().unwrap_or(0) - usage["cache_read"].as_i64().unwrap_or(0)).max(0) + usage["output"].as_i64().unwrap_or(0);
+        let tokens = if store.get_goal(&session_id).ok().flatten().is_some_and(|g| g.unattended) { fresh } else { total };
         let interrupted = payload["status"].as_str() == Some("interrupted");
         let busy = || async { conn.sessions.lock().await.get(&session_id).is_some_and(SessionState::turn_active) };
         if payload["status"].as_str() == Some("error") {
@@ -485,6 +488,8 @@ pub(super) fn turn_done(conn: Arc<Conn>, session_id: String, payload: Value) {
                 Ok(None) => {}
                 Err(err) => eprintln!("factr: after_error_turn for {session_id}: {err:#}"),
             }
+            // A headless run waits for the goal's state after every turn, errors included.
+            conn.emit_control(&session_id).await;
             return poke();
         }
         let subagents_running = conn.child_sessions_running(&session_id).await;

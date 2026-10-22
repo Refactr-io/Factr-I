@@ -129,6 +129,18 @@ pub fn is_local_endpoint(api_base: &str) -> bool {
     }
 }
 
+/// `persistence.*`: a headless run whose task names a check keeps going, through the goal machinery, while
+/// that check fails (on unless disabled).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Persistence {
+    pub enabled: Option<bool>,
+    /// `persistence.max_retries`: failed checks the run may retry (default 3, 1..=10).
+    pub max_retries: Option<u32>,
+    /// `persistence.max_tokens`: a fixed ceiling on the fresh tokens (uncached input plus output) one persisting run may
+    /// use; unset or 0 leaves the automatic one (5x the first turn, 400k to 2M).
+    pub max_tokens: Option<u64>,
+}
+
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Checkpoints {
@@ -226,6 +238,7 @@ pub struct FactrConfig {
     pub checkpoints: Checkpoints,
     pub budget: Budget,
     pub tools: ToolsView,
+    pub persistence: Persistence,
     pub local_models: LocalModels,
     pub observability_export: ObservabilityExport,
     pub approval_extras: ApprovalExtras,
@@ -427,6 +440,11 @@ impl FactrConfig {
             },
             local_models: LocalModels {
                 silence_timeout_secs: path(&root, "local_models.silence_timeout_secs").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0).map(|n| n.min(7200)),
+            },
+            persistence: Persistence {
+                enabled: path(&root, "persistence.enabled").and_then(as_bool),
+                max_retries: path(&root, "persistence.max_retries").and_then(as_i64).filter(|n| *n > 0).map(|n| n.min(10) as u32),
+                max_tokens: path(&root, "persistence.max_tokens").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
             },
             tools: ToolsView { routing: path(&root, "tools.routing").and_then(as_bool).unwrap_or(false) },
             budget: Budget {
@@ -645,6 +663,7 @@ mod tests {
             assert_eq!(c.budget, Budget::default(), "{yaml}");
             assert_eq!(c.approval_extras, ApprovalExtras::default(), "{yaml}");
             assert_eq!(c.local_models, LocalModels::default(), "{yaml}");
+            assert_eq!(c.persistence, Persistence::default(), "{yaml}");
             assert_eq!(c.compression.deterministic.unwrap_or(false), false, "{yaml}");
         }
     }
@@ -686,6 +705,15 @@ mod tests {
         assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 0}").local_models.silence_timeout_secs, None);
         assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 900}").local_models.silence_timeout_secs, Some(900));
         assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 999999}").local_models.silence_timeout_secs, Some(7200));
+    }
+
+    #[test]
+    fn persistence_is_unset_unless_configured_and_its_numbers_are_clamped() {
+        assert_eq!(FactrConfig::parse("").persistence, Persistence::default());
+        let c = FactrConfig::parse("persistence: {enabled: false, max_retries: 99, max_tokens: 750000}").persistence;
+        assert_eq!((c.enabled, c.max_retries, c.max_tokens), (Some(false), Some(10), Some(750_000)));
+        assert_eq!(FactrConfig::parse("persistence: {max_tokens: 0}").persistence.max_tokens, None);
+        assert_eq!(FactrConfig::parse("persistence: {max_retries: 0}").persistence.max_retries, None);
     }
 
     #[test]

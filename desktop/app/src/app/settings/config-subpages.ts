@@ -91,7 +91,10 @@ const CONFIG_SUBPAGE_DEFINITIONS: Record<string, ConfigSubpageDefinition[]> = {
         'budget.max_tokens',
         'local_models.silence_timeout_secs',
         'monitoring.export.otlp.enabled',
-        'monitoring.export.otlp.endpoint'
+        'monitoring.export.otlp.endpoint',
+        'persistence.enabled',
+        'persistence.max_retries',
+        'persistence.max_tokens'
       ]
     },
     { id: 'tools', labelKey: 'advancedTools', fields: ['toolsets', 'agent.tool_use_enforcement', 'tools.routing'] },

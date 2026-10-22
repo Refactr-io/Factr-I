@@ -458,6 +458,11 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
       }
     }
   },
+  persistence: {
+    enabled: 'Keep Working While the Task Check Fails',
+    maxRetries: 'Retries After a Failed Check',
+    maxTokens: 'Token Ceiling for a Persisting Run'
+  },
   tools: {
     routing: 'Tool Routing'
   },
@@ -876,6 +881,9 @@ export const SECTIONS: DesktopConfigSection[] = [
       'local_models.silence_timeout_secs',
       'monitoring.export.otlp.enabled',
       'monitoring.export.otlp.endpoint',
+      'persistence.enabled',
+      'persistence.max_retries',
+      'persistence.max_tokens',
       'terminal.docker_image',
       'terminal.singularity_image',
       'terminal.modal_image',
