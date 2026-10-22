@@ -198,6 +198,7 @@ pub(super) async fn stream_response(
         ));
     }
 
+    factr_provider_core::rate_limits::record("openai", response.headers());
     if !response.status().is_success() {
         let status = response.status();
         let retry_after = factr_provider_core::retry_after::retry_after(response.headers());

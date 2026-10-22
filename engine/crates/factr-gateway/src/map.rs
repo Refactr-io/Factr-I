@@ -170,6 +170,9 @@ impl SessionState {
         if let Some(pct) = u.cache_hit_pct() {
             v["cache_hit_pct"] = json!(pct.round());
         }
+        if let Some(limit) = rate_limit_json() {
+            v["rate_limit"] = limit;
+        }
         v
     }
 }
@@ -192,6 +195,20 @@ fn ensure_started(state: &mut SessionState, sid: &str, out: &mut Vec<Out>) {
         state.turn_usage_done = false;
         out.push(event("message.start", sid, json!({})));
     }
+}
+
+/// The provider's own rate-limit headers from the latest response, when fresh (read from headers only).
+fn rate_limit_json() -> Option<Value> {
+    let snapshot = factr_provider_core::rate_limits::latest(std::time::Duration::from_secs(600))?;
+    let w = snapshot.window;
+    Some(json!({
+        "provider": snapshot.provider,
+        "kind": w.kind,
+        "limit": w.limit,
+        "remaining": w.remaining,
+        "remaining_pct": w.remaining_pct().round(),
+        "reset_in_secs": w.reset_in_secs,
+    }))
 }
 
 /// USD for one call's reported usage, `None` when the route cannot be priced (subscriptions, unknown models).
@@ -703,6 +720,21 @@ mod tests {
         assert!(usage["turn"].get("cache_hit_pct").is_none(), "no cache reads in that turn");
         // Unpriced route: no cost is invented.
         assert!(usage.get("cost_usd").is_none());
+    }
+
+    #[test]
+    fn a_fresh_rate_limit_from_response_headers_rides_the_usage_payload() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-ratelimit-limit-requests", "100".parse().unwrap());
+        headers.insert("x-ratelimit-remaining-requests", "7".parse().unwrap());
+        headers.insert("x-ratelimit-reset-requests", "30s".parse().unwrap());
+        factr_provider_core::rate_limits::record("map-test", &headers);
+        let out = run(&[json!({"ev":"token_usage","session_id":"rl","input":1,"output":1})]);
+        let limit = usage_of(&out)["rate_limit"].clone();
+        assert_eq!(limit["remaining"], 7);
+        assert_eq!(limit["remaining_pct"], 7.0);
+        assert_eq!(limit["reset_in_secs"], 30);
+        assert_eq!(limit["kind"], "requests");
     }
 
     #[test]
