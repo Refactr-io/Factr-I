@@ -3,6 +3,7 @@
 ## Unreleased
 
 - When a session budget stops a reply, the message says "Session budget reached" and where to raise the limit (Settings > Advanced > Agent limits), and no longer offers a Retry that cannot work.
+- Unattended runs now keep working while the task's own check fails. When a one-shot run (`/api/agent/run`) names its check (for example "test with ./eval"), the engine runs that check itself after every turn and, while it fails, sends the failed output back for another attempt, through the same goal machinery as `/goal` (quality gate with retries, attempt log, ratchet). It stops when the check passes, after 3 retries (`persistence.max_retries`), near the run's time limit, or on interrupt. On by default for such runs only; `persistence.enabled: false` or `FACTR_PERSIST=0` turns it off, and interactive chat is unchanged.
 - Shorter shell output now uses the pinned `rtk` 1.0.1 build that ships inside the app (Apache-2.0, checksum-verified at build time) instead of looking for one on your PATH. It still does nothing unless `terminal.reduce_output` is on, its usage data stays in the Factr data folder and its telemetry is switched off.
 
 ## v0.0.11
