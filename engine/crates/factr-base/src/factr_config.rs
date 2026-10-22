@@ -23,6 +23,10 @@ pub struct Compression {
     pub protect_last_n: Option<i64>,
     /// Absolute trigger: compaction starts at the lower of `threshold` of the window and this count.
     pub threshold_tokens: Option<i64>,
+    /// `compression.deterministic`: condense old messages with a model-free digest (off unless set).
+    pub deterministic: Option<bool>,
+    /// `compression.llm_second_pass`: with `deterministic`, also ask the model for a summary (default on).
+    pub llm_second_pass: Option<bool>,
 }
 
 /// `memory.*`: the desktop's memory switch.
@@ -351,6 +355,8 @@ impl FactrConfig {
                 target_ratio: path(&root, "compression.target_ratio").and_then(as_f64),
                 protect_last_n: path(&root, "compression.protect_last_n").and_then(as_i64),
                 threshold_tokens: path(&root, "compression.threshold_tokens").and_then(as_i64).filter(|n| *n > 0),
+                deterministic: path(&root, "compression.deterministic").and_then(as_bool),
+                llm_second_pass: path(&root, "compression.llm_second_pass").and_then(as_bool),
             },
             memory: Memory { enabled: path(&root, "memory.memory_enabled").and_then(Value::as_bool) },
             web: Web { backend: path(&root, "web.backend").and_then(as_text), search_backend: path(&root, "web.search_backend").and_then(as_text) },
@@ -557,7 +563,9 @@ mod tests {
     #[test]
     fn compression_values_parse_from_numbers_and_strings() {
         let c = FactrConfig::parse("compression:\n  enabled: false\n  threshold: '0.6'\n  target_ratio: 0.25\n  protect_last_n: 30\n  threshold_tokens: '256000'\n").compression;
-        assert_eq!(c, Compression { enabled: Some(false), threshold: Some(0.6), target_ratio: Some(0.25), protect_last_n: Some(30), threshold_tokens: Some(256_000) });
+        assert_eq!(c, Compression { enabled: Some(false), threshold: Some(0.6), target_ratio: Some(0.25), protect_last_n: Some(30), threshold_tokens: Some(256_000), deterministic: None, llm_second_pass: None });
+        let d = FactrConfig::parse("compression: {deterministic: true, llm_second_pass: false}").compression;
+        assert_eq!((d.deterministic, d.llm_second_pass), (Some(true), Some(false)));
         assert_eq!(FactrConfig::parse("compression: {threshold_tokens: 0}").compression.threshold_tokens, None, "zero is no cap");
     }
 

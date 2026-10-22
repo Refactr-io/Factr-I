@@ -1364,3 +1364,92 @@ fn the_summary_model_comes_from_auxiliary_compression_on_a_fork_and_a_bad_one_is
     let refusing: Arc<dyn Provider> = Arc::new(SwitchableProvider { model: Arc::new(Mutex::new("main".into())), accepts: false });
     assert_eq!(summarizer_with(refusing, Some("openrouter:cheap")).model(), "main", "a setting that cannot apply falls back");
 }
+
+struct CountingProvider {
+    calls: Arc<std::sync::atomic::AtomicUsize>,
+    fail: bool,
+}
+
+#[async_trait::async_trait]
+impl Provider for CountingProvider {
+    async fn complete(&self, _m: &[Message], _t: &[crate::message::ToolDefinition], _s: &str, _r: Option<&str>) -> Result<EventStream> {
+        Ok(Box::pin(futures::stream::empty()))
+    }
+
+    fn name(&self) -> &str {
+        "counting"
+    }
+
+    fn model(&self) -> String {
+        "counting-model".into()
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(Self { calls: self.calls.clone(), fail: self.fail })
+    }
+
+    async fn complete_simple(&self, prompt: &str, _s: &str) -> Result<String> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.fail { anyhow::bail!("model down") } else { Ok(format!("llm-summary({} chars)", prompt.len())) }
+    }
+
+    async fn complete_simple_with_usage(&self, prompt: &str, s: &str) -> Result<factr_provider_core::SimpleCompletion> {
+        self.complete_simple(prompt, s).await.map(|text| factr_provider_core::SimpleCompletion { text, usage: None })
+    }
+}
+
+/// Run one background compaction over 40 long-ish messages and return (summary text, model calls).
+async fn compact_with(limits: CompactionLimits, fail: bool) -> (String, usize) {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut manager = CompactionManager::new().with_budget(1_000);
+    manager.set_limits(Some(limits));
+    let mut messages = Vec::new();
+    for i in 0..40 {
+        messages.push(make_text_message(Role::User, &format!("turn {i}: please look at the module and {}", "explain ".repeat(120))));
+        manager.notify_message_added();
+    }
+    manager.update_observed_input_tokens(850);
+    let provider: Arc<dyn Provider> = Arc::new(CountingProvider { calls: calls.clone(), fail });
+    manager.maybe_start_compaction_with(&messages, provider);
+    assert!(manager.is_compacting());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while manager.is_compacting() && Instant::now() < deadline {
+        manager.check_and_apply_compaction_with(&messages);
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(!manager.is_compacting());
+    let text = manager.messages_for_api_with(&messages).iter().map(|m| format!("{m:?}")).collect::<Vec<_>>().join("\n");
+    (text, calls.load(std::sync::atomic::Ordering::SeqCst))
+}
+
+#[tokio::test]
+async fn deterministic_off_is_exactly_the_model_summary() {
+    let (text, calls) = compact_with(CompactionLimits::default(), false).await;
+    assert_eq!(calls, 1);
+    assert!(text.contains("llm-summary("), "{text}");
+    assert!(!text.contains("condensed without a model") && !text.contains("Source: session messages"));
+}
+
+#[tokio::test]
+async fn digest_only_makes_no_model_call_and_links_back_to_the_messages() {
+    let limits = CompactionLimits { deterministic: true, llm_second_pass: false, ..CompactionLimits::default() };
+    let (text, calls) = compact_with(limits, false).await;
+    assert_eq!(calls, 0, "no model call");
+    assert!(text.contains("condensed without a model") && text.contains("[#0] user: turn 0"), "{text}");
+}
+
+#[tokio::test]
+async fn digest_with_a_second_pass_keeps_the_model_summary_and_points_at_the_sources() {
+    let limits = CompactionLimits { deterministic: true, llm_second_pass: true, ..CompactionLimits::default() };
+    let (text, calls) = compact_with(limits, false).await;
+    assert_eq!(calls, 1);
+    assert!(text.contains("llm-summary(") && text.contains("Source: session messages #0-#"), "{text}");
+}
+
+#[tokio::test]
+async fn a_failing_model_falls_back_to_the_digest_only_when_the_digest_is_on() {
+    let limits = CompactionLimits { deterministic: true, llm_second_pass: true, ..CompactionLimits::default() };
+    let (text, calls) = compact_with(limits, true).await;
+    assert_eq!(calls, 1);
+    assert!(text.contains("condensed without a model"), "{text}");
+}
