@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed: the v0.0.11 settings (session budget, shorter command output, tool routing, condensed digest, approval rules, local model silence limit) were missing from Settings and from Settings search, because the app's built-in settings list had not been refreshed. They show up again.
 - Shorter shell output now uses the pinned `rtk` 1.0.1 build that ships inside the app (Apache-2.0, checksum-verified at build time) instead of looking for one on your PATH. It still does nothing unless `terminal.reduce_output` is on, its usage data stays in the Factr data folder and its telemetry is switched off.
 
 ## v0.0.11
