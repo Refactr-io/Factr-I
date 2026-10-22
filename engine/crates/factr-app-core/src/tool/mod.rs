@@ -46,6 +46,7 @@ mod todo;
 mod media;
 mod memory_cap;
 mod output_reduction;
+pub(crate) mod routing;
 mod webfetch;
 mod webfetch_net;
 mod websearch;

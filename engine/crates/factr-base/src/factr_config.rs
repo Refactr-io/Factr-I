@@ -80,6 +80,14 @@ pub struct ApprovalExtras {
     pub always_ask: Vec<String>,
 }
 
+/// `tools.*`: how tool schemas reach the model.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ToolsView {
+    /// `tools.routing`: also load the withheld (deferred) tools a user message clearly asks for, one
+    /// `load_tools` round trip earlier. Only ever adds tools; off unless set.
+    pub routing: bool,
+}
+
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Checkpoints {
@@ -176,6 +184,7 @@ pub struct FactrConfig {
     pub terminal: Terminal,
     pub checkpoints: Checkpoints,
     pub budget: Budget,
+    pub tools: ToolsView,
     pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
@@ -360,6 +369,7 @@ impl FactrConfig {
                     .take(100)
                     .collect(),
             },
+            tools: ToolsView { routing: path(&root, "tools.routing").and_then(as_bool).unwrap_or(false) },
             budget: Budget {
                 max_cost_usd: path(&root, "budget.max_cost_usd").and_then(as_f64).filter(|n| n.is_finite() && *n > 0.0),
                 max_tokens: path(&root, "budget.max_tokens").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
@@ -571,6 +581,12 @@ mod tests {
         let c = FactrConfig::parse("approvals:\n  gui_automation_ask: true\n  always_ask: ['^cargo publish', '  ']\n").approval_extras;
         assert!(c.gui_automation_ask);
         assert_eq!(c.always_ask, vec!["^cargo publish".to_string()]);
+    }
+
+    #[test]
+    fn tool_routing_is_off_unless_set() {
+        assert!(!FactrConfig::parse("").tools.routing);
+        assert!(FactrConfig::parse("tools: {routing: true}").tools.routing);
     }
 
     #[test]

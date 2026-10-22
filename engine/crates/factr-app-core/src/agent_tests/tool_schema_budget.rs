@@ -125,3 +125,89 @@ async fn repl_is_deferred_until_loaded() {
     model_calls(&mut agent, "load_tools", serde_json::json!({"names": ["repl"]}));
     assert!(names(&agent.tool_definitions().await).contains(&"repl"));
 }
+
+/// Points `FACTR_CONFIG_HOME` at a config with (or without) `tools.routing` until dropped.
+struct RoutingConfig {
+    dir: std::path::PathBuf,
+    before: Option<std::ffi::OsString>,
+}
+
+impl RoutingConfig {
+    fn new(on: bool) -> Self {
+        let dir = std::env::temp_dir().join(format!("routing-{}-{}", std::process::id(), rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.yaml"), if on { "tools: {routing: true}\n" } else { "" }).unwrap();
+        let before = std::env::var_os("FACTR_CONFIG_HOME");
+        crate::env::set_var("FACTR_CONFIG_HOME", &dir);
+        Self { dir, before }
+    }
+}
+
+impl Drop for RoutingConfig {
+    fn drop(&mut self) {
+        match self.before.take() {
+            Some(v) => crate::env::set_var("FACTR_CONFIG_HOME", v),
+            None => crate::env::remove_var("FACTR_CONFIG_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+fn user_says(agent: &mut Agent, text: &str) {
+    agent.add_message(Role::User, vec![ContentBlock::Text { text: text.into(), cache_control: None }]);
+}
+
+const ASKING: &str = "please read https://example.com and search the web for rust news";
+
+#[tokio::test]
+async fn routing_off_leaves_the_tool_list_byte_identical() {
+    let _guard = crate::storage::lock_test_env();
+    let _config = RoutingConfig::new(false);
+    let mut plain = factr_agent().await;
+    let mut asking = factr_agent().await;
+    user_says(&mut asking, ASKING);
+    let left = serde_json::to_vec(&plain.tool_definitions().await).unwrap();
+    let defs = asking.tool_definitions().await;
+    assert_eq!(left, serde_json::to_vec(&defs).unwrap());
+    assert!(!names(&defs).contains(&"webfetch") && !names(&defs).contains(&"websearch"));
+}
+
+#[tokio::test]
+async fn routing_on_adds_the_asked_for_tools_and_only_adds() {
+    let _guard = crate::storage::lock_test_env();
+    let _config = RoutingConfig::new(true);
+    let mut plain = factr_agent().await;
+    let mut asking = factr_agent().await;
+    let base = plain.tool_definitions().await;
+    user_says(&mut asking, ASKING);
+    let routed = asking.tool_definitions().await;
+    assert!(names(&routed).contains(&"webfetch") && names(&routed).contains(&"websearch"));
+    // Everything the plain list had is still there, in registry (sorted) order, byte for byte.
+    for def in &base {
+        let same = routed.iter().find(|d| d.name == def.name).expect("a tool was removed by routing");
+        assert_eq!(serde_json::to_vec(def).unwrap(), serde_json::to_vec(same).unwrap(), "{}", def.name);
+    }
+    let sorted: Vec<&str> = names(&routed);
+    let mut expected = sorted.clone();
+    expected.sort_unstable();
+    assert_eq!(sorted, expected);
+    // A later neutral turn keeps the same locked list, and a rebuild from the transcript reproduces it.
+    user_says(&mut asking, "thanks");
+    assert_eq!(names(&routed), names(&asking.tool_definitions().await));
+    asking.locked_tools = None;
+    asking.locked_deferred.clear();
+    assert_eq!(names(&routed), names(&asking.tool_definitions().await));
+}
+
+#[tokio::test]
+async fn routing_on_with_neutral_text_changes_nothing_and_stays_in_budget() {
+    let _guard = crate::storage::lock_test_env();
+    let _config = RoutingConfig::new(true);
+    let mut plain = factr_agent().await;
+    let mut neutral = factr_agent().await;
+    user_says(&mut neutral, "fix the failing test in src/lib.rs");
+    let left = serde_json::to_vec(&plain.tool_definitions().await).unwrap();
+    let defs = neutral.tool_definitions().await;
+    assert_eq!(left, serde_json::to_vec(&defs).unwrap());
+    assert!(ToolDefinition::aggregate_prompt_token_estimate(&defs) <= INLINE_SCHEMA_BUDGET);
+}

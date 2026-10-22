@@ -589,7 +589,32 @@ impl Agent {
                 }
             }
         }
+        loaded.extend(self.routed_deferred_tools());
         loaded
+    }
+
+    /// `tools.routing`: withheld tools the user's messages plainly ask for. Empty when the setting is
+    /// off, and on any failure (fail-open: the set is then exactly what the transcript implies).
+    fn routed_deferred_tools(&self) -> std::collections::BTreeSet<String> {
+        if !factr_base::factr_config::current().tools.routing {
+            return Default::default();
+        }
+        let routed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::tool::routing::routed_tools(
+                self.session
+                    .messages
+                    .iter()
+                    .filter(|m| m.role == Role::User)
+                    .flat_map(|m| &m.content)
+                    .filter_map(|block| match block {
+                        ContentBlock::Text { text, .. } => Some(text.as_str()),
+                        _ => None,
+                    }),
+            )
+        }));
+        routed
+            .map(|set| set.into_iter().filter(|n| crate::tool::deferred::is_deferred(n)).map(String::from).collect())
+            .unwrap_or_default()
     }
 
     /// Build the agent's tool definitions from the registry, applying the
