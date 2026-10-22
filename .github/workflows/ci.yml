@@ -38,6 +38,14 @@ jobs:
         if: runner.os == 'Windows'
       - name: Build
         run: cargo build --locked -p factr-cli
+      # The pinned, checksum-verified rtk that ships with the app: the engine's output-reduction test runs it for real.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: runner.os != 'Windows'
+        with:
+          node-version: 24
+      - name: Stage the shipped rtk
+        if: runner.os != 'Windows'
+        run: node ../desktop/app/scripts/stage-rtk.mjs "" "" "$RUNNER_TEMP/rtk" && echo "FACTR_TEST_REAL_RTK=$RUNNER_TEMP/rtk/rtk" >> "$GITHUB_ENV"
       - name: Test
         if: runner.os != 'Windows'
         # Two test threads: a few socket, auth and undo tests race when the

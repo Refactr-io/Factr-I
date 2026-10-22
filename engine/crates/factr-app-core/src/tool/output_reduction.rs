@@ -20,27 +20,14 @@ const MISSING_BACKOFF: Duration = Duration::from_secs(30);
 
 static MISSING_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
 
-/// Where to look for the rtk binary: an explicit `FACTR_RTK_BIN`, else the PATH, else the usual install
-/// folders (a desktop app launched from the Dock does not inherit the shell's PATH).
-fn rtk_candidates(home: Option<&std::path::Path>) -> Vec<String> {
+/// The rtk binary shipped with the app, next to the engine executable (`resources/factr/rtk`). An explicit
+/// `FACTR_RTK_BIN` replaces it (tests). The PATH is never searched: only the pinned, verified build runs.
+fn rtk_binary() -> Option<std::path::PathBuf> {
     if let Some(explicit) = factr_base::factr_config::env_text("FACTR_RTK_BIN") {
-        return vec![explicit];
+        return Some(explicit.into());
     }
-    let mut found = vec!["rtk".to_string()];
     let exe = if cfg!(windows) { "rtk.exe" } else { "rtk" };
-    let folders = [
-        home.map(|h| h.join(".local").join("bin")),
-        home.map(|h| h.join(".cargo").join("bin")),
-        Some(std::path::PathBuf::from("/opt/homebrew/bin")),
-        Some(std::path::PathBuf::from("/usr/local/bin")),
-    ];
-    for folder in folders.into_iter().flatten() {
-        let path = folder.join(exe);
-        if path.is_file() {
-            found.push(path.to_string_lossy().into_owned());
-        }
-    }
-    found
+    std::env::current_exe().ok()?.parent().map(|dir| dir.join(exe)).filter(|p| p.is_file())
 }
 
 /// The command to run instead of `command`, or `None` to run it unchanged.
@@ -61,17 +48,18 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
     if MISSING_UNTIL.lock().ok().and_then(|g| *g).is_some_and(|until| Instant::now() < until) {
         return None;
     }
-    let spawned = rtk_candidates(factr_base::platform::user_home_dir().as_deref()).into_iter().find_map(|program| {
-        Command::new(&program)
+    let spawned = rtk_binary().and_then(|program| {
+        let child = Command::new(&program)
             .arg("rewrite")
             .arg(trimmed)
+            .envs(rtk_env())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true)
             .spawn()
-            .ok()
-            .map(|child| (child, program))
+            .ok()?;
+        Some((child, program))
     });
     let Some((mut child, program)) = spawned else {
         if let Ok(mut guard) = MISSING_UNTIL.lock() {
@@ -94,13 +82,25 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
         .then(|| with_rtk_on_path(&rewritten, &program))
 }
 
-/// The rewritten command calls `rtk` by name. When rtk was found by absolute path (a desktop app does not
-/// inherit the shell's PATH), put its folder on the command's PATH so the shell finds it too.
-fn with_rtk_on_path(rewritten: &str, program: &str) -> String {
-    match std::path::Path::new(program).parent().filter(|dir| dir.is_absolute()) {
-        Some(dir) => format!("export PATH='{}':\"$PATH\"; {rewritten}", dir.to_string_lossy().replace('\'', "'\"'\"'")),
-        None => rewritten.to_string(),
-    }
+/// rtk's own switches: no telemetry, and its usage history, recall store and tee files stay in Factr's
+/// own data folder rather than the user's profile.
+fn rtk_env() -> Vec<(&'static str, String)> {
+    let state = factr_base::factr_config::home().map(|h| h.join("rtk"));
+    let at = |name: &str| state.as_ref().map(|d| d.join(name).to_string_lossy().into_owned());
+    let mut env = vec![("RTK_TELEMETRY_DISABLED", "1".to_string())];
+    env.extend(at("history.db").map(|v| ("RTK_DB_PATH", v)));
+    env.extend(at("recall.db").map(|v| ("RTK_RECALL_DB", v)));
+    env.extend(at("tee").map(|v| ("RTK_TEE_DIR", v)));
+    env
+}
+
+/// The rewritten command calls `rtk` by name and the user's shell does not know where the bundled copy
+/// lives: put its folder on the command's PATH, and give it the same switches as the rewrite call.
+fn with_rtk_on_path(rewritten: &str, program: &std::path::Path) -> String {
+    let quote = |v: &str| format!("'{}'", v.replace('\'', "'\"'\"'"));
+    let Some(dir) = program.parent().filter(|dir| dir.is_absolute()) else { return rewritten.to_string() };
+    let vars: String = rtk_env().iter().map(|(k, v)| format!(" {k}={}", quote(v))).collect();
+    format!("export PATH={}:\"$PATH\"{vars}; {rewritten}", quote(&dir.to_string_lossy()))
 }
 
 /// True when a reduced command failed because the shell could not find `rtk` itself.
@@ -172,27 +172,37 @@ mod tests {
     }
 
     #[test]
-    fn candidates_put_the_path_first_then_the_usual_install_folders_and_honour_the_override() {
+    fn only_the_bundled_or_explicit_binary_is_ever_used() {
         let _env = factr_base::storage::lock_test_env();
         factr_base::env::remove_var("FACTR_RTK_BIN");
-        let home = tempfile::tempdir().unwrap();
-        let local = home.path().join(".local").join("bin");
-        std::fs::create_dir_all(&local).unwrap();
-        std::fs::write(local.join("rtk"), "").unwrap();
-        let found = rtk_candidates(Some(home.path()));
-        assert_eq!(found[0], "rtk");
-        assert!(found.iter().any(|c| c.ends_with(".local/bin/rtk")), "{found:?}");
-        assert!(!found.iter().any(|c| c.contains(".cargo")), "only folders that hold the binary are listed");
+        // Next to the test executable there is no rtk, and the PATH is not consulted.
+        assert_eq!(rtk_binary(), None);
         factr_base::env::set_var("FACTR_RTK_BIN", "/custom/rtk");
-        assert_eq!(rtk_candidates(Some(home.path())), vec!["/custom/rtk".to_string()]);
+        assert_eq!(rtk_binary(), Some(std::path::PathBuf::from("/custom/rtk")));
         factr_base::env::remove_var("FACTR_RTK_BIN");
     }
 
     #[test]
-    fn an_absolute_rtk_gets_its_folder_on_the_commands_path_and_a_plain_one_does_not() {
-        assert_eq!(with_rtk_on_path("rtk git status", "rtk"), "rtk git status");
-        assert_eq!(with_rtk_on_path("rtk git status", "/home/u/.local/bin/rtk"), "export PATH='/home/u/.local/bin':\"$PATH\"; rtk git status");
-        assert!(with_rtk_on_path("rtk ls", "/tmp/it's/rtk").contains(r#"'/tmp/it'"'"'s'"#));
+    fn the_command_gets_the_bundled_folder_on_its_path_and_rtk_telemetry_off() {
+        let r = with_rtk_on_path("rtk git status", std::path::Path::new("/app/Resources/factr/rtk"));
+        assert!(r.starts_with("export PATH='/app/Resources/factr':\"$PATH\" RTK_TELEMETRY_DISABLED='1'"), "{r}");
+        assert!(r.ends_with("; rtk git status"));
+        assert_eq!(with_rtk_on_path("rtk git status", std::path::Path::new("rtk")), "rtk git status");
+        assert!(with_rtk_on_path("rtk ls", std::path::Path::new("/tmp/it's/rtk")).contains(r#"'/tmp/it'"'"'s'"#));
+    }
+
+    #[test]
+    fn rtk_keeps_its_history_inside_the_factr_home() {
+        let _env = factr_base::storage::lock_test_env();
+        let home = tempfile::tempdir().unwrap();
+        factr_base::env::set_var("FACTR_CONFIG_HOME", home.path());
+        let env = rtk_env();
+        factr_base::env::remove_var("FACTR_CONFIG_HOME");
+        let get = |k: &str| env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
+        assert_eq!(get("RTK_TELEMETRY_DISABLED").as_deref(), Some("1"));
+        for k in ["RTK_DB_PATH", "RTK_RECALL_DB", "RTK_TEE_DIR"] {
+            assert!(get(k).is_some_and(|v| v.contains(&*home.path().to_string_lossy())), "{k}: {env:?}");
+        }
     }
 
     #[test]
@@ -210,6 +220,29 @@ mod tests {
         assert_eq!(rewrite("git status", Duration::from_secs(1)).await, None);
         assert!(MISSING_UNTIL.lock().unwrap().is_some(), "the miss is cached");
         factr_base::env::remove_var("FACTR_RTK_BIN");
+        reset_missing_cache();
+    }
+
+    /// The shipped rtk itself, staged by `desktop/app/scripts/stage-rtk.mjs`; CI points `FACTR_TEST_REAL_RTK` at it.
+    #[tokio::test]
+    async fn the_real_bundled_rtk_rewrites_runs_and_keeps_its_data_in_the_factr_home() {
+        let Ok(real) = std::env::var("FACTR_TEST_REAL_RTK") else { return };
+        let _env = factr_base::storage::lock_test_env();
+        let (profile, factr_home, repo) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        factr_base::env::set_var("FACTR_RTK_BIN", &real);
+        factr_base::env::set_var("FACTR_CONFIG_HOME", factr_home.path());
+        reset_missing_cache();
+        let git = |args: &[&str]| std::process::Command::new("git").args(args).current_dir(repo.path()).output().unwrap();
+        git(&["init", "-q"]);
+        let rewritten = rewrite("git status", Duration::from_secs(10)).await.expect("rtk rewrites git status");
+        assert!(rewritten.ends_with("; rtk git status"), "{rewritten}");
+        assert_eq!(rewrite("definitely-not-a-known-tool --x", Duration::from_secs(10)).await, None, "no equivalent: run unchanged");
+        let run = std::process::Command::new("sh").arg("-c").arg(&rewritten).current_dir(repo.path()).env("HOME", profile.path()).output().unwrap();
+        assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+        assert!(factr_home.path().join("rtk").join("history.db").is_file(), "history stays in the Factr home");
+        assert_eq!(std::fs::read_dir(profile.path()).unwrap().count(), 0, "nothing is written to the user's profile");
+        factr_base::env::remove_var("FACTR_RTK_BIN");
+        factr_base::env::remove_var("FACTR_CONFIG_HOME");
         reset_missing_cache();
     }
 }

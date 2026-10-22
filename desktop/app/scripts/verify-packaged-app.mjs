@@ -51,6 +51,10 @@ function main() {
   if (process.platform !== 'darwin') { console.error('codesign verification needs macOS'); process.exit(2) }
   const { python } = bundledPython(appPath)
   if (!existsSync(python)) { console.error(`bundled Python missing: ${python}`); process.exit(1) }
+  const factrDir = path.join(appPath, 'Contents', 'Resources', 'factr')
+  for (const name of ['rtk', 'RTK-LICENSE']) {
+    if (!existsSync(path.join(factrDir, name))) { console.error(`bundled ${name} missing from ${factrDir}`); process.exit(1) }
+  }
   const home = mkdtempSync(path.join(os.tmpdir(), 'factr-verify-home-'))
   let failed = false
   try {
