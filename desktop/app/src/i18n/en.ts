@@ -1193,6 +1193,11 @@ export const en: Translations = {
     },
     about: {
       heading: 'Factr-I',
+      support: 'Support',
+      copyDiagnostics: 'Copy diagnostics',
+      copyDiagnosticsDesc: 'Copies your version, system, provider, model, last error and settings, with secrets removed, to paste into a support request.',
+      diagnosticsCopied: 'Diagnostics copied',
+      diagnosticsFailed: 'Could not copy diagnostics',
       version: value => `Version ${value}`,
       versionUnavailable: 'Version unavailable',
       bundleOutOfSync: 'App build out of date',

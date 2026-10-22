@@ -1019,6 +1019,11 @@ export interface Translations {
     }
     about: {
       heading: string
+      support: string
+      copyDiagnostics: string
+      copyDiagnosticsDesc: string
+      diagnosticsCopied: string
+      diagnosticsFailed: string
       version: (value: string) => string
       versionUnavailable: string
       bundleOutOfSync: string

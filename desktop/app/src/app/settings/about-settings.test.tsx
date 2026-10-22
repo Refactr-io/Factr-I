@@ -6,6 +6,9 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { en } from '@/i18n/en'
 
 const store = vi.hoisted(() => ({ checkUpdates: vi.fn(async () => null) }))
+const config = vi.hoisted(() => ({ getFactrConfigRecord: vi.fn() }))
+
+vi.mock('@/api/config', () => ({ getFactrConfigRecord: config.getFactrConfigRecord }))
 
 vi.mock('@/store/updates', async () => {
   const { atom } = await import('nanostores')
@@ -72,7 +75,13 @@ test('a newer release shows the version and a Download button to the release pag
 })
 
 test('offline check shows the unreachable notice', () => {
-  setStatus({ supported: true, updateAvailable: false, currentVersion: '0.1.0', error: 'check-failed', message: 'net::ERR_PROXY_CONNECTION_FAILED' })
+  setStatus({
+    supported: true,
+    updateAvailable: false,
+    currentVersion: '0.1.0',
+    error: 'check-failed',
+    message: 'net::ERR_PROXY_CONNECTION_FAILED'
+  })
   render(<AboutSettings />)
 
   expect(screen.getByText("Couldn't check for updates right now.")).toBeTruthy()
@@ -94,4 +103,24 @@ test('right after Check now the line says just now once, not twice', async () =>
   const text = container.textContent ?? ''
   expect(text).toContain('Last checked just now')
   expect(text.match(/just now/g)?.length).toBe(1)
+})
+
+test('Copy diagnostics puts a report with the version and no secrets on the clipboard', async () => {
+  const secret = 'sk-' + 'Zz9Yy8Xx7Ww6Vv5U'
+  const writeText = vi.fn(async () => undefined)
+  Object.assign(navigator, { clipboard: { writeText } })
+  config.getFactrConfigRecord.mockResolvedValue({
+    model: { api_key: secret, default: 'gpt-x' },
+    approvals: { mode: 'smart' }
+  })
+  setStatus({ supported: true, updateAvailable: false, currentVersion: '0.1.0', fetchedAt: Date.now() })
+  render(<AboutSettings />)
+
+  fireEvent.click(screen.getAllByRole('button', { name: en.settings.about.copyDiagnostics })[0]!)
+
+  await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+  const report = String((writeText.mock.calls[0] as unknown[])[0])
+  expect(report).toContain('App version: 0.1.0')
+  expect(report).toContain('"mode": "smart"')
+  expect(report).not.toContain(secret)
 })
