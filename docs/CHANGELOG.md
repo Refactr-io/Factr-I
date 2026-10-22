@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.0.11
+
+New controls. Everything below that could change what the agent does is off until you switch it on (Settings), and leaves the default behaviour exactly as it was.
+
+- See what a turn cost. The status bar can show the last turn's prompt tokens (and how many came from the cache), output tokens and, for routes that can be priced, the cost, plus how much of the provider's rate limit is left (read only from the provider's own response headers). Set `budget.max_cost_usd` or `budget.max_tokens` to stop a session at a limit (no limit by default).
+- Shorter shell output (off): with `terminal.reduce_output` and the `rtk` command-line tool installed, shell commands run through it and their output is shortened. A small "shortened" tag marks those results. If `rtk` is missing, slow or fails, the command runs as written, and the safety check always sees the original command.
+- Tool routing (off): `tools.routing` loads the tools a message plainly asks for (a link, a web search, subagents) one step earlier. It only ever adds tools.
+- Compaction digest (off): `compression.deterministic` condenses older messages without a model call; every line carries its message number so the exact text stays retrievable. Keep `compression.llm_second_pass` on to still get the model's summary as well.
+- Safer approvals: the approval prompt now shows the folder the command runs in and the whole command. New optional rules ask before commands that drive other apps (AppleScript, `open -a`, xdotool, PowerShell UI automation) or change the agent's own approval settings (`approvals.gui_automation_ask`), and `approvals.always_ask` takes your own patterns that are asked about every time.
+- Local models: `local_models.silence_timeout_secs` lets a slow local model stay quiet longer before the stream is treated as dead (local and private-network endpoints only).
+- Settings, About has a Copy diagnostics button: version, system, provider, model, last error and settings, with secrets removed, ready to paste into a bug report.
+- Fixed (Linux report): dictation no longer fails with the `metadata_errors` error; Download and Preview of generated files work; the voice End and Stop buttons always work and reset when you change session; the Plugins tab no longer overlaps its catalog heading and shows a real catalog list; the app stops polling the backend every second while idle; a WhatsApp that is enabled but not paired is skipped with a warning instead of stopping the gateway; file names show spaces instead of `%20`, also for Windows paths.
+
 ## v0.0.10
 
 - A bot's Docker computer is now opt-in. New bots work in a local sandbox and Docker is never asked about or started for them; the create dialog and the bot Screen offer "Give it a computer", and "Remove computer" frees its container. Idle computers stop after 5 minutes. The Screen no longer says Docker is down when only the image is missing.
