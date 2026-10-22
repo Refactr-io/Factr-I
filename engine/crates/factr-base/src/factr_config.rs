@@ -125,9 +125,6 @@ pub struct Persistence {
     /// `persistence.budget_fraction`: stop persisting once this share of the turn's time budget is used
     /// (default 0.85, 0.1..=0.99).
     pub budget_fraction: Option<f64>,
-    /// `persistence.max_seconds`: stop persisting this long after the turn started (for runners that
-    /// enforce a wall-clock limit from outside and set no deadline variable).
-    pub max_seconds: Option<f64>,
 }
 
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
@@ -422,7 +419,6 @@ impl FactrConfig {
                 enabled: path(&root, "persistence.enabled").and_then(as_bool),
                 max_nudges: path(&root, "persistence.max_nudges").and_then(as_i64).filter(|n| *n > 0).map(|n| n.min(20) as u32),
                 budget_fraction: path(&root, "persistence.budget_fraction").and_then(as_f64).filter(|f| f.is_finite()).map(|f| f.clamp(0.1, 0.99)),
-                max_seconds: path(&root, "persistence.max_seconds").and_then(as_f64).filter(|f| f.is_finite() && *f > 0.0),
             },
             tools: ToolsView { routing: path(&root, "tools.routing").and_then(as_bool).unwrap_or(false) },
             budget: Budget {

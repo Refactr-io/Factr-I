@@ -359,7 +359,6 @@ impl super::Agent {
                 enabled && n.headless,
                 cfg.max_nudges.unwrap_or(super::persist::DEFAULT_MAX_NUDGES),
                 cfg.budget_fraction.unwrap_or(super::persist::DEFAULT_BUDGET_STOP),
-                cfg.max_seconds,
                 task,
             );
         }
@@ -395,7 +394,7 @@ impl StopNudge {
     /// `observe` with the tool's result metadata and output text: a promoted (timed-out) or background
     /// check is recorded as pending, never as a pass; the output tells a run that ran nothing from one that did.
     pub(super) fn observe_full(&mut self, tool: &str, input: &serde_json::Value, exit_code: i64, meta: Option<&serde_json::Value>, output: Option<&str>) {
-        if self.persist.enabled {
+        if self.persist.enabled() {
             self.persist_observe(tool, input, exit_code, meta, output);
         }
         self.used_tools = true;
@@ -494,20 +493,28 @@ impl StopNudge {
             return;
         }
         let Some(command) = input["command"].as_str().filter(|_| tool == "bash") else { return };
-        // A promoted (timed-out) or background run has no result yet.
-        if meta.is_some_and(|m| m["timeout_promoted"] == true || m["background"] == true) {
-            return;
-        }
+        // A promoted (timed-out) or background run has no result yet; a call the engine refused never ran.
         let out = output.unwrap_or("");
-        // A call the engine refused never ran: it says nothing about the check.
-        if out.trim_start().starts_with("[Error] Error: Tool call blocked") {
+        if meta.is_some_and(|m| m["timeout_promoted"] == true || m["background"] == true) || out.trim_start().starts_with("[Error] Error: Tool call blocked") {
             return;
         }
-        // Only a command the task named, a test runner, or one that printed a structured pass/fail report.
-        let report = !is_viewer(command) && super::persist::json_recognised(out);
-        if super::persist::is_named_check(&self.persist.task_checks, command) || looks_like_test_run(command) || report {
-            self.persist.record_check(command, exit_code, out);
-        }
+        // The task named it, it is a test runner, or a local program that printed a pass/fail report.
+        let source = if self.persist.is_named(command) {
+            super::persist::Source::Named
+        } else if looks_like_test_run(command) {
+            super::persist::Source::Runner
+        } else if !is_viewer(command) && super::persist::runs_local_program(command) {
+            super::persist::Source::Report
+        } else {
+            return;
+        };
+        let tree = self.source_tree();
+        self.persist.check_ran(command, source, exit_code, out, tree);
+    }
+
+    /// Fingerprint of the sources in the working directory (0 when there is none).
+    fn source_tree(&self) -> u64 {
+        self.cwd_dir().map_or(0, |d| super::persist::source_fingerprint(&d))
     }
 
     /// Track background tasks that may be servers (see `bg_guard`).
@@ -686,6 +693,10 @@ impl StopNudge {
             (_, 124) => "auto_verify_timeout",
             _ => "auto_verify_fail",
         };
+        if self.persist.enabled() {
+            let tree = self.source_tree();
+            self.persist.check_ran(&ran, super::persist::Source::Runner, if r.passed { 0 } else { r.exit_code.max(1) }, &r.output, tree);
+        }
         let span = self.guard_span(session_id, reason, name, ms);
         // A pass that skipped tests is recorded.
         factr_base::obs_sink::emit(if r.passed { span.attr("skipped", skipped) } else { span });
@@ -735,7 +746,7 @@ impl StopNudge {
         if self.auto_verify(session_id, run) == Some(true) {
             return true;
         }
-        if self.persist_step(session_id, text) {
+        if self.persist_step(session_id) {
             return true;
         }
         let lower = text.to_ascii_lowercase();
@@ -753,7 +764,7 @@ impl StopNudge {
             picked = if !no_tools && fresh && guard_on("VERIFY") && !self.verify_sent && !self.gate_ran && self.unexecuted_write() {
                 self.verify_sent = true;
                 Some((VERIFY_NUDGE.into(), "verify_nudge"))
-            } else if !no_tools && !self.gate_ran && self.last_check > self.last_write && self.last_check_exit != 0 {
+            } else if !no_tools && !self.gate_ran && !self.persist.owns_failed_check() && self.last_check > self.last_write && self.last_check_exit != 0 {
                 Some((FAILED_CHECK_NUDGE.into(), "failed_check_nudge"))
             } else if !no_tools && guard_on("PENDING") && !self.passed && !self.pending_sent && self.pending_check.is_some() {
                 self.pending_sent = true;
@@ -828,15 +839,13 @@ impl StopNudge {
     }
 
     /// Persist: the latest check failed (or the reply admits it is not done) and there is room to keep going.
-    fn persist_step(&mut self, session_id: &str, text: &str) -> bool {
+    fn persist_step(&mut self, session_id: &str) -> bool {
         // A check still running, a project gate that already gave up, or a task that forbids tools: not now.
-        if !self.persist.enabled || self.no_tools() || self.pending_check.is_some() || self.last_fail_stop {
+        if !self.persist.enabled() || self.no_tools() || self.pending_check.is_some() || self.last_fail_stop {
             return false;
         }
         let dir = self.cwd_dir();
-        let fingerprint = || dir.as_deref().map_or(0, |d| snapshot_hash(&fs_snapshot(d)));
-        let edited = self.edited || self.last_write > 0 || self.shell_write_seq > 0;
-        match self.persist.decide(text, self.progress, edited, fingerprint) {
+        match self.persist.stop_attempt(|| dir.as_deref().map_or(0, super::persist::source_fingerprint)) {
             Some(nudge) => {
                 self.queue(session_id, nudge, "persist_nudge");
                 true
@@ -2292,7 +2301,7 @@ mod tests {
     fn persisting(task: &str) -> StopNudge {
         let mut n = StopNudge::default();
         n.headless = true;
-        n.persist = super::super::persist::Persist::new(true, 6, 0.85, None, Some(task));
+        n.persist = super::super::persist::Persist::new(true, 6, 0.85, Some(task));
         n
     }
 
@@ -2327,7 +2336,7 @@ mod tests {
     fn persist_is_off_for_interactive_turns_forbidden_tools_and_background_checks() {
         let mut interactive = persisting("test with ./eval");
         interactive.headless = true;
-        interactive.persist = super::super::persist::Persist::new(false, 6, 0.85, None, None);
+        interactive.persist = super::super::persist::Persist::new(false, 6, 0.85, None);
         interactive.observe_full("bash", &json!({"command": "./eval"}), 0, None, Some(EVAL_FAIL));
         assert!(!interactive.on_text_only_stop("s", "I could not make it pass."));
         let mut pending = persisting("test with ./eval");
@@ -2351,6 +2360,6 @@ mod tests {
         m.headless = true;
         assert!(m.on_text_only_stop("s", "I can't tell.\n\nWhat operating system are you using?"));
         assert_eq!(m.take_pending(), Some(QUESTION_NUDGE.to_string()));
-        assert_eq!(m.persist.nudges_sent(), 0);
+        assert!(!m.persist.enabled());
     }
 }

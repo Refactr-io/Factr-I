@@ -453,8 +453,7 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   persistence: {
     enabled: 'Keep Working After a Failed Check',
     maxNudges: 'Reminders After a Failed Check',
-    budgetFraction: 'Stop Persisting at (share of time limit)',
-    maxSeconds: 'Stop Persisting After (s)'
+    budgetFraction: 'Stop Persisting at (share of time limit)'
   },
   tools: {
     routing: 'Tool Routing'
@@ -865,7 +864,6 @@ export const SECTIONS: DesktopConfigSection[] = [
       'persistence.enabled',
       'persistence.max_nudges',
       'persistence.budget_fraction',
-      'persistence.max_seconds',
       'terminal.docker_image',
       'terminal.singularity_image',
       'terminal.modal_image',

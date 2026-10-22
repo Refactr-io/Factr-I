@@ -1634,13 +1634,12 @@ DEFAULT_CONFIG = {
     #   timeout and failing closed.
     # timeout: seconds before an unanswered prompt fails closed (CLI and gateway). 60s
     #   proved too tight for Telegram/Discord push notifications, hence 300.
-    # Keep a headless run going while its latest check fails (up to max_nudges escalating reminders; stops
-    # when the check passes, near the end of the time budget, or when two attempts change nothing). Off by default.
+    # Keep a headless run going while the check it works against fails (up to max_nudges reminders; stops when
+    # it passes, near the end of the time budget, or when two attempts change nothing). Off by default.
     "persistence": {
         "enabled": False,
         "max_nudges": 6,
         "budget_fraction": 0.85,
-        "max_seconds": 0,
     },
     # Optional hard stop on what one session may spend. 0 = no limit.
     "budget": {

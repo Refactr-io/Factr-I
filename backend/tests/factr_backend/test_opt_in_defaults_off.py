@@ -20,6 +20,6 @@ def test_every_new_setting_appears_in_the_settings_schema():
         "terminal.reduce_output", "terminal.reduce_output_timeout_ms", "tools.routing", "compression.deterministic",
         "compression.llm_second_pass", "approvals.gui_automation_ask", "approvals.always_ask",
         "budget.max_cost_usd", "budget.max_tokens", "local_models.silence_timeout_secs",
-        "persistence.enabled", "persistence.max_nudges", "persistence.budget_fraction", "persistence.max_seconds",
+        "persistence.enabled", "persistence.max_nudges", "persistence.budget_fraction",
     ):
         assert CONFIG_SCHEMA[key]["description"] and "→" not in CONFIG_SCHEMA[key]["description"], key

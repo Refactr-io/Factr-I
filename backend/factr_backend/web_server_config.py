@@ -102,10 +102,6 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Stop persisting once this share (0.1 to 0.99) of the run's time limit is used",
         "category": "agent",
     },
-    "persistence.max_seconds": {
-        "description": "Stop persisting this many seconds after the run started (0 = use the time limit only)",
-        "category": "agent",
-    },
     "budget.max_cost_usd": {
         "description": "Stop a session at about this many dollars of model spend (0 = no limit; priced routes only)",
         "category": "agent",

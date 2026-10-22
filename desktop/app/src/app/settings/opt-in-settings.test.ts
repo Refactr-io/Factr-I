@@ -15,7 +15,6 @@ const PLACEMENT: Record<string, string> = {
   'persistence.enabled': 'advanced',
   'persistence.max_nudges': 'advanced',
   'persistence.budget_fraction': 'advanced',
-  'persistence.max_seconds': 'advanced',
   'terminal.reduce_output': 'advanced',
   'terminal.reduce_output_timeout_ms': 'advanced',
   'tools.routing': 'advanced'
