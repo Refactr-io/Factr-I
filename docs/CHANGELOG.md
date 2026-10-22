@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Runs that name their own check are now faster by default: they ask the model for terser output (`text.verbosity` low, unless you set `agent.text_verbosity` or `FACTR_OPENAI_TEXT_VERBOSITY`) and stop retrying after 400 seconds (`persistence.max_seconds`, or `FACTR_PERSIST_MAX_SECONDS`). Interactive chat and runs that name no check are unchanged.
 - Faster unattended runs, opt-in: `agent.text_verbosity` (or `FACTR_OPENAI_TEXT_VERBOSITY`) sets the Responses `text.verbosity` to `low`, `medium` or `high` (unset keeps the model default). `low` gives terser turns: on our held-out coding tasks it cut output tokens by about a quarter and run time by about a sixth with the same pass rate. `persistence.max_seconds` caps how long a run keeps retrying a failing check (0 = the run's own limit) for a faster, lower-pass-rate trade-off.
 
 ## v0.0.12
