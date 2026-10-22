@@ -90,6 +90,18 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Load the withheld tools a message plainly asks for one step earlier (only ever adds tools)",
         "category": "agent",
     },
+    "persistence.enabled": {
+        "description": "In unattended runs whose task names a check (for example 'test with ./eval'), run that check after each turn and keep working while it fails",
+        "category": "agent",
+    },
+    "persistence.max_tokens": {
+        "description": "Most fresh tokens (uncached input plus output) one persisting run may use (0 = automatic: five times its first turn, between 400k and 2M)",
+        "category": "agent",
+    },
+    "persistence.max_retries": {
+        "description": "How many times a run may retry after its check fails (1 to 10)",
+        "category": "agent",
+    },
     "budget.max_cost_usd": {
         "description": "Stop a session at about this many dollars of model spend (0 = no limit; priced routes only)",
         "category": "agent",

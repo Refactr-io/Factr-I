@@ -11,6 +11,7 @@ pub mod approvals;
 pub mod auth;
 pub mod cron_tick;
 mod cron_runs;
+mod persist_run;
 pub mod deployment;
 pub mod features;
 pub mod learn;
