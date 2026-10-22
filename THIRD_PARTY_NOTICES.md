@@ -321,6 +321,15 @@ License, Version 1.1. The full text accompanies each family:
 - The wake-word models in `backend/tools/wakewords/` were trained with the
   openWakeWord pipeline (Apache-2.0); see the README there.
 
+## rtk (bundled command-line tool)
+
+Release builds ship the `rtk-oss` build of rtk 1.0.1 (https://github.com/rtk-ai/rtk), copyright RTK AI
+Labs, licensed under the Apache License, Version 2.0 (full text in `LICENSES/Apache-2.0.txt`; the
+licence file shipped with the binary is `resources/factr/rtk-bin/RTK-LICENSE.txt`). It is an unmodified upstream
+binary, pinned by sha256 and verified against the release's `checksums.txt` at build time. It is only run
+when the "Shorten command output" setting is on, with telemetry disabled. The non-`oss` rtk builds
+include a separately licensed component and are not used.
+
 ## Apache-2.0 licensed bundled skills
 
 The following bundled skills declare `license: Apache-2.0` in their SKILL.md

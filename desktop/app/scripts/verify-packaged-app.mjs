@@ -3,9 +3,10 @@
 //   node scripts/verify-packaged-app.mjs <path/to/Factr-I.app>
 // Never touches anything when no app path is given.
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { RTK_VERSION } from './stage-rtk.mjs'
 import { isMain } from './utils.mjs'
 
 export const SMOKE_MODULES = ['factr_bootstrap', 'factr_constants', 'factr_backend.main', 'factr_backend.uninstall', 'agent.credential_sources']
@@ -51,6 +52,13 @@ function main() {
   if (process.platform !== 'darwin') { console.error('codesign verification needs macOS'); process.exit(2) }
   const { python } = bundledPython(appPath)
   if (!existsSync(python)) { console.error(`bundled Python missing: ${python}`); process.exit(1) }
+  const rtkDir = path.join(appPath, 'Contents', 'Resources', 'factr', 'rtk-bin')
+  for (const name of ['rtk', 'RTK-LICENSE.txt']) {
+    if (!existsSync(path.join(rtkDir, name))) { console.error(`bundled ${name} missing from ${rtkDir}`); process.exit(1) }
+  }
+  if (!(statSync(path.join(rtkDir, 'rtk')).mode & 0o111)) { console.error('bundled rtk is not executable'); process.exit(1) }
+  const rtkRun = spawnSync(path.join(rtkDir, 'rtk'), ['--version'], { encoding: 'utf8', timeout: 20_000 })
+  if (!rtkRun.stdout?.startsWith(`rtk ${RTK_VERSION}`)) { console.error(`bundled rtk did not report ${RTK_VERSION}: ${rtkRun.stdout || rtkRun.stderr || rtkRun.error}`); process.exit(1) }
   const home = mkdtempSync(path.join(os.tmpdir(), 'factr-verify-home-'))
   let failed = false
   try {

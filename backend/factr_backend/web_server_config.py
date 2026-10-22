@@ -63,7 +63,7 @@ def _select(description: str, *options: str, **extra: Any) -> Dict[str, Any]:
 # Manual overrides for fields that need select options or custom types.
 _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "terminal.reduce_output": {
-        "description": "Shorten shell command output with the rtk CLI when it is installed (falls back to the plain command)",
+        "description": "Shorten shell command output with the bundled rtk tool (falls back to the plain command)",
         "category": "agent",
     },
     "terminal.reduce_output_timeout_ms": {
