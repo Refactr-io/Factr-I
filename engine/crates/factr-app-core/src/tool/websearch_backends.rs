@@ -1,7 +1,8 @@
-//! Key-based web search backends Factr supports (Tavily, Exa, Firecrawl, Brave), over plain HTTPS
+//! Key-based web search backends Factr supports (Tavily, Exa, Firecrawl, Brave, Serper, Linkup), over plain HTTPS
 //! REST. Chosen when `FACTR_WEB_BACKEND` or Factr's `config.yaml` (`web.search_backend`, else
 //! `web.backend`) names one, else Factr's autodetect order (tavily, exa, firecrawl, brave) by which
-//! key is present. Keys are read through the engine's credential reader (Factr `.env`, then the
+//! key is present (Serper and Linkup only when named, never autodetected). With `web.search_fallback` a
+//! failed backend is followed by the others that have a key; a failed one rests for a few minutes. Keys are read through the engine's credential reader (Factr `.env`, then the
 //! environment; the environment only in private deployment) and are never logged. Any failure makes
 //! the caller fall back to the keyless chain.
 
@@ -15,6 +16,43 @@ pub(super) enum Backend {
     Exa,
     Firecrawl,
     Brave,
+    Serper,
+    Linkup,
+}
+
+/// How long a backend that just failed is skipped by the fallback chain.
+const COOLDOWN: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn resting() -> &'static std::sync::Mutex<std::collections::HashMap<&'static str, std::time::Instant>> {
+    static REST: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<&'static str, std::time::Instant>>> = std::sync::OnceLock::new();
+    REST.get_or_init(Default::default)
+}
+
+impl Backend {
+    fn id(self) -> &'static str {
+        match self {
+            Backend::Tavily => "tavily",
+            Backend::Exa => "exa",
+            Backend::Firecrawl => "firecrawl",
+            Backend::Brave => "brave",
+            Backend::Serper => "serper",
+            Backend::Linkup => "linkup",
+        }
+    }
+}
+
+/// Record how a backend's call went: a failure rests it, a success clears the rest.
+pub(super) fn note_outcome(backend: Backend, ok: bool) {
+    let mut rest = resting().lock().unwrap_or_else(|e| e.into_inner());
+    if ok {
+        rest.remove(backend.id());
+    } else {
+        rest.insert(backend.id(), std::time::Instant::now());
+    }
+}
+
+fn is_resting(backend: Backend) -> bool {
+    resting().lock().unwrap_or_else(|e| e.into_inner()).get(backend.id()).is_some_and(|t| t.elapsed() < COOLDOWN)
 }
 
 fn parse(name: &str) -> Option<Backend> {
@@ -23,6 +61,8 @@ fn parse(name: &str) -> Option<Backend> {
         "exa" => Some(Backend::Exa),
         "firecrawl" => Some(Backend::Firecrawl),
         "brave" | "brave-free" | "brave_free" => Some(Backend::Brave),
+        "serper" | "google-serper" => Some(Backend::Serper),
+        "linkup" => Some(Backend::Linkup),
         _ => None,
     }
 }
@@ -30,6 +70,12 @@ fn parse(name: &str) -> Option<Backend> {
 /// `secret(name)`: a key or URL variable if set. `configured`: the `web.backend` value, if any.
 /// Returns the backend and its key (empty for a self-hosted Firecrawl with only `FIRECRAWL_API_URL`).
 pub(super) fn choose(configured: Option<&str>, secret: &dyn Fn(&str) -> Option<String>) -> Option<(Backend, String)> {
+    chain(configured, secret, false).into_iter().next()
+}
+
+/// The backends to try, in order: the configured (else autodetected) one first and, with `fallback`, every
+/// other backend that has a key and is not resting. Serper and Linkup are only ever picked by name.
+pub(super) fn chain(configured: Option<&str>, secret: &dyn Fn(&str) -> Option<String>, fallback: bool) -> Vec<(Backend, String)> {
     let key = |b: Backend| -> Option<String> {
         let get = |n: &str| secret(n).filter(|v| !v.trim().is_empty());
         match b {
@@ -37,14 +83,35 @@ pub(super) fn choose(configured: Option<&str>, secret: &dyn Fn(&str) -> Option<S
             Backend::Exa => get("EXA_API_KEY"),
             Backend::Brave => get("BRAVE_SEARCH_API_KEY").or_else(|| get("BRAVE_API_KEY")),
             Backend::Firecrawl => get("FIRECRAWL_API_KEY").or_else(|| get("FIRECRAWL_API_URL").map(|_| String::new())),
+            Backend::Serper => get("SERPER_API_KEY"),
+            Backend::Linkup => get("LINKUP_API_KEY"),
         }
     };
+    let autodetect = [Backend::Tavily, Backend::Exa, Backend::Firecrawl, Backend::Brave];
+    let mut first = None;
     if let Some(name) = configured.filter(|c| !c.trim().is_empty()) {
         // A stored backend is used as is (Factr does the same); a non-keyed one means keyless chain.
-        let b = parse(name)?;
-        return key(b).map(|k| (b, k));
+        let Some(b) = parse(name) else { return Vec::new() };
+        let Some(k) = key(b) else { return Vec::new() };
+        first = Some((b, k));
     }
-    [Backend::Tavily, Backend::Exa, Backend::Firecrawl, Backend::Brave].into_iter().find_map(|b| key(b).map(|k| (b, k)))
+    let mut out: Vec<(Backend, String)> = first.clone().into_iter().collect();
+    if first.is_none() && !fallback {
+        out.extend(autodetect.into_iter().find_map(|b| key(b).map(|k| (b, k))));
+    } else if fallback {
+        for b in autodetect.into_iter().chain([Backend::Serper, Backend::Linkup]) {
+            if first.is_none() && matches!(b, Backend::Serper | Backend::Linkup) {
+                continue; // never autodetected as the primary
+            }
+            if first.as_ref().is_some_and(|(f, _)| *f == b) || is_resting(b) {
+                continue;
+            }
+            if let Some(k) = key(b) {
+                out.push((b, k));
+            }
+        }
+    }
+    out
 }
 
 fn row(title: Option<&str>, url: Option<&str>, snippet: String) -> Option<SearchResult> {
@@ -70,6 +137,19 @@ pub(super) fn parse_exa(v: &Value) -> Vec<SearchResult> {
             let snippet = if highlights.is_empty() { str_of(r, "text").unwrap_or("").to_string() } else { highlights.join(" ") };
             row(str_of(r, "title"), str_of(r, "url"), snippet)
         })
+        .collect()
+}
+
+pub(super) fn parse_serper(v: &Value) -> Vec<SearchResult> {
+    v["organic"].as_array().into_iter().flatten().filter_map(|r| row(str_of(r, "title"), str_of(r, "link"), str_of(r, "snippet").unwrap_or("").to_string())).collect()
+}
+
+pub(super) fn parse_linkup(v: &Value) -> Vec<SearchResult> {
+    let list = if v["results"].is_array() { &v["results"] } else { &v["sources"] };
+    list.as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| row(str_of(r, "name").or_else(|| str_of(r, "title")), str_of(r, "url"), str_of(r, "content").or_else(|| str_of(r, "snippet")).unwrap_or("").to_string()))
         .collect()
 }
 
@@ -113,6 +193,14 @@ pub(super) async fn search(client: &reqwest::Client, backend: Backend, key: &str
             .query(&[("q", query), ("count", &n.to_string())])
             .header("X-Subscription-Token", key)
             .header("Accept", "application/json"),
+        Backend::Serper => client
+            .post(format!("{}/search", base.map(trim).unwrap_or_else(|| "https://google.serper.dev".into())))
+            .header("X-API-KEY", key)
+            .json(&json!({ "q": query, "num": n, "autocorrect": true })),
+        Backend::Linkup => client
+            .post(format!("{}/v1/search", base.map(trim).unwrap_or_else(|| "https://api.linkup.so".into())))
+            .bearer_auth(key)
+            .json(&json!({ "q": query, "depth": "standard", "outputType": "searchResults" })),
     };
     let response = request.timeout(std::time::Duration::from_secs(20)).send().await.context("web backend request failed")?;
     let status = response.status();
@@ -125,25 +213,43 @@ pub(super) async fn search(client: &reqwest::Client, backend: Backend, key: &str
         Backend::Exa => parse_exa(&v),
         Backend::Firecrawl => parse_firecrawl(&v),
         Backend::Brave => parse_brave(&v),
+        Backend::Serper => parse_serper(&v),
+        Backend::Linkup => {
+            let mut found = parse_linkup(&v);
+            found.truncate(n);
+            found
+        }
     })
 }
 
-/// The backend to use for this call, if any, with the host override it needs.
-pub(super) fn configured() -> Option<(Backend, String, Option<String>)> {
+/// The backends to try for this call, first choice first, each with the host override it needs. One entry
+/// unless `web.search_fallback` is on.
+pub(super) fn configured() -> Vec<(Backend, String, Option<String>)> {
     let secret = |n: &str| crate::provider_catalog::env_secret(n);
     let private = crate::factr_env::deployment_private();
     let mut name = factr_base::factr_config::env_text("FACTR_WEB_BACKEND");
-    if name.is_none() && !private {
-        // Factr's own selection (`factr tools` writes web.backend to config.yaml).
-        name = factr_base::factr_config::current().web.search().map(str::to_string);
+    let mut fallback = false;
+    if !private {
+        let cfg = factr_base::factr_config::current();
+        fallback = cfg.web.search_fallback;
+        if name.is_none() {
+            // Factr's own selection (`factr tools` writes web.backend to config.yaml).
+            name = cfg.web.search().map(str::to_string);
+        }
     }
-    let (backend, key) = choose(name.as_deref(), &secret)?;
-    let base = match backend {
-        Backend::Tavily => secret("TAVILY_BASE_URL"),
-        Backend::Firecrawl => secret("FIRECRAWL_API_URL"),
-        _ => None,
-    };
-    Some((backend, key, base))
+    chain(name.as_deref(), &secret, fallback)
+        .into_iter()
+        .map(|(backend, key)| {
+            let base = match backend {
+                Backend::Tavily => secret("TAVILY_BASE_URL"),
+                Backend::Firecrawl => secret("FIRECRAWL_API_URL"),
+                Backend::Serper => secret("SERPER_BASE_URL"),
+                Backend::Linkup => secret("LINKUP_BASE_URL"),
+                _ => None,
+            };
+            (backend, key, base)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -244,6 +350,81 @@ mod tests {
         assert_eq!(choose(None, &env(&[("BRAVE_API_KEY", "b2")])), Some((Backend::Brave, "b2".into())));
         assert_eq!(choose(None, &env(&[("FIRECRAWL_API_URL", "http://x")])), Some((Backend::Firecrawl, String::new())));
         assert_eq!(choose(None, &env(&[("EXA_API_KEY", "  ")])), None);
+    }
+
+    #[tokio::test]
+    async fn serper_request_and_shape() {
+        let (url, req) = mock(200, r#"{"organic":[{"title":"S","link":"https://s.test","snippet":"sn"},{"title":"x","link":""}]}"#).await;
+        let r = search(&client(), Backend::Serper, "FAKE-KEY", Some(&url), "rust lang", 4).await.unwrap();
+        assert_eq!((r.len(), r[0].title.as_str(), r[0].url.as_str(), r[0].snippet.as_str()), (1, "S", "https://s.test", "sn"));
+        let req = req.await.unwrap().to_ascii_lowercase();
+        assert!(req.starts_with("post /search") && req.contains("x-api-key: fake-key") && req.contains("\"num\":4") && req.contains("\"q\":\"rust lang\""), "{req}");
+    }
+
+    #[tokio::test]
+    async fn linkup_request_and_shape() {
+        let (url, req) = mock(200, r#"{"results":[{"name":"L","url":"https://l.test","content":"c"},{"name":"M","url":"https://m.test","content":"d"}]}"#).await;
+        let r = search(&client(), Backend::Linkup, "FAKE-KEY", Some(&url), "q", 1).await.unwrap();
+        assert_eq!((r.len(), r[0].title.as_str(), r[0].snippet.as_str()), (1, "L", "c"), "capped to n");
+        let req = req.await.unwrap().to_ascii_lowercase();
+        assert!(req.starts_with("post /v1/search") && req.contains("bearer fake-key") && req.contains("\"outputtype\":\"searchresults\""), "{req}");
+        assert_eq!(parse_linkup(&json!({"sources": [{"title": "T", "url": "https://t.test"}]})).len(), 1);
+    }
+
+    #[test]
+    fn the_chain_is_one_backend_unless_fallback_is_on_and_serper_linkup_are_never_autodetected() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| move |n: &str| pairs.iter().find(|(k, _)| *k == n).map(|(_, v)| v.to_string());
+        let keys = env(&[("TAVILY_API_KEY", "t"), ("BRAVE_API_KEY", "b"), ("SERPER_API_KEY", "s"), ("LINKUP_API_KEY", "l")]);
+        let ids = |v: Vec<(Backend, String)>| v.into_iter().map(|(b, _)| b).collect::<Vec<_>>();
+        assert_eq!(ids(chain(None, &keys, false)), vec![Backend::Tavily], "today's behaviour: the first keyed backend only");
+        assert_eq!(ids(chain(None, &keys, true)), vec![Backend::Tavily, Backend::Brave], "autodetect fallback skips serper and linkup");
+        assert_eq!(ids(chain(Some("serper"), &keys, false)), vec![Backend::Serper]);
+        assert_eq!(ids(chain(Some("serper"), &keys, true)), vec![Backend::Serper, Backend::Tavily, Backend::Brave, Backend::Linkup]);
+        assert!(chain(Some("exa"), &keys, true).is_empty(), "a named backend without a key means the keyless chain, fallback or not");
+        assert!(chain(Some("nonsense"), &keys, true).is_empty());
+        assert_eq!(choose(Some("linkup"), &keys), Some((Backend::Linkup, "l".into())));
+    }
+
+    #[test]
+    fn a_failed_backend_rests_until_it_succeeds() {
+        let env = |n: &str| match n { "EXA_API_KEY" => Some("e".to_string()), "TAVILY_API_KEY" => Some("t".to_string()), _ => None };
+        note_outcome(Backend::Tavily, false);
+        assert_eq!(chain(Some("exa"), &env, true).into_iter().map(|(b, _)| b).collect::<Vec<_>>(), vec![Backend::Exa], "tavily is resting");
+        note_outcome(Backend::Tavily, true);
+        assert_eq!(chain(Some("exa"), &env, true).len(), 2);
+    }
+
+    /// The whole tool: the chosen backend answers 500, `web.search_fallback` is on, the next keyed backend
+    /// answers, and the failed one then rests. Without the setting the keyless chain is used instead.
+    #[tokio::test]
+    async fn the_tool_falls_back_to_the_next_keyed_backend_only_when_asked() {
+        use crate::tool::{Tool, ToolContext, ToolExecutionMode};
+        let _env = crate::storage::lock_test_env();
+        let (bad, _) = mock(500, "{}").await;
+        let (good, req) = mock(200, r#"{"organic":[{"title":"Hit","link":"https://hit.test/a","snippet":"found it"}]}"#).await;
+        let home = tempfile::tempdir().unwrap();
+        std::fs::write(home.path().join("config.yaml"), "web:\n  search_fallback: true\n").unwrap();
+        let vars = [
+            ("FACTR_CONFIG_HOME", home.path().to_str().unwrap().to_string()),
+            ("FACTR_WEB_BACKEND", "tavily".into()),
+            ("TAVILY_API_KEY", "FAKE-T".into()),
+            ("TAVILY_BASE_URL", bad),
+            ("SERPER_API_KEY", "FAKE-S".into()),
+            ("SERPER_BASE_URL", good),
+        ];
+        // SAFETY: serialized by lock_test_env; restored below.
+        let saved: Vec<_> = vars.iter().map(|(k, _)| (*k, std::env::var(k).ok())).collect();
+        unsafe { vars.iter().for_each(|(k, v)| std::env::set_var(k, v)) };
+        let ctx = ToolContext {
+            session_id: "s".into(), message_id: "m".into(), tool_call_id: "c".into(), working_dir: None,
+            stdin_request_tx: None, graceful_shutdown_signal: None, execution_mode: ToolExecutionMode::Direct,
+        };
+        let out = super::super::websearch::WebSearchTool::new().execute(json!({ "query": "rust news" }), ctx).await;
+        unsafe { saved.iter().for_each(|(k, v)| match v { Some(v) => std::env::set_var(k, v), None => std::env::remove_var(k) }) };
+        let text = out.unwrap().output;
+        assert!(text.contains("Hit") && text.contains("https://hit.test/a"), "{text}");
+        assert!(req.await.unwrap().to_ascii_lowercase().contains("x-api-key: fake-s"));
+        note_outcome(Backend::Tavily, true);
     }
 
     #[test]
