@@ -1295,6 +1295,11 @@
      "description": "Agent \u2192 Verify On Stop",
      "type": "boolean"
     },
+    "approvals.always_ask": {
+     "category": "security",
+     "description": "Shell commands matching any of these regular expressions are always asked about (separate patterns with commas; a pattern cannot contain a comma)",
+     "type": "list"
+    },
     "approvals.cron_mode": {
      "category": "security",
      "description": "Approvals \u2192 Cron Mode",
@@ -1313,6 +1318,11 @@
     "approvals.destructive_slash_confirm": {
      "category": "security",
      "description": "Approvals \u2192 Destructive Slash Confirm",
+     "type": "boolean"
+    },
+    "approvals.gui_automation_ask": {
+     "category": "security",
+     "description": "Ask before commands that drive other apps (AppleScript, open -a, xdotool) or change approval settings",
      "type": "boolean"
     },
     "approvals.mcp_reload_confirm": {
@@ -2130,6 +2140,16 @@
      "description": "Browser \u2192 Use Real Profile",
      "type": "boolean"
     },
+    "budget.max_cost_usd": {
+     "category": "agent",
+     "description": "Stop a session at about this many dollars of model spend (0 = no limit; priced routes only)",
+     "type": "number"
+    },
+    "budget.max_tokens": {
+     "category": "agent",
+     "description": "Stop a session after this many fresh input plus output tokens, not counting cached prompt tokens (0 = no limit)",
+     "type": "number"
+    },
     "checkpoints.auto_prune": {
      "category": "agent",
      "description": "Checkpoints \u2192 Auto Prune",
@@ -2230,6 +2250,11 @@
      "description": "Compression \u2192 Context Total Ceiling Seconds",
      "type": "number"
     },
+    "compression.deterministic": {
+     "category": "agent",
+     "description": "Condense old messages with a model-free digest that links back to each message",
+     "type": "boolean"
+    },
     "compression.enabled": {
      "category": "compression",
      "description": "Compression \u2192 Enabled",
@@ -2268,6 +2293,11 @@
     "compression.in_place": {
      "category": "compression",
      "description": "Compression \u2192 In Place",
+     "type": "boolean"
+    },
+    "compression.llm_second_pass": {
+     "category": "agent",
+     "description": "With the digest on, also ask the model for a summary of the older messages",
      "type": "boolean"
     },
     "compression.max_attempts": {
@@ -3683,6 +3713,11 @@
      "description": "Kanban \u2192 Worker Log Rotate Bytes",
      "type": "number"
     },
+    "local_models.silence_timeout_secs": {
+     "category": "agent",
+     "description": "How long a local model may stay silent before its stream is treated as dead (0 = default)",
+     "type": "number"
+    },
     "local_runtime.backend": {
      "category": "local_runtime",
      "description": "Local Runtime \u2192 Backend",
@@ -4853,6 +4888,16 @@
      "description": "Terminal \u2192 Persistent Shell",
      "type": "boolean"
     },
+    "terminal.reduce_output": {
+     "category": "agent",
+     "description": "Shorten shell command output with the bundled rtk tool (falls back to the plain command)",
+     "type": "boolean"
+    },
+    "terminal.reduce_output_timeout_ms": {
+     "category": "agent",
+     "description": "Longest wait (ms) for rtk to rewrite a command before it runs unchanged",
+     "type": "number"
+    },
     "terminal.shell_init_files": {
      "category": "terminal",
      "description": "Terminal \u2192 Shell Init Files",
@@ -5568,6 +5613,11 @@
     "tools.connectors.enabled": {
      "category": "tools",
      "description": "Tools \u2192 Connectors \u2192 Enabled",
+     "type": "boolean"
+    },
+    "tools.routing": {
+     "category": "agent",
+     "description": "Load the withheld tools a message plainly asks for one step earlier (only ever adds tools)",
      "type": "boolean"
     },
     "tools.tool_search.defer": {
