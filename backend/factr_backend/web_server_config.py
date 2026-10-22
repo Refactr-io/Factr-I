@@ -95,7 +95,7 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "category": "agent",
     },
     "persistence.max_seconds": {
-        "description": "Stop persisting after this many seconds of the run (0 = use the run's own time limit); shorter means faster but fewer retries",
+        "description": "Stop persisting after this many seconds of the run (0 = the default of 400); shorter means faster but fewer retries, a large value uses the run's own time limit",
         "category": "agent",
     },
     "persistence.max_tokens": {

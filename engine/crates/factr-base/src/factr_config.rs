@@ -143,7 +143,7 @@ pub struct Persistence {
     /// use; unset or 0 leaves the automatic one (5x the first turn, 400k to 2M).
     pub max_tokens: Option<u64>,
     /// `persistence.max_seconds`: stop persisting after this many seconds of the run (never beyond the run's own
-    /// time limit); unset or 0 uses the run's limit minus one check. Trades pass rate for time.
+    /// time limit); unset or 0 means the default of 400 s. A large value (such as 100000) leaves the run's own limit. Trades pass rate for time.
     pub max_seconds: Option<u64>,
 }
 

@@ -1640,7 +1640,7 @@ DEFAULT_CONFIG = {
     "persistence": {
         "enabled": True,
         "max_retries": 3,
-        "max_seconds": 0,  # stop persisting after this many seconds of the run (0 = the run's own limit)
+        "max_seconds": 0,  # stop persisting after this many seconds of the run (0 = the default, 400; a large value = the run's own limit)
         "max_tokens": 0,  # fresh-token ceiling for one persisting run; 0 = automatic (5x the first turn, 400k to 2M)
     },
     # Optional hard stop on what one session may spend. 0 = no limit.
