@@ -68,6 +68,71 @@ export function cacheHitLabel(usage: UsageStats): string {
   return typeof pct === 'number' && Number.isFinite(pct) ? `${Math.round(pct)}%` : ''
 }
 
+/** Dollars for a priced route: `$0.04`, `<$0.01`; '' when the route could not be priced. */
+export function costLabel(cost: number | undefined): string {
+  if (typeof cost !== 'number' || !Number.isFinite(cost) || cost <= 0) {
+    return ''
+  }
+
+  return cost < 0.01 ? '<$0.01' : `$${cost < 10 ? cost.toFixed(2) : cost.toFixed(1)}`
+}
+
+/** The last turn at a glance: `12.3k in (9.1k cached) · 1.2k out · $0.04`; '' before the first call. The
+ *  cached share counts inside `in`, so cached plus uncached always adds up. */
+export function turnUsageLabel(usage: UsageStats): string {
+  const turn = usage.turn
+
+  if (!turn || turn.calls <= 0) {
+    return ''
+  }
+
+  // Anthropic reports cache tokens beside the prompt, OpenAI inside it: show the full prompt either way.
+  const prompt =
+    turn.prompt ?? (turn.cache_read > turn.input ? turn.input + turn.cache_read + turn.cache_write : turn.input)
+
+  const parts = [
+    turn.cache_read > 0
+      ? `${compactNumber(prompt)} in (${compactNumber(turn.cache_read)} cached)`
+      : `${compactNumber(prompt)} in`
+  ]
+
+  parts.push(`${compactNumber(turn.output)} out`)
+
+  const cost = costLabel(turn.cost_usd)
+
+  if (cost) {
+    parts.push(cost)
+  }
+
+  return parts.join(' · ')
+}
+
+/** `34% left` for the most constrained provider limit, with the reset when it said: `34% left · 20s`. */
+export function rateLimitLabel(usage: UsageStats): string {
+  const limit = usage.rate_limit
+
+  if (!limit || !Number.isFinite(limit.remaining_pct)) {
+    return ''
+  }
+
+  const reset =
+    typeof limit.reset_in_secs === 'number' && limit.reset_in_secs > 0 ? formatReset(limit.reset_in_secs) : ''
+
+  return `${Math.round(limit.remaining_pct)}% left${reset ? ` · ${reset}` : ''}`
+}
+
+function formatReset(secs: number): string {
+  if (secs < 90) {
+    return `${Math.round(secs)}s`
+  }
+
+  if (secs < 5400) {
+    return `${Math.round(secs / 60)}m`
+  }
+
+  return `${Math.round(secs / 3600)}h`
+}
+
 /** `42 t/s` for the rolling throughput; '' before the first completed call. */
 export function tokensPerSecondLabel(usage: UsageStats): string {
   const tps = usage.avg_tps

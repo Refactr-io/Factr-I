@@ -23,6 +23,10 @@ pub struct Compression {
     pub protect_last_n: Option<i64>,
     /// Absolute trigger: compaction starts at the lower of `threshold` of the window and this count.
     pub threshold_tokens: Option<i64>,
+    /// `compression.deterministic`: condense old messages with a model-free digest (off unless set).
+    pub deterministic: Option<bool>,
+    /// `compression.llm_second_pass`: with `deterministic`, also ask the model for a summary (default on).
+    pub llm_second_pass: Option<bool>,
 }
 
 /// `memory.*`: the desktop's memory switch.
@@ -50,6 +54,66 @@ impl Web {
 pub struct Terminal {
     /// `terminal.max_memory_mb`: resident-memory cap of one command's process group.
     pub max_memory_mb: Option<u64>,
+    /// `terminal.reduce_output`: route shell commands through the `rtk` CLI (when installed) so their
+    /// output is shorter. Off unless set.
+    pub reduce_output: bool,
+    /// `terminal.reduce_output_timeout_ms`: how long the rewrite lookup may take before the command
+    /// runs unchanged. Clamped to 100..=10000; 1500 when unset.
+    pub reduce_output_timeout_ms: Option<u64>,
+}
+
+/// `budget.*`: an optional hard stop on what one session may spend. Both unset (the default) means no
+/// limit and the engine never looks at usage.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Budget {
+    /// `budget.max_cost_usd`: stop starting new requests once the session's estimated spend reaches it.
+    /// Only enforced for routes that can be priced per token.
+    pub max_cost_usd: Option<f64>,
+    /// `budget.max_tokens`: stop once the session's input plus output tokens reach this.
+    pub max_tokens: Option<u64>,
+}
+
+/// `approvals.*` keys that add questions (never remove any): both are off/empty unless set.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ApprovalExtras {
+    /// `approvals.gui_automation_ask`: ask before commands that drive other apps or edit the agent's own
+    /// approval and config files.
+    pub gui_automation_ask: bool,
+    /// `approvals.always_ask`: regular expressions; a shell command matching one is asked about every
+    /// time, whatever grants exist. Entries are trimmed; empty ones are dropped.
+    pub always_ask: Vec<String>,
+}
+
+/// `tools.*`: how tool schemas reach the model.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ToolsView {
+    /// `tools.routing`: also load the withheld (deferred) tools a user message clearly asks for, one
+    /// `load_tools` round trip earlier. Only ever adds tools; off unless set.
+    pub routing: bool,
+}
+
+/// `local_models.*`: guardrails for models served on this machine or the local network.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct LocalModels {
+    /// `local_models.silence_timeout_secs`: how long a local endpoint may stay silent before the stream is
+    /// treated as dead. Raises the normal limit for local endpoints only; unset leaves it alone.
+    pub silence_timeout_secs: Option<u64>,
+}
+
+/// True when `api_base` points at this machine or a private network address.
+pub fn is_local_endpoint(api_base: &str) -> bool {
+    let Some(host) = url::Url::parse(api_base).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)) else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    if host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => ip.is_loopback() || ip.is_private() || ip.is_link_local(),
+        Ok(std::net::IpAddr::V6(ip)) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
+        Err(_) => false,
+    }
 }
 
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
@@ -147,6 +211,10 @@ pub struct FactrConfig {
     pub web: Web,
     pub terminal: Terminal,
     pub checkpoints: Checkpoints,
+    pub budget: Budget,
+    pub tools: ToolsView,
+    pub local_models: LocalModels,
+    pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
     pub delegation: Delegation,
@@ -312,10 +380,34 @@ impl FactrConfig {
                 target_ratio: path(&root, "compression.target_ratio").and_then(as_f64),
                 protect_last_n: path(&root, "compression.protect_last_n").and_then(as_i64),
                 threshold_tokens: path(&root, "compression.threshold_tokens").and_then(as_i64).filter(|n| *n > 0),
+                deterministic: path(&root, "compression.deterministic").and_then(as_bool),
+                llm_second_pass: path(&root, "compression.llm_second_pass").and_then(as_bool),
             },
             memory: Memory { enabled: path(&root, "memory.memory_enabled").and_then(Value::as_bool) },
             web: Web { backend: path(&root, "web.backend").and_then(as_text), search_backend: path(&root, "web.search_backend").and_then(as_text) },
-            terminal: Terminal { max_memory_mb: path(&root, "terminal.max_memory_mb").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0) },
+            terminal: Terminal {
+                max_memory_mb: path(&root, "terminal.max_memory_mb").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
+                reduce_output: path(&root, "terminal.reduce_output").and_then(as_bool).unwrap_or(false),
+                reduce_output_timeout_ms: path(&root, "terminal.reduce_output_timeout_ms").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).map(|n| n.clamp(100, 10_000)),
+            },
+            approval_extras: ApprovalExtras {
+                gui_automation_ask: path(&root, "approvals.gui_automation_ask").and_then(as_bool).unwrap_or(false),
+                always_ask: path(&root, "approvals.always_ask")
+                    .and_then(Value::as_sequence)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(as_text)
+                    .take(100)
+                    .collect(),
+            },
+            local_models: LocalModels {
+                silence_timeout_secs: path(&root, "local_models.silence_timeout_secs").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0).map(|n| n.min(7200)),
+            },
+            tools: ToolsView { routing: path(&root, "tools.routing").and_then(as_bool).unwrap_or(false) },
+            budget: Budget {
+                max_cost_usd: path(&root, "budget.max_cost_usd").and_then(as_f64).filter(|n| n.is_finite() && *n > 0.0),
+                max_tokens: path(&root, "budget.max_tokens").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
+            },
             checkpoints: Checkpoints {
                 enabled: path(&root, "checkpoints.enabled").and_then(as_bool),
                 max_snapshots: path(&root, "checkpoints.max_snapshots").and_then(as_i64),
@@ -499,7 +591,9 @@ mod tests {
     #[test]
     fn compression_values_parse_from_numbers_and_strings() {
         let c = FactrConfig::parse("compression:\n  enabled: false\n  threshold: '0.6'\n  target_ratio: 0.25\n  protect_last_n: 30\n  threshold_tokens: '256000'\n").compression;
-        assert_eq!(c, Compression { enabled: Some(false), threshold: Some(0.6), target_ratio: Some(0.25), protect_last_n: Some(30), threshold_tokens: Some(256_000) });
+        assert_eq!(c, Compression { enabled: Some(false), threshold: Some(0.6), target_ratio: Some(0.25), protect_last_n: Some(30), threshold_tokens: Some(256_000), deterministic: None, llm_second_pass: None });
+        let d = FactrConfig::parse("compression: {deterministic: true, llm_second_pass: false}").compression;
+        assert_eq!((d.deterministic, d.llm_second_pass), (Some(true), Some(false)));
         assert_eq!(FactrConfig::parse("compression: {threshold_tokens: 0}").compression.threshold_tokens, None, "zero is no cap");
     }
 
@@ -514,6 +608,71 @@ mod tests {
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: 0}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("terminal: {max_memory_mb: -5}").terminal.max_memory_mb, None);
         assert_eq!(FactrConfig::parse("model: x").memory, Memory::default());
+    }
+
+    /// The release's promise: with nothing configured, none of the opt-in controls does anything.
+    #[test]
+    fn every_opt_in_control_is_off_in_an_empty_or_unrelated_config() {
+        for yaml in ["", "model: x\n", "terminal: {backend: local}\napprovals: {mode: smart}\ncompression: {threshold: 0.5}\n"] {
+            let c = FactrConfig::parse(yaml);
+            assert!(!c.terminal.reduce_output, "{yaml}");
+            assert!(!c.tools.routing, "{yaml}");
+            assert_eq!(c.budget, Budget::default(), "{yaml}");
+            assert_eq!(c.approval_extras, ApprovalExtras::default(), "{yaml}");
+            assert_eq!(c.local_models, LocalModels::default(), "{yaml}");
+            assert_eq!(c.compression.deterministic.unwrap_or(false), false, "{yaml}");
+        }
+    }
+
+    #[test]
+    fn approval_extras_are_off_unless_set() {
+        assert_eq!(FactrConfig::parse("").approval_extras, ApprovalExtras::default());
+        assert_eq!(FactrConfig::parse("approvals: {mode: manual}").approval_extras, ApprovalExtras::default());
+        let c = FactrConfig::parse("approvals:\n  gui_automation_ask: true\n  always_ask: ['^cargo publish', '  ']\n").approval_extras;
+        assert!(c.gui_automation_ask);
+        assert_eq!(c.always_ask, vec!["^cargo publish".to_string()]);
+    }
+
+    #[test]
+    fn local_endpoints_are_recognised_and_hosted_ones_are_not() {
+        for local in ["http://localhost:11434/v1", "http://127.0.0.1:1234/v1", "http://[::1]:8080", "http://192.168.1.20:8000/v1", "http://10.0.0.5/v1", "http://172.16.4.1/v1", "http://box.local:9/v1"] {
+            assert!(is_local_endpoint(local), "{local}");
+        }
+        for hosted in ["https://api.openai.com/v1", "https://openrouter.ai/api/v1", "http://172.32.0.1/v1", "not a url", ""] {
+            assert!(!is_local_endpoint(hosted), "{hosted}");
+        }
+    }
+
+    #[test]
+    fn the_local_silence_timeout_is_unset_unless_positive_and_capped() {
+        assert_eq!(FactrConfig::parse("").local_models.silence_timeout_secs, None);
+        assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 0}").local_models.silence_timeout_secs, None);
+        assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 900}").local_models.silence_timeout_secs, Some(900));
+        assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 999999}").local_models.silence_timeout_secs, Some(7200));
+    }
+
+    #[test]
+    fn tool_routing_is_off_unless_set() {
+        assert!(!FactrConfig::parse("").tools.routing);
+        assert!(FactrConfig::parse("tools: {routing: true}").tools.routing);
+    }
+
+    #[test]
+    fn budget_is_unset_unless_positive_numbers_are_given() {
+        assert_eq!(FactrConfig::parse("").budget, Budget::default());
+        assert_eq!(FactrConfig::parse("budget: {max_cost_usd: 0, max_tokens: -1}").budget, Budget::default());
+        assert_eq!(FactrConfig::parse("budget: {max_cost_usd: '2.5', max_tokens: 500000}").budget, Budget { max_cost_usd: Some(2.5), max_tokens: Some(500_000) });
+    }
+
+    #[test]
+    fn output_reduction_is_off_unless_set_and_its_timeout_is_clamped() {
+        assert!(!FactrConfig::parse("").terminal.reduce_output);
+        assert!(!FactrConfig::parse("terminal: {max_memory_mb: 1}").terminal.reduce_output);
+        assert!(FactrConfig::parse("terminal: {reduce_output: true}").terminal.reduce_output);
+        assert!(FactrConfig::parse("terminal: {reduce_output: 'on'}").terminal.reduce_output);
+        assert_eq!(FactrConfig::parse("terminal: {reduce_output_timeout_ms: 1}").terminal.reduce_output_timeout_ms, Some(100));
+        assert_eq!(FactrConfig::parse("terminal: {reduce_output_timeout_ms: 999999}").terminal.reduce_output_timeout_ms, Some(10_000));
+        assert_eq!(FactrConfig::parse("terminal: {}").terminal.reduce_output_timeout_ms, None);
     }
 
     #[test]

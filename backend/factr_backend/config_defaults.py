@@ -276,6 +276,10 @@ DEFAULT_CONFIG = {
 
     "terminal": {
         "backend": "local",
+        # Run shell commands through the `rtk` CLI when it is installed so their output is shorter.
+        # Off by default; falls back to the plain command whenever rtk is missing or fails.
+        "reduce_output": False,
+        "reduce_output_timeout_ms": 1500,
         "modal_mode": "auto",
         # Remote-backend connection-class failures (SSH host unreachable, Docker daemon down):
         # "warn" = structured degraded tool result with reason + retry hint; "fail" = raise error +
@@ -552,6 +556,11 @@ DEFAULT_CONFIG = {
 
     "compression": {
         "enabled": True,
+        # deterministic: condense old messages with a model-free digest (every line links to its
+        # message number). llm_second_pass: with deterministic on, still ask the model for its
+        # summary as well. Off by default.
+        "deterministic": False,
+        "llm_second_pass": True,
         # checkpoint_required: fail closed before lossy compaction unless an active memory provider
         # confirms checkpoint API compatibility and completes the checkpoint.
         "checkpoint_required": False,
@@ -1625,6 +1634,15 @@ DEFAULT_CONFIG = {
     #   timeout and failing closed.
     # timeout: seconds before an unanswered prompt fails closed (CLI and gateway). 60s
     #   proved too tight for Telegram/Discord push notifications, hence 300.
+    # Optional hard stop on what one session may spend. 0 = no limit.
+    "budget": {
+        "max_cost_usd": 0,
+        "max_tokens": 0,
+    },
+    # Guardrails for models served on this machine or the local network. 0 = leave as is.
+    "local_models": {
+        "silence_timeout_secs": 0,
+    },
     "approvals": {
         # single_query_mode — what to do when a single-query (-q) session hits a dangerous command. -q runs
         # export FACTR_INTERACTIVE=1 (for interactive sudo prompts) but have NO user waiting to answer
@@ -1640,6 +1658,11 @@ DEFAULT_CONFIG = {
         # notification the user may not see immediately — 60s proved too tight on Telegram/Discord (the
         # prompt expired before the user reached their phone), so the default is 300.
         "mode": "smart",
+        # Extra questions (off/empty by default): ask before commands that drive other apps (AppleScript,
+        # `open -a`, xdotool, ...) or change the agent's own approval settings; and always ask about any
+        # shell command matching one of these regular expressions, whatever grants exist.
+        "gui_automation_ask": False,
+        "always_ask": [],
         "timeout": 300,
         "cron_mode": "deny",
         "single_query_mode": "deny",
@@ -1925,6 +1948,9 @@ DEFAULT_CONFIG = {
     # Working-set core tools stay eager, while the explicit ``defer`` list below
     # may include cold, event-triggered built-ins as well as plugin/MCP tools.
     "tools": {
+        # Also load the withheld tools a message plainly asks for (a URL, a web search, subagents, ...)
+        # one round trip earlier. Only ever adds tools. Off by default.
+        "routing": False,
         "tool_search": {
             # Tiered: tier 0 (no deferred tools) = everything eager; tier 1 = bridge + a
             # name+description manifest when it fits the budget (degrades to names-only); tier 2

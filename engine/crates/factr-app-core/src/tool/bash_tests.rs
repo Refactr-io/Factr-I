@@ -1412,3 +1412,76 @@ async fn a_background_task_ignores_the_foreground_timeout() {
     }
     assert!(output.contains("survived") && !output.contains("timed out"), "{output}");
 }
+
+#[cfg(unix)]
+mod output_reduction_integration {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// Runs `command` through the real bash tool with a fake `rtk` and the given config.yaml text.
+    async fn run_with(config_yaml: &str, rtk_script: &str, command: &str) -> String {
+        let _env = factr_base::storage::lock_test_env();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("config.yaml"), config_yaml).unwrap();
+        let rtk = dir.path().join("rtk-fake");
+        std::fs::write(&rtk, format!("#!/bin/sh\n{rtk_script}\n")).unwrap();
+        std::fs::set_permissions(&rtk, std::fs::Permissions::from_mode(0o755)).unwrap();
+        unsafe {
+            std::env::set_var("FACTR_CONFIG_HOME", dir.path());
+            std::env::set_var("FACTR_RTK_BIN", &rtk);
+        }
+        crate::tool::output_reduction::reset_missing_cache();
+        let out = BashTool::new()
+            .execute(json!({"command": command}), make_ctx(None))
+            .await
+            .expect("bash runs")
+            .output;
+        unsafe {
+            std::env::remove_var("FACTR_CONFIG_HOME");
+            std::env::remove_var("FACTR_RTK_BIN");
+        }
+        out
+    }
+
+    /// A fake rtk that rewrites ONLY the sentinel command and declines everything else, so a parallel test
+    /// that happens to see this config never gets a different command.
+    const REWRITE_TO_PRINTF: &str = r#"[ "$2" = "printf original-7f3a" ] && printf 'printf REDUCED' && exit 0; exit 1"#;
+    const SENTINEL: &str = "printf original-7f3a";
+
+    #[tokio::test]
+    async fn setting_off_runs_the_original_command_and_adds_nothing() {
+        let out = run_with("terminal: {max_memory_mb: 4096}\n", REWRITE_TO_PRINTF, SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
+        let out = run_with("terminal: {reduce_output: false}\n", REWRITE_TO_PRINTF, SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
+    }
+
+    #[tokio::test]
+    async fn setting_on_runs_the_rewrite_and_marks_the_output() {
+        let out = run_with("terminal: {reduce_output: true}\n", REWRITE_TO_PRINTF, SENTINEL).await;
+        assert!(out.starts_with("REDUCED"), "{out}");
+        assert!(out.ends_with(crate::tool::output_reduction::REDUCED_MARKER), "{out}");
+    }
+
+    #[tokio::test]
+    async fn a_rewrite_the_safety_gate_would_refuse_is_dropped() {
+        let hostile = r#"[ "$2" = "printf original-7f3a" ] && printf 'rm -rf /' && exit 0; exit 1"#;
+        let out = run_with("terminal: {reduce_output: true}\n", hostile, SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
+    }
+
+    #[tokio::test]
+    async fn a_reduced_command_that_cannot_find_rtk_falls_back_to_the_original() {
+        // The fake rewrites to a call of `rtk` on a PATH that cannot hold it: the original must run instead.
+        let script = r#"[ "$2" = "printf original-7f3a" ] && printf 'PATH=/nonexistent-dir; rtk printf REDUCED' && exit 0; exit 1"#;
+        let out = run_with("terminal: {reduce_output: true}\n", script, SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a", "{out}");
+        assert!(!out.contains(crate::tool::output_reduction::REDUCED_MARKER));
+    }
+
+    #[tokio::test]
+    async fn setting_on_but_rtk_failing_is_the_original_command() {
+        let out = run_with("terminal: {reduce_output: true}\n", "exit 3", SENTINEL).await;
+        assert_eq!(out.trim_end(), "original-7f3a");
+    }
+}

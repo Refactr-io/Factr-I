@@ -1015,6 +1015,30 @@ impl Tool for BashTool {
 
         crate::checkpoint::before_bash(&ctx, &params.command).await;
 
+        // Optional output reduction (`terminal.reduce_output`, off by default; fail-open). The gate above
+        // and the checkpoint already saw the original command.
+        // The repo's cargo wrapper (a shell function) would be bypassed by `rtk cargo ...`, so cargo commands
+        // in such a repo keep running as written. A rewrite that the destructive-command gate would refuse
+        // is dropped too.
+        #[cfg(unix)]
+        let cargo_wrapper_applies =
+            params.command.contains("cargo") && wrap_repo_cargo_commands(&params.command, ctx.working_dir.as_deref()).is_some();
+        #[cfg(not(unix))]
+        let cargo_wrapper_applies = false;
+        let original_command = params.command.clone();
+        let reduced = if run_in_background || cargo_wrapper_applies {
+            false
+        } else if let Some(rewritten) = super::output_reduction::reduced_command(&params.command).await {
+            if destructive_command_refusal(&rewritten, params.justification.as_deref(), ctx.working_dir.clone()).is_none() {
+                params.command = rewritten;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
         #[cfg(unix)]
         if let Some(wrapped) = wrap_repo_cargo_commands(&params.command, ctx.working_dir.as_deref())
         {
@@ -1028,6 +1052,13 @@ impl Tool for BashTool {
         // Foreground execution with stdin detection
         let hint = file_edit_hint(&params.command);
         let mut output = self.execute_foreground(&params, &ctx).await?;
+        // Fail-open: if the reduced command could not even find rtk, run the original once.
+        let mut reduced = reduced;
+        if reduced && super::output_reduction::rtk_missing_at_run(&output.output) {
+            params.command = original_command.clone();
+            reduced = false;
+            output = self.execute_foreground(&params, &ctx).await?;
+        }
         if output.output.contains("No module named") || output.output.contains("ModuleNotFoundError") {
             let python = factr_base::python_env::interpreter();
             output.output.push_str(&factr_base::shell::missing_module_hint(
@@ -1048,6 +1079,10 @@ impl Tool for BashTool {
         if let Some(hint) = hint {
             output.output.push_str("\n\n");
             output.output.push_str(hint);
+        }
+        if reduced {
+            output.output.push_str("\n\n");
+            output.output.push_str(super::output_reduction::REDUCED_MARKER);
         }
         Ok(output)
     }

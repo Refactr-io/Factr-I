@@ -12,8 +12,14 @@ const TOOL_RESULT_MAX_CHARS: usize = 8_000;
 #[derive(Default)]
 pub struct SessionState {
     pub model: Option<String>,
+    /// Provider label of the last `model_info`, for pricing.
+    provider: Option<String>,
     turn: Turn,
     usage: Usage,
+    /// Usage of the current (or most recent) turn; restarts when a turn starts.
+    last_turn: Usage,
+    /// Set when a turn completed: the next usage tick belongs to a new turn.
+    turn_usage_done: bool,
 }
 
 /// The last assistant message of each session's most recent turn, by session id.
@@ -82,13 +88,55 @@ fn announce(state: &mut SessionState, sid: &str, call_id: &str, out: &mut Vec<Ou
     out.push(event("tool.start", sid, json!({ "tool_id": call_id, "name": tool.name, "args": tool.args() })));
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Usage {
     input: u64,
     output: u64,
     cache_read: u64,
     cache_write: u64,
     calls: u64,
+    /// USD for the priced calls (`None` until one call could be priced).
+    cost_usd: Option<f64>,
+}
+
+impl Usage {
+    fn add(&mut self, input: u64, output: u64, cache_read: u64, cache_write: u64, cost: Option<f64>) {
+        self.input += input;
+        self.output += output;
+        self.cache_read += cache_read;
+        self.cache_write += cache_write;
+        self.calls += 1;
+        if let Some(cost) = cost {
+            self.cost_usd = Some(self.cost_usd.unwrap_or(0.0) + cost);
+        }
+    }
+
+    /// Prompt size with the cache counted in, whichever way the provider reports it.
+    fn prompt_tokens(&self, anthropic: bool) -> u64 {
+        if anthropic || self.cache_write > 0 || self.cache_read > self.input { self.input + self.cache_read + self.cache_write } else { self.input }
+    }
+
+    /// Share of the prompt served from the provider's cache, 0-100. Providers either report cache
+    /// tokens inside `input` (OpenAI) or beside it (Anthropic); more cached than input means beside.
+    fn cache_hit_pct(&self, anthropic: bool) -> Option<f64> {
+        let prompt = self.prompt_tokens(anthropic);
+        (self.cache_read > 0 && prompt > 0).then(|| (self.cache_read as f64 / prompt as f64 * 100.0).clamp(0.0, 100.0))
+    }
+
+    fn json(&self, anthropic: bool) -> Value {
+        let mut v = json!({
+            "input": self.input, "output": self.output,
+            "cache_read": self.cache_read, "cache_write": self.cache_write, "calls": self.calls,
+        });
+        v["prompt"] = json!(self.prompt_tokens(anthropic));
+        if let Some(cost) = self.cost_usd {
+            v["cost_usd"] = json!(cost);
+        }
+        if let Some(pct) = self.cache_hit_pct(anthropic) {
+            v["cache_hit_pct"] = json!(pct.round());
+        }
+        v
+    }
 }
 
 impl SessionState {
@@ -109,7 +157,9 @@ impl SessionState {
 
     pub fn usage_json(&self) -> Value {
         let u = &self.usage;
-        json!({
+        // Anthropic reports cache tokens beside the prompt, never inside it.
+        let anthropic = self.provider.as_deref().is_some_and(|p| p.to_ascii_lowercase().contains("anthropic") || p.to_ascii_lowercase().contains("claude"));
+        let mut v = json!({
             "model": self.model.clone().unwrap_or_default(),
             "input": u.input,
             "output": u.output,
@@ -120,7 +170,18 @@ impl SessionState {
             "calls": u.calls,
             "cache_read": u.cache_read,
             "cache_write": u.cache_write,
-        })
+            "turn": self.last_turn.json(anthropic),
+        });
+        if let Some(cost) = u.cost_usd {
+            v["cost_usd"] = json!(cost);
+        }
+        if let Some(pct) = u.cache_hit_pct(anthropic) {
+            v["cache_hit_pct"] = json!(pct.round());
+        }
+        if let Some(limit) = rate_limit_json() {
+            v["rate_limit"] = limit;
+        }
+        v
     }
 }
 
@@ -138,8 +199,31 @@ fn event(ty: &'static str, session_id: &str, payload: Value) -> Out {
 fn ensure_started(state: &mut SessionState, sid: &str, out: &mut Vec<Out>) {
     if !state.turn.started {
         state.turn.started = true;
+        state.last_turn = Usage::default();
+        state.turn_usage_done = false;
         out.push(event("message.start", sid, json!({})));
     }
+}
+
+/// The provider's own rate-limit headers from the latest response, when fresh (read from headers only).
+fn rate_limit_json() -> Option<Value> {
+    let snapshot = factr_provider_core::rate_limits::latest(std::time::Duration::from_secs(600))?;
+    let w = snapshot.window;
+    Some(json!({
+        "provider": snapshot.provider,
+        "kind": w.kind,
+        "limit": w.limit,
+        "remaining": w.remaining,
+        "remaining_pct": w.remaining_pct().round(),
+        "reset_in_secs": w.reset_in_secs,
+    }))
+}
+
+/// USD for one call's reported usage, `None` when the route cannot be priced (subscriptions, unknown models).
+fn call_cost_usd(provider: Option<&str>, model: Option<&str>, input: u64, output: u64, cache_read: u64, cache_write: u64) -> Option<f64> {
+    let (provider, model) = (provider?, model?);
+    let key = factr_base::provider_activity::source_key_for_provider_label(provider, None);
+    factr_base::provider::pricing::metered_usage_cost_usd(&key, model, input, output, cache_read, cache_write)
 }
 
 fn truncate_chars(text: &str, max: usize) -> String {
@@ -232,12 +316,14 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
         }
         "token_usage" => {
             state.turn.last_closed = true;
-            let u = &mut state.usage;
-            u.input += ev["input"].as_u64().unwrap_or(0);
-            u.output += ev["output"].as_u64().unwrap_or(0);
-            u.cache_read += ev["cache_read_input"].as_u64().unwrap_or(0);
-            u.cache_write += ev["cache_creation_input"].as_u64().unwrap_or(0);
-            u.calls += 1;
+            let (input, output) = (ev["input"].as_u64().unwrap_or(0), ev["output"].as_u64().unwrap_or(0));
+            let (cache_read, cache_write) = (ev["cache_read_input"].as_u64().unwrap_or(0), ev["cache_creation_input"].as_u64().unwrap_or(0));
+            if std::mem::take(&mut state.turn_usage_done) {
+                state.last_turn = Usage::default();
+            }
+            let cost = call_cost_usd(state.provider.as_deref(), state.model.as_deref(), input, output, cache_read, cache_write);
+            state.usage.add(input, output, cache_read, cache_write, cost);
+            state.last_turn.add(input, output, cache_read, cache_write, cost);
             out.push(event("session.usage", sid, json!({ "usage": state.usage_json() })));
         }
         "turn_stopped" => {
@@ -268,6 +354,7 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
                     "usage": state.usage_json(),
                 }),
             ));
+            state.turn_usage_done = true;
         }
         "session_renamed" => {
             let title = text("display_title");
@@ -285,6 +372,9 @@ pub fn map_event(ev: &Value, sessions: &mut HashMap<String, SessionState>) -> Ve
         "model_info" | "runtime_info" => {
             if let Some(model) = ev["model"].as_str().and_then(real_model) {
                 state.model = Some(model);
+            }
+            if let Some(provider) = ev["provider"].as_str().filter(|p| !p.trim().is_empty()) {
+                state.provider = Some(provider.to_string());
             }
         }
         "permission_request" => out.push(Out::Approval {
@@ -609,6 +699,80 @@ mod tests {
                 Out::Approval { .. } => Some("approval"),
             })
             .collect()
+    }
+
+    fn usage_of(out: &[Out]) -> Value {
+        out.iter()
+            .rev()
+            .find_map(|o| match o {
+                Out::Event { ty: "session.usage", payload, .. } => Some(payload["usage"].clone()),
+                _ => None,
+            })
+            .expect("a session.usage event")
+    }
+
+    #[test]
+    fn usage_carries_the_per_turn_split_and_resets_each_turn() {
+        let out = run(&[
+            json!({"ev":"token_usage","session_id":"m","input":1000,"output":50,"cache_read_input":4000,"cache_creation_input":0}),
+            json!({"ev":"token_usage","session_id":"m","input":200,"output":30,"cache_read_input":5000,"cache_creation_input":0}),
+            json!({"ev":"turn_done","session_id":"m"}),
+            json!({"ev":"token_usage","session_id":"m","input":10,"output":5,"cache_read_input":0,"cache_creation_input":0}),
+        ]);
+        let usage = usage_of(&out);
+        // Session totals keep growing, the turn block restarted with the second turn.
+        assert_eq!(usage["input"], 1210);
+        assert_eq!(usage["calls"], 3);
+        assert_eq!(usage["turn"]["input"], 10);
+        assert_eq!(usage["turn"]["calls"], 1);
+        assert!(usage["turn"].get("cache_hit_pct").is_none(), "no cache reads in that turn");
+        // Unpriced route: no cost is invented.
+        assert!(usage.get("cost_usd").is_none());
+    }
+
+    #[test]
+    fn a_fresh_rate_limit_from_response_headers_rides_the_usage_payload() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-ratelimit-limit-requests", "100".parse().unwrap());
+        headers.insert("x-ratelimit-remaining-requests", "7".parse().unwrap());
+        headers.insert("x-ratelimit-reset-requests", "30s".parse().unwrap());
+        factr_provider_core::rate_limits::record("map-test", &headers);
+        let out = run(&[json!({"ev":"token_usage","session_id":"rl","input":1,"output":1})]);
+        let limit = usage_of(&out)["rate_limit"].clone();
+        assert_eq!(limit["remaining"], 7);
+        assert_eq!(limit["remaining_pct"], 7.0);
+        assert_eq!(limit["reset_in_secs"], 30);
+        assert_eq!(limit["kind"], "requests");
+    }
+
+    #[test]
+    fn cache_hit_share_handles_both_provider_conventions() {
+        let mut beside = Usage::default();
+        beside.add(100, 10, 900, 0, None); // Anthropic style: cache beside input
+        assert_eq!(beside.cache_hit_pct(false), Some(90.0));
+        let mut inside = Usage::default();
+        inside.add(1000, 10, 250, 0, None); // OpenAI style: cache inside input
+        assert_eq!(inside.cache_hit_pct(false), Some(25.0));
+        assert_eq!(Usage::default().cache_hit_pct(false), None);
+        // Anthropic with fewer cached than fresh tokens: the prompt is input + cache, not input alone.
+        let mut few_cached = Usage::default();
+        few_cached.add(5000, 10, 4000, 0, None);
+        assert_eq!(few_cached.cache_hit_pct(true).map(f64::round), Some(44.0));
+        assert_eq!(few_cached.cache_hit_pct(false).map(f64::round), Some(80.0));
+    }
+
+    #[test]
+    fn a_priced_route_reports_a_summed_cost() {
+        let out = run(&[
+            json!({"ev":"model_info","session_id":"p","provider":"anthropic","model":"claude-sonnet-4-5"}),
+            json!({"ev":"token_usage","session_id":"p","input":1000,"output":100,"cache_read_input":0,"cache_creation_input":0}),
+            json!({"ev":"token_usage","session_id":"p","input":1000,"output":100,"cache_read_input":0,"cache_creation_input":0}),
+        ]);
+        let usage = usage_of(&out);
+        if let Some(cost) = usage["cost_usd"].as_f64() {
+            assert!(cost > 0.0);
+            assert!((usage["turn"]["cost_usd"].as_f64().unwrap() - cost).abs() < 1e-9);
+        } // an unpriced test environment must still not fail the mapping
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use factr_message_types::{ContentBlock, Message, Role};
+mod digest;
 mod prune;
 pub use prune::prune_old_tool_results;
 use std::collections::HashSet;
@@ -38,6 +39,11 @@ pub struct CompactionLimits {
     /// When set, the verbatim tail may grow beyond `keep_recent` up to this fraction of the
     /// soft threshold's tokens (Factr `target_ratio`).
     pub tail_ratio: Option<f32>,
+    /// `compression.deterministic`: summarize with a model-free digest first. Off by default.
+    pub deterministic: bool,
+    /// `compression.llm_second_pass`: with `deterministic` on, still ask the model for its summary too.
+    /// On by default; only read when `deterministic` is on.
+    pub llm_second_pass: bool,
 }
 
 impl Default for CompactionLimits {
@@ -48,6 +54,8 @@ impl Default for CompactionLimits {
             hard: CRITICAL_THRESHOLD,
             keep_recent: RECENT_TURNS_TO_KEEP,
             tail_ratio: None,
+            deterministic: false,
+            llm_second_pass: true,
         }
     }
 }
@@ -265,6 +273,8 @@ pub fn build_compaction_conversation_text(
     }
     conversation_text
 }
+
+pub use digest::digest;
 
 pub fn truncate_str_boundary(value: &str, max_bytes: usize) -> &str {
     if value.len() <= max_bytes {

@@ -15,6 +15,7 @@ pub mod deployment;
 pub mod features;
 pub mod learn;
 mod boot_stubs;
+mod approval_extras;
 mod dangerous;
 mod factr_env;
 mod factr_host;

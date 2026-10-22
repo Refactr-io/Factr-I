@@ -44,6 +44,7 @@ import { useI18n } from '@/i18n'
 import { mcpTargets } from '@/lib/connector-tools'
 import { PrettyLink, LinkifiedText as SharedLinkifiedText, urlSlugTitleLabel } from '@/lib/external-link'
 import { AlertCircle, CheckCircle2 } from '@/lib/icons'
+import { isOutputReduced } from '@/lib/output-reduced'
 import { toolResultRecord } from '@/lib/tool-result-metadata'
 import { useEnterAnimation } from '@/lib/use-enter-animation'
 import { cn } from '@/lib/utils'
@@ -629,6 +630,11 @@ function ToolEntry({ part }: ToolEntryProps) {
             )}
             {!isFileEdit && !isPending && view.durationLabel && (
               <span className={cn(SCAFFOLD_META_CLASS, memoryMetaClass)}>{view.durationLabel}</span>
+            )}
+            {!isPending && isOutputReduced(part.result) && (
+              <span className={cn(SCAFFOLD_META_CLASS, memoryMetaClass)} title={copy.outputReducedTitle}>
+                {copy.outputReduced}
+              </span>
             )}
           </span>
         </DisclosureRow>

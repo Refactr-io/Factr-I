@@ -147,6 +147,16 @@ impl Agent {
                 });
                 break;
             }
+            // `budget.*`: an optional hard stop, never set by default.
+            if let Some(message) = self.budget_stop() {
+                logging::warn(&message);
+                let _ = event_tx.send(ServerEvent::TurnStopped {
+                    reason: crate::protocol::TurnStopReason::LimitReached,
+                    message,
+                    provider_stop_reason: None,
+                });
+                break;
+            }
             let repaired = self.repair_missing_tool_outputs();
             if repaired > 0 {
                 logging::warn(&format!(

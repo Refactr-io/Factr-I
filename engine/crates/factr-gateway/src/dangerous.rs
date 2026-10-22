@@ -170,7 +170,7 @@ fn fold_home(command: &str, dir: Option<&std::path::Path>, replacement: &str) ->
 }
 
 /// Factr' `_normalize_command_for_detection`, so escapes and splicing cannot dodge a pattern.
-fn normalize(command: &str) -> String {
+pub(crate) fn normalize(command: &str) -> String {
     let mut s = command.replace('\0', "").replace("\\\r\n", "").replace("\\\n", "");
     // The Factr config home first (it usually lies inside the user home), then the user home.
     s = fold_home(&s, factr_base::factr_config::home().as_deref(), "~/.factr");

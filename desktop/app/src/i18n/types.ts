@@ -1019,6 +1019,11 @@ export interface Translations {
     }
     about: {
       heading: string
+      support: string
+      copyDiagnostics: string
+      copyDiagnosticsDesc: string
+      diagnosticsCopied: string
+      diagnosticsFailed: string
       version: (value: string) => string
       versionUnavailable: string
       bundleOutOfSync: string
@@ -3360,6 +3365,8 @@ export interface Translations {
       toggleApprovalMode: string
       toggleBackendVersion: string
       toggleCacheHitRate: string
+      toggleTurnUsage: string
+      toggleRateLimit: string
       toggleCommandCenter: string
       toggleContextUsage: string
       toggleRunningTimer: string
@@ -3368,6 +3375,8 @@ export interface Translations {
       toggleTokensPerSecond: string
       toggleVersion: string
       toggleWorkspace: string
+      turnUsageTitle: string
+      rateLimitTitle: string
       cacheHitRateTitle: string
       tokensPerSecondTitle: string
       agents: string
@@ -3861,6 +3870,8 @@ export interface Translations {
         unavailable: string
       }
       outputAlt: string
+      outputReduced: string
+      outputReducedTitle: string
       rawResponse: string
       copyActivity: string
       recoveredOne: string

@@ -897,6 +897,12 @@ impl CompactionManager {
         ));
 
         self.pending_cutoff = cutoff;
+        // `compression.deterministic` (off by default): a model-free digest first, the model's summary optionally after.
+        let digest_opts = limits.deterministic.then(|| DigestOpts {
+            first_index: self.compacted_count,
+            llm_second_pass: limits.llm_second_pass,
+            max_chars: DIGEST_MAX_CHARS,
+        });
         let provider = self.summarizer(provider);
         self.pending_trigger = Some(mode_label.clone());
         let pending_model_calls = Arc::new(Mutex::new(Vec::new()));
@@ -905,14 +911,16 @@ impl CompactionManager {
         // Spawn background task that notifies via Bus when done
         self.pending_task = Some(tokio::spawn(async move {
             let start = std::time::Instant::now();
-            let mut generated = generate_compaction_artifact(
-                provider,
-                messages_to_summarize,
-                existing_summary,
-                pending_model_calls,
-                None,
-            )
-            .await;
+            let mut generated = match digest_opts {
+                Some(opts) => {
+                    generate_with_digest(provider, messages_to_summarize, existing_summary, pending_model_calls, opts)
+                        .await
+                }
+                None => {
+                    generate_compaction_artifact(provider, messages_to_summarize, existing_summary, pending_model_calls, None)
+                        .await
+                }
+            };
             let duration_ms = start.elapsed().as_millis() as u64;
             crate::logging::info(&format!(
                 "Compaction ({}) finished in {:.2}s ({} messages summarized)",
@@ -1705,6 +1713,74 @@ impl Default for CompactionManager {
     }
 }
 
+/// Longest digest kept (chars); older lines are dropped first.
+const DIGEST_MAX_CHARS: usize = 24_000;
+
+/// First-pass digest settings (see `CompactionLimits::deterministic`).
+struct DigestOpts {
+    /// Session position of the first message being summarized.
+    first_index: usize,
+    llm_second_pass: bool,
+    max_chars: usize,
+}
+
+/// The digest for `messages`, or `None` when it is unusable: empty, a failure (fail-open), a native
+/// encrypted summary that cannot be folded in, or no real saving (under half the size it replaces).
+fn usable_digest(messages: &[Message], existing: Option<&Summary>, opts: &DigestOpts) -> Option<String> {
+    if existing.is_some_and(|s| s.openai_encrypted_content.is_some()) {
+        return None;
+    }
+    let mut pruned = messages.to_vec();
+    factr_compaction_core::prune_old_tool_results(&mut pruned, 4);
+    let previous = existing.map(|s| s.text.clone());
+    let text = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        factr_compaction_core::digest(&pruned, opts.first_index, previous.as_deref(), opts.max_chars)
+    }))
+    .ok()
+    .flatten()?;
+    let replaced = serde_json::to_string(messages).map(|j| j.len()).unwrap_or(0) + previous.as_deref().map_or(0, str::len);
+    (text.len() * 2 <= replaced).then_some(text)
+}
+
+/// [`generate_compaction_artifact`] behind the deterministic first pass. Any doubt runs it unchanged.
+async fn generate_with_digest(
+    provider: Arc<dyn Provider>,
+    messages: Vec<Message>,
+    existing_summary: Option<Summary>,
+    pending_model_calls: PendingModelCalls,
+    opts: DigestOpts,
+) -> GeneratedCompaction {
+    let Some(digest) = usable_digest(&messages, existing_summary.as_ref(), &opts) else {
+        return generate_compaction_artifact(provider, messages, existing_summary, pending_model_calls, None).await;
+    };
+    let count = messages.len();
+    let done = |text: String| CompactionResult {
+        summary_text: text,
+        openai_encrypted_content: None,
+        covers_up_to_turn: count,
+        duration_ms: 0,
+        summarized_messages: count,
+    };
+    if !opts.llm_second_pass {
+        return GeneratedCompaction { result: Ok(done(digest)), model_calls: Vec::new() };
+    }
+    let last = opts.first_index + count.saturating_sub(1);
+    let mut generated =
+        generate_compaction_artifact(provider, messages, existing_summary, pending_model_calls, None).await;
+    match &mut generated.result {
+        Ok(result) if result.openai_encrypted_content.is_none() => {
+            result.summary_text.push_str(&format!(
+                "\n\nSource: session messages #{}-#{}; exact text of message N is session_search with scope current and turns {{start: N, end: N+1}}.",
+                opts.first_index, last
+            ));
+        }
+        Ok(_) => {}
+        // The model failed: the digest is still a usable summary.
+        Err(_) => generated.result = Ok(done(digest)),
+    }
+    generated
+}
+
 /// Generate summary using the provider
 async fn generate_compaction_artifact(
     provider: Arc<dyn Provider>,
@@ -1960,7 +2036,10 @@ fn with_token_threshold(mut limits: CompactionLimits, threshold_tokens: Option<i
 
 /// The compaction limits for a Factr `compression:` block (defaults where a key is absent, clamped).
 pub fn limits_from(c: &crate::factr_config::Compression) -> CompactionLimits {
-    CompactionLimits::with_overrides(c.enabled, c.threshold, c.target_ratio, c.protect_last_n)
+    let mut limits = CompactionLimits::with_overrides(c.enabled, c.threshold, c.target_ratio, c.protect_last_n);
+    limits.deterministic = c.deterministic.unwrap_or(false);
+    limits.llm_second_pass = c.llm_second_pass.unwrap_or(true);
+    limits
 }
 
 const LIVE_PLAN_HEADING: &str = "## Live plan (todo list at compaction)";

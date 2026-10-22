@@ -1,12 +1,16 @@
 import { useStore } from '@nanostores/react'
 import { useEffect, useState } from 'react'
 
+import { getFactrConfigRecord } from '@/api/config'
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { type Translations, useI18n } from '@/i18n'
+import { buildDiagnostics } from '@/lib/diagnostics'
 import { AlertTriangle, CheckCircle2, ExternalLink, Info, Loader2, RefreshCw } from '@/lib/icons'
 import { cn } from '@/lib/utils'
+import { $notifications, notify, notifyError } from '@/store/notifications'
+import { $currentModel, $currentProvider } from '@/store/session'
 import { $autoDownload, setAutoDownload } from '@/store/update-download'
 import {
   $desktopVersion,
@@ -61,6 +65,36 @@ export function AboutSettings({ subpage }: AboutSettingsProps = {}) {
   }
 
   return <AppUpdatesSettings includeUninstall={subpage === undefined} />
+}
+
+/** Build the redacted report and put it on the clipboard. */
+async function copyDiagnostics(a: Translations['settings']['about'], appVersion: string | undefined) {
+  try {
+    let config: unknown
+
+    try {
+      config = await getFactrConfigRecord(undefined, { includeDefaults: false })
+    } catch {
+      config = { note: 'settings unavailable' }
+    }
+
+    const lastError = $notifications.get().findLast(item => item.kind === 'error')
+
+    const report = buildDiagnostics({
+      appVersion,
+      config,
+      lastError: lastError ? [lastError.title, lastError.message].filter(Boolean).join(': ') : undefined,
+      locale: navigator.language,
+      model: $currentModel.get(),
+      os: navigator.userAgent.match(/\(([^)]+)\)/)?.[1] ?? navigator.platform,
+      provider: $currentProvider.get()
+    })
+
+    await navigator.clipboard.writeText(report)
+    notify({ kind: 'success', message: a.diagnosticsCopied })
+  } catch (error) {
+    notifyError(error, a.diagnosticsFailed)
+  }
 }
 
 function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean }) {
@@ -228,10 +262,7 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
             </Button>
 
             {feed && updateAvailable && (
-              <Button
-                onClick={() => void window.factrDesktop?.openExternal?.(releaseUrl)}
-                size="sm"
-              >
+              <Button onClick={() => void window.factrDesktop?.openExternal?.(releaseUrl)} size="sm">
                 <ExternalLink className="size-3" />
                 {a.download}
               </Button>
@@ -270,7 +301,9 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
 
         <ListRow
           description={a.automaticUpdatesDesc}
-          hint={feed ? undefined : a.branchCommit(status?.branch ?? 'unknown', status?.currentSha?.slice(0, 7) ?? 'unknown')}
+          hint={
+            feed ? undefined : a.branchCommit(status?.branch ?? 'unknown', status?.currentSha?.slice(0, 7) ?? 'unknown')
+          }
           title={a.automaticUpdates}
         />
 
@@ -279,6 +312,17 @@ function AppUpdatesSettings({ includeUninstall }: { includeUninstall: boolean })
           description={a.downloadUpdatesAutomaticallyDesc}
           label={a.downloadUpdatesAutomatically}
           onChange={on => void setAutoDownload(on)}
+        />
+
+        <SectionHeading icon={Info} title={a.support} />
+        <ListRow
+          action={
+            <Button onClick={() => void copyDiagnostics(a, version?.appVersion)} size="sm" variant="secondary">
+              {a.copyDiagnostics}
+            </Button>
+          }
+          description={a.copyDiagnosticsDesc}
+          title={a.copyDiagnostics}
         />
 
         {includeUninstall && <UninstallSection />}

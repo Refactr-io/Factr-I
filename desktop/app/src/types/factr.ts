@@ -736,7 +736,32 @@ export interface UsageStats {
   cost_usd?: number
   input: number
   output: number
+  /** The provider's own rate-limit headers from the latest response (never read from anywhere else). */
+  rate_limit?: RateLimitInfo
+  /** Usage of the current (or most recent) turn. */
+  turn?: TurnUsage
   total: number
+}
+
+export interface TurnUsage {
+  cache_hit_pct?: number
+  cache_read: number
+  cache_write: number
+  calls: number
+  cost_usd?: number
+  input: number
+  output: number
+  /** Full prompt size, cached tokens included (the engine knows how its provider reports them). */
+  prompt?: number
+}
+
+export interface RateLimitInfo {
+  kind: 'requests' | 'tokens'
+  limit: number
+  provider: string
+  remaining: number
+  remaining_pct: number
+  reset_in_secs?: null | number
 }
 
 /** One graph node in the star map (learned skill or memory chunk). */
