@@ -1640,6 +1640,7 @@ DEFAULT_CONFIG = {
     "persistence": {
         "enabled": True,
         "max_retries": 3,
+        "max_tokens": 0,  # fresh-token ceiling for one persisting run; 0 = automatic (5x the first turn, 400k to 2M)
     },
     # Optional hard stop on what one session may spend. 0 = no limit.
     "budget": {

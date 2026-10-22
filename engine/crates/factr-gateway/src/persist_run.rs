@@ -38,6 +38,8 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
     let mut goal = SessionGoal::new(format!("the task's check: {}", checks.join(", ")));
     goal.unattended = true;
     goal.max_turns = 0;
+    // A fixed ceiling of fresh tokens, or (0) the automatic one set after the first turn.
+    goal.token_budget = factr_base::factr_config::current().persistence.max_tokens.map(|n| n as i64);
     goal.wall_budget_ms = Some((timeout.as_millis() as i64 - gate_secs * 1000 - 5_000).max(timeout.as_millis() as i64 / 2));
     goal.gates = checks
         .into_iter()
