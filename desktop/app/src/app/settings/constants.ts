@@ -415,6 +415,8 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
     toolUseEnforcement: 'Tool-Use Enforcement'
   },
   terminal: {
+    reduceOutput: 'Shorter Command Output (rtk)',
+    reduceOutputTimeoutMs: 'rtk Lookup Timeout (ms)',
     cwd: 'Working Directory',
     backend: 'Execution Backend',
     timeout: 'Command Timeout',
@@ -437,7 +439,19 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   approvals: {
     mode: 'Approval Mode',
     timeout: 'Approval Timeout',
-    mcpReloadConfirm: 'Confirm MCP Reloads'
+    mcpReloadConfirm: 'Confirm MCP Reloads',
+    guiAutomationAsk: 'Ask Before Driving Other Apps',
+    alwaysAsk: 'Always-Ask Patterns'
+  },
+  budget: {
+    maxCostUsd: 'Session Budget (USD)',
+    maxTokens: 'Session Budget (tokens)'
+  },
+  localModels: {
+    silenceTimeoutSecs: 'Local Model Silence Limit (s)'
+  },
+  tools: {
+    routing: 'Tool Routing'
   },
   commandAllowlist: 'Command Allowlist',
   security: {
@@ -553,7 +567,9 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
     threshold: 'Compression Threshold',
     codexGpt55Autoraise: 'Codex Compression Auto-Raise',
     targetRatio: 'Compression Target',
-    protectLastN: 'Protected Recent Messages'
+    protectLastN: 'Protected Recent Messages',
+    deterministic: 'Condensed Digest First',
+    llmSecondPass: 'Model Summary After Digest'
   },
   auxiliary: {
     compression: {
@@ -597,6 +613,9 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
     maxTurns: 'Upper bound for tool-calling turns before Factr-I stops a run.'
   },
   terminal: {
+    reduceOutput:
+      'Run shell commands through the rtk command-line tool, when it is installed, so their output is shorter. Falls back to the plain command if rtk is missing or fails. Off by default.',
+    reduceOutputTimeoutMs: 'How long to wait for rtk to rewrite a command before running it unchanged.',
     cwd: 'Default project folder for tool and terminal work.',
     persistentShell: 'Keep shell state between commands when the backend supports it.',
     envPassthrough: 'Environment variables to pass into tool execution.',
@@ -611,7 +630,25 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   fileReadMaxChars: 'Maximum characters Factr-I can read from one file request.',
   approvals: {
     mode: 'How Factr-I handles commands that need explicit approval. Manual asks before risky commands. It also asks before deleting files when the working folder is your home folder or another broad location (Documents, Desktop, a drive root).',
-    timeout: 'How long approval prompts wait before timing out.'
+    timeout: 'How long approval prompts wait before timing out.',
+    guiAutomationAsk:
+      "Ask before commands that drive other apps (AppleScript, open -a, xdotool, PowerShell UI automation) or change the agent's own approval settings. Off by default.",
+    alwaysAsk:
+      'Regular expressions, separated by commas (a pattern cannot contain a comma). A shell command matching one is asked about every time, whatever you allowed before.'
+  },
+  budget: {
+    maxCostUsd:
+      'Stop a session at about this many dollars of model spend. 0 means no limit. Only applies to routes that can be priced per token.',
+    maxTokens:
+      'Stop a session after this many fresh input plus output tokens, not counting cached prompt tokens. 0 means no limit.'
+  },
+  localModels: {
+    silenceTimeoutSecs:
+      'How long a model on this machine or network may stay silent before its stream is treated as dead. 0 keeps the normal limit.'
+  },
+  tools: {
+    routing:
+      'Load the tools a message plainly asks for (a link, a web search, subagents) one step earlier. Only ever adds tools. Off by default.'
   },
   security: {
     redactSecrets: 'Hide detected secrets from model-visible content when possible.'
@@ -628,6 +665,9 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   },
   compression: {
     enabled: 'Summarize older context when conversations get large.',
+    deterministic:
+      'Condense older messages with a digest made without a model; every line carries its message number so the exact text stays retrievable. Off by default.',
+    llmSecondPass: 'With the digest on, also ask the model for a summary of the older messages.',
     codexGpt55Autoraise: 'Raise compression to 85% for supported ChatGPT Codex OAuth models.'
   },
   auxiliary: {
