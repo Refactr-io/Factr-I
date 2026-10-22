@@ -1025,6 +1025,7 @@ impl Tool for BashTool {
             params.command.contains("cargo") && wrap_repo_cargo_commands(&params.command, ctx.working_dir.as_deref()).is_some();
         #[cfg(not(unix))]
         let cargo_wrapper_applies = false;
+        let original_command = params.command.clone();
         let reduced = if run_in_background || cargo_wrapper_applies {
             false
         } else if let Some(rewritten) = super::output_reduction::reduced_command(&params.command).await {
@@ -1051,6 +1052,13 @@ impl Tool for BashTool {
         // Foreground execution with stdin detection
         let hint = file_edit_hint(&params.command);
         let mut output = self.execute_foreground(&params, &ctx).await?;
+        // Fail-open: if the reduced command could not even find rtk, run the original once.
+        let mut reduced = reduced;
+        if reduced && super::output_reduction::rtk_missing_at_run(&output.output) {
+            params.command = original_command.clone();
+            reduced = false;
+            output = self.execute_foreground(&params, &ctx).await?;
+        }
         if output.output.contains("No module named") || output.output.contains("ModuleNotFoundError") {
             let python = factr_base::python_env::interpreter();
             output.output.push_str(&factr_base::shell::missing_module_hint(

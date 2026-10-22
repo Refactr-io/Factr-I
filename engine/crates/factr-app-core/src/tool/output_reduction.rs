@@ -62,7 +62,7 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
         return None;
     }
     let spawned = rtk_candidates(factr_base::platform::user_home_dir().as_deref()).into_iter().find_map(|program| {
-        Command::new(program)
+        Command::new(&program)
             .arg("rewrite")
             .arg(trimmed)
             .stdin(Stdio::null())
@@ -71,8 +71,9 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
             .kill_on_drop(true)
             .spawn()
             .ok()
+            .map(|child| (child, program))
     });
-    let Some(mut child) = spawned else {
+    let Some((mut child, program)) = spawned else {
         if let Ok(mut guard) = MISSING_UNTIL.lock() {
             *guard = Some(Instant::now() + MISSING_BACKOFF);
         }
@@ -89,7 +90,22 @@ async fn rewrite(command: &str, timeout: Duration) -> Option<String> {
     };
     let bytes = tokio::time::timeout(timeout, run).await.ok().flatten()?;
     let rewritten = String::from_utf8(bytes).ok()?.trim().to_string();
-    (!rewritten.is_empty() && rewritten != trimmed && rewritten.len() <= MAX_COMMAND_BYTES * 2).then_some(rewritten)
+    (!rewritten.is_empty() && rewritten != trimmed && rewritten.len() <= MAX_COMMAND_BYTES * 2)
+        .then(|| with_rtk_on_path(&rewritten, &program))
+}
+
+/// The rewritten command calls `rtk` by name. When rtk was found by absolute path (a desktop app does not
+/// inherit the shell's PATH), put its folder on the command's PATH so the shell finds it too.
+fn with_rtk_on_path(rewritten: &str, program: &str) -> String {
+    match std::path::Path::new(program).parent().filter(|dir| dir.is_absolute()) {
+        Some(dir) => format!("export PATH='{}':\"$PATH\"; {rewritten}", dir.to_string_lossy().replace('\'', "'\"'\"'")),
+        None => rewritten.to_string(),
+    }
+}
+
+/// True when a reduced command failed because the shell could not find `rtk` itself.
+pub(crate) fn rtk_missing_at_run(output: &str) -> bool {
+    output.contains("rtk: command not found") || output.contains("rtk: not found")
 }
 
 /// Forget a recorded "rtk is missing" (tests, and a settings change).
@@ -126,7 +142,7 @@ mod tests {
     #[tokio::test]
     async fn a_successful_rewrite_is_returned() {
         with_fake(r#"[ "$1" = rewrite ] && echo "rtk $2" && exit 0; exit 1"#, || async {
-            assert_eq!(rewrite("git status", Duration::from_secs(5)).await.as_deref(), Some("rtk git status"));
+            assert!(rewrite("git status", Duration::from_secs(5)).await.is_some_and(|r| r.starts_with("export PATH=") && r.ends_with("; rtk git status")));
         })
         .await;
     }
@@ -134,7 +150,7 @@ mod tests {
     #[tokio::test]
     async fn rewritten_with_the_ask_exit_code_is_still_used_but_deny_and_no_equivalent_are_not() {
         with_fake(r#"echo "rtk $2"; exit 3"#, || async {
-            assert_eq!(rewrite("git status", Duration::from_secs(5)).await.as_deref(), Some("rtk git status"));
+            assert!(rewrite("git status", Duration::from_secs(5)).await.is_some_and(|r| r.starts_with("export PATH=") && r.ends_with("; rtk git status")));
         })
         .await;
         for code in [1, 2, 4] {
@@ -170,6 +186,20 @@ mod tests {
         factr_base::env::set_var("FACTR_RTK_BIN", "/custom/rtk");
         assert_eq!(rtk_candidates(Some(home.path())), vec!["/custom/rtk".to_string()]);
         factr_base::env::remove_var("FACTR_RTK_BIN");
+    }
+
+    #[test]
+    fn an_absolute_rtk_gets_its_folder_on_the_commands_path_and_a_plain_one_does_not() {
+        assert_eq!(with_rtk_on_path("rtk git status", "rtk"), "rtk git status");
+        assert_eq!(with_rtk_on_path("rtk git status", "/home/u/.local/bin/rtk"), "export PATH='/home/u/.local/bin':\"$PATH\"; rtk git status");
+        assert!(with_rtk_on_path("rtk ls", "/tmp/it's/rtk").contains(r#"'/tmp/it'"'"'s'"#));
+    }
+
+    #[test]
+    fn a_missing_rtk_at_run_time_is_recognised() {
+        assert!(rtk_missing_at_run("bash: rtk: command not found\n\nExit code: 127"));
+        assert!(rtk_missing_at_run("sh: 1: rtk: not found"));
+        assert!(!rtk_missing_at_run("fatal: not a git repository"));
     }
 
     #[tokio::test]
