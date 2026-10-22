@@ -142,6 +142,9 @@ pub struct Persistence {
     /// `persistence.max_tokens`: a fixed ceiling on the fresh tokens (uncached input plus output) one persisting run may
     /// use; unset or 0 leaves the automatic one (5x the first turn, 400k to 2M).
     pub max_tokens: Option<u64>,
+    /// `persistence.max_seconds`: stop persisting after this many seconds of the run (never beyond the run's own
+    /// time limit); unset or 0 uses the run's limit minus one check. Trades pass rate for time.
+    pub max_seconds: Option<u64>,
 }
 
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
@@ -244,6 +247,8 @@ pub struct FactrConfig {
     pub persistence: Persistence,
     pub local_models: LocalModels,
     pub observability_export: ObservabilityExport,
+    /// `agent.text_verbosity`: `low`, `medium` or `high`; anything else is unset.
+    pub text_verbosity: Option<String>,
     pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
@@ -356,6 +361,13 @@ pub fn env_text(name: &str) -> Option<String> {
     std::env::var(name).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
+/// The Responses `text.verbosity` to request: `FACTR_OPENAI_TEXT_VERBOSITY`, else `agent.text_verbosity`; only
+/// `low`, `medium` or `high` count, anything else (the default empty value included) leaves the model default.
+pub fn text_verbosity() -> Option<String> {
+    let valid = |v: &String| matches!(v.as_str(), "low" | "medium" | "high");
+    env_text("FACTR_OPENAI_TEXT_VERBOSITY").filter(valid).or_else(|| current().text_verbosity.clone())
+}
+
 /// A boolean environment value (`1/true/yes/on`, `0/false/no/off`); `None` when unset or unrecognised.
 pub fn env_bool(name: &str) -> Option<bool> {
     as_bool(&Value::String(std::env::var(name).ok()?))
@@ -434,6 +446,7 @@ impl FactrConfig {
                     .take(100)
                     .collect(),
             },
+            text_verbosity: path(&root, "agent.text_verbosity").and_then(as_text).map(|v| v.to_ascii_lowercase()).filter(|v| matches!(v.as_str(), "low" | "medium" | "high")),
             observability_export: ObservabilityExport {
                 enabled: path(&root, "monitoring.export.otlp.enabled").and_then(as_bool).unwrap_or(false),
                 endpoint: path(&root, "monitoring.export.otlp.endpoint").and_then(as_text).map(|u| u.trim().trim_end_matches('/').to_string()).filter(|u| u.starts_with("http://") || u.starts_with("https://")),
@@ -452,6 +465,7 @@ impl FactrConfig {
                 enabled: path(&root, "persistence.enabled").and_then(as_bool),
                 max_retries: path(&root, "persistence.max_retries").and_then(as_i64).filter(|n| *n > 0).map(|n| n.min(10) as u32),
                 max_tokens: path(&root, "persistence.max_tokens").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
+                max_seconds: path(&root, "persistence.max_seconds").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0),
             },
             tools: ToolsView { routing: path(&root, "tools.routing").and_then(as_bool).unwrap_or(false) },
             budget: Budget {
@@ -688,6 +702,14 @@ mod tests {
     }
 
     #[test]
+    fn text_verbosity_takes_only_the_three_known_levels() {
+        assert_eq!(FactrConfig::parse("").text_verbosity, None);
+        assert_eq!(FactrConfig::parse("agent: {text_verbosity: ''}").text_verbosity, None);
+        assert_eq!(FactrConfig::parse("agent: {text_verbosity: LOW}").text_verbosity.as_deref(), Some("low"));
+        assert_eq!(FactrConfig::parse("agent: {text_verbosity: loud}").text_verbosity, None);
+    }
+
+    #[test]
     fn the_otlp_export_needs_an_http_endpoint_and_reads_standard_header_pairs() {
         assert_eq!(FactrConfig::parse("").observability_export, ObservabilityExport::default());
         let c = FactrConfig::parse("monitoring:\n  export:\n    otlp:\n      enabled: true\n      endpoint: ' https://cloud.example.com:4318/ '\n      headers_env: {x-api-key: MY_OTLP_KEY}\n").observability_export;
@@ -720,8 +742,8 @@ mod tests {
     #[test]
     fn persistence_is_unset_unless_configured_and_its_numbers_are_clamped() {
         assert_eq!(FactrConfig::parse("").persistence, Persistence::default());
-        let c = FactrConfig::parse("persistence: {enabled: false, max_retries: 99, max_tokens: 750000}").persistence;
-        assert_eq!((c.enabled, c.max_retries, c.max_tokens), (Some(false), Some(10), Some(750_000)));
+        let c = FactrConfig::parse("persistence: {enabled: false, max_retries: 99, max_tokens: 750000, max_seconds: 300}").persistence;
+        assert_eq!((c.enabled, c.max_retries, c.max_tokens, c.max_seconds), (Some(false), Some(10), Some(750_000), Some(300)));
         assert_eq!(FactrConfig::parse("persistence: {max_tokens: 0}").persistence.max_tokens, None);
         assert_eq!(FactrConfig::parse("persistence: {max_retries: 0}").persistence.max_retries, None);
     }

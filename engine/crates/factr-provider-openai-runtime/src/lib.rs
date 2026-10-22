@@ -1338,6 +1338,12 @@ impl OpenAIProvider {
             request["service_tier"] = serde_json::json!(service_tier);
         }
 
+        // `agent.text_verbosity` (or `FACTR_OPENAI_TEXT_VERBOSITY`): the Responses `text.verbosity`. Unset leaves the
+        // model default; `low` gives terser output and shorter turns.
+        if let Some(verbosity) = factr_base::factr_config::text_verbosity() {
+            request["text"] = serde_json::json!({ "verbosity": verbosity });
+        }
+
         if let Some(compact_threshold) = native_compaction_threshold {
             request["context_management"] = serde_json::json!([
                 {

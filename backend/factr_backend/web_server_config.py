@@ -94,6 +94,10 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "In unattended runs whose task names a check (for example 'test with ./eval'), run that check after each turn and keep working while it fails",
         "category": "agent",
     },
+    "persistence.max_seconds": {
+        "description": "Stop persisting after this many seconds of the run (0 = use the run's own time limit); shorter means faster but fewer retries",
+        "category": "agent",
+    },
     "persistence.max_tokens": {
         "description": "Most fresh tokens (uncached input plus output) one persisting run may use (0 = automatic: five times its first turn, between 400k and 2M)",
         "category": "agent",

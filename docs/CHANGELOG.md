@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Faster unattended runs, opt-in: `agent.text_verbosity` (or `FACTR_OPENAI_TEXT_VERBOSITY`) sets the Responses `text.verbosity` to `low`, `medium` or `high` (unset keeps the model default). `low` gives terser turns: on our held-out coding tasks it cut output tokens by about a quarter and run time by about a sixth with the same pass rate. `persistence.max_seconds` caps how long a run keeps retrying a failing check (0 = the run's own limit) for a faster, lower-pass-rate trade-off.
+
 ## v0.0.12
 
 - Unattended runs now keep working while the task's own check fails. When a one-shot run (`/api/agent/run`) names its check (for example "test with ./eval"), the engine runs that check itself after every turn and, while it fails, sends the failed output back for another attempt, through the same goal machinery as `/goal` (quality gate with retries, attempt log, ratchet). It stops when the check passes, after 3 retries (`persistence.max_retries`), near the run's time limit, or on interrupt. On by default for such runs only; `persistence.enabled: false` or `FACTR_PERSIST=0` turns it off, and interactive chat is unchanged.

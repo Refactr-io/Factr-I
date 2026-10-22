@@ -40,7 +40,7 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
     goal.max_turns = 0;
     // A fixed ceiling of fresh tokens, or (0) the automatic one set after the first turn.
     goal.token_budget = factr_base::factr_config::current().persistence.max_tokens.map(|n| n as i64);
-    goal.wall_budget_ms = Some((timeout.as_millis() as i64 - gate_secs * 1000 - 5_000).max(timeout.as_millis() as i64 / 2));
+    goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, factr_base::factr_config::current().persistence.max_seconds));
     goal.gates = checks
         .into_iter()
         .map(|command| {
@@ -51,6 +51,13 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
         })
         .collect();
     store.set_goal(session_id, Some(&goal)).is_ok()
+}
+
+/// The run's wall budget for persisting: its time limit minus one more check (at least half of it), which
+/// `persistence.max_seconds` can only shorten.
+fn wall_budget_ms(timeout_ms: i64, gate_secs: i64, cap_secs: Option<u64>) -> i64 {
+    let run_budget = (timeout_ms - gate_secs * 1000 - 5_000).max(timeout_ms / 2);
+    cap_secs.map_or(run_budget, |c| (c as i64).saturating_mul(1000).min(run_budget))
 }
 
 /// Whether a `session.control.update` payload still shows an active goal (the run goes on).
@@ -121,6 +128,14 @@ mod tests {
         assert_eq!((goal.gates[0].command.as_str(), goal.gates[0].max_retries, goal.gates[0].timeout_seconds), ("./run_check.sh", 3, 300));
         assert!(goal.wall_budget_ms.unwrap() < 900_000, "room is left for the last check");
         assert!(store.active_sessions().unwrap().is_empty(), "the driver never picks up a run's goal");
+    }
+
+    #[test]
+    fn the_time_cap_only_shortens_the_wall_budget() {
+        assert_eq!(wall_budget_ms(1_200_000, 300, None), 895_000);
+        assert_eq!(wall_budget_ms(1_200_000, 300, Some(400)), 400_000);
+        assert_eq!(wall_budget_ms(1_200_000, 300, Some(5_000)), 895_000, "never beyond the run's own limit");
+        assert_eq!(wall_budget_ms(120_000, 60, None), 60_000, "at least half of a short run");
     }
 
     #[test]
