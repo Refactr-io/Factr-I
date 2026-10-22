@@ -94,6 +94,7 @@ const CONFIG_SUBPAGE_DEFINITIONS: Record<string, ConfigSubpageDefinition[]> = {
         'monitoring.export.otlp.endpoint',
         'persistence.enabled',
         'persistence.max_retries',
+        'persistence.max_seconds',
         'persistence.max_tokens'
       ]
     },

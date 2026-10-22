@@ -461,6 +461,7 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   persistence: {
     enabled: 'Keep Working While the Task Check Fails',
     maxRetries: 'Retries After a Failed Check',
+    maxSeconds: 'Time Cap for a Persisting Run (s)',
     maxTokens: 'Token Ceiling for a Persisting Run'
   },
   tools: {
@@ -883,6 +884,7 @@ export const SECTIONS: DesktopConfigSection[] = [
       'monitoring.export.otlp.endpoint',
       'persistence.enabled',
       'persistence.max_retries',
+      'persistence.max_seconds',
       'persistence.max_tokens',
       'terminal.docker_image',
       'terminal.singularity_image',

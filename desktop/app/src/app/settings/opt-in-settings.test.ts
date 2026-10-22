@@ -16,6 +16,7 @@ const PLACEMENT: Record<string, string> = {
   'monitoring.export.otlp.endpoint': 'advanced',
   'persistence.enabled': 'advanced',
   'persistence.max_retries': 'advanced',
+  'persistence.max_seconds': 'advanced',
   'persistence.max_tokens': 'advanced',
   'terminal.reduce_output': 'advanced',
   'terminal.reduce_output_timeout_ms': 'advanced',
