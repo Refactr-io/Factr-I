@@ -14,6 +14,9 @@ use std::time::Duration;
 
 const DEFAULT_RETRIES: i64 = 3;
 const STALE_AFTER: Duration = Duration::from_secs(3600);
+/// A persisting run stops retrying after this long unless `persistence.max_seconds` says otherwise: the best
+/// pass-per-second point of the measured pass-vs-time curve.
+const DEFAULT_MAX_SECONDS: u64 = 400;
 
 /// `FACTR_PERSIST=0|1` overrides `persistence.enabled` (default on).
 pub(crate) fn enabled() -> bool {
@@ -47,7 +50,7 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
     goal.max_turns = 0;
     // A fixed ceiling of fresh tokens, or (0) the automatic one set after the first turn.
     goal.token_budget = env_number("FACTR_PERSIST_MAX_TOKENS").or(settings.max_tokens).map(|n| n as i64);
-    goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, env_number("FACTR_PERSIST_MAX_SECONDS").or(settings.max_seconds)));
+    goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, env_number("FACTR_PERSIST_MAX_SECONDS").or(settings.max_seconds).or(Some(DEFAULT_MAX_SECONDS))));
     goal.gates = checks
         .into_iter()
         .map(|command| {
@@ -57,6 +60,8 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
             gate
         })
         .collect();
+    // Terser turns (a faster run) unless the user chose a verbosity.
+    factr_base::run_hints::set_text_verbosity(session_id, "low");
     store.set_goal(session_id, Some(&goal)).is_ok()
 }
 
@@ -113,6 +118,7 @@ pub(crate) fn finish(store: &ControlStore, session_id: &str) -> Value {
         g.release_checkpoints(session_id);
     }
     let _ = store.forget_session(session_id);
+    factr_base::run_hints::clear(session_id);
     report
 }
 
@@ -133,13 +139,17 @@ mod tests {
         assert!(goal.unattended && goal.max_turns == 0);
         assert_eq!(goal.gates.len(), 1);
         assert_eq!((goal.gates[0].command.as_str(), goal.gates[0].max_retries, goal.gates[0].timeout_seconds), ("./run_check.sh", 3, 300));
-        assert!(goal.wall_budget_ms.unwrap() < 900_000, "room is left for the last check");
+        assert_eq!(goal.wall_budget_ms, Some(400_000), "the default time cap, and room is left for the last check");
+        assert_eq!(factr_base::run_hints::text_verbosity(Some("s")).as_deref(), Some("low"), "terser turns for this run");
+        finish(&store, "s");
+        assert_eq!(factr_base::run_hints::text_verbosity(Some("s")), None, "the hint ends with the run");
         assert!(store.active_sessions().unwrap().is_empty(), "the driver never picks up a run's goal");
     }
 
     #[test]
     fn the_time_cap_only_shortens_the_wall_budget() {
         assert_eq!(wall_budget_ms(1_200_000, 300, None), 895_000);
+        assert_eq!(wall_budget_ms(1_200_000, 300, Some(DEFAULT_MAX_SECONDS)), 400_000, "the default cap");
         assert_eq!(wall_budget_ms(1_200_000, 300, Some(400)), 400_000);
         assert_eq!(wall_budget_ms(1_200_000, 300, Some(5_000)), 895_000, "never beyond the run's own limit");
         assert_eq!(wall_budget_ms(120_000, 60, None), 60_000, "at least half of a short run");

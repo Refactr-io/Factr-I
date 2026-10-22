@@ -1340,7 +1340,7 @@ impl OpenAIProvider {
 
         // `agent.text_verbosity` (or `FACTR_OPENAI_TEXT_VERBOSITY`): the Responses `text.verbosity`. Unset leaves the
         // model default; `low` gives terser output and shorter turns.
-        if let Some(verbosity) = factr_base::factr_config::text_verbosity() {
+        if let Some(verbosity) = factr_base::run_hints::text_verbosity(factr_base::logging::current_session().as_deref()) {
             request["text"] = serde_json::json!({ "verbosity": verbosity });
         }
 
