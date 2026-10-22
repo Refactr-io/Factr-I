@@ -450,6 +450,12 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   localModels: {
     silenceTimeoutSecs: 'Local Model Silence Limit (s)'
   },
+  persistence: {
+    enabled: 'Keep Working After a Failed Check',
+    maxNudges: 'Reminders After a Failed Check',
+    budgetFraction: 'Stop Persisting at (share of time limit)',
+    maxSeconds: 'Stop Persisting After (s)'
+  },
   tools: {
     routing: 'Tool Routing'
   },
@@ -856,6 +862,10 @@ export const SECTIONS: DesktopConfigSection[] = [
       'budget.max_cost_usd',
       'budget.max_tokens',
       'local_models.silence_timeout_secs',
+      'persistence.enabled',
+      'persistence.max_nudges',
+      'persistence.budget_fraction',
+      'persistence.max_seconds',
       'terminal.docker_image',
       'terminal.singularity_image',
       'terminal.modal_image',

@@ -116,6 +116,20 @@ pub fn is_local_endpoint(api_base: &str) -> bool {
     }
 }
 
+/// `persistence.*`: keep a headless turn going while its latest check fails (off unless enabled).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Persistence {
+    pub enabled: Option<bool>,
+    /// `persistence.max_nudges`: escalating nudges per turn (default 6, 1..=20).
+    pub max_nudges: Option<u32>,
+    /// `persistence.budget_fraction`: stop persisting once this share of the turn's time budget is used
+    /// (default 0.85, 0.1..=0.99).
+    pub budget_fraction: Option<f64>,
+    /// `persistence.max_seconds`: stop persisting this long after the turn started (for runners that
+    /// enforce a wall-clock limit from outside and set no deadline variable).
+    pub max_seconds: Option<f64>,
+}
+
 /// `checkpoints.*`, as written (the checkpoint store applies its defaults and floors).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Checkpoints {
@@ -213,6 +227,7 @@ pub struct FactrConfig {
     pub checkpoints: Checkpoints,
     pub budget: Budget,
     pub tools: ToolsView,
+    pub persistence: Persistence,
     pub local_models: LocalModels,
     pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
@@ -402,6 +417,12 @@ impl FactrConfig {
             },
             local_models: LocalModels {
                 silence_timeout_secs: path(&root, "local_models.silence_timeout_secs").and_then(as_i64).and_then(|n| u64::try_from(n).ok()).filter(|n| *n > 0).map(|n| n.min(7200)),
+            },
+            persistence: Persistence {
+                enabled: path(&root, "persistence.enabled").and_then(as_bool),
+                max_nudges: path(&root, "persistence.max_nudges").and_then(as_i64).filter(|n| *n > 0).map(|n| n.min(20) as u32),
+                budget_fraction: path(&root, "persistence.budget_fraction").and_then(as_f64).filter(|f| f.is_finite()).map(|f| f.clamp(0.1, 0.99)),
+                max_seconds: path(&root, "persistence.max_seconds").and_then(as_f64).filter(|f| f.is_finite() && *f > 0.0),
             },
             tools: ToolsView { routing: path(&root, "tools.routing").and_then(as_bool).unwrap_or(false) },
             budget: Budget {
@@ -620,6 +641,7 @@ mod tests {
             assert_eq!(c.budget, Budget::default(), "{yaml}");
             assert_eq!(c.approval_extras, ApprovalExtras::default(), "{yaml}");
             assert_eq!(c.local_models, LocalModels::default(), "{yaml}");
+            assert_eq!(c.persistence, Persistence::default(), "{yaml}");
             assert_eq!(c.compression.deterministic.unwrap_or(false), false, "{yaml}");
         }
     }
@@ -649,6 +671,14 @@ mod tests {
         assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 0}").local_models.silence_timeout_secs, None);
         assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 900}").local_models.silence_timeout_secs, Some(900));
         assert_eq!(FactrConfig::parse("local_models: {silence_timeout_secs: 999999}").local_models.silence_timeout_secs, Some(7200));
+    }
+
+    #[test]
+    fn persistence_is_unset_unless_configured_and_its_numbers_are_clamped() {
+        assert_eq!(FactrConfig::parse("").persistence, Persistence::default());
+        let c = FactrConfig::parse("persistence: {enabled: true, max_nudges: 99, budget_fraction: 5}").persistence;
+        assert_eq!((c.enabled, c.max_nudges, c.budget_fraction), (Some(true), Some(20), Some(0.99)));
+        assert_eq!(FactrConfig::parse("persistence: {max_nudges: 0}").persistence.max_nudges, None);
     }
 
     #[test]

@@ -173,6 +173,8 @@ pub(super) struct StopNudge {
     service_sent: bool,
     // Task ids already given the stale-process note this turn.
     pub(super) stale_warned: std::collections::HashSet<String>,
+    // `persistence.enabled`: keep going while the latest check fails (see `persist`).
+    persist: super::persist::Persist,
 }
 
 fn enabled() -> bool {
@@ -278,7 +280,7 @@ fn edits_code(input: &serde_json::Value) -> bool {
 
 /// Hash of a test run's output with timing tokens (`0.02s`, `(0.00s)`, `1.5`) dropped,
 /// so the same failure compares equal across runs ("1 failed in 0.02s" vs "0.03s").
-fn hash_str(s: &str) -> u64 {
+pub(super) fn hash_str(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for line in s.lines() {
@@ -347,6 +349,19 @@ impl super::Agent {
             n.task_label = n.format_label.clone();
             n.notools_off = !factr_base::task_policy::gating_on();
             n.forbids_tools = task.is_some_and(|t| if n.notools_off { forbids_tools_legacy(t) } else { factr_base::task_policy::forbids_tools(t) });
+            let cfg = factr_base::factr_config::current().persistence.clone();
+            let enabled = match std::env::var("FACTR_PERSIST").ok().as_deref() {
+                Some("1") => true,
+                Some("0") => false,
+                _ => cfg.enabled.unwrap_or(false),
+            };
+            n.persist = super::persist::Persist::new(
+                enabled && n.headless,
+                cfg.max_nudges.unwrap_or(super::persist::DEFAULT_MAX_NUDGES),
+                cfg.budget_fraction.unwrap_or(super::persist::DEFAULT_BUDGET_STOP),
+                cfg.max_seconds,
+                task,
+            );
         }
         let tool_ok = |name: &str| {
             self.allowed_tools.as_ref().is_none_or(|a| crate::tool::tool_name_is_allowed(a, name))
@@ -380,6 +395,9 @@ impl StopNudge {
     /// `observe` with the tool's result metadata and output text: a promoted (timed-out) or background
     /// check is recorded as pending, never as a pass; the output tells a run that ran nothing from one that did.
     pub(super) fn observe_full(&mut self, tool: &str, input: &serde_json::Value, exit_code: i64, meta: Option<&serde_json::Value>, output: Option<&str>) {
+        if self.persist.enabled {
+            self.persist_observe(tool, input, exit_code, meta, output);
+        }
         self.used_tools = true;
         self.seq += 1;
         if tool == "todo" {
@@ -464,6 +482,27 @@ impl StopNudge {
         if command.is_some_and(looks_like_check) {
             self.last_check = self.seq;
             self.last_check_exit = exit_code;
+        }
+    }
+
+    /// Persist bookkeeping: edits since the last check, and every check run's verdict.
+    fn persist_observe(&mut self, tool: &str, input: &serde_json::Value, exit_code: i64, meta: Option<&serde_json::Value>, output: Option<&str>) {
+        if exit_code == 0 && EDIT_TOOLS.contains(&tool) {
+            for p in edit_paths(input) {
+                self.persist.note_edit(&p);
+            }
+            return;
+        }
+        let Some(command) = input["command"].as_str().filter(|_| tool == "bash") else { return };
+        // A promoted (timed-out) or background run has no result yet.
+        if meta.is_some_and(|m| m["timeout_promoted"] == true || m["background"] == true) {
+            return;
+        }
+        let out = output.unwrap_or("");
+        // Only a command the task named, a test runner, or one that printed a structured pass/fail report.
+        let report = !is_viewer(command) && super::persist::json_recognised(out);
+        if super::persist::is_named_check(&self.persist.task_checks, command) || looks_like_test_run(command) || report {
+            self.persist.record_check(command, exit_code, out);
         }
     }
 
@@ -692,6 +731,9 @@ impl StopNudge {
         if self.auto_verify(session_id, run) == Some(true) {
             return true;
         }
+        if self.persist_step(session_id, text) {
+            return true;
+        }
         let lower = text.to_ascii_lowercase();
         // The task forbids tools: no nudge may tell the model to run, read, verify or call anything.
         let no_tools = self.no_tools();
@@ -779,6 +821,28 @@ impl StopNudge {
             return true;
         }
         false
+    }
+
+    /// Persist: the latest check failed (or the reply admits it is not done) and there is room to keep going.
+    fn persist_step(&mut self, session_id: &str, text: &str) -> bool {
+        // A check still running, a project gate that already gave up, or a task that forbids tools: not now.
+        if !self.persist.enabled || self.no_tools() || self.pending_check.is_some() || self.last_fail_stop {
+            return false;
+        }
+        let dir = self.cwd_dir();
+        let fingerprint = || dir.as_deref().map_or(0, |d| snapshot_hash(&fs_snapshot(d)));
+        let edited = self.edited || self.last_write > 0 || self.shell_write_seq > 0;
+        match self.persist.decide(text, self.progress, edited, fingerprint) {
+            Some(nudge) => {
+                self.queue(session_id, nudge, "persist_nudge");
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub(super) fn set_budget_used(&mut self, fraction: Option<f64>) {
+        self.persist.set_budget_used(fraction);
     }
 
     /// The task forbids tools or code and the no-tools gating is on.
@@ -1162,6 +1226,26 @@ fn fs_snapshot(dir: &std::path::Path) -> std::collections::HashMap<std::path::Pa
         }
     }
     out
+}
+
+/// Order-independent hash of a directory snapshot (paths, mtimes, sizes).
+fn snapshot_hash(snap: &std::collections::HashMap<std::path::PathBuf, (std::time::SystemTime, u64)>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut sum = 0u64;
+    for (path, (mtime, len)) in snap {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        path.hash(&mut h);
+        mtime.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()).hash(&mut h);
+        len.hash(&mut h);
+        sum = sum.wrapping_add(h.finish());
+    }
+    sum
+}
+
+/// Read-only viewers never count as a check, whatever their output says.
+fn is_viewer(command: &str) -> bool {
+    let first = command.rsplit("&&").next().unwrap_or(command).split_whitespace().next().unwrap_or("");
+    matches!(first, "cat" | "head" | "tail" | "ls" | "grep" | "rg" | "sed" | "echo" | "git" | "find" | "less" | "wc" | "diff")
 }
 
 /// The reply ends on a promise to act: its last sentence, or the lead-in line
@@ -2197,5 +2281,72 @@ mod tests {
         assert!(msg.contains("python3 -m unittest") && msg.contains("node --test") && msg.contains("compile and run the test file"), "{msg}");
         assert!(no_runner(1, "ModuleNotFoundError: No module named 'x'\nNo module named x"));
         assert!(!no_runner(1, "1 failed"));
+    }
+
+    // ---- persist after a failed check (persistence.enabled) ----
+
+    fn persisting(task: &str) -> StopNudge {
+        let mut n = StopNudge::default();
+        n.headless = true;
+        n.persist = super::super::persist::Persist::new(true, 6, 0.85, None, Some(task));
+        n
+    }
+
+    const EVAL_FAIL: &str = r#"{"call_acc": true, "exec_acc": false}"#;
+
+    #[test]
+    fn a_failed_custom_check_keeps_the_turn_going_until_it_passes() {
+        let mut n = persisting("Write kernel.py. Test with ./eval when done.");
+        n.observe_full("write", &json!({"file_path": "kernel.py"}), 0, None, None);
+        n.observe_full("bash", &json!({"command": "cd /w && ./eval"}), 0, None, Some(EVAL_FAIL));
+        assert!(n.on_text_only_stop("s", "I wasn't able to resolve the mismatch."), "must not end");
+        let nudge = n.take_pending().unwrap();
+        assert!(nudge.contains("./eval") && nudge.contains("kernel.py") && nudge.contains("FAIL"), "{nudge}");
+        // The model works and the check passes: nothing more is sent, the turn ends.
+        n.observe_full("edit", &json!({"file_path": "kernel.py"}), 0, None, None);
+        n.observe_full("bash", &json!({"command": "./eval"}), 0, None, Some(r#"{"call_acc": true, "exec_acc": true}"#));
+        assert!(!n.on_text_only_stop("s", "All checks pass now. I could not think of anything else to improve."));
+    }
+
+    #[test]
+    fn persist_uses_no_extra_nudge_when_the_check_passes_and_ignores_viewers() {
+        let mut n = persisting("test with ./eval");
+        n.observe_full("bash", &json!({"command": "./eval"}), 0, None, Some(r#"{"exec_acc": true}"#));
+        assert!(!n.on_text_only_stop("s", "Done."));
+        // `cat results.json` showing a failing field is not a check run.
+        let mut v = persisting("test with ./eval");
+        v.observe_full("bash", &json!({"command": "cat results.json"}), 0, None, Some(EVAL_FAIL));
+        assert!(!v.on_text_only_stop("s", "Done."));
+    }
+
+    #[test]
+    fn persist_is_off_for_interactive_turns_forbidden_tools_and_background_checks() {
+        let mut interactive = persisting("test with ./eval");
+        interactive.headless = true;
+        interactive.persist = super::super::persist::Persist::new(false, 6, 0.85, None, None);
+        interactive.observe_full("bash", &json!({"command": "./eval"}), 0, None, Some(EVAL_FAIL));
+        assert!(!interactive.on_text_only_stop("s", "I could not make it pass."));
+        let mut pending = persisting("test with ./eval");
+        pending.observe_full("bash", &json!({"command": "./eval"}), 0, Some(&json!({"timeout_promoted": true, "task_id": "t1"})), Some(EVAL_FAIL));
+        pending.pending_sent = true; // the pending-check nudge already went out
+        assert!(!pending.on_text_only_stop("s", "Waiting."), "a check that is still running is not a failure");
+    }
+
+    /// With the setting off the observe/stop sequences behave exactly as before: the same decisions and
+    /// nudge text as a build without the persist code (the pre-existing expectations, replayed).
+    #[test]
+    fn persist_off_replays_the_existing_behaviour_unchanged() {
+        let mut n = StopNudge::default();
+        n.headless = true;
+        n.observe_full("write", &json!({"file_path": "a.py"}), 0, None, None);
+        n.observe_full("bash", &json!({"command": "./eval"}), 0, None, Some(EVAL_FAIL));
+        let before = (n.on_text_only_stop("s", "I wasn't able to resolve the mismatch."), n.take_pending());
+        assert_eq!(before, (false, None), "an unrecognised check and unrecognised wording: no nudge, as before");
+        let mut m = StopNudge::default();
+        m.observe("bash", &json!({"command": "ls"}), 0);
+        m.headless = true;
+        assert!(m.on_text_only_stop("s", "I can't tell.\n\nWhat operating system are you using?"));
+        assert_eq!(m.take_pending(), Some(QUESTION_NUDGE.to_string()));
+        assert_eq!(m.persist.nudges_sent(), 0);
     }
 }

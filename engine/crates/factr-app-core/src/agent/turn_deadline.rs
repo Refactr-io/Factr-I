@@ -59,6 +59,11 @@ impl TurnDeadline {
         Some(self.total?.saturating_sub(self.start.elapsed()))
     }
 
+    /// Share of the runner's time budget used so far; `None` when no deadline is set.
+    pub(super) fn fraction(&self) -> Option<f64> {
+        self.total.map(|t| self.start.elapsed().as_secs_f64() / t.as_secs_f64().max(f64::EPSILON))
+    }
+
     /// The 70% reminder has been sent.
     pub(super) fn past_70(&self) -> bool {
         self.stage >= 1

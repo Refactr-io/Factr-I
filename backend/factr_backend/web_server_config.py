@@ -90,6 +90,22 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Load the withheld tools a message plainly asks for one step earlier (only ever adds tools)",
         "category": "agent",
     },
+    "persistence.enabled": {
+        "description": "In unattended runs, keep working after a failed check instead of stopping (stops when the check passes, near the time limit, or when nothing changes)",
+        "category": "agent",
+    },
+    "persistence.max_nudges": {
+        "description": "How many escalating reminders a run gets after a failed check (1 to 20)",
+        "category": "agent",
+    },
+    "persistence.budget_fraction": {
+        "description": "Stop persisting once this share (0.1 to 0.99) of the run's time limit is used",
+        "category": "agent",
+    },
+    "persistence.max_seconds": {
+        "description": "Stop persisting this many seconds after the run started (0 = use the time limit only)",
+        "category": "agent",
+    },
     "budget.max_cost_usd": {
         "description": "Stop a session at about this many dollars of model spend (0 = no limit; priced routes only)",
         "category": "agent",
