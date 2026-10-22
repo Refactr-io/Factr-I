@@ -121,6 +121,7 @@ jobs:
           tests/tools/test_av_open_compat.py
           tests/factr_backend/test_web_server_fs.py
           tests/gateway/test_whatsapp_unpaired_skip.py
+          tests/factr_backend/test_opt_in_defaults_off.py
       - name: Job summary
         if: always() && runner.os == 'Windows'
         shell: bash
