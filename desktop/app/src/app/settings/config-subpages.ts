@@ -83,9 +83,16 @@ const CONFIG_SUBPAGE_DEFINITIONS: Record<string, ConfigSubpageDefinition[]> = {
     {
       id: 'runtime',
       labelKey: 'advancedRuntime',
-      fields: ['agent.max_turns', 'agent.api_max_retries', 'agent.service_tier']
+      fields: [
+        'agent.max_turns',
+        'agent.api_max_retries',
+        'agent.service_tier',
+        'budget.max_cost_usd',
+        'budget.max_tokens',
+        'local_models.silence_timeout_secs'
+      ]
     },
-    { id: 'tools', labelKey: 'advancedTools', fields: ['toolsets', 'agent.tool_use_enforcement'] },
+    { id: 'tools', labelKey: 'advancedTools', fields: ['toolsets', 'agent.tool_use_enforcement', 'tools.routing'] },
     { id: 'terminal', labelKey: 'advancedTerminal', prefixes: ['terminal.'] },
     { id: 'delegation', labelKey: 'advancedDelegation', prefixes: ['delegation.'] },
     { id: 'output', labelKey: 'advancedOutput', prefixes: ['tool_output.', 'checkpoints.'] }

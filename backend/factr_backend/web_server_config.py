@@ -83,7 +83,7 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "category": "security",
     },
     "approvals.always_ask": {
-        "description": "Shell commands matching any of these regular expressions are always asked about",
+        "description": "Shell commands matching any of these regular expressions are always asked about (separate patterns with commas; a pattern cannot contain a comma)",
         "category": "security",
     },
     "tools.routing": {
