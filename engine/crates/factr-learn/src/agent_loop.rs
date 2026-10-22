@@ -317,6 +317,33 @@ pub const MAX_ATTEMPT_LOG: usize = 8;
 pub const MAX_ATTEMPT_LEN: usize = 80;
 /// Consecutive auto-recorded turns examined for plateau detection.
 pub const PLATEAU_TURNS: usize = 3;
+#[cfg(test)]
+thread_local! {
+    /// Unit tests set the flags per thread: the environment is process-wide and the tests run in parallel.
+    static TEST_STALL: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    static TEST_TERSE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Turns with the same failure or no file changes after which an unattended run stops (`FACTR_PERSIST_STALL`,
+/// 2 to 6; default `PLATEAU_TURNS`).
+fn unattended_stall_turns() -> usize {
+    #[cfg(test)]
+    if let Some(n) = TEST_STALL.with(std::cell::Cell::get) {
+        return n;
+    }
+    factr_base::factr_config::env_text("FACTR_PERSIST_STALL").and_then(|v| v.parse::<usize>().ok()).map_or(PLATEAU_TURNS, |n| n.clamp(2, 6))
+}
+
+/// A terser continuation for unattended runs (`FACTR_PERSIST_TERSE=1`, off by default): a shorter prompt, only the
+/// last attempts, a shorter failed-output tail, and no re-reading: fewer tokens in and fewer model calls per round.
+fn terse_continuation() -> bool {
+    #[cfg(test)]
+    if let Some(on) = TEST_TERSE.with(std::cell::Cell::get) {
+        return on;
+    }
+    factr_base::factr_config::env_bool("FACTR_PERSIST_TERSE").unwrap_or(false)
+}
+
 /// An unattended goal's automatic token ceiling: this many times its first turn's fresh tokens, within the bounds.
 const AUTO_CEILING_FACTOR: i64 = 5;
 const AUTO_CEILING_MIN: i64 = 400_000;
@@ -450,9 +477,14 @@ impl SessionGoal {
     /// changes). Also trips when the last 3 entries of any kind are
     /// identical (model-supplied notes that repeat).
     pub fn plateaued(&self) -> bool {
+        self.plateaued_over(PLATEAU_TURNS)
+    }
+
+    /// `plateaued` over the last `turns` turns (an unattended run may stop sooner: `FACTR_PERSIST_STALL`).
+    pub fn plateaued_over(&self, turns: usize) -> bool {
         let n = self.attempt_log.len();
-        if n >= PLATEAU_TURNS {
-            let last = &self.attempt_log[n - PLATEAU_TURNS..];
+        if n >= turns {
+            let last = &self.attempt_log[n - turns..];
             if last.iter().all(|line| line == &last[0] && !line.starts_with("auto ")) {
                 return true;
             }
@@ -463,10 +495,10 @@ impl SessionGoal {
             .filter(|l| l.starts_with("auto "))
             .map(String::as_str)
             .collect();
-        if auto.len() < PLATEAU_TURNS {
+        if auto.len() < turns {
             return false;
         }
-        let last = &auto[auto.len() - PLATEAU_TURNS..];
+        let last = &auto[auto.len() - turns..];
         let field = |l: &str, key: &str| -> String {
             l.split(" | ")
                 .find_map(|p| p.strip_prefix(key))
@@ -692,6 +724,13 @@ impl SessionGoal {
         } else {
             String::new()
         };
+        if self.unattended && terse_continuation() {
+            let checks = self.gates.iter().map(|g| format!("`{}`", g.command)).collect::<Vec<_>>().join(", ");
+            let recent = self.attempt_log.iter().rev().take(2).rev().map(|l| format!("- {l}\n")).collect::<String>();
+            return format!(
+                "[{checks} still fails]\nLast attempts:\n{recent}{steer}\nRead the failure below, change only what it points to with the smallest edit, run the check again, and stop when it passes. Do not re-read files you already have."
+            );
+        }
         if self.unattended {
             let checks = self.gates.iter().map(|g| format!("`{}`", g.command)).collect::<Vec<_>>().join(", ");
             return format!(
@@ -1351,13 +1390,13 @@ pub fn after_turn_in(
                         }
                         gate_note = format!(
                             "\n\n[Quality gate failed] `{command}`\nGate output (tail):\n```\n{}\n```\nFix the problem so the gate passes; the goal cannot complete until every gate does.",
-                            output.chars().rev().take(2000).collect::<Vec<_>>().into_iter().rev().collect::<String>()
+                            output.chars().rev().take(if goal.unattended && terse_continuation() { 1200 } else { 2000 }).collect::<Vec<_>>().into_iter().rev().collect::<String>()
                         );
                     }
                 }
             }
             // No progress (the same failure, or no file changes, for several turns in a row) ends an unattended run.
-            let stalled = goal.unattended && goal.plateaued();
+            let stalled = goal.unattended && goal.plateaued_over(unattended_stall_turns());
             if let Some(reason) = goal.out_of_budget().or(stalled.then_some("no progress")) {
                 goal.status = GoalStatus::Paused;
                 goal.paused_reason = Some(format!(
@@ -2419,6 +2458,26 @@ mod tests {
         store.set_goal("fixed", Some(&fixed)).unwrap();
         after_turn(&store, "fixed", 10, false, false).unwrap();
         assert_eq!(store.get_goal("fixed").unwrap().unwrap().token_budget, Some(123_456));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_time_cutting_flags_are_off_by_default_and_shorten_the_round_when_set() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "echo 'same failure'; exit 1", 9);
+        let Some(Continuation::Goal(plain)) = after_turn(&store, "u", 0, false, false).unwrap() else { panic!() };
+        assert!(plain.contains("check still fails") && plain.contains("Recent attempts"), "{plain}");
+        // Terse: a shorter prompt without the attempt log header, and an earlier stop on repeats.
+        TEST_TERSE.with(|c| c.set(Some(true)));
+        let Some(Continuation::Goal(terse)) = after_turn(&store, "u", 0, false, false).unwrap() else { panic!() };
+        assert!(terse.len() < plain.len() && terse.contains("smallest edit") && !terse.contains("Recent attempts (most"), "{terse}");
+        // Three turns with the same failure end it by default; asked to, a third one is not needed: a fresh run
+        // stops at two.
+        TEST_STALL.with(|c| c.set(Some(2)));
+        assert!(after_turn(&store, "u", 0, false, false).unwrap().is_none(), "the same failure over two turns");
+        assert!(store.get_goal("u").unwrap().unwrap().paused_reason.unwrap().contains("no progress"));
+        TEST_TERSE.with(|c| c.set(None));
+        TEST_STALL.with(|c| c.set(None));
     }
 
     #[cfg(unix)]

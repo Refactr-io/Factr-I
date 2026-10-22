@@ -1320,7 +1320,7 @@ impl OpenAIProvider {
             // Deliberately serial: one tool call per model step. The agent loop, the approval
             // flow and the per-call tool policy checks all assume tool calls arrive one at a time,
             // and a run's tool order must stay reproducible. Do not flip this without those.
-            "parallel_tool_calls": false,
+            "parallel_tool_calls": factr_base::factr_config::env_bool("FACTR_OPENAI_PARALLEL_TOOLS").unwrap_or(false),
             "stream": true,
             "store": false,
             "include": ["reasoning.encrypted_content"],

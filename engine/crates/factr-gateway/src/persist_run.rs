@@ -72,6 +72,19 @@ fn wall_budget_ms(timeout_ms: i64, gate_secs: i64, cap_secs: Option<u64>) -> i64
     cap_secs.map_or(run_budget, |c| (c as i64).saturating_mul(1000).min(run_budget))
 }
 
+/// The tools a write-and-check task needs. With `FACTR_PERSIST_TOOLS=minimal` a persisting run's allowed tools are cut
+/// to these (fewer schemas in every request); anything else, or any other value, leaves them alone.
+const MINIMAL_TOOLS: [&str; 5] = ["bash", "read", "write", "edit", "ls"];
+
+pub(crate) fn minimal_tools(allowed: Vec<String>) -> Vec<String> {
+    if factr_base::factr_config::env_text("FACTR_PERSIST_TOOLS").as_deref() != Some("minimal") {
+        return allowed;
+    }
+    let kept: Vec<String> = allowed.iter().filter(|t| MINIMAL_TOOLS.contains(&t.as_str())).cloned().collect();
+    // A policy with none of them is left as it is rather than emptied.
+    if kept.is_empty() { allowed } else { kept }
+}
+
 /// Whether a `session.control.update` payload still shows an active goal (the run goes on).
 pub(crate) fn goal_active(control: &Value) -> bool {
     control["goal"]["status"].as_str() == Some("active")
@@ -144,6 +157,18 @@ mod tests {
         finish(&store, "s");
         assert_eq!(factr_base::run_hints::text_verbosity(Some("s")), None, "the hint ends with the run");
         assert!(store.active_sessions().unwrap().is_empty(), "the driver never picks up a run's goal");
+    }
+
+    #[test]
+    fn minimal_tools_cut_the_surface_only_when_asked() {
+        let _env = factr_base::storage::lock_test_env();
+        let all: Vec<String> = ["agentgrep", "bash", "batch", "bg", "edit", "ls", "read", "repl", "todo", "write"].map(String::from).to_vec();
+        factr_base::env::remove_var("FACTR_PERSIST_TOOLS");
+        assert_eq!(minimal_tools(all.clone()), all);
+        factr_base::env::set_var("FACTR_PERSIST_TOOLS", "minimal");
+        assert_eq!(minimal_tools(all), ["bash", "edit", "ls", "read", "write"]);
+        assert_eq!(minimal_tools(vec!["repl".into()]), ["repl"], "never emptied");
+        factr_base::env::remove_var("FACTR_PERSIST_TOOLS");
     }
 
     #[test]
