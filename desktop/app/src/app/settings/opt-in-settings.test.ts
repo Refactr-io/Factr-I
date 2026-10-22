@@ -12,6 +12,8 @@ const PLACEMENT: Record<string, string> = {
   'compression.deterministic': 'memory',
   'compression.llm_second_pass': 'memory',
   'local_models.silence_timeout_secs': 'advanced',
+  'monitoring.export.otlp.enabled': 'advanced',
+  'monitoring.export.otlp.endpoint': 'advanced',
   'persistence.enabled': 'advanced',
   'persistence.max_retries': 'advanced',
   'persistence.max_tokens': 'advanced',

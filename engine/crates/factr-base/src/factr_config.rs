@@ -103,6 +103,19 @@ pub struct LocalModels {
     pub silence_timeout_secs: Option<u64>,
 }
 
+/// `monitoring.export.otlp.*`: the operator-configured OTLP destination (shared with the backend's gateway-health
+/// export). When `enabled` with an endpoint, finished turns are also exported there as traces.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ObservabilityExport {
+    /// `monitoring.export.otlp.enabled` (off unless true).
+    pub enabled: bool,
+    /// `monitoring.export.otlp.endpoint`: an OTLP/HTTP base URL (`http(s)://host:4318`); traces go to `/v1/traces`.
+    pub endpoint: Option<String>,
+    /// `monitoring.export.otlp.headers_env`: header name to the NAME of the environment variable (or `.env` entry)
+    /// holding its value; secrets never sit in config.yaml.
+    pub headers_env: Vec<(String, String)>,
+}
+
 /// True when `api_base` points at this machine or a private network address.
 pub fn is_local_endpoint(api_base: &str) -> bool {
     let Some(host) = url::Url::parse(api_base).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase)) else {
@@ -230,6 +243,7 @@ pub struct FactrConfig {
     pub tools: ToolsView,
     pub persistence: Persistence,
     pub local_models: LocalModels,
+    pub observability_export: ObservabilityExport,
     pub approval_extras: ApprovalExtras,
     /// `fallback_providers`, in order. Entries without both a provider and a model are dropped.
     pub fallbacks: Vec<Fallback>,
@@ -418,6 +432,17 @@ impl FactrConfig {
                     .flatten()
                     .filter_map(as_text)
                     .take(100)
+                    .collect(),
+            },
+            observability_export: ObservabilityExport {
+                enabled: path(&root, "monitoring.export.otlp.enabled").and_then(as_bool).unwrap_or(false),
+                endpoint: path(&root, "monitoring.export.otlp.endpoint").and_then(as_text).map(|u| u.trim().trim_end_matches('/').to_string()).filter(|u| u.starts_with("http://") || u.starts_with("https://")),
+                headers_env: path(&root, "monitoring.export.otlp.headers_env")
+                    .and_then(Value::as_mapping)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(k, v)| Some((as_text(k)?, as_text(v)?)))
+                    .take(10)
                     .collect(),
             },
             local_models: LocalModels {
@@ -660,6 +685,18 @@ mod tests {
         let c = FactrConfig::parse("approvals:\n  gui_automation_ask: true\n  always_ask: ['^cargo publish', '  ']\n").approval_extras;
         assert!(c.gui_automation_ask);
         assert_eq!(c.always_ask, vec!["^cargo publish".to_string()]);
+    }
+
+    #[test]
+    fn the_otlp_export_needs_an_http_endpoint_and_reads_standard_header_pairs() {
+        assert_eq!(FactrConfig::parse("").observability_export, ObservabilityExport::default());
+        let c = FactrConfig::parse("monitoring:\n  export:\n    otlp:\n      enabled: true\n      endpoint: ' https://cloud.example.com:4318/ '\n      headers_env: {x-api-key: MY_OTLP_KEY}\n").observability_export;
+        assert!(c.enabled);
+        assert_eq!(c.endpoint.as_deref(), Some("https://cloud.example.com:4318"));
+        assert_eq!(c.headers_env, vec![("x-api-key".to_string(), "MY_OTLP_KEY".to_string())]);
+        for bad in ["ftp://x", "localhost:4318", ""] {
+            assert_eq!(FactrConfig::parse(&format!("monitoring: {{export: {{otlp: {{enabled: true, endpoint: '{bad}'}}}}}}")).observability_export.endpoint, None, "{bad}");
+        }
     }
 
     #[test]

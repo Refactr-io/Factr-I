@@ -450,6 +450,14 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   localModels: {
     silenceTimeoutSecs: 'Local Model Silence Limit (s)'
   },
+  monitoring: {
+    export: {
+      otlp: {
+        enabled: 'Export Traces to an OpenTelemetry Collector',
+        endpoint: 'Collector Address (OTLP/HTTP)'
+      }
+    }
+  },
   persistence: {
     enabled: 'Keep Working While the Task Check Fails',
     maxRetries: 'Retries After a Failed Check',
@@ -650,6 +658,16 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
   localModels: {
     silenceTimeoutSecs:
       'How long a model on this machine or network may stay silent before its stream is treated as dead. 0 keeps the normal limit.'
+  },
+  monitoring: {
+    export: {
+      otlp: {
+        enabled:
+          'Send each finished turn to your OpenTelemetry collector as a trace, using the address below. Only ids, counts, durations, statuses and model names are sent, never prompts, replies or tool arguments. Off by default.',
+        endpoint:
+          'The collector address, for example http://localhost:4318. An API key for it goes in an environment variable named under monitoring.export.otlp.headers_env in config.yaml, never in the settings.'
+      }
+    }
   },
   tools: {
     routing:
@@ -861,6 +879,8 @@ export const SECTIONS: DesktopConfigSection[] = [
       'budget.max_cost_usd',
       'budget.max_tokens',
       'local_models.silence_timeout_secs',
+      'monitoring.export.otlp.enabled',
+      'monitoring.export.otlp.endpoint',
       'persistence.enabled',
       'persistence.max_retries',
       'persistence.max_tokens',
