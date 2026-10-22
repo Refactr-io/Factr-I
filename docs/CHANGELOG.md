@@ -3,7 +3,9 @@
 ## Unreleased
 
 - When a session budget stops a reply, the message says "Session budget reached" and where to raise the limit (Settings > Advanced > Agent limits), and no longer offers a Retry that cannot work.
+- Fixed: the v0.0.11 settings (session budget, shorter command output, tool routing, condensed digest, approval rules, local model silence limit) were missing from Settings and from Settings search, because the app's built-in settings list had not been refreshed. They show up again.
 - Unattended runs now keep working while the task's own check fails. When a one-shot run (`/api/agent/run`) names its check (for example "test with ./eval"), the engine runs that check itself after every turn and, while it fails, sends the failed output back for another attempt, through the same goal machinery as `/goal` (quality gate with retries, attempt log, ratchet). It stops when the check passes, after 3 retries (`persistence.max_retries`), near the run's time limit, or on interrupt. On by default for such runs only; `persistence.enabled: false` or `FACTR_PERSIST=0` turns it off, and interactive chat is unchanged.
+- Web search (off): `web.backend` / `web.search_backend` also accepts `serper` and `linkup` (keys `SERPER_API_KEY`, `LINKUP_API_KEY`; they are never picked automatically). With `web.search_fallback: true`, a failed key-based backend is followed by the other backends that have a key, and a backend that just failed rests for 5 minutes. Without it, search behaves exactly as before.
 - Shorter shell output now uses the pinned `rtk` 1.0.1 build that ships inside the app (Apache-2.0, checksum-verified at build time) instead of looking for one on your PATH. It still does nothing unless `terminal.reduce_output` is on, its usage data stays in the Factr data folder and its telemetry is switched off.
 
 ## v0.0.11

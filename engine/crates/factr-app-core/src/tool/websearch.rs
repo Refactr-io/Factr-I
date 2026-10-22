@@ -107,13 +107,22 @@ impl Tool for WebSearchTool {
         };
         let mut last_error = None;
         let mut results = Vec::new();
-        // A key-based backend (Factr `web.backend`) first; any failure falls back to the keyless chain.
-        if !only_searxng
-            && let Some((backend, key, base)) = super::websearch_backends::configured()
-        {
-            match super::websearch_backends::search(&self.client, backend, &key, base.as_deref(), &params.query, fetch_n).await {
-                Ok(found) => results = found,
-                Err(err) => crate::logging::warn(&format!("websearch: {backend:?} backend failed, using keyless engines: {err:#}")),
+        // Key-based backends (Factr `web.backend`) first, in order; any failure moves on, and with none
+        // working the keyless chain below runs.
+        if !only_searxng {
+            for (backend, key, base) in super::websearch_backends::configured() {
+                match super::websearch_backends::search(&self.client, backend, &key, base.as_deref(), &params.query, fetch_n).await {
+                    Ok(found) if !found.is_empty() => {
+                        super::websearch_backends::note_outcome(backend, true);
+                        results = found;
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(err) => {
+                        super::websearch_backends::note_outcome(backend, false);
+                        crate::logging::warn(&format!("websearch: {backend:?} backend failed: {err:#}"));
+                    }
+                }
             }
         }
         let engines = if results.is_empty() { engines } else { Vec::new() };
