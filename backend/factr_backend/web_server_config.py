@@ -62,6 +62,46 @@ def _select(description: str, *options: str, **extra: Any) -> Dict[str, Any]:
 
 # Manual overrides for fields that need select options or custom types.
 _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "terminal.reduce_output": {
+        "description": "Shorten shell command output with the rtk CLI when it is installed (falls back to the plain command)",
+        "category": "agent",
+    },
+    "terminal.reduce_output_timeout_ms": {
+        "description": "Longest wait (ms) for rtk to rewrite a command before it runs unchanged",
+        "category": "agent",
+    },
+    "compression.deterministic": {
+        "description": "Condense old messages with a model-free digest that links back to each message",
+        "category": "agent",
+    },
+    "compression.llm_second_pass": {
+        "description": "With the digest on, also ask the model for a summary of the older messages",
+        "category": "agent",
+    },
+    "approvals.gui_automation_ask": {
+        "description": "Ask before commands that drive other apps (AppleScript, open -a, xdotool) or change approval settings",
+        "category": "security",
+    },
+    "approvals.always_ask": {
+        "description": "Shell commands matching any of these regular expressions are always asked about",
+        "category": "security",
+    },
+    "tools.routing": {
+        "description": "Load the withheld tools a message plainly asks for one step earlier (only ever adds tools)",
+        "category": "agent",
+    },
+    "budget.max_cost_usd": {
+        "description": "Stop a session at about this many dollars of model spend (0 = no limit; priced routes only)",
+        "category": "agent",
+    },
+    "budget.max_tokens": {
+        "description": "Stop a session after this many input plus output tokens (0 = no limit)",
+        "category": "agent",
+    },
+    "local_models.silence_timeout_secs": {
+        "description": "How long a local model may stay silent before its stream is treated as dead (0 = default)",
+        "category": "agent",
+    },
     "timezone": _select(
         "IANA timezone (e.g. America/New_York). Blank uses the system timezone.",
         *_timezone_options(), searchable=True, clearable=True,
