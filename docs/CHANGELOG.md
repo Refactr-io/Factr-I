@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Optional OpenTelemetry export (off): set `observability.otlp_endpoint` (for example `http://localhost:4318`) and each finished turn is sent to `<endpoint>/v1/traces` as an OTLP/HTTP JSON trace, the turn as the root span with its model calls, tool calls and engine steps beneath it, using the GenAI attribute names for model, provider and token counts. Only ids, counts, durations, statuses and model names leave the machine: never prompts, replies, tool arguments or error text. A receiver key goes in the `FACTR_OTLP_HEADERS` environment variable (`name=value,name2=value2`), not in config.yaml. Best effort on its own thread; nothing runs while the endpoint is empty.
+- Optional OpenTelemetry export (off): enable `monitoring.export.otlp` (the same collector destination the gateway health export uses; for example `endpoint: http://localhost:4318`) and each finished turn is also sent to `<endpoint>/v1/traces` as an OTLP/HTTP JSON trace, the turn as the root span with its model calls, tool calls and engine steps beneath it, using the GenAI attribute names for model, provider and token counts. Only ids, counts, durations, statuses and model names leave the machine: never prompts, replies, tool arguments or error text. Header values come from the environment variables named in `monitoring.export.otlp.headers_env`, never from config.yaml. Best effort on its own thread; nothing runs while the export is off.
 - Shorter shell output now uses the pinned `rtk` 1.0.1 build that ships inside the app (Apache-2.0, checksum-verified at build time) instead of looking for one on your PATH. It still does nothing unless `terminal.reduce_output` is on, its usage data stays in the Factr data folder and its telemetry is switched off.
 
 ## v0.0.11

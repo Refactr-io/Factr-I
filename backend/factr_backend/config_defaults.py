@@ -1643,12 +1643,6 @@ DEFAULT_CONFIG = {
     "local_models": {
         "silence_timeout_secs": 0,
     },
-    # Export finished turns as OpenTelemetry traces (OTLP/HTTP JSON) to this endpoint. Empty = off. Only ids,
-    # counts, durations, statuses and model names are sent: never prompts, replies, tool arguments or errors.
-    # Request headers (an API key) go in the environment: FACTR_OTLP_HEADERS="name=value,name2=value2".
-    "observability": {
-        "otlp_endpoint": "",
-    },
     "approvals": {
         # single_query_mode — what to do when a single-query (-q) session hits a dangerous command. -q runs
         # export FACTR_INTERACTIVE=1 (for interactive sudo prompts) but have NO user waiting to answer

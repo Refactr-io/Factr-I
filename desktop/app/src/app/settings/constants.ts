@@ -450,8 +450,13 @@ export const FIELD_LABELS: Record<string, string> = defineFieldCopy({
   localModels: {
     silenceTimeoutSecs: 'Local Model Silence Limit (s)'
   },
-  observability: {
-    otlpEndpoint: 'Trace Export Address (OTLP)'
+  monitoring: {
+    export: {
+      otlp: {
+        enabled: 'Export Traces to an OpenTelemetry Collector',
+        endpoint: 'Collector Address (OTLP/HTTP)'
+      }
+    }
   },
   tools: {
     routing: 'Tool Routing'
@@ -649,9 +654,15 @@ export const FIELD_DESCRIPTIONS: Record<string, string> = defineFieldCopy({
     silenceTimeoutSecs:
       'How long a model on this machine or network may stay silent before its stream is treated as dead. 0 keeps the normal limit.'
   },
-  observability: {
-    otlpEndpoint:
-      'Send finished turns as OpenTelemetry traces to this OTLP/HTTP address, for example http://localhost:4318. Only ids, counts, durations, statuses and model names are sent, never prompts or replies. Leave blank to keep it off. A key for the receiver goes in the FACTR_OTLP_HEADERS environment variable (name=value).'
+  monitoring: {
+    export: {
+      otlp: {
+        enabled:
+          'Send each finished turn to your OpenTelemetry collector as a trace, using the address below. Only ids, counts, durations, statuses and model names are sent, never prompts, replies or tool arguments. Off by default.',
+        endpoint:
+          'The collector address, for example http://localhost:4318. An API key for it goes in an environment variable named under monitoring.export.otlp.headers_env in config.yaml, never in the settings.'
+      }
+    }
   },
   tools: {
     routing:
@@ -863,7 +874,8 @@ export const SECTIONS: DesktopConfigSection[] = [
       'budget.max_cost_usd',
       'budget.max_tokens',
       'local_models.silence_timeout_secs',
-      'observability.otlp_endpoint',
+      'monitoring.export.otlp.enabled',
+      'monitoring.export.otlp.endpoint',
       'terminal.docker_image',
       'terminal.singularity_image',
       'terminal.modal_image',

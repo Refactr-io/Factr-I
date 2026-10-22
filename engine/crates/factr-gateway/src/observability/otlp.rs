@@ -1,4 +1,4 @@
-//! Optional OpenTelemetry export of finished turns (`observability.otlp_endpoint`, off until set).
+//! Optional OpenTelemetry export of finished turns (`monitoring.export.otlp`, off until enabled).
 //!
 //! When an endpoint is configured, every turn the observer finishes is sent to `<endpoint>/v1/traces` as
 //! OTLP/HTTP JSON: the turn as the root span and its model calls, tool calls and engine steps as children,
@@ -6,8 +6,9 @@
 //! durations, statuses and fixed labels leave the machine: never prompts, replies, tool arguments or error
 //! text. Export is best effort on its own thread (a bounded queue; a full queue or a failed POST drops the
 //! turn), never on the path that writes `factr.db`, and the thread starts only when the first turn finishes
-//! with an endpoint set, so the setting costs nothing while it is empty. Request headers (an API key) are
-//! read from `FACTR_OTLP_HEADERS` (`name=value,name2=value2`) in the environment or `.env`, since credentials never live in config.yaml.
+//! with the destination enabled, so the setting costs nothing while it is off. The destination is the
+//! backend's existing `monitoring.export.otlp` (enabled, endpoint, `headers_env`: header name to the name of
+//! the environment variable or `.env` entry that holds its value).
 
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
@@ -25,7 +26,8 @@ static EXPORTER: OnceLock<SyncSender<String>> = OnceLock::new();
 
 /// A turn finished: queue it for export when an endpoint is configured.
 pub(super) fn turn_finished(home: &Path, run_id: &str) {
-    if factr_base::factr_config::current().observability_export.otlp_endpoint.is_none() {
+    let export = &factr_base::factr_config::current().observability_export;
+    if !export.enabled || export.endpoint.is_none() {
         return;
     }
     let tx = EXPORTER.get_or_init(|| {
@@ -35,13 +37,14 @@ pub(super) fn turn_finished(home: &Path, run_id: &str) {
             let client = reqwest::blocking::Client::builder().timeout(TIMEOUT).build().ok();
             while let Ok(run) = rx.recv() {
                 let cfg = factr_base::factr_config::current().observability_export.clone();
-                let (Some(endpoint), Some(client)) = (cfg.otlp_endpoint, client.as_ref()) else { continue };
+                let (true, Some(endpoint), Some(client)) = (cfg.enabled, cfg.endpoint, client.as_ref()) else { continue };
                 let Some(body) = payload_from(&db, &run) else { continue };
                 let mut request = client.post(format!("{endpoint}/v1/traces")).json(&body);
-                // Credentials stay out of config.yaml: the headers come from the environment (`.env`).
-                let headers = factr_base::factr_config::parse_headers(&std::env::var("FACTR_OTLP_HEADERS").ok().or_else(|| crate::factr_env::resolve("FACTR_OTLP_HEADERS")).unwrap_or_default());
-                for (name, value) in &headers {
-                    request = request.header(name.as_str(), value.as_str());
+                // `headers_env` names the variable holding each value: credentials never sit in config.yaml.
+                for (header, variable) in &cfg.headers_env {
+                    if let Some(value) = std::env::var(variable).ok().or_else(|| crate::factr_env::resolve(variable)).filter(|v| !v.is_empty()) {
+                        request = request.header(header.as_str(), value);
+                    }
                 }
                 if let Err(err) = request.send().and_then(|r| r.error_for_status()) {
                     eprintln!("factr-otlp: export failed: {}", err.without_url());
