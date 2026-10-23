@@ -3900,22 +3900,28 @@ pub(crate) async fn agent_run(
         if let Some(key) = session_key {
             ACTIVE_RUNS.lock().unwrap_or_else(|e| e.into_inner()).insert(key.to_string(), (conn.clone(), session_id.clone()));
         }
-        // A cron job's toolset policy holds for the whole run (fails closed: no policy, no run).
-        if let Some(request) = toolsets::request(&session_id, opts.enabled_toolsets.as_deref(), &opts.disabled_toolsets) {
+        // A one-shot run whose task names its check keeps going, through the goal machinery, while it fails.
+        let control = conn.control_store().await;
+        let checks = if session_key.is_none() && persist_run::enabled() { control.as_deref().and_then(|store| persist_run::start(store, &session_id, prompt, cwd, timeout)) } else { None };
+        let persisting = checks.is_some();
+
+        // A cron job's toolset policy holds for the whole run (fails closed: no policy, no run). A persisting run
+        // may be limited to the tools a write-and-check task needs (`FACTR_PERSIST_TOOLS=minimal`, off by default).
+        let enabled = match (persisting, opts.enabled_toolsets.as_deref()) {
+            (true, Some(enabled)) => Some(persist_run::minimal_tools(toolsets::tools(enabled))),
+            (_, enabled) => enabled.map(<[String]>::to_vec),
+        };
+        if let Some(request) = toolsets::request(&session_id, enabled.as_deref(), &opts.disabled_toolsets) {
             conn.call(request).await.context("could not apply the job's tool policy")?;
         }
         // Nobody waits on an approval here: both gates (`Out::Approval`, `decide`) apply
         // the unattended policy (Factr config, else deny and park for the desktop).
         hub.mark_headless(&session_id, opts.surface).await;
 
-        // A one-shot run whose task names its check keeps going, through the goal machinery, while it fails.
-        let control = conn.control_store().await;
-        let persisting = session_key.is_none() && persist_run::enabled() && control.as_deref().is_some_and(|store| persist_run::start(store, &session_id, prompt, timeout));
-
         let outcome = tokio::time::timeout(timeout, async {
             conn.dispatch(
                 "prompt.submit",
-                &json!({ "session_id": session_id, "text": prompt, "system_reminder": opts.instructions }),
+                &json!({ "session_id": session_id, "text": persisting_prompt(prompt, checks.as_deref(), cwd), "system_reminder": opts.instructions }),
             )
             .await
             .map_err(|e| anyhow!(e.message))?;
@@ -4020,6 +4026,17 @@ pub(crate) async fn agent_run(
         prune_chat_turn(key);
     }
     result
+}
+
+/// A persisting run's prompt, with its reminder (the flags that are on, see `persist_run::reminder`) folded into the
+/// user message. An ephemeral reminder appended to every request is dropped from the next one, so each request stops
+/// being an extension of the last and the provider's prompt cache falls back to the static prefix (measured: cached
+/// input 348k -> 103k per job); inside the message it is part of the stable prefix.
+pub(crate) fn persisting_prompt(prompt: &str, checks: Option<&[String]>, cwd: Option<&str>) -> String {
+    match checks.and_then(|c| persist_run::reminder(None, c, cwd)) {
+        Some(reminder) => format!("{prompt}\n\n<system-reminder>\n{reminder}\n</system-reminder>"),
+        None => prompt.to_string(),
+    }
 }
 
 /// The `/api/agent/run` reply for a finished turn. A bot chat's `/stop` interrupts the turn: Factr

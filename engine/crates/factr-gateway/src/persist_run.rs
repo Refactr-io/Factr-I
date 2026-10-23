@@ -14,6 +14,9 @@ use std::time::Duration;
 
 const DEFAULT_RETRIES: i64 = 3;
 const STALE_AFTER: Duration = Duration::from_secs(3600);
+/// A persisting run stops retrying after this long unless `persistence.max_seconds` says otherwise: the best
+/// pass-per-second point of the measured pass-vs-time curve.
+const DEFAULT_MAX_SECONDS: u64 = 400;
 
 /// `FACTR_PERSIST=0|1` overrides `persistence.enabled` (default on).
 pub(crate) fn enabled() -> bool {
@@ -30,11 +33,11 @@ fn env_number(name: &str) -> Option<u64> {
     factr_base::factr_config::env_text(name)?.parse::<u64>().ok().filter(|n| *n > 0)
 }
 
-/// Create the run's goal when the task names a check. `true` when the run is persisting.
-pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeout: Duration) -> bool {
+/// Create the run's goal when the task names a check: the check commands when the run is persisting.
+pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, cwd: Option<&str>, timeout: Duration) -> Option<Vec<String>> {
     let checks = task_check_commands(prompt);
     if checks.is_empty() {
-        return false;
+        return None;
     }
     // Rows of runs that died or lost the cleanup race (a gate finishing after its run timed out).
     let _ = store.purge_stale_unattended(STALE_AFTER.as_millis() as i64);
@@ -47,9 +50,10 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
     goal.max_turns = 0;
     // A fixed ceiling of fresh tokens, or (0) the automatic one set after the first turn.
     goal.token_budget = env_number("FACTR_PERSIST_MAX_TOKENS").or(settings.max_tokens).map(|n| n as i64);
-    goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, env_number("FACTR_PERSIST_MAX_SECONDS").or(settings.max_seconds)));
+    goal.wall_budget_ms = Some(wall_budget_ms(timeout.as_millis() as i64, gate_secs, env_number("FACTR_PERSIST_MAX_SECONDS").or(settings.max_seconds).or(Some(DEFAULT_MAX_SECONDS))));
     goal.gates = checks
-        .into_iter()
+        .iter()
+        .cloned()
         .map(|command| {
             let mut gate = QualityGate::new(command);
             gate.max_retries = retries;
@@ -57,7 +61,64 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
             gate
         })
         .collect();
-    store.set_goal(session_id, Some(&goal)).is_ok()
+    // Terser turns (a faster run) unless the user chose a verbosity.
+    factr_base::run_hints::set_text_verbosity(session_id, "low");
+    let gates: Vec<(String, u64)> = goal.gates.iter().map(|g| (g.command.clone(), g.timeout_seconds.max(1) as u64)).collect();
+    factr_learn::check_memo::register(session_id, &gates, cwd.map(std::path::Path::new));
+    store.set_goal(session_id, Some(&goal)).is_ok().then_some(checks)
+}
+
+/// A one-off system reminder for a persisting run, from the flags that are on (all default off):
+/// `FACTR_PERSIST_AUTOCHECK=1` tells the model the engine runs the check after every change and appends the result;
+/// `FACTR_PERSIST_ORIENT=1` lists the working directory and shows the start of the check script, so the model need
+/// not spend calls on `ls` and `read`.
+pub(crate) fn reminder(existing: Option<&str>, checks: &[String], cwd: Option<&str>) -> Option<String> {
+    let mut parts: Vec<String> = existing.map(str::to_string).into_iter().collect();
+    let list = checks.iter().map(|c| format!("`{c}`")).collect::<Vec<_>>().join(", ");
+    if factr_learn::check_memo::autocheck_enabled() {
+        parts.push(format!("The engine runs {list} itself after every file change you make and appends the result to that change's output, and again when you stop. Do not run it yourself and do not re-read a file you just wrote: read the appended result, then fix what it points to or stop."));
+    }
+    let flag = |name: &str| factr_base::factr_config::env_bool(name).unwrap_or(false);
+    // Output-token levers (all off by default). Most output tokens in a persistence round are hidden reasoning in the
+    // edit and stop calls, so these ask for less of everything else: a small first draft, small edits, and a one-line
+    // closing message.
+    if flag("FACTR_PERSIST_CONCISE") {
+        parts.push("Write the complete solution to the requested file in ONE write, in the smallest correct form: no docstrings, no comments unless the logic is non-obvious, no input validation, error handling or alternative code paths the task did not ask for.".to_string());
+    }
+    if flag("FACTR_PERSIST_SMALLEDITS") {
+        parts.push("After a failed check change as little as possible: a small edit to the failing part with `edit`, never a rewrite of the file, and do not re-read files you just wrote.".to_string());
+    }
+    if flag("FACTR_PERSIST_BRIEF") {
+        parts.push("Keep every message you write to one short sentence, and while the check still fails keep working with tool calls instead of writing a status message. No summaries, no restating the diff or the output.".to_string());
+    }
+    if flag("FACTR_PERSIST_ORIENT") {
+        if let Some(dir) = cwd.map(std::path::Path::new) {
+            parts.push(orientation(dir, checks));
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+/// The working directory's files and the start of the first check that is a small text file in it.
+fn orientation(dir: &std::path::Path, checks: &[String]) -> String {
+    let mut files: Vec<String> = std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().filter_map(|e| Some(format!("{} ({} B)", e.file_name().to_str()?, e.metadata().ok()?.len()))).collect())
+        .unwrap_or_default();
+    files.sort();
+    files.truncate(40);
+    let mut text = format!("Working directory now: {}.", if files.is_empty() { "empty".to_string() } else { files.join(", ") });
+    let script = checks.iter().find_map(|c| {
+        let first = c.split_whitespace().next()?.trim_start_matches("./");
+        let path = dir.join(first);
+        let meta = std::fs::metadata(&path).ok().filter(|m| m.is_file() && m.len() <= 4096)?;
+        let body = std::fs::read_to_string(&path).ok()?;
+        Some((first.to_string(), body, meta.len()))
+    });
+    if let Some((name, body, _)) = script {
+        let head: String = body.chars().take(1200).collect();
+        text.push_str(&format!(" The start of `{name}`:\n```\n{head}\n```"));
+    }
+    text
 }
 
 /// The run's wall budget for persisting: its time limit minus one more check (at least half of it), which
@@ -65,6 +126,19 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
 fn wall_budget_ms(timeout_ms: i64, gate_secs: i64, cap_secs: Option<u64>) -> i64 {
     let run_budget = (timeout_ms - gate_secs * 1000 - 5_000).max(timeout_ms / 2);
     cap_secs.map_or(run_budget, |c| (c as i64).saturating_mul(1000).min(run_budget))
+}
+
+/// The tools a write-and-check task needs. With `FACTR_PERSIST_TOOLS=minimal` a persisting run's allowed tools are cut
+/// to these (fewer schemas in every request); anything else, or any other value, leaves them alone.
+const MINIMAL_TOOLS: [&str; 5] = ["bash", "read", "write", "edit", "ls"];
+
+pub(crate) fn minimal_tools(allowed: Vec<String>) -> Vec<String> {
+    if factr_base::factr_config::env_text("FACTR_PERSIST_TOOLS").as_deref() != Some("minimal") {
+        return allowed;
+    }
+    let kept: Vec<String> = allowed.iter().filter(|t| MINIMAL_TOOLS.contains(&t.as_str())).cloned().collect();
+    // A policy with none of them is left as it is rather than emptied.
+    if kept.is_empty() { allowed } else { kept }
 }
 
 /// Whether a `session.control.update` payload still shows an active goal (the run goes on).
@@ -113,6 +187,8 @@ pub(crate) fn finish(store: &ControlStore, session_id: &str) -> Value {
         g.release_checkpoints(session_id);
     }
     let _ = store.forget_session(session_id);
+    factr_base::run_hints::clear(session_id);
+    factr_learn::check_memo::forget(session_id);
     report
 }
 
@@ -126,20 +202,83 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = ControlStore::open(&dir).unwrap();
-        assert!(!start(&store, "none", "Fix the bug in this directory.", Duration::from_secs(600)));
+        assert!(start(&store, "none", "Fix the bug in this directory.", None, Duration::from_secs(600)).is_none());
         assert!(store.get_goal("none").unwrap().is_none());
-        assert!(start(&store, "s", "Fix it. Test with ./run_check.sh and make it pass.", Duration::from_secs(900)));
+        assert_eq!(start(&store, "s", "Fix it. Test with ./run_check.sh and make it pass.", None, Duration::from_secs(900)), Some(vec!["./run_check.sh".to_string()]));
         let goal = store.get_goal("s").unwrap().unwrap();
         assert!(goal.unattended && goal.max_turns == 0);
         assert_eq!(goal.gates.len(), 1);
         assert_eq!((goal.gates[0].command.as_str(), goal.gates[0].max_retries, goal.gates[0].timeout_seconds), ("./run_check.sh", 3, 300));
-        assert!(goal.wall_budget_ms.unwrap() < 900_000, "room is left for the last check");
+        assert_eq!(goal.wall_budget_ms, Some(400_000), "the default time cap, and room is left for the last check");
+        assert_eq!(factr_base::run_hints::text_verbosity(Some("s")).as_deref(), Some("low"), "terser turns for this run");
+        finish(&store, "s");
+        assert_eq!(factr_base::run_hints::text_verbosity(Some("s")), None, "the hint ends with the run");
         assert!(store.active_sessions().unwrap().is_empty(), "the driver never picks up a run's goal");
+    }
+
+    #[test]
+    fn the_reminder_says_what_the_flags_say_and_nothing_when_they_are_off() {
+        let _env = factr_base::storage::lock_test_env();
+        let dir = std::env::temp_dir().join(format!("persist-reminder-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("eval"), "#!/bin/sh\necho check-body\n").unwrap();
+        std::fs::write(dir.join("solution.py"), "x").unwrap();
+        let checks = vec!["./eval".to_string()];
+        let cwd = dir.to_str();
+        factr_base::env::remove_var("FACTR_PERSIST_AUTOCHECK");
+        factr_base::env::remove_var("FACTR_PERSIST_ORIENT");
+        assert_eq!(reminder(None, &checks, cwd), None);
+        assert_eq!(reminder(Some("keep"), &checks, cwd).as_deref(), Some("keep"));
+        factr_base::env::set_var("FACTR_PERSIST_ORIENT", "1");
+        let oriented = reminder(None, &checks, cwd).unwrap();
+        assert!(oriented.contains("eval (") && oriented.contains("solution.py (1 B)") && oriented.contains("check-body"), "{oriented}");
+        for (name, text) in [("FACTR_PERSIST_CONCISE", "smallest correct form"), ("FACTR_PERSIST_SMALLEDITS", "never a rewrite"), ("FACTR_PERSIST_BRIEF", "one short sentence")] {
+            factr_base::env::remove_var("FACTR_PERSIST_ORIENT");
+            assert!(reminder(None, &checks, cwd).is_none(), "off by default");
+            factr_base::env::set_var(name, "1");
+            assert!(reminder(None, &checks, cwd).unwrap().contains(text), "{name}");
+            factr_base::env::remove_var(name);
+        }
+        factr_base::env::set_var("FACTR_PERSIST_ORIENT", "1");
+        factr_base::env::set_var("FACTR_PERSIST_AUTOCHECK", "1");
+        let both = reminder(Some("keep"), &checks, cwd).unwrap();
+        assert!(both.starts_with("keep") && both.contains("runs `./eval` itself") || both.contains("runs `./eval`"), "{both}");
+        factr_base::env::remove_var("FACTR_PERSIST_AUTOCHECK");
+        factr_base::env::remove_var("FACTR_PERSIST_ORIENT");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_reminder_rides_in_the_prompt_so_every_request_extends_the_last() {
+        let _env = factr_base::storage::lock_test_env();
+        let checks = vec!["./eval".to_string()];
+        factr_base::env::remove_var("FACTR_PERSIST_AUTOCHECK");
+        factr_base::env::remove_var("FACTR_PERSIST_L2");
+        assert_eq!(super::super::rpc::persisting_prompt("Do it.", Some(&checks), None), "Do it.", "no flags: the prompt as given");
+        assert_eq!(super::super::rpc::persisting_prompt("Do it.", None, None), "Do it.");
+        factr_base::env::set_var("FACTR_PERSIST_L2", "1");
+        let p = super::super::rpc::persisting_prompt("Do it.", Some(&checks), None);
+        assert!(p.starts_with("Do it.\n\n<system-reminder>\n") && p.contains("The engine runs `./eval`") && p.ends_with("</system-reminder>"), "{p}");
+        factr_base::env::remove_var("FACTR_PERSIST_L2");
+    }
+
+    #[test]
+    fn minimal_tools_cut_the_surface_only_when_asked() {
+        let _env = factr_base::storage::lock_test_env();
+        let all: Vec<String> = ["agentgrep", "bash", "batch", "bg", "edit", "ls", "read", "repl", "todo", "write"].map(String::from).to_vec();
+        factr_base::env::remove_var("FACTR_PERSIST_TOOLS");
+        assert_eq!(minimal_tools(all.clone()), all);
+        factr_base::env::set_var("FACTR_PERSIST_TOOLS", "minimal");
+        assert_eq!(minimal_tools(all), ["bash", "edit", "ls", "read", "write"]);
+        assert_eq!(minimal_tools(vec!["repl".into()]), ["repl"], "never emptied");
+        factr_base::env::remove_var("FACTR_PERSIST_TOOLS");
     }
 
     #[test]
     fn the_time_cap_only_shortens_the_wall_budget() {
         assert_eq!(wall_budget_ms(1_200_000, 300, None), 895_000);
+        assert_eq!(wall_budget_ms(1_200_000, 300, Some(DEFAULT_MAX_SECONDS)), 400_000, "the default cap");
         assert_eq!(wall_budget_ms(1_200_000, 300, Some(400)), 400_000);
         assert_eq!(wall_budget_ms(1_200_000, 300, Some(5_000)), 895_000, "never beyond the run's own limit");
         assert_eq!(wall_budget_ms(120_000, 60, None), 60_000, "at least half of a short run");
@@ -168,7 +307,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = ControlStore::open(&dir).unwrap();
-        start(&store, "s", "Test with ./check.sh", Duration::from_secs(600));
+        start(&store, "s", "Test with ./check.sh", None, Duration::from_secs(600));
         let mut goal = store.get_goal("s").unwrap().unwrap();
         goal.status = GoalStatus::Done;
         goal.turns_used = 2;

@@ -34,6 +34,7 @@ pub mod factr_env;
 pub mod external_auth;
 pub mod github;
 pub mod headless;
+pub mod run_hints;
 pub mod learn_signal;
 pub mod factr_config;
 pub mod factr_hooks;

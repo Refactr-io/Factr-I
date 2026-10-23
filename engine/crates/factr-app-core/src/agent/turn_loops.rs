@@ -1224,6 +1224,14 @@ impl Agent {
                     Ok(output) => {
                         let mut output = cap_tool_output_for_history(&tc.name, output);
                         super::bg_guard::annotate_edit(&tc.name, &self.session.id, tool_wall, &mut stop_nudge.stale_warned, &mut output).await;
+                        if matches!(tc.name.as_str(), "write" | "edit" | "apply_patch" | "replace" | "multiedit") && factr_learn::check_memo::autocheck_enabled() {
+                            // The engine runs the named check right after a change (a persisting run, flag on) and appends the verdict.
+                            let sid = self.session.id.clone();
+                            if let Ok(Some(note)) = tokio::task::spawn_blocking(move || factr_learn::check_memo::autocheck_note(&sid)).await {
+                                output.output.push_str("\n\n");
+                                output.output.push_str(&note);
+                            }
+                        }
                         stop_nudge.observe_full(&tc.name, &tc.input, super::auto_verify::exit_code_of(&output.output, false), output.metadata.as_ref(), Some(&output.output));
                         let verdict =
                             repeat_guard.observe(&tc.name, &tc.input, &output.output, false);
