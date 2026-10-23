@@ -54,13 +54,13 @@ thread_local! {
     static TEST_AUTOCHECK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// `FACTR_PERSIST_AUTOCHECK=1`: the engine runs the check after every file change.
+/// `FACTR_PERSIST_AUTOCHECK=1` (or its alias `FACTR_PERSIST_L2=1`): the engine runs the check after every file change.
 pub fn autocheck_enabled() -> bool {
     #[cfg(test)]
     if TEST_AUTOCHECK.with(std::cell::Cell::get) {
         return true;
     }
-    factr_base::factr_config::env_bool("FACTR_PERSIST_AUTOCHECK").unwrap_or(false)
+    factr_base::factr_config::env_bool("FACTR_PERSIST_AUTOCHECK").or_else(|| factr_base::factr_config::env_bool("FACTR_PERSIST_L2")).unwrap_or(false)
 }
 
 /// A persisting run's gate commands (each with its timeout in seconds) and working directory.

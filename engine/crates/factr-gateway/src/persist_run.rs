@@ -78,7 +78,20 @@ pub(crate) fn reminder(existing: Option<&str>, checks: &[String], cwd: Option<&s
     if factr_learn::check_memo::autocheck_enabled() {
         parts.push(format!("The engine runs {list} itself after every file change you make and appends the result to that change's output, and again when you stop. Do not run it yourself and do not re-read a file you just wrote: read the appended result, then fix what it points to or stop."));
     }
-    if factr_base::factr_config::env_bool("FACTR_PERSIST_ORIENT").unwrap_or(false) {
+    let flag = |name: &str| factr_base::factr_config::env_bool(name).unwrap_or(false);
+    // Output-token levers (all off by default). Most output tokens in a persistence round are hidden reasoning in the
+    // edit and stop calls, so these ask for less of everything else: a small first draft, small edits, and a one-line
+    // closing message.
+    if flag("FACTR_PERSIST_CONCISE") {
+        parts.push("Write the complete solution to the requested file in ONE write, in the smallest correct form: no docstrings, no comments unless the logic is non-obvious, no input validation, error handling or alternative code paths the task did not ask for.".to_string());
+    }
+    if flag("FACTR_PERSIST_SMALLEDITS") {
+        parts.push("After a failed check change as little as possible: a small edit to the failing part with `edit`, never a rewrite of the file, and do not re-read files you just wrote.".to_string());
+    }
+    if flag("FACTR_PERSIST_BRIEF") {
+        parts.push("Keep every message you write to one short sentence, and while the check still fails keep working with tool calls instead of writing a status message. No summaries, no restating the diff or the output.".to_string());
+    }
+    if flag("FACTR_PERSIST_ORIENT") {
         if let Some(dir) = cwd.map(std::path::Path::new) {
             parts.push(orientation(dir, checks));
         }
@@ -220,6 +233,14 @@ mod tests {
         factr_base::env::set_var("FACTR_PERSIST_ORIENT", "1");
         let oriented = reminder(None, &checks, cwd).unwrap();
         assert!(oriented.contains("eval (") && oriented.contains("solution.py (1 B)") && oriented.contains("check-body"), "{oriented}");
+        for (name, text) in [("FACTR_PERSIST_CONCISE", "smallest correct form"), ("FACTR_PERSIST_SMALLEDITS", "never a rewrite"), ("FACTR_PERSIST_BRIEF", "one short sentence")] {
+            factr_base::env::remove_var("FACTR_PERSIST_ORIENT");
+            assert!(reminder(None, &checks, cwd).is_none(), "off by default");
+            factr_base::env::set_var(name, "1");
+            assert!(reminder(None, &checks, cwd).unwrap().contains(text), "{name}");
+            factr_base::env::remove_var(name);
+        }
+        factr_base::env::set_var("FACTR_PERSIST_ORIENT", "1");
         factr_base::env::set_var("FACTR_PERSIST_AUTOCHECK", "1");
         let both = reminder(Some("keep"), &checks, cwd).unwrap();
         assert!(both.starts_with("keep") && both.contains("runs `./eval` itself") || both.contains("runs `./eval`"), "{both}");

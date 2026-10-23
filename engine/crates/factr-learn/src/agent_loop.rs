@@ -729,11 +729,17 @@ impl SessionGoal {
         } else {
             String::new()
         };
+        // `FACTR_PERSIST_SMALLEDITS=1`: ask for the smallest change after a failure (fewer output tokens per round).
+        let small = if factr_base::factr_config::env_bool("FACTR_PERSIST_SMALLEDITS").unwrap_or(false) {
+            " Change as little as possible: a small edit to the failing part, never a rewrite of the file."
+        } else {
+            ""
+        };
         if self.unattended && terse_continuation() {
             let checks = self.gates.iter().map(|g| format!("`{}`", g.command)).collect::<Vec<_>>().join(", ");
             let recent = self.attempt_log.iter().rev().take(2).rev().map(|l| format!("- {l}\n")).collect::<String>();
             return format!(
-                "[{checks} still fails]\nLast attempts:\n{recent}{steer}\nRead the failure below, change only what it points to with the smallest edit, run the check again, and stop when it passes. Do not re-read files you already have."
+                "[{checks} still fails]\nLast attempts:\n{recent}{steer}\nRead the failure below, change only what it points to with the smallest edit, run the check again, and stop when it passes. Do not re-read files you already have.{small}"
             );
         }
         if self.unattended {
@@ -741,7 +747,7 @@ impl SessionGoal {
             return format!(
                 "[The task's check still fails]\nThe host re-runs {checks} after every turn and ends the task when it passes; session_goal calls are not needed.{log_block}{steer}\n\n\
                  Find the cause in the output below, change one thing, run the check yourself to see the result, and stop only when it passes. \
-                 If you cannot make it pass, say plainly what passes, what does not and why, and stop."
+                 If you cannot make it pass, say plainly what passes, what does not and why, and stop.{small}"
             );
         }
         let contract = self.contract_block();
