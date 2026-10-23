@@ -250,6 +250,20 @@ mod tests {
     }
 
     #[test]
+    fn the_reminder_rides_in_the_prompt_so_every_request_extends_the_last() {
+        let _env = factr_base::storage::lock_test_env();
+        let checks = vec!["./eval".to_string()];
+        factr_base::env::remove_var("FACTR_PERSIST_AUTOCHECK");
+        factr_base::env::remove_var("FACTR_PERSIST_L2");
+        assert_eq!(super::super::rpc::persisting_prompt("Do it.", Some(&checks), None), "Do it.", "no flags: the prompt as given");
+        assert_eq!(super::super::rpc::persisting_prompt("Do it.", None, None), "Do it.");
+        factr_base::env::set_var("FACTR_PERSIST_L2", "1");
+        let p = super::super::rpc::persisting_prompt("Do it.", Some(&checks), None);
+        assert!(p.starts_with("Do it.\n\n<system-reminder>\n") && p.contains("The engine runs `./eval`") && p.ends_with("</system-reminder>"), "{p}");
+        factr_base::env::remove_var("FACTR_PERSIST_L2");
+    }
+
+    #[test]
     fn minimal_tools_cut_the_surface_only_when_asked() {
         let _env = factr_base::storage::lock_test_env();
         let all: Vec<String> = ["agentgrep", "bash", "batch", "bg", "edit", "ls", "read", "repl", "todo", "write"].map(String::from).to_vec();

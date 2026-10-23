@@ -3921,7 +3921,7 @@ pub(crate) async fn agent_run(
         let outcome = tokio::time::timeout(timeout, async {
             conn.dispatch(
                 "prompt.submit",
-                &json!({ "session_id": session_id, "text": prompt, "system_reminder": match &checks { Some(c) => persist_run::reminder(opts.instructions, c, cwd), None => opts.instructions.map(str::to_string) } }),
+                &json!({ "session_id": session_id, "text": persisting_prompt(prompt, checks.as_deref(), cwd), "system_reminder": opts.instructions }),
             )
             .await
             .map_err(|e| anyhow!(e.message))?;
@@ -4026,6 +4026,17 @@ pub(crate) async fn agent_run(
         prune_chat_turn(key);
     }
     result
+}
+
+/// A persisting run's prompt, with its reminder (the flags that are on, see `persist_run::reminder`) folded into the
+/// user message. An ephemeral reminder appended to every request is dropped from the next one, so each request stops
+/// being an extension of the last and the provider's prompt cache falls back to the static prefix (measured: cached
+/// input 348k -> 103k per job); inside the message it is part of the stable prefix.
+pub(crate) fn persisting_prompt(prompt: &str, checks: Option<&[String]>, cwd: Option<&str>) -> String {
+    match checks.and_then(|c| persist_run::reminder(None, c, cwd)) {
+        Some(reminder) => format!("{prompt}\n\n<system-reminder>\n{reminder}\n</system-reminder>"),
+        None => prompt.to_string(),
+    }
 }
 
 /// The `/api/agent/run` reply for a finished turn. A bot chat's `/stop` interrupts the turn: Factr
