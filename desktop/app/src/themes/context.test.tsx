@@ -29,8 +29,8 @@ describe('fixed white and black desktop appearances', () => {
       </ThemeProvider>
     )
     expect(theme.themeName).toBe('factr')
-    expect(cssVar('--theme-background-seed')).toBe('#f8f8f8')
-    expect(cssVar('--theme-primary')).toBe('#252525')
+    expect(cssVar('--theme-background-seed')).toBe('#fffdfc')
+    expect(cssVar('--theme-primary')).toBe('#151313')
   })
 
   it('switches to black, persists it, and rejects a third mode', () => {
@@ -43,8 +43,8 @@ describe('fixed white and black desktop appearances', () => {
     act(() => theme.setMode('dark'))
     expect(theme.mode).toBe('dark')
     expect(modePref.resolve('default')).toBe('dark')
-    expect(cssVar('--theme-background-seed')).toBe('#161616')
-    expect(cssVar('--theme-primary')).toBe('#dedede')
+    expect(cssVar('--theme-background-seed')).toBe('#151313')
+    expect(cssVar('--theme-primary')).toBe('#fffdfc')
     act(() => theme.setMode('system' as 'dark'))
     expect(theme.mode).toBe('dark')
     expect(modePref.resolve('default')).toBe('dark')
