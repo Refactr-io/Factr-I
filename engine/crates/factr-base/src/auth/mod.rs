@@ -148,14 +148,17 @@ pub fn running_in_test_harness() -> bool {
         if env_truthy("FACTR_ALLOW_BROWSER_IN_TESTS") {
             return false;
         }
-        std::env::current_exe()
-            .ok()
-            .map(|exe| {
-                let path = exe.to_string_lossy().replace('\\', "/");
-                path.contains("/target/") && path.contains("/deps/")
-            })
-            .unwrap_or(false)
+        std::env::current_exe().ok().is_some_and(|exe| is_test_binary_path(&exe.to_string_lossy().replace('\\', "/")))
     })
+}
+
+/// Cargo puts a test binary, named `<crate>-<16 hex digits>`, in a `deps` directory of the target directory, whatever
+/// that directory is called (`CARGO_TARGET_DIR` need not be `target`). An installed or self-dev binary never runs there.
+fn is_test_binary_path(path: &str) -> bool {
+    let name = path.rsplit('/').next().unwrap_or("");
+    let stem = name.strip_suffix(".exe").unwrap_or(name);
+    let hashed = stem.rsplit_once('-').is_some_and(|(_, h)| h.len() == 16 && h.bytes().all(|b| b.is_ascii_hexdigit()));
+    path.contains("/deps/") && (path.contains("/target/") || hashed)
 }
 
 fn env_truthy(key: &str) -> bool {

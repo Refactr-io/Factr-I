@@ -133,12 +133,24 @@ async fn the_benchmark_start_resolves_as_on_main_whatever_config_yaml_says() {
 
     // Fresh install: nothing saved, no credential anywhere. The desktop says "No AI provider is connected yet".
     let home = fresh_home(&root, "fresh");
+    // "No credential anywhere" includes the developer's own logins under $HOME: this test's home is empty.
+    let real_home = std::env::var_os("HOME");
+    // SAFETY: every test here holds ENV, so nothing else reads the environment concurrently.
+    unsafe { std::env::set_var("HOME", &home) };
+    factr_base::auth::AuthStatus::invalidate_cache();
     let (port, task) = serve(config(&home, "Claude", "claude-opus-5-5", true)).await;
     let fresh = get(port, "/api/status").await;
     // Once a pick is saved (the user chose a provider), it is no longer a fresh install.
     std::fs::write(home.join("config.yaml"), "model:\n  provider: ollama\n  default: qwen3.8:27b\n").unwrap();
     let saved = get(port, "/api/status").await;
     task.abort();
+    // SAFETY: as above.
+    unsafe {
+        match real_home {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+    }
     assert_eq!(fresh["missing_login"].as_str(), Some(factr_gateway::NO_PROVIDER_CONNECTED), "{fresh}");
     assert_eq!(saved["missing_login"], Value::Null, "{saved}");
 
