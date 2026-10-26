@@ -68,7 +68,7 @@ export const factrTheme: DesktopTheme = {
     midground: '#9a9a9a',
     midgroundForeground: '#161616',
     composerRing: '#9a9a9a',
-    destructive: '#eb534e',
+    destructive: '#f2706b',
     destructiveForeground: '#161616',
     sidebarBackground: '#1f1f1e',
     sidebarBorder: '#2d2d2d',
