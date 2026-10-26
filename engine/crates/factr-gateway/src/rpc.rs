@@ -3910,7 +3910,7 @@ pub(crate) async fn agent_run(
 
         // A one-shot run whose task names its check keeps going, through the goal machinery, while it fails.
         let control = conn.control_store().await;
-        let persisting = session_key.is_none() && persist_run::enabled() && control.as_deref().is_some_and(|store| persist_run::start(store, &session_id, prompt, timeout));
+        let persisting = session_key.is_none() && persist_run::enabled() && control.as_deref().is_some_and(|store| persist_run::start(store, &session_id, prompt, cwd, timeout));
 
         let outcome = tokio::time::timeout(timeout, async {
             conn.dispatch(

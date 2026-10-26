@@ -317,6 +317,22 @@ pub const MAX_ATTEMPT_LOG: usize = 8;
 pub const MAX_ATTEMPT_LEN: usize = 80;
 /// Consecutive auto-recorded turns examined for plateau detection.
 pub const PLATEAU_TURNS: usize = 3;
+#[cfg(test)]
+thread_local! {
+    /// Unit tests set the flags per thread: the environment is process-wide and the tests run in parallel.
+    static TEST_STALL: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Turns with the same failure or no file changes after which an unattended run stops (`FACTR_PERSIST_STALL`,
+/// 2 to 6; default `PLATEAU_TURNS`).
+fn unattended_stall_turns() -> usize {
+    #[cfg(test)]
+    if let Some(n) = TEST_STALL.with(std::cell::Cell::get) {
+        return n;
+    }
+    factr_base::factr_config::env_text("FACTR_PERSIST_STALL").and_then(|v| v.parse::<usize>().ok()).map_or(PLATEAU_TURNS, |n| n.clamp(2, 6))
+}
+
 /// An unattended goal's automatic token ceiling: this many times its first turn's fresh tokens, within the bounds.
 const AUTO_CEILING_FACTOR: i64 = 5;
 const AUTO_CEILING_MIN: i64 = 400_000;
@@ -365,6 +381,11 @@ pub fn observe_tool(session_id: &str, name: &str, args: &Value, result: &str) {
         l.rsplit_once("xit code: ").is_some_and(|(_, code)| code.trim() != "0")
     });
     let failed = result.starts_with("Error:") || nonzero_exit;
+    if name == "bash" {
+        if let Some(line) = args["command"].as_str() {
+            crate::check_memo::note_observed(session_id, line, result);
+        }
+    }
     let cmd = args["command"].as_str().unwrap_or("").to_lowercase();
     let verify_cmd = name == "bash" && crate::goal_ratchet::is_verify_command(&cmd);
     let mut map = turn_obs().lock().unwrap_or_else(|e| e.into_inner());
@@ -450,9 +471,14 @@ impl SessionGoal {
     /// changes). Also trips when the last 3 entries of any kind are
     /// identical (model-supplied notes that repeat).
     pub fn plateaued(&self) -> bool {
+        self.plateaued_over(PLATEAU_TURNS)
+    }
+
+    /// `plateaued` over the last `turns` turns (an unattended run may stop sooner: `FACTR_PERSIST_STALL`).
+    pub fn plateaued_over(&self, turns: usize) -> bool {
         let n = self.attempt_log.len();
-        if n >= PLATEAU_TURNS {
-            let last = &self.attempt_log[n - PLATEAU_TURNS..];
+        if n >= turns {
+            let last = &self.attempt_log[n - turns..];
             if last.iter().all(|line| line == &last[0] && !line.starts_with("auto ")) {
                 return true;
             }
@@ -463,10 +489,10 @@ impl SessionGoal {
             .filter(|l| l.starts_with("auto "))
             .map(String::as_str)
             .collect();
-        if auto.len() < PLATEAU_TURNS {
+        if auto.len() < turns {
             return false;
         }
-        let last = &auto[auto.len() - PLATEAU_TURNS..];
+        let last = &auto[auto.len() - turns..];
         let field = |l: &str, key: &str| -> String {
             l.split(" | ")
                 .find_map(|p| p.strip_prefix(key))
@@ -693,11 +719,11 @@ impl SessionGoal {
             String::new()
         };
         if self.unattended {
+            // A short retry prompt: the last two attempts and no re-reading, so each round costs few tokens.
             let checks = self.gates.iter().map(|g| format!("`{}`", g.command)).collect::<Vec<_>>().join(", ");
+            let recent = self.attempt_log.iter().rev().take(2).rev().map(|l| format!("- {l}\n")).collect::<String>();
             return format!(
-                "[The task's check still fails]\nThe host re-runs {checks} after every turn and ends the task when it passes; session_goal calls are not needed.{log_block}{steer}\n\n\
-                 Find the cause in the output below, change one thing, run the check yourself to see the result, and stop only when it passes. \
-                 If you cannot make it pass, say plainly what passes, what does not and why, and stop."
+                "[{checks} still fails]\nLast attempts:\n{recent}{steer}\nRead the failure below, change only what it points to with the smallest edit, run the check again, and stop when it passes. Do not re-read files you already have."
             );
         }
         let contract = self.contract_block();
@@ -1214,10 +1240,19 @@ impl ControlStore {
 /// A gate passes when it exits 0 and prints no failing report; its result enters this turn's observation
 /// (score and verification) so the ratchet and the attempt log record the host's own run. The results are
 /// handed back for the gate loop, which must not run them twice.
-fn run_gates_early(goal: &mut SessionGoal, cwd: Option<&Path>, o: &mut TurnObs) -> std::vec::IntoIter<GateResult> {
+fn run_gates_early(goal: &mut SessionGoal, cwd: Option<&Path>, o: &mut TurnObs, session: &str) -> std::vec::IntoIter<GateResult> {
     let mut results = Vec::new();
     for gate in &mut goal.gates {
-        let (mut result, failing_report) = run_gate_reporting(gate, cwd);
+        // The model (or the engine, right after a change) already ran this check on these exact sources.
+        let known = crate::check_memo::recall(session, &gate.command);
+        let (mut result, failing_report) = match known {
+            Some((passed, exit_code, output)) => {
+                gate.attempts += 1;
+                gate.last_exit_code = Some(exit_code);
+                (GateResult { passed, exit_code, output }, false)
+            }
+            None => run_gate_reporting(gate, cwd),
+        };
         result.passed = result.passed && !failing_report;
         o.scores.insert(command_key(&gate.command), score_of(result.passed, &result.output));
         o.verified |= result.passed;
@@ -1288,7 +1323,7 @@ pub fn after_turn_in(
             let mut o = obs.unwrap_or_default();
             // An unattended run's gates run first, so their result (the host's own, not the model's claim) is what
             // the attempt log and the ratchet record.
-            let mut early = if goal.unattended && !subagents_running { run_gates_early(&mut goal, cwd, &mut o) } else { Vec::new().into_iter() };
+            let mut early = if goal.unattended && !subagents_running { run_gates_early(&mut goal, cwd, &mut o, session_id) } else { Vec::new().into_iter() };
             goal.record_attempt(format!(
                 "auto t{} f{} | files={} | ver={} | err={}",
                 o.tools,
@@ -1351,13 +1386,13 @@ pub fn after_turn_in(
                         }
                         gate_note = format!(
                             "\n\n[Quality gate failed] `{command}`\nGate output (tail):\n```\n{}\n```\nFix the problem so the gate passes; the goal cannot complete until every gate does.",
-                            output.chars().rev().take(2000).collect::<Vec<_>>().into_iter().rev().collect::<String>()
+                            output.chars().rev().take(if goal.unattended { 1200 } else { 2000 }).collect::<Vec<_>>().into_iter().rev().collect::<String>()
                         );
                     }
                 }
             }
             // No progress (the same failure, or no file changes, for several turns in a row) ends an unattended run.
-            let stalled = goal.unattended && goal.plateaued();
+            let stalled = goal.unattended && goal.plateaued_over(unattended_stall_turns());
             if let Some(reason) = goal.out_of_budget().or(stalled.then_some("no progress")) {
                 goal.status = GoalStatus::Paused;
                 goal.paused_reason = Some(format!(
@@ -2367,7 +2402,7 @@ mod tests {
         assert!(store.active_sessions().unwrap().is_empty(), "no driver or window continues an unattended goal");
         let next = after_turn_in(&store, "u", 10, false, false, Some(&dir)).unwrap();
         let Some(Continuation::Goal(prompt)) = next else { panic!("a failing check continues the run") };
-        assert!(prompt.contains("check still fails") && prompt.contains("session_goal calls are not needed"), "{prompt}");
+        assert!(prompt.contains("`./check.sh` still fails") && prompt.contains("smallest edit"), "{prompt}");
         assert!(prompt.contains("[Quality gate failed]") && prompt.contains("row 3 differs"), "the failed output comes back: {prompt}");
         let g = store.get_goal("u").unwrap().unwrap();
         assert_eq!(g.status, GoalStatus::Active);
@@ -2419,6 +2454,21 @@ mod tests {
         store.set_goal("fixed", Some(&fixed)).unwrap();
         after_turn(&store, "fixed", 10, false, false).unwrap();
         assert_eq!(store.get_goal("fixed").unwrap().unwrap().token_budget, Some(123_456));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_retry_prompt_is_short_and_a_shorter_stall_limit_ends_the_run_sooner() {
+        let store = ControlStore::memory().unwrap();
+        unattended(&store, "u", "echo 'same failure'; exit 1", 9);
+        let Some(Continuation::Goal(prompt)) = after_turn(&store, "u", 0, false, false).unwrap() else { panic!() };
+        assert!(prompt.contains("still fails") && prompt.contains("smallest edit") && !prompt.contains("Recent attempts (most"), "{prompt}");
+        assert!(prompt.len() < 700, "{} chars", prompt.len());
+        // Three turns with the same failure end it by default; with the limit at two a fresh run stops at two.
+        TEST_STALL.with(|c| c.set(Some(2)));
+        assert!(after_turn(&store, "u", 0, false, false).unwrap().is_none(), "the same failure over two turns");
+        assert!(store.get_goal("u").unwrap().unwrap().paused_reason.unwrap().contains("no progress"));
+        TEST_STALL.with(|c| c.set(None));
     }
 
     #[cfg(unix)]

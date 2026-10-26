@@ -1709,7 +1709,14 @@ impl Agent {
                         Ok(output) => {
                             let mut output = cap_tool_output_for_history(&tc.name, output);
                             super::bg_guard::annotate_edit(&tc.name, &self.session.id, tool_wall, &mut stop_nudge.stale_warned, &mut output).await;
-                            stop_nudge.observe_full(&tc.name, &tc.input, super::auto_verify::exit_code_of(&output.output, false), output.metadata.as_ref(), Some(&output.output));
+                            // A persisting run's own run of its check that fails the way it failed last time gets a note.
+                        if tc.name == "bash" {
+                            if let Some(note) = tc.input["command"].as_str().and_then(|command| factr_learn::check_memo::stall_note(&self.session.id, command, &output.output)) {
+                                output.output.push_str("\n\n");
+                                output.output.push_str(&note);
+                            }
+                        }
+                        stop_nudge.observe_full(&tc.name, &tc.input, super::auto_verify::exit_code_of(&output.output, false), output.metadata.as_ref(), Some(&output.output));
                             let verdict =
                                 repeat_guard.observe(&tc.name, &tc.input, &output.output, false);
                             guard_stop =
