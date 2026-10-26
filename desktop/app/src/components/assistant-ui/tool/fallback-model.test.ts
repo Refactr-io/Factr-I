@@ -9,7 +9,8 @@ import {
   inlineDiffFromResult,
   MAX_TOOL_RENDER_CHARS,
   prettyJson,
-  type ToolPart
+  type ToolPart,
+  toolPreviewOutcome
 } from './fallback-model'
 
 const part = (overrides: Partial<ToolPart>): ToolPart => ({
@@ -563,5 +564,20 @@ describe('buildToolView repl cells', () => {
     const view = buildToolView(part({ args: { code: 'boom()' }, result: 'Error: NameError\n', toolName: 'repl' }), '')
 
     expect(view.detail).toContain('NameError')
+  })
+})
+
+describe('toolPreviewOutcome for a file a tool wrote', () => {
+  const outcome = (toolName: string, args: Record<string, unknown>) =>
+    toolPreviewOutcome(part({ args, result: 'ok', toolName })).previewTarget
+
+  it('names an HTML file from the write arguments, absolute or relative', () => {
+    expect(outcome('write', { file_path: '/work/site/index.html' })).toBe('/work/site/index.html')
+    expect(outcome('edit', { file_path: 'site/page.htm' })).toBe('./site/page.htm')
+  })
+
+  it('leaves other files and addresses alone', () => {
+    expect(outcome('write', { file_path: '/work/site/app.js' })).toBe('')
+    expect(outcome('write', { file_path: '/work/report.pdf' })).toBe('')
   })
 })

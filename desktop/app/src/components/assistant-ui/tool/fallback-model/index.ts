@@ -755,6 +755,8 @@ function durationLabel(resultRecord: Record<string, unknown>): string | undefine
   return formatDurationSeconds(seconds)
 }
 
+const FILE_WRITING_TOOLS = new Set(['apply_patch', 'edit', 'edit_file', 'multiedit', 'patch', 'replace', 'write', 'write_file'])
+
 function toolPreviewTarget(toolName: string, args: Record<string, unknown>, result: Record<string, unknown>): string {
   // Reading an existing file is not producing a deliverable.
   if (toolName === 'read_file' || toolName === 'search_files' || toolName === 'list_files') {
@@ -774,6 +776,15 @@ function toolPreviewTarget(toolName: string, args: Record<string, unknown>, resu
     const explicit = firstStringField(args, ['url', 'search_term', 'query']) || firstStringField(result, ['url'])
 
     return looksLikeUrl(explicit) ? explicit : findFirstUrl(args, result)
+  }
+
+  // The web page a tool wrote: named in its arguments (`file_path` is what the write and edit tools call it).
+  if (FILE_WRITING_TOOLS.has(toolName)) {
+    const written = firstStringField(args, ['file_path', 'path', 'file', 'filepath'])
+
+    if (written && /\.html?$/i.test(written) && !looksLikeUrl(written)) {
+      return looksLikePath(written) ? written : `./${written}`
+    }
   }
 
   if (isFileEditTool(toolName)) {
