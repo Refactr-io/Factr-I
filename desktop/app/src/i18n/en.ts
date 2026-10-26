@@ -4099,6 +4099,7 @@ export const en: Translations = {
     popIn: 'Pop in',
     popOut: 'Pop out',
     linkHint: '⌘/Ctrl-click for preview pane',
+    htmlLinkHint: '⌘/Ctrl-click to open in your browser',
     sourceLineTitle: 'Click to select · shift-click to extend · drag to composer',
     source: 'SOURCE',
     renderedPreview: 'PREVIEW',

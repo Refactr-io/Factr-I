@@ -1,6 +1,7 @@
 import { isPreviewableTarget, toolPreviewOutcome } from '@/components/assistant-ui/tool/fallback-model'
 import { reportFirstBuildToolComplete } from '@/components/onboarding-chat/first-build'
 import { toolCallOwnerMessageId } from '@/lib/chat-messages'
+import { autoOpenHtmlFile, isLocalHtmlTarget } from '@/lib/html-auto-open'
 import { invalidateSlashCompletions } from '@/lib/slash-completion-cache'
 import { refreshBackgroundProcesses } from '@/store/composer-status'
 import { flashPetActivity, setPetActivity } from '@/store/pet'
@@ -94,6 +95,15 @@ export function handleToolEvent(ctx: GatewayEventContext): boolean {
         if (status === 'success' && previewTarget && isPreviewableTarget(previewTarget)) {
           const record = pendingProduction ? reofferPreviewArtifact : recordPreviewArtifact
           record(sessionId, previewTarget, state?.cwd ?? '', storedSessionIdForRuntimeId(sessionId) ?? sessionId)
+
+          // A page the agent just built opens in the in-app pane the first time (later edits reload it there).
+          if (isActiveEvent && isLocalHtmlTarget(previewTarget)) {
+            void autoOpenHtmlFile(
+              storedSessionIdForRuntimeId(sessionId) ?? sessionId,
+              previewTarget,
+              state?.cwd || undefined
+            )
+          }
         }
       }
 

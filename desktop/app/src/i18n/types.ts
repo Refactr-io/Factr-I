@@ -3485,6 +3485,7 @@ export interface Translations {
     popIn: string
     popOut: string
     linkHint: string
+    htmlLinkHint: string
     sourceLineTitle: string
     source: string
     renderedPreview: string

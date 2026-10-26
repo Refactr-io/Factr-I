@@ -253,6 +253,21 @@ export function openLink(href: string, options: { native?: boolean } = {}): void
     return
   }
 
+  // A local HTML page opens in the in-app pane like any page; ⌘/Ctrl-click (native) hands it to the system.
+  if (!options.native && !hudForcesNativeLinks() && /^file:/i.test(target) && /\.html?$/i.test(target.split(/[?#]/, 1)[0] ?? '')) {
+    void Promise.all([import('@/lib/local-preview'), import('@/store/preview')]).then(async ([{ localPreviewTarget }, { openPreview, renderedHtmlTarget }]) => {
+      const preview = localPreviewTarget(target)
+
+      if (preview) {
+        openPreview(renderedHtmlTarget(preview))
+      } else {
+        openExternalLink(target)
+      }
+    })
+
+    return
+  }
+
   if (
     options.native ||
     isConnectorAuthorizationLink(target) ||
