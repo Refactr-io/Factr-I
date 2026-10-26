@@ -4,15 +4,16 @@ import type { CSSProperties } from 'react'
 import { isMacPlatform } from '@/lib/platform'
 import type { DesktopTerminalPalette } from '@/themes/types'
 
-// VS Code's default integrated-terminal palette (terminalColorRegistry.ts) — a
+// The ANSI slots are VS Code's default integrated-terminal palette (terminalColorRegistry.ts) — a
 // fixed table per theme type, not luminance-derived. Light/dark diverge on
-// purpose so each stays legible (e.g. mustard yellow on white).
+// purpose so each stays legible (e.g. mustard yellow on white). Background, foreground, cursor and
+// selection follow the app theme.
 const DARK_THEME: ITheme = {
-  background: '#1e1e1e',
-  foreground: '#cccccc',
-  cursor: '#cccccc',
-  cursorAccent: '#1e1e1e',
-  selectionBackground: '#264f7866',
+  background: '#161616',
+  foreground: '#dedede',
+  cursor: '#dedede',
+  cursorAccent: '#161616',
+  selectionBackground: '#9a9a9a61',
   black: '#000000',
   red: '#cd3131',
   green: '#0dbc79',
@@ -32,11 +33,11 @@ const DARK_THEME: ITheme = {
 }
 
 const LIGHT_THEME: ITheme = {
-  background: '#ffffff',
-  foreground: '#333333',
-  cursor: '#333333',
-  cursorAccent: '#ffffff',
-  selectionBackground: '#add6ff80',
+  background: '#f8f8f8',
+  foreground: '#132732',
+  cursor: '#132732',
+  cursorAccent: '#f8f8f8',
+  selectionBackground: '#b9c9d299',
   black: '#000000',
   red: '#cd3131',
   green: '#00bc00',

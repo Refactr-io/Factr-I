@@ -76,7 +76,7 @@ export function ReasoningPill({ disabled, model }: { disabled: boolean; model: C
             className={cn(
               PILL,
               isMaxEffort(clamp?.wire ?? effort) &&
-                'text-[#6f5ad6] hover:text-[#6f5ad6] dark:text-[#b39dff] dark:hover:text-[#b39dff]'
+                'text-(--ui-blue) hover:text-(--ui-blue)'
             )}
             data-testid="reasoning-pill"
             disabled={disabled}

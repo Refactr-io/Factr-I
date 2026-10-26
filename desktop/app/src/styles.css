@@ -241,6 +241,129 @@
   --color-midground: var(--dt-midground);
   --color-midground-foreground: var(--dt-midground-foreground);
 
+  /* Tailwind's palette names resolve to the semantic palette, so a stray amber/emerald/red class follows the theme.
+     Shades mix the token toward white (50 to 400) or black (600 to 900). */
+  --color-amber-50: color-mix(in srgb, var(--ui-orange) 8%, white);
+  --color-amber-100: color-mix(in srgb, var(--ui-orange) 16%, white);
+  --color-amber-200: color-mix(in srgb, var(--ui-orange) 30%, white);
+  --color-amber-300: color-mix(in srgb, var(--ui-orange) 52%, white);
+  --color-amber-400: color-mix(in srgb, var(--ui-orange) 78%, white);
+  --color-amber-500: var(--ui-orange);
+  --color-amber-600: color-mix(in srgb, var(--ui-orange) 84%, black);
+  --color-amber-700: color-mix(in srgb, var(--ui-orange) 68%, black);
+  --color-amber-800: color-mix(in srgb, var(--ui-orange) 52%, black);
+  --color-amber-900: color-mix(in srgb, var(--ui-orange) 38%, black);
+  --color-orange-50: color-mix(in srgb, var(--ui-orange) 8%, white);
+  --color-orange-100: color-mix(in srgb, var(--ui-orange) 16%, white);
+  --color-orange-200: color-mix(in srgb, var(--ui-orange) 30%, white);
+  --color-orange-300: color-mix(in srgb, var(--ui-orange) 52%, white);
+  --color-orange-400: color-mix(in srgb, var(--ui-orange) 78%, white);
+  --color-orange-500: var(--ui-orange);
+  --color-orange-600: color-mix(in srgb, var(--ui-orange) 84%, black);
+  --color-orange-700: color-mix(in srgb, var(--ui-orange) 68%, black);
+  --color-orange-800: color-mix(in srgb, var(--ui-orange) 52%, black);
+  --color-orange-900: color-mix(in srgb, var(--ui-orange) 38%, black);
+  --color-yellow-50: color-mix(in srgb, var(--ui-yellow) 8%, white);
+  --color-yellow-100: color-mix(in srgb, var(--ui-yellow) 16%, white);
+  --color-yellow-200: color-mix(in srgb, var(--ui-yellow) 30%, white);
+  --color-yellow-300: color-mix(in srgb, var(--ui-yellow) 52%, white);
+  --color-yellow-400: color-mix(in srgb, var(--ui-yellow) 78%, white);
+  --color-yellow-500: var(--ui-yellow);
+  --color-yellow-600: color-mix(in srgb, var(--ui-yellow) 84%, black);
+  --color-yellow-700: color-mix(in srgb, var(--ui-yellow) 68%, black);
+  --color-yellow-800: color-mix(in srgb, var(--ui-yellow) 52%, black);
+  --color-yellow-900: color-mix(in srgb, var(--ui-yellow) 38%, black);
+  --color-emerald-50: color-mix(in srgb, var(--ui-green) 8%, white);
+  --color-emerald-100: color-mix(in srgb, var(--ui-green) 16%, white);
+  --color-emerald-200: color-mix(in srgb, var(--ui-green) 30%, white);
+  --color-emerald-300: color-mix(in srgb, var(--ui-green) 52%, white);
+  --color-emerald-400: color-mix(in srgb, var(--ui-green) 78%, white);
+  --color-emerald-500: var(--ui-green);
+  --color-emerald-600: color-mix(in srgb, var(--ui-green) 84%, black);
+  --color-emerald-700: color-mix(in srgb, var(--ui-green) 68%, black);
+  --color-emerald-800: color-mix(in srgb, var(--ui-green) 52%, black);
+  --color-emerald-900: color-mix(in srgb, var(--ui-green) 38%, black);
+  --color-green-50: color-mix(in srgb, var(--ui-green) 8%, white);
+  --color-green-100: color-mix(in srgb, var(--ui-green) 16%, white);
+  --color-green-200: color-mix(in srgb, var(--ui-green) 30%, white);
+  --color-green-300: color-mix(in srgb, var(--ui-green) 52%, white);
+  --color-green-400: color-mix(in srgb, var(--ui-green) 78%, white);
+  --color-green-500: var(--ui-green);
+  --color-green-600: color-mix(in srgb, var(--ui-green) 84%, black);
+  --color-green-700: color-mix(in srgb, var(--ui-green) 68%, black);
+  --color-green-800: color-mix(in srgb, var(--ui-green) 52%, black);
+  --color-green-900: color-mix(in srgb, var(--ui-green) 38%, black);
+  --color-red-50: color-mix(in srgb, var(--ui-red) 8%, white);
+  --color-red-100: color-mix(in srgb, var(--ui-red) 16%, white);
+  --color-red-200: color-mix(in srgb, var(--ui-red) 30%, white);
+  --color-red-300: color-mix(in srgb, var(--ui-red) 52%, white);
+  --color-red-400: color-mix(in srgb, var(--ui-red) 78%, white);
+  --color-red-500: var(--ui-red);
+  --color-red-600: color-mix(in srgb, var(--ui-red) 84%, black);
+  --color-red-700: color-mix(in srgb, var(--ui-red) 68%, black);
+  --color-red-800: color-mix(in srgb, var(--ui-red) 52%, black);
+  --color-red-900: color-mix(in srgb, var(--ui-red) 38%, black);
+  --color-rose-50: color-mix(in srgb, var(--ui-red) 8%, white);
+  --color-rose-100: color-mix(in srgb, var(--ui-red) 16%, white);
+  --color-rose-200: color-mix(in srgb, var(--ui-red) 30%, white);
+  --color-rose-300: color-mix(in srgb, var(--ui-red) 52%, white);
+  --color-rose-400: color-mix(in srgb, var(--ui-red) 78%, white);
+  --color-rose-500: var(--ui-red);
+  --color-rose-600: color-mix(in srgb, var(--ui-red) 84%, black);
+  --color-rose-700: color-mix(in srgb, var(--ui-red) 68%, black);
+  --color-rose-800: color-mix(in srgb, var(--ui-red) 52%, black);
+  --color-rose-900: color-mix(in srgb, var(--ui-red) 38%, black);
+  --color-pink-50: color-mix(in srgb, var(--ui-red) 8%, white);
+  --color-pink-100: color-mix(in srgb, var(--ui-red) 16%, white);
+  --color-pink-200: color-mix(in srgb, var(--ui-red) 30%, white);
+  --color-pink-300: color-mix(in srgb, var(--ui-red) 52%, white);
+  --color-pink-400: color-mix(in srgb, var(--ui-red) 78%, white);
+  --color-pink-500: var(--ui-red);
+  --color-pink-600: color-mix(in srgb, var(--ui-red) 84%, black);
+  --color-pink-700: color-mix(in srgb, var(--ui-red) 68%, black);
+  --color-pink-800: color-mix(in srgb, var(--ui-red) 52%, black);
+  --color-pink-900: color-mix(in srgb, var(--ui-red) 38%, black);
+  --color-sky-50: color-mix(in srgb, var(--ui-blue) 8%, white);
+  --color-sky-100: color-mix(in srgb, var(--ui-blue) 16%, white);
+  --color-sky-200: color-mix(in srgb, var(--ui-blue) 30%, white);
+  --color-sky-300: color-mix(in srgb, var(--ui-blue) 52%, white);
+  --color-sky-400: color-mix(in srgb, var(--ui-blue) 78%, white);
+  --color-sky-500: var(--ui-blue);
+  --color-sky-600: color-mix(in srgb, var(--ui-blue) 84%, black);
+  --color-sky-700: color-mix(in srgb, var(--ui-blue) 68%, black);
+  --color-sky-800: color-mix(in srgb, var(--ui-blue) 52%, black);
+  --color-sky-900: color-mix(in srgb, var(--ui-blue) 38%, black);
+  --color-blue-50: color-mix(in srgb, var(--ui-blue) 8%, white);
+  --color-blue-100: color-mix(in srgb, var(--ui-blue) 16%, white);
+  --color-blue-200: color-mix(in srgb, var(--ui-blue) 30%, white);
+  --color-blue-300: color-mix(in srgb, var(--ui-blue) 52%, white);
+  --color-blue-400: color-mix(in srgb, var(--ui-blue) 78%, white);
+  --color-blue-500: var(--ui-blue);
+  --color-blue-600: color-mix(in srgb, var(--ui-blue) 84%, black);
+  --color-blue-700: color-mix(in srgb, var(--ui-blue) 68%, black);
+  --color-blue-800: color-mix(in srgb, var(--ui-blue) 52%, black);
+  --color-blue-900: color-mix(in srgb, var(--ui-blue) 38%, black);
+  --color-violet-50: color-mix(in srgb, var(--ui-purple) 8%, white);
+  --color-violet-100: color-mix(in srgb, var(--ui-purple) 16%, white);
+  --color-violet-200: color-mix(in srgb, var(--ui-purple) 30%, white);
+  --color-violet-300: color-mix(in srgb, var(--ui-purple) 52%, white);
+  --color-violet-400: color-mix(in srgb, var(--ui-purple) 78%, white);
+  --color-violet-500: var(--ui-purple);
+  --color-violet-600: color-mix(in srgb, var(--ui-purple) 84%, black);
+  --color-violet-700: color-mix(in srgb, var(--ui-purple) 68%, black);
+  --color-violet-800: color-mix(in srgb, var(--ui-purple) 52%, black);
+  --color-violet-900: color-mix(in srgb, var(--ui-purple) 38%, black);
+  --color-purple-50: color-mix(in srgb, var(--ui-purple) 8%, white);
+  --color-purple-100: color-mix(in srgb, var(--ui-purple) 16%, white);
+  --color-purple-200: color-mix(in srgb, var(--ui-purple) 30%, white);
+  --color-purple-300: color-mix(in srgb, var(--ui-purple) 52%, white);
+  --color-purple-400: color-mix(in srgb, var(--ui-purple) 78%, white);
+  --color-purple-500: var(--ui-purple);
+  --color-purple-600: color-mix(in srgb, var(--ui-purple) 84%, black);
+  --color-purple-700: color-mix(in srgb, var(--ui-purple) 68%, black);
+  --color-purple-800: color-mix(in srgb, var(--ui-purple) 52%, black);
+  --color-purple-900: color-mix(in srgb, var(--ui-purple) 38%, black);
+
   --font-sans: var(--dt-font-sans);
   --font-mono: var(--dt-font-mono);
   --font-weight-bold: var(--weight-heading);
@@ -297,20 +420,20 @@
   :root {
     color-scheme: light;
 
-    --theme-foreground: #0a0a0a;
-    --theme-primary: #0a0a0a;
-    --theme-secondary: #f2ede5;
-    --theme-accent-soft: #f2ede5;
-    --theme-midground: #3b3b3b;
-    --theme-warm: #545454;
-    --theme-background-seed: #ffffff;
-    --theme-sidebar-seed: #f9f8f6;
-    --theme-card-seed: #f9f8f6;
-    --theme-elevated-seed: #ffffff;
-    --theme-bubble-seed: #f2ede5;
-    --theme-neutral-chrome: #ffffff;
-    --theme-neutral-sidebar: #f9f8f6;
-    --theme-neutral-card: #f9f8f6;
+    --theme-foreground: #132732;
+    --theme-primary: #252525;
+    --theme-secondary: #f0f0f0;
+    --theme-accent-soft: #dbdbda;
+    --theme-midground: #6e7a80;
+    --theme-warm: #252525;
+    --theme-background-seed: #f8f8f8;
+    --theme-sidebar-seed: #e9e9e8;
+    --theme-card-seed: #fafafa;
+    --theme-elevated-seed: #fdfdfd;
+    --theme-bubble-seed: #efefef;
+    --theme-neutral-chrome: #f8f8f8;
+    --theme-neutral-sidebar: #e9e9e8;
+    --theme-neutral-card: #fafafa;
     --theme-mix-chrome: 100%;
     --theme-mix-sidebar: 100%;
     --theme-mix-card: 100%;
@@ -334,12 +457,12 @@
     --ui-accent: var(--theme-midground);
     --ui-accent-secondary: var(--theme-primary);
     --ui-warm: var(--theme-warm);
-    --ui-red: #cf2d56;
-    --ui-orange: #db704b;
+    --ui-red: #c8372f;
+    --ui-orange: #a85b10;
     --ui-yellow: #c08532;
-    --ui-green: #1f8a65;
+    --ui-green: #1f7a3a;
     --ui-cyan: #4c7f8c;
-    --ui-blue: #545454;
+    --ui-blue: #0066cc;
     --ui-purple: #9e94d5;
     --context-usage-system: color-mix(in srgb, var(--ui-base) 55%, transparent);
     --context-usage-tools: var(--ui-purple);
@@ -511,9 +634,9 @@
       var(--theme-neutral-card)
     );
     --ui-chat-bubble-opaque-background: var(--ui-bg-editor);
-    --ui-inline-code-background: color-mix(in srgb, #27251e 7%, transparent);
+    --ui-inline-code-background: color-mix(in srgb, #132732 7%, transparent);
     --ui-inline-code-foreground: #b02a4a;
-    --ui-selection-background: color-mix(in srgb, #d5d9e2 65%, transparent);
+    --ui-selection-background: color-mix(in srgb, #b9c9d2 60%, transparent);
 
     --dt-background: var(--ui-bg-chrome);
     --dt-foreground: var(--ui-text-primary);
@@ -524,11 +647,15 @@
     --dt-popover: color-mix(in srgb, var(--ui-bg-elevated) 96%, transparent);
     --dt-popover-foreground: var(--ui-text-primary);
     --dt-primary: var(--theme-primary);
-    --dt-primary-foreground: #ffffff;
+    --dt-primary-foreground: #fbfbfb;
     /* The "on" colour of controls (switch, checkbox, slider fill): the standard system blue. #007AFF in light is 4.0:1
        against Rose Alloy; the dark value is set under :root.dark. The thumb or check on it is Rose Alloy. */
     --ui-control-on: #007aff;
     --ui-control-on-foreground: #fffdfc;
+    /* The Settings area's accent: blue. Selected nav row fill (white text on it clears 4.5:1) and the nav icons. */
+    --ui-settings-accent: #0066cc;
+    --ui-settings-accent-foreground: #ffffff;
+    --ui-settings-accent-icon: #1a73d9;
     /* Selected segment of a segmented control: a raised surface chip over the tinted track. */
     --ui-segment-thumb: var(--ui-bg-editor);
     /* Fixed white/black boot-paint defaults, overridden by the active mode. */
@@ -562,7 +689,7 @@
        own surfaces — chroma 0 is the only thing removed. */
     --dt-scrollbar-thumb: oklch(from var(--dt-midground) l 0 h);
     --dt-composer-ring: var(--ui-base);
-    --dt-destructive: #cf2d56;
+    --dt-destructive: #c8372f;
     --dt-destructive-foreground: #ffffff;
     --dt-sidebar-bg: var(--ui-bg-sidebar);
     --dt-sidebar-border: var(--ui-stroke-secondary);
@@ -707,31 +834,36 @@
 
   :root.dark {
     /* Per-mode mix knobs — overridden inline by `applyTheme()` per skin. */
-    --theme-foreground: #ffffff;
-    --theme-primary: #ffffff;
-    --theme-secondary: #242424;
-    --theme-accent-soft: #242424;
-    --theme-midground: #d5d9e2;
-    --theme-warm: #d5d9e2;
+    --theme-foreground: #dedede;
+    --theme-primary: #dedede;
+    --theme-secondary: #2a2a2a;
+    --theme-accent-soft: #2a2a2a;
+    --theme-midground: #9a9a9a;
+    --theme-warm: #dedede;
     --theme-background-seed: #161616;
-    --theme-sidebar-seed: #151515;
-    --theme-card-seed: #1e1e1e;
-    --theme-elevated-seed: #262626;
-    --theme-bubble-seed: #242424;
+    --theme-sidebar-seed: #1f1f1e;
+    --theme-card-seed: #222222;
+    --theme-elevated-seed: #2a2a2a;
+    --theme-bubble-seed: #2a2a2a;
     --theme-mix-chrome: 100%;
     --theme-mix-card: 100%;
     --theme-mix-elevated: 100%;
     --theme-mix-bubble: 100%;
     --theme-neutral-chrome: #161616;
-    --theme-neutral-sidebar: #151515;
-    --theme-neutral-card: #1e1e1e;
-    --dt-primary-foreground: #0a0a0a;
-    --dt-primary-solid-foreground: #0a0a0a;
+    --theme-neutral-sidebar: #1f1f1e;
+    --theme-neutral-card: #222222;
+    --dt-primary-foreground: #161616;
+    --dt-primary-solid-foreground: #161616;
 
     /* Dark-only accent palette overrides. */
-    --ui-red: #e75e78;
-    --ui-green: #55a583;
+    --ui-red: #f2706b;
+    --ui-orange: #f09748;
+    --ui-green: #68ce67;
+    --ui-blue: #5aaaff;
     --ui-cyan: #6f9ba6;
+    --ui-settings-accent: #1a6fd8;
+    --ui-settings-accent-foreground: #ffffff;
+    --ui-settings-accent-icon: #4da3ff;
     --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 62%, #fff);
     --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 62%, #fff);
 
@@ -746,7 +878,7 @@
 
     --ui-inline-code-background: color-mix(in srgb, #ffffff 9%, transparent);
     --ui-inline-code-foreground: #ff9fb2;
-    --ui-selection-background: color-mix(in srgb, #d5d9e2 32%, transparent);
+    --ui-selection-background: color-mix(in srgb, #9a9a9a 38%, transparent);
     /* A dark card sits ABOVE the chrome (#161618 over #0d0d0e), so an inline
        widget wearing the raw card fill reads as a lit panel. Take it down a
        touch — still clearly a surface, no longer the brightest thing in the
@@ -3006,7 +3138,7 @@ button[data-slot='aui_msg-reactions'] svg {
   z-index: 0;
   pointer-events: none;
   border-radius: var(--shape-radius-lg) var(--shape-radius-lg) 0 0;
-  background: rgb(12 14 18 / 0.62);
+  background: rgb(22 22 22 / 0.62);
   /* Slides down behind the bar as it fades. A TRANSFORM, not height: it is
      composited, so it stays smooth where animating height re-lays-out the panel
      every frame and looked coarse — and it leaves the box alone, which matters
@@ -3054,7 +3186,7 @@ button[data-slot='aui_msg-reactions'] svg {
   /* Same dark scrim under Glass. The docked thread's `--ui-bg-chrome` follows
      the theme and goes near-white on a light one, which is the wrong paper for
      this band's white ink — the HUD is over a game, not inside the app. */
-  background: rgb(12 14 18 / 0.55);
+  background: rgb(22 22 22 / 0.55);
 }
 
 /* The band spans the window edge to edge under glass. The 8px side inset keeps
@@ -3088,7 +3220,7 @@ button[data-slot='aui_msg-reactions'] svg {
    never below the resting tint, so a high lever cannot make focusing the
    composer paint MORE transparent than glancing at it. */
 :root[data-factr-glass-on] [data-hud-shell][data-hud-typing] [data-hud-glass] {
-  background: rgb(12 14 18 / 0.72);
+  background: rgb(22 22 22 / 0.72);
 }
 
 /* Engaged means the caret is in the composer, not merely that the window holds
@@ -3098,7 +3230,7 @@ button[data-slot='aui_msg-reactions'] svg {
    below stays on :focus-within — being permissive about what can be clicked is
    harmless, being permissive about what lights up is not. */
 [data-hud-shell][data-hud-typing] [data-hud-glass] {
-  background: rgb(12 14 18 / 0.82);
+  background: rgb(22 22 22 / 0.82);
 }
 
 /* Flipped, the sheet hangs from the bar instead of standing on it. */
@@ -3929,8 +4061,8 @@ html[data-hud-window] [data-slot='popover-content'] {
 :root {
   --shell-window-bg: var(--ui-bg-sidebar);
   --shell-block-bg: var(--ui-bg-chrome);
-  /* Light: the list sits on the block (a hair off it), so only the window frame is grey. */
-  --shell-list-bg: color-mix(in srgb, var(--shell-block-bg), var(--ui-base) 2%);
+  /* The list column wears the frame's tone, so the lighter content canvas reads as one card beside it. */
+  --shell-list-bg: var(--shell-window-bg);
   /* The block's rim is its own tone one small step off, not a light stroke:
      it reads as the block's edge, never as a stray line under the last row. */
   --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), black 7%);
@@ -3938,11 +4070,11 @@ html[data-hud-window] [data-slot='popover-content'] {
 }
 
 :root[data-factr-mode='dark'] {
-  --shell-window-bg: var(--ui-bg-chrome);
-  /* A clear step lighter than the (see-through) frame, as in System Settings: the content block is the solid,
-     lighter surface and the frame around it is the glass. */
-  --shell-block-bg: color-mix(in srgb, var(--ui-bg-sidebar), white 6%);
-  --shell-list-bg: color-mix(in srgb, var(--shell-block-bg), var(--ui-base) 4%);
+  /* Same structure as light, from the reference palette: the frame and sidebar are the lighter tone and the content
+     block is the darker canvas. */
+  --shell-window-bg: var(--ui-bg-sidebar);
+  --shell-block-bg: var(--ui-bg-chrome);
+  --shell-list-bg: var(--shell-window-bg);
   --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), white 5%);
   --shell-tab-active-bg: color-mix(in srgb, var(--shell-block-bg), white 6%);
 }
@@ -4027,7 +4159,7 @@ html[data-hud-window] [data-slot='popover-content'] {
    give it depth; no refraction layer (it would scroll with long menus and cost
    an SVG filter per open). Reduced transparency gets the opaque surface. */
 .menu-glass {
-  --menu-glass-tint: color-mix(in srgb, #fdfdfc 74%, transparent);
+  --menu-glass-tint: color-mix(in srgb, var(--ui-bg-elevated) 92%, transparent);
 
   border: 1px solid color-mix(in srgb, var(--ui-text-primary) 9%, transparent);
   background: var(--menu-glass-tint);
@@ -4036,8 +4168,6 @@ html[data-hud-window] [data-slot='popover-content'] {
 }
 
 :root.dark .menu-glass {
-  --menu-glass-tint: color-mix(in srgb, #060606 72%, transparent);
-
   box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.5);
 }
 

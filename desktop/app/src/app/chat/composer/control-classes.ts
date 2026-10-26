@@ -23,7 +23,7 @@ export const PRIMARY_ICON_BTN = cn(
 )
 
 /** The mic while it records or transcribes: Claude's blue box, white glyph. */
-export const DICTATING_ICON_BTN = 'bg-[#2f6fdb] text-white hover:bg-[#2a63c4] hover:text-white'
+export const DICTATING_ICON_BTN = 'bg-(--ui-control-on) text-(--ui-control-on-foreground) hover:bg-(--ui-control-on) hover:text-(--ui-control-on-foreground) hover:brightness-95'
 
 /** A toggle that is currently ON — dictation, spoken replies, the wake word. */
 export const ACTIVE_ICON_BTN = 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary'

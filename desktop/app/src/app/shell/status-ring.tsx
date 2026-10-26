@@ -17,7 +17,7 @@ export function StatusRing({ busy, tone }: { busy: boolean; tone: 'error' | 'rea
       aria-hidden="true"
       className={cn(
         'shrink-0',
-        tone === 'ready' && 'text-[#2f8a4e] dark:text-[#62c083]',
+        tone === 'ready' && 'text-(--ui-green)',
         tone === 'warn' && 'text-amber-600',
         tone === 'error' && 'text-destructive'
       )}

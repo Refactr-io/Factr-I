@@ -124,7 +124,7 @@ export const OverlayNavItem = memo(function OverlayNavItem({
             ? 'bg-(--chrome-action-hover) font-medium text-foreground'
             : 'bg-transparent text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
           : active
-            ? 'bg-(--ui-bg-tertiary) font-medium text-foreground'
+            ? 'bg-(--ui-settings-accent) font-medium text-(--ui-settings-accent-foreground)'
             : 'bg-transparent text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-foreground'
       )}
       // Names the row by its own id, so a tour can address one link
@@ -137,7 +137,13 @@ export const OverlayNavItem = memo(function OverlayNavItem({
         className={cn(
           'shrink-0',
           nested ? 'size-3.5' : 'size-4',
-          active ? 'text-foreground/80' : 'text-muted-foreground/90'
+          nested
+            ? active
+              ? 'text-foreground/80'
+              : 'text-muted-foreground/90'
+            : active
+              ? 'text-(--ui-settings-accent-foreground)'
+              : 'text-(--ui-settings-accent-icon)'
         )}
       />
       <span className="min-w-0 flex-1 truncate">{label}</span>
