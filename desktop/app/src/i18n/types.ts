@@ -2754,6 +2754,10 @@ export interface Translations {
     voiceEngineChangeFailed: string
     voiceEngineChainedShort: string
     voiceEngineLiveShort: string
+    dictationFailed: string
+    dictationPreparing: string
+    dictationReady: string
+    dictationRetry: string
     voiceDictation: string
     speakReplies: string
     stopSpeakingReplies: string

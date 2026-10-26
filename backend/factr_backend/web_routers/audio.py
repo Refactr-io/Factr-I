@@ -74,6 +74,20 @@ def _audio_extension_for_mime(mime_type: str) -> str:
     return _AUDIO_MIME_EXTENSIONS.get(normalized, ".webm")
 
 
+@router.get("/api/audio/stt-status")
+async def stt_status():
+    from tools.transcription_tools import stt_prepare_status
+
+    return stt_prepare_status()
+
+
+@router.post("/api/audio/stt-prepare")
+async def stt_prepare():
+    from tools.transcription_tools import prepare_stt_in_background
+
+    return prepare_stt_in_background()
+
+
 @router.post("/api/audio/transcribe")
 async def transcribe_audio_upload(
     payload: AudioTranscriptionRequest, profile: Optional[str] = None

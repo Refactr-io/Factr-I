@@ -221,13 +221,8 @@ async def _lifespan(app: "FastAPI"):
         except Exception:
             _log.exception("Desktop startup: orphan gateway reap failed")
 
-        # Dictation works right after install: fetch the local speech model in the background.
-        try:
-            from tools.transcription_tools import prefetch_stt_in_background
-
-            prefetch_stt_in_background()
-        except Exception:
-            _log.debug("STT prefetch not started", exc_info=True)
+        # Dictation is NOT prepared here: its packages and model are fetched when the user first uses it
+        # (POST /api/audio/stt-prepare), so a fresh start downloads nothing in the background.
 
         # Under the Factr engine its timer owns WHEN jobs fire (POST /api/cron/tick); no ticker here.
         if not os.environ.get("FACTR_ENGINE_URL"):
@@ -1886,6 +1881,8 @@ _PLUGIN_COMPAT_LAZY = {
     'test_messaging_platform': ('factr_backend.web_routers.messaging', 'test_messaging_platform'),
     'toggle_skill': ('factr_backend.web_routers.skills', 'toggle_skill'),
     'toggle_toolset': ('factr_backend.web_routers.tools', 'toggle_toolset'),
+    'stt_prepare': ('factr_backend.web_routers.audio', 'stt_prepare'),
+    'stt_status': ('factr_backend.web_routers.audio', 'stt_status'),
     'transcribe_audio_upload': ('factr_backend.web_routers.audio', 'transcribe_audio_upload'),
     'trigger_cron_job': ('factr_backend.web_routers.cron', 'trigger_cron_job'),
     'tts_lease': ('factr_backend.web_routers.audio', 'tts_lease'),
