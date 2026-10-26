@@ -3015,7 +3015,7 @@ button[data-slot='aui_msg-reactions'] svg {
   z-index: 0;
   pointer-events: none;
   border-radius: var(--shape-radius-lg) var(--shape-radius-lg) 0 0;
-  background: rgb(12 14 18 / 0.62);
+  background: rgb(22 22 22 / 0.62);
   /* Slides down behind the bar as it fades. A TRANSFORM, not height: it is
      composited, so it stays smooth where animating height re-lays-out the panel
      every frame and looked coarse — and it leaves the box alone, which matters
@@ -3063,7 +3063,7 @@ button[data-slot='aui_msg-reactions'] svg {
   /* Same dark scrim under Glass. The docked thread's `--ui-bg-chrome` follows
      the theme and goes near-white on a light one, which is the wrong paper for
      this band's white ink — the HUD is over a game, not inside the app. */
-  background: rgb(12 14 18 / 0.55);
+  background: rgb(22 22 22 / 0.55);
 }
 
 /* The band spans the window edge to edge under glass. The 8px side inset keeps
@@ -3097,7 +3097,7 @@ button[data-slot='aui_msg-reactions'] svg {
    never below the resting tint, so a high lever cannot make focusing the
    composer paint MORE transparent than glancing at it. */
 :root[data-factr-glass-on] [data-hud-shell][data-hud-typing] [data-hud-glass] {
-  background: rgb(12 14 18 / 0.72);
+  background: rgb(22 22 22 / 0.72);
 }
 
 /* Engaged means the caret is in the composer, not merely that the window holds
@@ -3107,7 +3107,7 @@ button[data-slot='aui_msg-reactions'] svg {
    below stays on :focus-within — being permissive about what can be clicked is
    harmless, being permissive about what lights up is not. */
 [data-hud-shell][data-hud-typing] [data-hud-glass] {
-  background: rgb(12 14 18 / 0.82);
+  background: rgb(22 22 22 / 0.82);
 }
 
 /* Flipped, the sheet hangs from the bar instead of standing on it. */
@@ -4036,7 +4036,7 @@ html[data-hud-window] [data-slot='popover-content'] {
    give it depth; no refraction layer (it would scroll with long menus and cost
    an SVG filter per open). Reduced transparency gets the opaque surface. */
 .menu-glass {
-  --menu-glass-tint: color-mix(in srgb, #fdfdfc 74%, transparent);
+  --menu-glass-tint: color-mix(in srgb, var(--ui-bg-elevated) 92%, transparent);
 
   border: 1px solid color-mix(in srgb, var(--ui-text-primary) 9%, transparent);
   background: var(--menu-glass-tint);
@@ -4045,8 +4045,6 @@ html[data-hud-window] [data-slot='popover-content'] {
 }
 
 :root.dark .menu-glass {
-  --menu-glass-tint: color-mix(in srgb, #060606 72%, transparent);
-
   box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.5);
 }
 
