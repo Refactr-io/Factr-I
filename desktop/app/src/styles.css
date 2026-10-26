@@ -3938,8 +3938,8 @@ html[data-hud-window] [data-slot='popover-content'] {
 :root {
   --shell-window-bg: var(--ui-bg-sidebar);
   --shell-block-bg: var(--ui-bg-chrome);
-  /* Light: the list sits on the block (a hair off it), so only the window frame is grey. */
-  --shell-list-bg: color-mix(in srgb, var(--shell-block-bg), var(--ui-base) 2%);
+  /* The list column wears the frame's tone, so the lighter content canvas reads as one card beside it. */
+  --shell-list-bg: var(--shell-window-bg);
   /* The block's rim is its own tone one small step off, not a light stroke:
      it reads as the block's edge, never as a stray line under the last row. */
   --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), black 7%);
@@ -3947,11 +3947,11 @@ html[data-hud-window] [data-slot='popover-content'] {
 }
 
 :root[data-factr-mode='dark'] {
-  --shell-window-bg: var(--ui-bg-chrome);
-  /* A clear step lighter than the (see-through) frame, as in System Settings: the content block is the solid,
-     lighter surface and the frame around it is the glass. */
-  --shell-block-bg: color-mix(in srgb, var(--ui-bg-sidebar), white 6%);
-  --shell-list-bg: color-mix(in srgb, var(--shell-block-bg), var(--ui-base) 4%);
+  /* Same structure as light, from the reference palette: the frame and sidebar are the lighter tone and the content
+     block is the darker canvas. */
+  --shell-window-bg: var(--ui-bg-sidebar);
+  --shell-block-bg: var(--ui-bg-chrome);
+  --shell-list-bg: var(--shell-window-bg);
   --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), white 5%);
   --shell-tab-active-bg: color-mix(in srgb, var(--shell-block-bg), white 6%);
 }
