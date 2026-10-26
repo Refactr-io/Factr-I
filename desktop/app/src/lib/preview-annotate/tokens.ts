@@ -15,9 +15,9 @@ export const ANNOTATE_OUTLINE_WIDTH = '2px'
 export const ANNOTATE_CROP_PAD = 12
 
 /** Host comment pill sits on the guest page, so it uses real colors like the pin. */
-export const ANNOTATE_PILL_BG = '#2A2A2A'
-export const ANNOTATE_PILL_FG = '#DEDEDE'
-export const ANNOTATE_PILL_SEND = '#3D3D3D'
+export const ANNOTATE_PILL_BG = '#2F2F2F'
+export const ANNOTATE_PILL_FG = '#FFFDFC'
+export const ANNOTATE_PILL_SEND = '#40403F'
 export const ANNOTATE_CARD_WIDTH = 280
 export const ANNOTATE_CARD_HEIGHT = 44
 
