@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## v0.0.13
 
-- Runs that name their own check now waste less: the end-of-turn check is not run again when the model already ran it on the same files, the retry prompt is shorter (the last two attempts and the tail of the failed output), and a note is appended when the model's own run of the check fails the same way twice or on unchanged files. Settings, limits and what ends a run are described in docs/persistence.md. `FACTR_PERSIST_REUSE=0`, `FACTR_PERSIST_TERSE=0` and `FACTR_PERSIST_STALL_NOTE=0` restore the previous behaviour. Interactive chat and runs that name no check are unchanged.
-- Opt-in for unattended runs: `agent.text_verbosity` (or `FACTR_OPENAI_TEXT_VERBOSITY`) sets the Responses `text.verbosity` to `low`, `medium` or `high` (unset keeps the model default). `persistence.max_seconds` caps how long a run keeps retrying a failing check (0 = the run's own limit).
+- A run that names its own check wastes less work. When the model has already run that check on the same files and seen the result, the engine no longer runs it again at the end of the turn. The retry prompt is shorter (the last two attempts and the end of the failed output). When the model's own run of the check fails the same way twice, or on unchanged files, a one-line note asks it to try something different. How the persistence works and every setting is in docs/persistence.md.
+- Faster unattended runs, opt-in: `agent.text_verbosity` (or `FACTR_OPENAI_TEXT_VERBOSITY`) sets the Responses `text.verbosity` to `low`, `medium` or `high` (unset keeps the model default). `low` gives terser turns: on our held-out coding tasks it cut output tokens by about a quarter and run time by about a sixth with the same pass rate. `persistence.max_seconds` caps how long a run keeps retrying a failing check (0 = the run's own limit) for a faster, lower-pass-rate trade-off.
 
 ## v0.0.12
 
