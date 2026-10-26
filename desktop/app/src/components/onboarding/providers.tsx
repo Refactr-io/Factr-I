@@ -53,7 +53,7 @@ export function FeaturedProviderRow({
           {loggedIn ? (
             <ConnectedTag />
           ) : (
-            <span className="rounded-full bg-[#DDF4E4] px-2 py-0.5 text-[0.6875rem] leading-4 font-medium text-[#14633A] dark:bg-[#163A29] dark:text-[#8FE3AD]">
+            <span className="rounded-full bg-[color-mix(in_srgb,var(--ui-green)_14%,transparent)] px-2 py-0.5 text-[0.6875rem] leading-4 font-medium text-(--ui-green)">
               {t.onboarding.recommended}
             </span>
           )}
