@@ -79,21 +79,17 @@ jobs:
         working-directory: desktop/app
         run: npm run stage:backend-python
 
-      - name: Build the app
-        working-directory: desktop/app
-        run: npm run build
-
       - name: Package the OLD build (0.0.14, QA switches on so the test can drive it)
         working-directory: desktop/app
         shell: bash
         env:
           FACTR_QA_FUSES: '1'
-        run: npm run builder -- ${{ matrix.target }} -c.extraMetadata.version=0.0.14 -c.appId=net.refactr.factr.qa -c.directories.output="$RUNNER_TEMP/old"
+        run: npm run build && npm run builder -- ${{ matrix.target }} -c.extraMetadata.version=0.0.14 -c.appId=net.refactr.factr.qa -c.directories.output="$RUNNER_TEMP/old"
 
       - name: Package the NEW build (0.0.15)
         working-directory: desktop/app
         shell: bash
-        run: npm run builder -- ${{ matrix.target }} -c.extraMetadata.version=0.0.15 -c.appId=net.refactr.factr.qa -c.directories.output="$RUNNER_TEMP/new"
+        run: npm run build && npm run builder -- ${{ matrix.target }} -c.extraMetadata.version=0.0.15 -c.appId=net.refactr.factr.qa -c.directories.output="$RUNNER_TEMP/new"
 
       - name: First, a corrupted download is refused (Linux)
         if: runner.os == 'Linux'
