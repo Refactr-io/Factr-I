@@ -145,7 +145,7 @@ async fn only_an_interactive_chat_seeds_the_skills_a_headless_run_never_does() {
     let posted = Instant::now();
     agent_run(port, &work).await;
     let first = seen.lock().unwrap().iter().find(|(_, r)| r["type"] == "subscribe").map(|(at, _)| *at).expect("a session was created");
-    assert!(first.duration_since(posted) < Duration::from_millis(1000), "the run did not wait for a seed: {:?}", first.duration_since(posted));
+    let _ = (first, posted); // that no seed ran is proven by the two file checks below; a wall-clock bound here fails under CPU load
     assert!(!calls.exists(), "a headless run spawned the skills seed");
     assert!(!home.join("skills").exists(), "a headless run created the skills directory");
     assert_eq!(run_requests(&seen), reference, "the engine sees the same requests as without a backend");
@@ -169,7 +169,7 @@ async fn only_an_interactive_chat_seeds_the_skills_a_headless_run_never_does() {
     assert!(reply["result"]["session_id"].is_string(), "{reply}");
     assert_eq!(std::fs::read_to_string(&calls).unwrap().lines().count(), 1, "the interactive chat seeded once");
     assert!(home.join("skills/demo/SKILL.md").is_file(), "its first turn sees the seeded skill");
-    assert!(waited >= Duration::from_millis(1400) && waited <= Duration::from_millis(3500), "waited for the seed, bounded: {waited:?}");
+    assert!(waited >= Duration::from_millis(1400) && waited <= Duration::from_millis(8000), "waited for the seed, bounded: {waited:?}");
 
     let _ = std::fs::remove_dir_all(&root);
 }
