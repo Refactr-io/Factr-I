@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   appImageStagePath,
   buildLinuxSwapScript,
+  buildWindowsLauncher,
   buildWindowsSwapScript,
   installOtherAndRestart,
   type OtherSwapDeps,
@@ -31,6 +32,7 @@ afterEach(() => {
 
 function fakeDeps(over: Partial<OtherSwapDeps> = {}, present: string[] = []) {
   const calls: string[] = []
+  const written = new Map<string, string>()
   const files = new Set(present)
 
   const deps: OtherSwapDeps = {
@@ -54,7 +56,10 @@ function fakeDeps(over: Partial<OtherSwapDeps> = {}, present: string[] = []) {
       rename: async () => undefined,
       size: async file => (files.has(file) ? 100 : null),
       writable: async () => true,
-      writeFile: async file => void calls.push(`write ${file}`)
+      writeFile: async (file, content) => {
+        calls.push(`write ${file}`)
+        written.set(file, content)
+      }
     },
     isBusy: () => false,
     isPackaged: true,
@@ -67,7 +72,7 @@ function fakeDeps(over: Partial<OtherSwapDeps> = {}, present: string[] = []) {
     ...over
   }
 
-  return { deps, calls }
+  return { deps, calls, written }
 }
 
 const linuxReady = { file: '/home/u/.config/Factr-I/updates/0.0.14/Factr-I-0.0.14-linux-x86_64.AppImage', kind: 'appimage' as const, version: '0.0.14' }
@@ -115,33 +120,40 @@ describe('installOtherAndRestart', () => {
     expect(calls.at(-1)).toBe('quit')
   })
 
-  it('Windows: keeps a copy of the install folder, starts the helper and quits', async () => {
-    const execPath = 'C:\\Users\\u\\AppData\\Local\\Programs\\Factr-I\\Factr-I.exe'
-    const dir = 'C:\\Users\\u\\AppData\\Local\\Programs\\Factr-I'
-    const { deps, calls } = fakeDeps({ platform: 'win32', execPath, updatesDir: 'C:\\u\\updates' }, [`${dir}\\Uninstall Factr-I.exe`, winReady.file])
+  it('Windows: keeps a copy of the install folder, starts the helper through its launcher and quits', async () => {
+    const execPath = 'C:\\Users\\John Smith\\AppData\\Local\\Programs\\Factr-I\\Factr-I.exe'
+    const dir = 'C:\\Users\\John Smith\\AppData\\Local\\Programs\\Factr-I'
+    const { deps, calls, written } = fakeDeps({ platform: 'win32', execPath, updatesDir: 'C:\\u\\updates' }, [`${dir}\\Uninstall Factr-I.exe`, winReady.file])
 
     expect(await installOtherAndRestart(winReady, deps)).toEqual({ ok: true })
     expect(calls.some(c => c.startsWith('exec robocopy') && c.includes(`${dir}.previous`))).toBe(true)
 
-    const spawned = calls.find(c => c.startsWith('spawn')) as string
-
-    expect(spawned).toContain('powershell.exe')
-    expect(spawned).toContain(`-InstallDir ${dir}`)
-    expect(spawned).toContain('-Backup 1')
-    expect(spawned).toContain('-ExeName Factr-I.exe')
+    // the settings travel in a JSON file, so a folder with spaces needs no quoting anywhere
+    expect(JSON.parse(written.get('C:\\u\\updates\\swap-0.0.14.json') as string)).toEqual({
+      InstallDir: dir,
+      Installer: winReady.file,
+      Version: '0.0.14',
+      UpdatesDir: 'C:\\u\\updates',
+      From: '0.0.13',
+      ExeName: 'Factr-I.exe',
+      OldPid: 4242,
+      Backup: '1'
+    })
+    expect(written.get('C:\\u\\updates\\swap-0.0.14.cmd')).toBe(buildWindowsLauncher('0.0.14'))
+    expect(calls.find(c => c.startsWith('spawn'))).toBe('spawn cmd.exe /c C:\\u\\updates\\swap-0.0.14.cmd')
     expect(calls.at(-1)).toBe('quit')
   })
 
   it('Windows: a failed backup copy still installs, without a rollback copy', async () => {
     const execPath = 'C:\\Users\\u\\AppData\\Local\\Programs\\Factr-I\\Factr-I.exe'
 
-    const { deps, calls } = fakeDeps(
-      { platform: 'win32', execPath, exec: async () => ({ code: 16, stdout: '', stderr: 'disk full' }) },
+    const { deps, written } = fakeDeps(
+      { platform: 'win32', execPath, updatesDir: 'C:\\u\\updates', exec: async () => ({ code: 16, stdout: '', stderr: 'disk full' }) },
       ['C:\\Users\\u\\AppData\\Local\\Programs\\Factr-I\\Uninstall Factr-I.exe', winReady.file]
     )
 
     expect(await installOtherAndRestart(winReady, deps)).toEqual({ ok: true })
-    expect(calls.find(c => c.startsWith('spawn'))).toContain('-Backup 0')
+    expect(JSON.parse(written.get('C:\\u\\updates\\swap-0.0.14.json') as string).Backup).toBe('0')
   })
 
   it('touches nothing while an agent turn runs, when unsupported, or when the file is gone', async () => {
@@ -250,6 +262,7 @@ describe('the Windows helper script', () => {
   const script = buildWindowsSwapScript()
 
   it('runs the installer silently into the same folder, waits for health, and can restore', () => {
+    expect(script).toContain('$ConfigFile')
     expect(script).toContain('/S /D=$InstallDir')
     expect(script).toContain('robocopy $BackupDir $InstallDir /MIR')
     expect(script).toContain('rolledback')
@@ -279,15 +292,22 @@ describe.runIf(process.platform === 'win32')('the Windows helper script, run for
     return { root, installDir, updates, installer, script }
   }
 
-  const run = (s: ReturnType<typeof setup>) =>
-    spawnSync(
-      'powershell.exe',
-      [
-        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', s.script, '-InstallDir', s.installDir, '-Installer', s.installer,
-        '-Version', '0.0.14', '-UpdatesDir', s.updates, '-From', '0.0.13', '-ExeName', 'app.cmd', '-OldPid', '999999', '-Backup', '1'
-      ],
-      { env: { ...process.env, FACTR_SWAP_PROC_WAIT: '5', FACTR_SWAP_HEALTH_WAIT: '5', FACTR_SWAP_EXTRA_WAIT: '1' }, timeout: 120_000 }
+  const settings = (s: ReturnType<typeof setup>) => {
+    const config = path.join(s.updates, 'swap-0.0.14.json')
+
+    fs.writeFileSync(
+      config,
+      JSON.stringify({ InstallDir: s.installDir, Installer: s.installer, Version: '0.0.14', UpdatesDir: s.updates, From: '0.0.13', ExeName: 'app.cmd', OldPid: 999999, Backup: '1' })
     )
+
+    return config
+  }
+
+  const run = (s: ReturnType<typeof setup>) =>
+    spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', s.script, '-ConfigFile', settings(s)], {
+      env: { ...process.env, FACTR_SWAP_PROC_WAIT: '5', FACTR_SWAP_HEALTH_WAIT: '5', FACTR_SWAP_EXTRA_WAIT: '1' },
+      timeout: 120_000
+    })
 
   it('installs over the old folder and keeps the new version once healthy', () => {
     const s = setup(true)
@@ -313,4 +333,36 @@ describe.runIf(process.platform === 'win32')('the Windows helper script, run for
     expect(fs.readFileSync(path.join(s.installDir, 'app.cmd'), 'utf8')).toContain('v1')
     expect(fs.existsSync(path.join(s.updates, '0.0.14', 'rolledback'))).toBe(true)
   })
+
+  it('starts from the batch launcher in a folder with spaces, the way the app starts it', async () => {
+    const s = setup(true)
+    const spaced = path.join(s.root, 'dir with space')
+
+    fs.mkdirSync(spaced, { recursive: true })
+    fs.copyFileSync(s.script, path.join(spaced, 'swap-0.0.14.ps1'))
+    fs.writeFileSync(path.join(spaced, 'swap-0.0.14.cmd'), buildWindowsLauncher('0.0.14'))
+    fs.cpSync(s.installDir, `${s.installDir}.previous`, { recursive: true })
+    fs.writeFileSync(
+      path.join(spaced, 'swap-0.0.14.json'),
+      JSON.stringify({ InstallDir: s.installDir, Installer: s.installer, Version: '0.0.14', UpdatesDir: s.updates, From: '0.0.13', ExeName: 'app.cmd', OldPid: 999999, Backup: '1' })
+    )
+
+    const child = spawn('cmd.exe', ['/c', path.join(spaced, 'swap-0.0.14.cmd')], {
+      detached: true,
+      env: { ...process.env, FACTR_SWAP_PROC_WAIT: '5', FACTR_SWAP_HEALTH_WAIT: '30', FACTR_SWAP_EXTRA_WAIT: '1' },
+      stdio: 'ignore',
+      windowsHide: true
+    })
+
+    child.unref()
+
+    const log = path.join(s.updates, 'helper.log')
+
+    for (let i = 0; i < 90 && !(fs.existsSync(log) && /ok: the new app/.test(fs.readFileSync(log, 'utf8'))); i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+
+    expect(fs.readFileSync(log, 'utf8')).toMatch(/ok: the new app reported healthy/)
+    expect(fs.readFileSync(path.join(s.installDir, 'app.cmd'), 'utf8')).toContain('v2')
+  }, 120_000)
 })

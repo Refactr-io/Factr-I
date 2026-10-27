@@ -209,15 +209,22 @@ exit 1
 }
 
 /**
- * The Windows helper (PowerShell 5.1, present on every supported Windows). Parameters:
- *   -InstallDir -Installer -Version -UpdatesDir -From -ExeName -OldPid -Backup (1 when a copy of the install folder exists)
+ * The Windows helper (PowerShell 5.1, present on every supported Windows). It reads its settings from a JSON file
+ * (-ConfigFile): InstallDir, Installer, Version, UpdatesDir, From, ExeName, OldPid, Backup (1 when a copy of the install
+ * folder exists). A JSON file keeps paths with spaces, quotes and non-ASCII characters out of every command line.
  * Tunables via the environment: FACTR_SWAP_PROC_WAIT, FACTR_SWAP_HEALTH_WAIT, FACTR_SWAP_INSTALLER_ARGS (test only).
  */
 export function buildWindowsSwapScript(): string {
-  return `param(
-  [string]$InstallDir, [string]$Installer, [string]$Version, [string]$UpdatesDir,
-  [string]$From, [string]$ExeName, [int]$OldPid, [string]$Backup
-)
+  return `param([string]$ConfigFile)
+$cfg = Get-Content -Raw -Encoding UTF8 -LiteralPath $ConfigFile | ConvertFrom-Json
+$InstallDir = [string]$cfg.InstallDir
+$Installer = [string]$cfg.Installer
+$Version = [string]$cfg.Version
+$UpdatesDir = [string]$cfg.UpdatesDir
+$From = [string]$cfg.From
+$ExeName = [string]$cfg.ExeName
+$OldPid = [int]$cfg.OldPid
+$Backup = [string]$cfg.Backup
 $ErrorActionPreference = 'Continue'
 $procWait = if ($env:FACTR_SWAP_PROC_WAIT) { [int]$env:FACTR_SWAP_PROC_WAIT } else { 180 }
 $healthWait = if ($env:FACTR_SWAP_HEALTH_WAIT) { [int]$env:FACTR_SWAP_HEALTH_WAIT } else { 120 }
@@ -313,6 +320,14 @@ exit 1
 }
 
 /**
+ * Starts the PowerShell helper from a tiny batch file. Node's direct spawn of powershell.exe does not survive the app quitting
+ * on Windows (measured on a real runner: only `cmd /c start /B powershell ...` runs on after its parent exits), and a batch
+ * file with %~dp0 needs no quoting of the folder it sits in.
+ */
+export const buildWindowsLauncher = (version: string) =>
+  `@echo off\r\nstart "" /B powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0swap-${version}.ps1" -ConfigFile "%~dp0swap-${version}.json"\r\n`
+
+/**
  * Windows: keep a copy of the install folder (while the app still runs), write the helper and hand over.
  * Linux: stage the AppImage next to the running one, write the helper and hand over.
  * Returns { ok: true } only after the helper was started and the app asked to quit; on { ok: false } nothing about
@@ -359,13 +374,27 @@ export async function installOtherAndRestart(ready: ReadyUpdate, deps: OtherSwap
         log(`update swap: no backup copy (robocopy exit ${copy.code}); installing without one`)
       }
 
+      const config = path.win32.join(deps.updatesDir, `swap-${ready.version}.json`)
+      const launcher = path.win32.join(deps.updatesDir, `swap-${ready.version}.cmd`)
+
       await deps.fs.writeFile(script, buildWindowsSwapScript(), 0o644)
+      await deps.fs.writeFile(
+        config,
+        JSON.stringify({
+          InstallDir: installDir,
+          Installer: ready.file,
+          Version: ready.version,
+          UpdatesDir: deps.updatesDir,
+          From: deps.currentVersion,
+          ExeName: exeName,
+          OldPid: deps.pid,
+          Backup: backedUp ? '1' : '0'
+        }),
+        0o644
+      )
+      await deps.fs.writeFile(launcher, buildWindowsLauncher(ready.version), 0o644)
       log(`update swap: starting the helper for ${ready.version}`)
-      deps.spawnDetached('powershell.exe', [
-        '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script,
-        '-InstallDir', installDir, '-Installer', ready.file, '-Version', ready.version, '-UpdatesDir', deps.updatesDir,
-        '-From', deps.currentVersion, '-ExeName', exeName, '-OldPid', String(deps.pid), '-Backup', backedUp ? '1' : '0'
-      ])
+      deps.spawnDetached('cmd.exe', ['/c', launcher])
       deps.quit()
 
       return { ok: true }
