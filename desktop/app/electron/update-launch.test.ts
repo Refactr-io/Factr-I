@@ -4,20 +4,23 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { cleanupUpdateLeftovers, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
+import { cleanupUpdateLeftovers, findReadyInstaller, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
 
 const dirs: string[] = []
+
 const mk = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'upl-'))
   dirs.push(d)
 
   return d
 }
+
 afterEach(() => {
   for (const d of dirs.splice(0)) {
     fs.rmSync(d, { recursive: true, force: true })
   }
 })
+
 const put = (root: string, version: string, name = `Factr-I-${version}-mac-arm64.zip`) => {
   fs.mkdirSync(path.join(root, version), { recursive: true })
   fs.writeFileSync(path.join(root, version, name), 'x')
@@ -79,11 +82,41 @@ describe('retry guards and leftovers', () => {
     const app = path.join(apps, 'Factr-I.app')
 
     fs.mkdirSync(app)
+
     for (const name of ['.Factr-I.app.old', '.Factr-I.app.failed', '.Factr-I-0.0.9.staging', '.Factr-I-0.0.10.staging', 'Other.app']) {
       fs.mkdirSync(path.join(apps, name))
     }
 
     cleanupUpdateLeftovers(app, '0.0.9')
     expect(fs.readdirSync(apps).sort()).toEqual(['.Factr-I-0.0.10.staging', 'Factr-I.app', 'Other.app'])
+  })
+})
+
+describe('findReadyInstaller', () => {
+  it('finds the verified installer for each platform and skips versions that were tried', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ready-'))
+
+    try {
+      const put = (version: string, name: string, ...markers: string[]) => {
+        fs.mkdirSync(path.join(dir, version), { recursive: true })
+        fs.writeFileSync(path.join(dir, version, name), 'x')
+
+        for (const marker of markers) {
+          fs.writeFileSync(path.join(dir, version, marker), '')
+        }
+      }
+
+      put('0.0.14', 'Factr-I-0.0.14-win-x64.exe')
+      put('0.0.15', 'Factr-I-0.0.15-win-x64.exe', 'rolledback')
+      put('0.0.14', 'Factr-I-0.0.14-linux-x86_64.AppImage')
+      put('0.0.14', 'Factr-I-0.0.14-mac-arm64.dmg')
+
+      expect(findReadyInstaller(dir, '0.0.13', 'win32', 'x64')).toMatchObject({ kind: 'exe', version: '0.0.14' })
+      expect(findReadyInstaller(dir, '0.0.13', 'linux', 'x64')).toMatchObject({ kind: 'appimage', version: '0.0.14' })
+      expect(findReadyInstaller(dir, '0.0.13', 'darwin', 'arm64')).toBeNull()
+      expect(findReadyInstaller(dir, '0.0.14', 'win32', 'x64')).toBeNull()
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

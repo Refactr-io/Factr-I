@@ -484,11 +484,12 @@ import { createUpdateDownloader } from './update-download'
 import { readAutoDownload, writeAutoDownload } from './update-download-pref'
 import { createUpdateFeed } from './update-feed'
 import { waitForUpdateClearance } from './update-gate'
-import { cleanupUpdateLeftovers, clearPostUpdate, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
+import { cleanupUpdateLeftovers, clearPostUpdate, findReadyInstaller, findReadyZip, readPostUpdateSync, writeHealthMarker } from './update-launch'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import { isOfficialSshRemote, OFFICIAL_REPO_HTTPS_URL } from './update-remote'
 import { closeUpdateSplash, showUpdateSplash } from './update-splash'
 import { installAndRestart, preflightLaunch, resolveAppBundle, stageUpdate, stagingDirFor, type SwapDeps } from './update-swap'
+import { installOtherAndRestart, type OtherSwapDeps } from './update-swap-other'
 import {
   observeUpdaterHandoff,
   resolveStagedUpdaterBinary,
@@ -17367,10 +17368,31 @@ const disposeTerminalSession = terminalIpc.disposeTerminalSession
 // is no silent self-replace while the app is unsigned: "apply" opens the release page, and a verified
 // installer (downloaded in the background, see update-download.ts) is only ever opened for the user.
 //
-// Dev/test hook (never in a packaged build): FACTR_UPDATE_FEED_URL replaces the GitHub releases API URL, so a
-// local server can serve a fake release JSON plus a small fake asset (its browser_download_url may point at the
-// same local origin; that origin alone may be fetched over plain http).
-const DEV_FEED_URL = !app.isPackaged ? process.env.FACTR_UPDATE_FEED_URL?.trim() || undefined : undefined
+// Dev/test hook: FACTR_UPDATE_FEED_URL replaces the GitHub releases API URL, so a local server can serve a fake release
+// JSON plus a fake asset (its browser_download_url may point at the same local origin; that origin alone may be fetched
+// over plain http). A packaged build honours it only for a loopback address (the end-to-end update test runs a real
+// packaged app against a server on this machine); a remote feed is never accepted outside a development run.
+function devFeedUrl(): string | undefined {
+  const raw = process.env.FACTR_UPDATE_FEED_URL?.trim()
+
+  if (!raw) {
+    return undefined
+  }
+
+  if (!app.isPackaged) {
+    return raw
+  }
+
+  try {
+    const { hostname, protocol } = new URL(raw)
+
+    return protocol === 'http:' && (hostname === '127.0.0.1' || hostname === 'localhost') ? raw : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const DEV_FEED_URL = devFeedUrl()
 
 const updateFeed = createUpdateFeed({
   fetch: (url, init) => electronNet.fetch(url, init as RequestInit),
@@ -17454,6 +17476,38 @@ function swapDeps(): SwapDeps {
     },
     quit: () => app.quit(),
     log: rememberLog
+  }
+}
+
+// "Restart to update" on Windows and Linux: see update-swap-other.ts.
+function otherSwapDeps(): OtherSwapDeps {
+  const base = swapDeps()
+
+  return {
+    appImage: process.env.APPIMAGE || null,
+    currentVersion: base.currentVersion,
+    execPath: base.execPath,
+    exec: base.exec,
+    fs: {
+      chmod: (file, mode) => fs.promises.chmod(file, mode),
+      copyFile: (from, to) => fs.promises.copyFile(from, to),
+      exists: base.fs.exists,
+      mkdir: base.fs.mkdir,
+      remove: base.fs.remove,
+      rename: (from, to) => fs.promises.rename(from, to),
+      size: file => fs.promises.stat(file).then(stat => stat.size, () => null),
+      writable: base.fs.writable,
+      writeFile: base.fs.writeFile
+    },
+    isBusy: base.isBusy,
+    isPackaged: base.isPackaged,
+    launchArgs: process.argv.slice(1).filter(arg => arg === '--no-sandbox'),
+    log: rememberLog,
+    pid: process.pid,
+    platform: process.platform,
+    quit: base.quit,
+    spawnDetached: base.spawnDetached,
+    updatesDir: UPDATES_DIR
   }
 }
 
@@ -17542,7 +17596,7 @@ async function applyUpdateAtLaunch(): Promise<boolean> {
 
 // A download finished in an earlier session shows up as Ready at once (no network needed).
 {
-  const earlier = process.platform === 'darwin' && app.isPackaged ? findReadyZip(UPDATES_DIR, app.getVersion()) : null
+  const earlier = app.isPackaged ? findReadyInstaller(UPDATES_DIR, app.getVersion(), process.platform, process.arch) : null
 
   if (earlier) {
     updateDownloader.adopt(earlier)
@@ -17558,7 +17612,48 @@ ipcMain.handle('factr:updates:check', async (_event, opts) => {
   return status
 })
 
-ipcMain.handle('factr:updates:apply', async () => updateFeed.apply())
+// "Update now": a packaged app with a verified-download path downloads (if needed), swaps itself and restarts. Anything
+// that cannot be done in the app (no installer asset for this platform, a source checkout) still opens the release page.
+ipcMain.handle('factr:updates:apply', async (event, opts) => {
+  const status = lastFeedStatus
+
+  if (!app.isPackaged || !status?.updateAvailable || !status.asset || !status.latestVersion) {
+    return updateFeed.apply()
+  }
+
+  let state = updateDownloader.getState()
+
+  if (!(state.status === 'ready' && state.file && state.version === status.latestVersion)) {
+    if (mergeActiveWork(activeWorkByWebContents.values()).count > 0) {
+      return { ok: false, error: 'busy', message: 'Finish the current task first.' }
+    }
+
+    if (!electronNet.isOnline()) {
+      return { ok: false, error: 'offline', message: 'Connect to the internet to download the update.' }
+    }
+
+    updateDownloader.maybeStart(status, { ignoreEnabled: true, retry: true })
+    state = await updateDownloader.settled()
+  }
+
+  if (state.status !== 'ready') {
+    return { ok: false, error: 'download-failed', message: 'The update could not be downloaded. Try again in a moment.' }
+  }
+
+  const installed = (await installReadyUpdate()) as { ok: boolean; restarting?: boolean }
+
+  if (installed.restarting || installed.ok === false) {
+    return installed
+  }
+
+  // The file was downloaded but could not be swapped in (a read-only folder, a copy run from a disk image): it was
+  // opened or shown for a manual install, which "Update now" must not report as done.
+  return {
+    ok: false,
+    error: 'install-failed',
+    message: 'The update was downloaded but could not be installed automatically. It has been opened so you can install it yourself.'
+  }
+})
 
 ipcMain.handle('factr:updates:download-state', () => updateDownloader.getState())
 
@@ -17570,7 +17665,9 @@ ipcMain.handle('factr:updates:download-now', () => {
 // A Ready file is installed for the user: macOS (zip) swaps the app in place and restarts through update-swap.ts,
 // Windows opens the installer, Linux reveals the AppImage, a dmg opens in Finder; anything else falls back to the
 // release page. Never while an agent turn or tool call is running, and never silently.
-ipcMain.handle('factr:updates:install', async () => {
+ipcMain.handle('factr:updates:install', async () => installReadyUpdate())
+
+async function installReadyUpdate() {
   const state = updateDownloader.getState()
 
   if (state.status === 'ready' && state.file && state.version && fs.existsSync(state.file)) {
@@ -17579,11 +17676,16 @@ ipcMain.handle('factr:updates:install', async () => {
     }
 
     if (state.file.endsWith('.zip')) {
+      // The mascot screen takes over for the swap; the app quits behind it and the new app shows it again on first start.
+      showUpdateSplash(opts => new BrowserWindow(opts))
+
       const swapped = await installAndRestart({ file: state.file, kind: 'zip', version: state.version }, swapDeps())
 
       if (swapped.ok) {
-        return { ok: true, restarting: true }
+        return { ok: true, restarting: true, handedOff: true }
       }
+
+      closeUpdateSplash()
 
       const reason = (swapped as { reason: string }).reason
 
@@ -17592,6 +17694,23 @@ ipcMain.handle('factr:updates:install', async () => {
 
       // fallback tells the renderer to say so quietly; it is never an error.
       return { ok: true, openedInstaller: true, fallback: reason }
+    }
+
+    // Windows and Linux: replace the app in place (update-swap-other.ts). When that is not possible (a portable or
+    // package-manager copy, a read-only folder) fall through to the old behaviour: Windows runs the installer,
+    // Linux shows the AppImage.
+    if ((state.kind === 'exe' || state.kind === 'appimage') && (process.platform === 'win32' || process.platform === 'linux')) {
+      showUpdateSplash(opts => new BrowserWindow(opts))
+
+      const swapped = await installOtherAndRestart({ file: state.file, kind: state.kind, version: state.version }, otherSwapDeps())
+
+      if (swapped.ok) {
+        return { ok: true, restarting: true, handedOff: true }
+      }
+
+      closeUpdateSplash()
+
+      rememberLog(`[update-download] swap failed: ${(swapped as { reason: string }).reason}`)
     }
 
     if (process.platform === 'linux') {
@@ -17608,7 +17727,7 @@ ipcMain.handle('factr:updates:install', async () => {
   }
 
   return updateFeed.apply()
-})
+}
 
 ipcMain.handle('factr:updates:get-auto-download', () => autoDownloadEnabled)
 
@@ -18300,7 +18419,7 @@ app.whenReady().then(async () => {
   }
 
   // First start after an update: keep the animation up across the relaunch until the first real window shows.
-  if (POST_UPDATE && process.platform === 'darwin') {
+  if (POST_UPDATE) {
     showUpdateSplash(opts => new BrowserWindow(opts))
     setTimeout(closeUpdateSplash, 30_000).unref()
   }

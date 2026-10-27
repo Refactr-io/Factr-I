@@ -1,0 +1,127 @@
+name: update-e2e
+
+# Real end-to-end proof of "Update now" on Windows and Linux: build the app twice (0.0.14 and 0.0.15), install the old one
+# the way a user would, serve the new one from a local fake release feed, press Update now in the real UI and check the
+# new version is the one running afterwards. A second run serves a corrupted download and expects a clean refusal.
+# The macOS equivalent is run by hand with the same script logic (the swap helper is shell, identical to what CI covers on Linux).
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'desktop/app/electron/update-*.ts'
+      - 'desktop/app/electron/main.ts'
+      - 'desktop/app/src/store/update*.ts'
+      - 'desktop/app/scripts/e2e-update-now.mjs'
+      - '.github/workflows/update-e2e.yml'
+  push:
+    branches: ['release/**']
+    paths:
+      - 'desktop/app/scripts/e2e-update-now.mjs'
+      - '.github/workflows/update-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  update-now:
+    name: update now (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            target: --win nsis
+          - name: linux-x64
+            os: ubuntu-latest
+            target: --linux AppImage
+    env:
+      FACTR_RELEASE_BUILD: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Long paths (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable branch head
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: engine
+      - uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
+        if: runner.os == 'Windows'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+
+      - name: Linux prerequisites (FUSE for AppImages, a virtual display)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfuse2t64 xvfb
+
+      - name: Engine
+        working-directory: desktop/app
+        shell: bash
+        run: node scripts/build-engine.mjs --locked -p factr-cli
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Stage bundled Python
+        working-directory: desktop/app
+        run: npm run stage:backend-python
+
+      - name: Build the app
+        working-directory: desktop/app
+        run: npm run build
+
+      - name: Package the OLD build (0.0.14, QA switches on so the test can drive it)
+        working-directory: desktop/app
+        shell: bash
+        env:
+          FACTR_QA_FUSES: '1'
+        run: npm run builder -- ${{ matrix.target }} -c.extraMetadata.version=0.0.14 -c.appId=net.refactr.factr.qa -c.directories.output="$RUNNER_TEMP/old"
+
+      - name: Package the NEW build (0.0.15)
+        working-directory: desktop/app
+        shell: bash
+        run: npm run builder -- ${{ matrix.target }} -c.extraMetadata.version=0.0.15 -c.appId=net.refactr.factr.qa -c.directories.output="$RUNNER_TEMP/new"
+
+      - name: First, a corrupted download is refused (Linux)
+        if: runner.os == 'Linux'
+        working-directory: desktop/app
+        run: xvfb-run -a --server-args="-screen 0 1440x900x24" node scripts/e2e-update-now.mjs "$RUNNER_TEMP/old" "$RUNNER_TEMP/new" corrupt
+
+      - name: First, a corrupted download is refused (Windows)
+        if: runner.os == 'Windows'
+        working-directory: desktop/app
+        shell: bash
+        run: node scripts/e2e-update-now.mjs "$RUNNER_TEMP/old" "$RUNNER_TEMP/new" corrupt
+
+      - name: Update now (Linux)
+        if: runner.os == 'Linux'
+        working-directory: desktop/app
+        run: xvfb-run -a --server-args="-screen 0 1440x900x24" node scripts/e2e-update-now.mjs "$RUNNER_TEMP/old" "$RUNNER_TEMP/new" good
+
+      - name: Update now (Windows)
+        if: runner.os == 'Windows'
+        working-directory: desktop/app
+        shell: bash
+        run: node scripts/e2e-update-now.mjs "$RUNNER_TEMP/old" "$RUNNER_TEMP/new" good
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: update-e2e-${{ matrix.name }}
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/update-e2e-*/shots
+            ${{ runner.temp }}/update-e2e-*/userData/updates/*.log

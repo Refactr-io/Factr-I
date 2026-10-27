@@ -804,8 +804,9 @@ describe('applyUpdates terminal state', () => {
     vi.useRealTimers()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     delete (globalThis as unknown as { window?: unknown }).window
+    ;(await import('./update-download')).resetUpdateDownloadForTests()
   })
 
   it('holds the restart view when a relauncher hands off (no close, no toast)', async () => {
@@ -818,6 +819,41 @@ describe('applyUpdates terminal state', () => {
     expect($updateApply.get().applying).toBe(true)
     expect($updateOverlayOpen.get()).toBe(true)
     expect(notifySpy).not.toHaveBeenCalled()
+  })
+
+  it('shows the download as it happens, then Restarting once the app hands over to its updater', async () => {
+    const { $updateDownload } = await import('./update-download')
+    const stages: string[] = []
+    const unsubscribe = $updateApply.subscribe(state => void stages.push(`${state.stage}:${state.percent === null ? '-' : Math.round(state.percent)}`))
+
+    applyMock.mockImplementation(async () => {
+      $updateDownload.set({ status: 'downloading', version: '0.0.14', file: null, kind: 'exe', received: 50, total: 200 })
+      $updateDownload.set({ status: 'ready', version: '0.0.14', file: '/x.exe', kind: 'exe' })
+
+      return { ok: true, restarting: true }
+    })
+
+    const result = await applyUpdates()
+
+    unsubscribe()
+    expect(result.handedOff).toBe(true)
+    expect(stages).toContain('fetch:25')
+    expect(stages).toContain('update:-')
+    expect($updateApply.get()).toMatchObject({ applying: true, stage: 'restart' })
+    // the dialog stepped aside when the download finished: the main process shows the mascot update screen from there
+    expect($updateOverlayOpen.get()).toBe(false)
+    expect(notifySpy).not.toHaveBeenCalled()
+  })
+
+  it('a refused update (busy, offline, download failed) lands on a closeable error with the reason', async () => {
+    applyMock.mockResolvedValue({ ok: false, error: 'busy', message: 'Finish the current task first.' })
+
+    $updateOverlayOpen.set(false)
+    await applyUpdates()
+
+    expect($updateApply.get()).toMatchObject({ applying: false, stage: 'error', message: 'Finish the current task first.' })
+    // the dialog comes back so the reason is seen
+    expect($updateOverlayOpen.get()).toBe(true)
   })
 
   it('closes the overlay + toasts when updated but not relaunched in place', async () => {

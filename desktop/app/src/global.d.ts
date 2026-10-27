@@ -763,6 +763,9 @@ export interface DesktopUpdateDownloadState {
   file: null | string
   /** zip = macOS app archive (restart-to-update), dmg / exe / appimage = installer opened for the user. */
   kind: 'appimage' | 'dmg' | 'exe' | 'zip' | null
+  /** While downloading: bytes received so far and the size the release promises. */
+  received?: number
+  total?: number
 }
 
 export type DesktopUpdateDirtyStrategy = 'abort' | 'stash' | 'force'

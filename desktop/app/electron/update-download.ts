@@ -23,6 +23,9 @@ export interface DownloadState {
   file: null | string
   /** What the verified file is (zip = macOS app archive for the swap), when ready. */
   kind: null | UpdateAssetKind
+  /** While downloading: bytes received so far and the size the release promises (throttled updates). */
+  received?: number
+  total?: number
 }
 
 export interface DownloadFetchResponse {
@@ -93,9 +96,24 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
 
   const log = (message: string) => deps.log?.(`[update-download] ${message}`)
 
+  const waiters = new Set<(settled: DownloadState) => void>()
+
   const setState = (next: DownloadState) => {
     state = next
     deps.onState?.(state)
+
+    if (state.status !== 'downloading') {
+      for (const resolve of [...waiters]) {
+        resolve(state)
+      }
+
+      waiters.clear()
+    }
+  }
+
+  /** Resolves with the next state that is not "downloading" (ready, failed or paused); at once when none is running. */
+  function settled(): Promise<DownloadState> {
+    return state.status === 'downloading' || running ? new Promise(resolve => waiters.add(resolve)) : Promise.resolve(state)
   }
 
   async function hashFile(file: string): Promise<string> {
@@ -164,12 +182,13 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
     }
 
     await deps.fs.remove(partialPath)
-    setState({ status: 'downloading', version, file: null, kind: null })
+    setState({ status: 'downloading', version, file: null, kind: null, received: 0, total: asset.size })
 
     controller = new AbortController()
     const { signal } = controller
     const hash = createHash('sha256')
     let received = 0
+    let lastProgress = Date.now()
     let handle: Awaited<ReturnType<DownloaderFs['open']>> | null = null
 
     try {
@@ -194,6 +213,13 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
 
         hash.update(chunk)
         await handle.write(chunk)
+
+        const now = Date.now()
+
+        if (now - lastProgress >= 250) {
+          lastProgress = now
+          setState({ status: 'downloading', version, file: null, kind: null, received, total: asset.size })
+        }
       }
 
       await handle.close()
@@ -232,7 +258,10 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
    * explicit user click with auto-update off: it skips only the setting; online and idle are still required.
    * Never throws.
    */
-  function maybeStart(status?: FeedStatus | null, { ignoreEnabled = false }: { ignoreEnabled?: boolean } = {}): void {
+  function maybeStart(
+    status?: FeedStatus | null,
+    { ignoreEnabled = false, retry = false }: { ignoreEnabled?: boolean; retry?: boolean } = {}
+  ): void {
     if (status) {
       latest = status
     }
@@ -243,6 +272,10 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
 
     if (!feed || !asset || !version || running || (!ignoreEnabled && !deps.isEnabled()) || !deps.isOnline() || deps.isBusy()) {
       return
+    }
+
+    if (retry) {
+      failed.delete(version)
     }
 
     if (failed.has(version) || (state.version === version && (state.status === 'ready' || state.status === 'downloading'))) {
@@ -275,11 +308,11 @@ export function createUpdateDownloader(deps: DownloaderDeps) {
    * A verified file from an earlier session (found on disk at launch, offline): show it as Ready right away instead of
    * waiting for the next feed check. Never replaces a download that is in progress.
    */
-  function adopt(found: { file: string; version: string }) {
+  function adopt(found: { file: string; kind?: UpdateAssetKind; version: string }) {
     if (state.status === 'idle' || state.status === 'failed-silent') {
-      setState({ ...IDLE, status: 'ready', version: found.version, file: found.file, kind: 'zip' })
+      setState({ ...IDLE, status: 'ready', version: found.version, file: found.file, kind: found.kind ?? 'zip' })
     }
   }
 
-  return { adopt, getState: () => state, maybeStart, pause }
+  return { adopt, getState: () => state, maybeStart, pause, settled }
 }

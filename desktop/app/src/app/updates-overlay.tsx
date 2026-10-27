@@ -448,7 +448,11 @@ function ApplyingView({ apply, isBackend }: { apply: UpdateApplyState; isBackend
         <Loader ariaLabel={label} />
 
         <DialogTitle className="text-center text-xl">{label}</DialogTitle>
-        <DialogDescription className="text-center text-sm">{body}</DialogDescription>
+        {apply.compact ? (
+          <DialogDescription className="sr-only">{label}</DialogDescription>
+        ) : (
+          <DialogDescription className="text-center text-sm">{body}</DialogDescription>
+        )}
 
         {currentMessage ? (
           <p className="max-w-lg break-words text-center text-xs leading-5 text-muted-foreground">{currentMessage}</p>
@@ -472,7 +476,7 @@ function ApplyingView({ apply, isBackend }: { apply: UpdateApplyState; isBackend
         </div>
       ) : null}
 
-      <p className="text-center text-xs text-muted-foreground">{u.applyingClose}</p>
+      {apply.compact ? null : <p className="text-center text-xs text-muted-foreground">{u.applyingClose}</p>}
     </div>
   )
 }

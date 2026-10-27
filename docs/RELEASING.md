@@ -1,6 +1,6 @@
 # Releasing Factr-I
 
-Current version: `0.0.13`. Releases live at
+Current version: `0.0.14`. Releases live at
 https://github.com/Refactr-io/Factr-I/releases (the `publish` block of
 `desktop/app/package.json` and every update link in the app point there).
 
@@ -70,7 +70,7 @@ controls that identity.
 
 ## How the app learns about updates
 
-The desktop app checks GitHub; it never installs anything itself.
+The desktop app checks GitHub and, on Update now, downloads the installer for its platform and swaps itself in place.
 
 - `desktop/app/electron/update-feed.ts` (wired in `desktop/app/electron/main.ts`
   as the `factr:updates:check` and `factr:updates:apply` handlers) requests
@@ -83,22 +83,38 @@ The desktop app checks GitHub; it never installs anything itself.
   15 minutes (30 seconds for a manual check), or longer when GitHub sends
   `Retry-After` or an exhausted `x-ratelimit-reset`.
 - When a newer release exists the app shows the version and the (truncated)
-  release notes. "Apply" only opens the release page
-  (`https://github.com/Refactr-io/Factr-I/releases`) in the browser. There is
-  no auto-install, because the builds are not signed with a Developer ID or
-  Authenticode certificate; you install the new
-  version yourself:
-  - macOS: replace `Factr-I.app`. `desktop/app/scripts/factr-update.sh <new Factr-I.app> [installed app]`
-    can do the swap: it keeps the old bundle as `Factr-I.app.previous`, launches
-    the new one and waits (default 120 s, `FACTR_UPDATE_WAIT_S`) for it to write
-    `launch-ok.json` with the bundle manifest id. If that never happens it
-    restores the previous bundle and the pre-migration `factr.db` backup. It
-    checks the engine binary against the sha256 in
-    `resources/factr/manifest.json` and never touches `~/.factr`. It is not run
-    automatically.
-  - Windows: run the new NSIS installer over the old one (per-user install).
-    There is no rollback script for Windows.
-  - Linux: replace the AppImage.
+  release notes. Update now (the `factr:updates:apply` handler) downloads the
+  installer asset for the platform from GitHub over HTTPS (host allow-list,
+  checked on every redirect), refuses it unless its size and sha256 match what
+  the release lists, and then replaces the installed app, with the Factr-I
+  update screen (`update-splash.ts`) on top. Nothing starts while an agent turn
+  is running. The builds are not signed with a Developer ID or Authenticode
+  certificate, so there is no Squirrel / electron-updater; each platform has its
+  own helper that waits for the app to quit, swaps, relaunches and waits for the
+  new app to write a health marker (`<userData>/updates/<version>/ok`, written
+  only by an app whose version is the one it was updated to), and otherwise
+  restores the old install:
+  - macOS (`electron/update-swap.ts`): unzips the verified zip next to the app,
+    checks the bundle id, version, architecture and `codesign --verify`, then a
+    detached shell helper renames old to `.old` and new into place. A copy run
+    from a disk image or an App Translocation folder is not replaced.
+  - Windows (`electron/update-swap-other.ts`): copies the install folder to
+    `<install>.previous`, then a detached PowerShell helper waits for every
+    process in the install folder to exit, runs the NSIS installer with `/S`
+    into the same folder, relaunches, and restores the copy if the installer or
+    the new app fails. A copy that is not an NSIS install is not replaced.
+  - Linux (`electron/update-swap-other.ts`): stages the AppImage as a hidden
+    sibling of the running one (`$APPIMAGE`), then a detached shell helper keeps
+    the old image as a hard link, renames the new one over it, relaunches and
+    puts the old one back if the new app does not report healthy. A copy that is
+    not an AppImage (deb, rpm) is not replaced.
+  Whenever an in-place update is not possible the app falls back to the old
+  behaviour (Windows opens the installer, Linux shows the AppImage, the other
+  cases open the release page) and says so.
+  `.github/workflows/update-e2e.yml` proves this on real Windows and Linux
+  runners: it installs the old build, serves the new one from a local fake
+  release feed, presses Update now and checks the new version came up healthy;
+  a second run serves a corrupted download and expects a clean refusal.
 - The app, the engine and the bundled Python runtime ship as one bundle and are
   replaced together.
 

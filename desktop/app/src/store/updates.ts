@@ -21,11 +21,13 @@ import { reconnectGateway } from '@/store/gateway-reconnect'
 import { dismissNotification, notify } from '@/store/notifications'
 import { onboardingSurfaceActive } from '@/store/onboarding-presence'
 import { $connection } from '@/store/session'
-import { startUpdateDownloadSync } from '@/store/update-download'
+import { $updateDownload, startUpdateDownloadSync } from '@/store/update-download'
 import type { BackendUpdateCheckResponse } from '@/types/factr'
 
 export interface UpdateApplyState {
   applying: boolean
+  /** The in-app download flow: only a title, a bar and the byte count (no explanatory paragraphs). */
+  compact?: boolean
   stage: DesktopUpdateStage
   message: string
   percent: number | null
@@ -483,8 +485,50 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
   dismissNotification(UPDATE_TOAST_ID)
   $updateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: 'Starting update…' })
 
+  // The main process downloads, verifies and installs behind this one call; mirror its download state into the overlay
+  // (Downloading with a real percentage, then Installing, then Restarting once it hands over).
+  const stopProgress = $updateDownload.subscribe(download => {
+    if ($updateApply.get().stage === 'restart') {
+      return
+    }
+
+    if (download.status === 'downloading') {
+      const total = download.total ?? 0
+      const received = download.received ?? 0
+      const mb = (n: number) => Math.round(n / 1_048_576)
+
+      $updateApply.set({
+        ...$updateApply.get(),
+        applying: true,
+        stage: 'fetch',
+        compact: true,
+        percent: total > 0 ? Math.min(99, (received / total) * 100) : null,
+        message: total > 0 ? `${mb(received)} of ${mb(total)} MB` : ''
+      })
+    } else if (download.status === 'ready' && $updateApply.get().applying) {
+      // The download is done: the main process now shows the mascot update screen and swaps the app, so this dialog
+      // steps aside (it comes back with the reason if the install is refused).
+      $updateApply.set({ ...$updateApply.get(), stage: 'update', percent: null, message: '' })
+      setUpdateOverlayOpen(false)
+    }
+  })
+
   try {
     const result = await bridge.apply(opts)
+
+    stopProgress()
+
+    // The app swaps itself and restarts behind the mascot screen: nothing more to show here until the new version opens.
+    if (result?.ok && result?.restarting) {
+      $updateApply.set({ ...$updateApply.get(), applying: true, stage: 'restart', percent: null, message: '' })
+
+      return { ...result, handedOff: true }
+    }
+
+    // A refused update (busy, offline, download or install failed) must be seen even though the dialog stepped aside.
+    if (result && result.ok === false) {
+      setUpdateOverlayOpen(true)
+    }
 
     // CLI install with no staged updater: not an error — the user just runs
     // `factr update` themselves. Land on a dedicated manual state so the
@@ -579,6 +623,8 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
 
     return result
   } catch (error) {
+    stopProgress()
+
     const message = error instanceof Error ? error.message : String(error)
     $updateApply.set({ ...$updateApply.get(), applying: false, stage: 'error', error: 'apply-failed', message })
 
