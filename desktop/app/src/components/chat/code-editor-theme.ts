@@ -22,10 +22,10 @@ interface GithubPalette {
 }
 
 const DARK: GithubPalette = {
-  comment: '#8b949e',
+  comment: '#818581',
   constant: '#79c0ff',
   entity: '#d2a8ff',
-  fg: '#e6edf3',
+  fg: '#fffdfc',
   keyword: '#ff7b72',
   number: '#79c0ff',
   string: '#a5d6ff',
@@ -34,10 +34,10 @@ const DARK: GithubPalette = {
 }
 
 const LIGHT: GithubPalette = {
-  comment: '#6e7781',
+  comment: '#6e6c6c',
   constant: '#0550ae',
   entity: '#8250df',
-  fg: '#1f2328',
+  fg: '#151313',
   keyword: '#cf222e',
   number: '#0550ae',
   string: '#0a3069',

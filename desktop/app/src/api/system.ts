@@ -96,6 +96,21 @@ export function getActionStatus(name: string, lines = 200, profile?: ProfileScop
   })
 }
 
+export interface SttPrepareStatus {
+  detail: string
+  state: 'downloading' | 'failed' | 'idle' | 'installing' | 'not_needed' | 'ready'
+}
+
+/** Where local dictation stands (nothing is fetched by asking). */
+export function getSttStatus(): Promise<SttPrepareStatus> {
+  return factrApi<SttPrepareStatus>({ path: '/api/audio/stt-status', ...profileScoped() })
+}
+
+/** Start getting local dictation ready (the speech engine and model); idempotent. */
+export function prepareStt(): Promise<SttPrepareStatus> {
+  return factrApi<SttPrepareStatus>({ method: 'POST', path: '/api/audio/stt-prepare', ...profileScoped() })
+}
+
 export function transcribeAudio(dataUrl: string, mimeType?: string): Promise<AudioTranscriptionResponse> {
   return factrApi<AudioTranscriptionResponse>({
     path: '/api/audio/transcribe',

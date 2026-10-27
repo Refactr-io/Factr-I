@@ -507,29 +507,60 @@ def _no_provider_error(provider: str, stt_config: Dict[str, Any]) -> Dict[str, A
         "or OPENAI_API_KEY for the OpenAI Whisper API.")
 
 
-def prefetch_stt_in_background() -> None:
-    """Desktop only: make the default local dictation engine ready before the user first needs it.
+_PREPARE_LOCK = threading.Lock()
+_PREPARE: Dict[str, str] = {"state": "idle", "detail": ""}
 
-    Installs the faster-whisper package (lazy-install, desktop-scoped) and caches the model files,
-    off-thread after startup. No-op when STT is disabled, a cloud/command provider is configured,
-    or ``stt.prefetch`` is false. Never raises.
-    """
+
+def _set_prepare(state: str, detail: str = "") -> None:
+    with _PREPARE_LOCK:
+        _PREPARE["state"] = state
+        _PREPARE["detail"] = detail
+
+
+def stt_prepare_status() -> Dict[str, Any]:
+    """Where local dictation stands: ``not_needed`` (off, or a cloud/command provider), ``idle`` (nothing fetched
+    yet), ``installing``, ``downloading``, ``ready`` or ``failed`` (``detail`` says why)."""
+    cfg = _load_stt_config()
+    if not is_stt_enabled(cfg):
+        return {"state": "not_needed", "detail": "Dictation is switched off."}
+    if cfg.get("provider", DEFAULT_PROVIDER) not in ("local", None) or _has_local_command():
+        return {"state": "not_needed", "detail": ""}
+    with _PREPARE_LOCK:
+        return dict(_PREPARE)
+
+
+def prepare_stt_in_background() -> Dict[str, Any]:
+    """Get local dictation ready, off-thread: install faster-whisper and fetch the model files. Called when the user
+    first uses dictation, never at startup, so a fresh start downloads nothing. Idempotent; never raises."""
+    status = stt_prepare_status()
+    if status["state"] not in ("idle", "failed"):
+        return status
+
     def _run() -> None:
         try:
-            cfg = _load_stt_config()
-            if not is_stt_enabled(cfg) or cfg.get("prefetch", True) is False:
-                return
-            if cfg.get("provider", DEFAULT_PROVIDER) not in ("local", None) or _has_local_command():
-                return
-            if not _HAS_FASTER_WHISPER and not _try_lazy_install_stt():
-                return
+            local_cfg = _load_stt_config().get("local") or {}
+            if not _HAS_FASTER_WHISPER:
+                _set_prepare("installing", "Installing the dictation engine")
+                if not _try_lazy_install_stt():
+                    _set_prepare("failed", "The dictation engine could not be installed. Check your connection and try again.")
+                    return
+            _set_prepare("downloading", "Downloading the dictation model")
             from tools.transcription_local import prefetch_local_stt_model
-            local_cfg = cfg.get("local") or {}
-            prefetch_local_stt_model(local_cfg.get("model", DEFAULT_LOCAL_MODEL))
-        except Exception:  # best-effort warm-up
-            logger.debug("STT prefetch failed", exc_info=True)
+            if prefetch_local_stt_model(local_cfg.get("model", DEFAULT_LOCAL_MODEL)):
+                _set_prepare("ready")
+            else:
+                _set_prepare("failed", "The dictation model could not be downloaded. Check your connection and try again.")
+        except Exception as exc:
+            logger.debug("STT preparation failed", exc_info=True)
+            _set_prepare("failed", str(exc)[:200] or "Dictation could not be prepared.")
 
-    threading.Thread(target=_run, daemon=True, name="stt-prefetch").start()
+    _set_prepare("installing" if not _HAS_FASTER_WHISPER else "downloading", "Getting dictation ready")
+    threading.Thread(target=_run, daemon=True, name="stt-prepare").start()
+    return stt_prepare_status()
+
+
+# Older name of the above, kept for callers and tests.
+prefetch_stt_in_background = prepare_stt_in_background
 
 
 def transcribe_audio(

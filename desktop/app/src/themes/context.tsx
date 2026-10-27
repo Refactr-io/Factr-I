@@ -112,7 +112,7 @@ function applyTheme(mode: ThemeMode, chatFontFamily = $chatFontFamily.get()) {
     '--dt-sidebar-border': c.sidebarBorder ?? c.border,
     '--dt-user-bubble-border': c.userBubbleBorder ?? c.border,
     // The reference palette's green is reserved for semantic success.
-    '--ui-success': '#28c840',
+    '--ui-success': isDark ? '#84c79a' : '#356e46',
     '--dt-font-sans': resolveChatFontFamily(chatFontFamily, typo.fontSans),
     '--dt-font-mono': typo.fontMono,
     '--noise-opacity-mul': isDark ? 'calc(0.04 / 0.21)' : 'calc(0.34 / 0.21)'

@@ -6,6 +6,7 @@ import { Codicon } from '@/components/ui/codicon'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
+import { isLocalHtmlTarget } from '@/lib/html-auto-open'
 import { normalizeOrLocalPreviewTarget, openPreviewTargetInBrowser } from '@/lib/local-preview'
 import { cn } from '@/lib/utils'
 import { notifyError } from '@/store/notifications'
@@ -57,6 +58,16 @@ export const PreviewStatusRow = memo(function PreviewStatusRow({ item, onDismiss
     }
   }
 
+  const localHtml = isLocalHtmlTarget(item.target) && !isDesktopFsRemoteMode()
+
+  const openInPane = async () => {
+    try {
+      openPreview(renderedHtmlTarget(await resolveTarget()))
+    } catch (error) {
+      notifyError(error, t.preview.unavailable)
+    }
+  }
+
   const openDefaultTarget = async () => {
     try {
       const target = await resolveTarget()
@@ -90,14 +101,18 @@ export const PreviewStatusRow = memo(function PreviewStatusRow({ item, onDismiss
           size="0.8rem"
         />
       }
-      // Plain click opens the link in the browser, except remote files which
-      // only the in-app gateway-backed preview can read. ⌘/Ctrl-click always
-      // uses the in-app preview pane. (isOpen still toggles the pane closed.)
+      // An HTML file the agent wrote opens in the in-app pane on a plain click; ⌘/Ctrl-click hands it to the system
+      // browser. Anything else (a dev-server address, a remote file) keeps its old behaviour: plain click opens the
+      // browser, except remote files which only the in-app preview can read, and ⌘/Ctrl-click uses the pane.
       onActivate={event => {
-        if (event.metaKey || event.ctrlKey) {
-          void togglePreview()
-        } else {
+        const external = event.metaKey || event.ctrlKey
+
+        if (localHtml && !external) {
+          void openInPane()
+        } else if (localHtml || !external) {
           void openDefaultTarget()
+        } else {
+          void togglePreview()
         }
       }}
     >
@@ -106,7 +121,7 @@ export const PreviewStatusRow = memo(function PreviewStatusRow({ item, onDismiss
           <>
             {item.target}
             <br />
-            <span className="opacity-70">{t.preview.linkHint}</span>
+            <span className="opacity-70">{localHtml ? t.preview.htmlLinkHint : t.preview.linkHint}</span>
           </>
         }
         placement="row"

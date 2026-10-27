@@ -6,6 +6,7 @@ pub mod agent_loop;
 pub mod agent_loop_host;
 mod bundled_skills;
 pub use bundled_skills::{install as install_shipped_skills, shipped_dirs as shipped_skill_dirs};
+pub mod check_memo;
 pub mod goal_ratchet;
 pub mod entries;
 pub mod host;

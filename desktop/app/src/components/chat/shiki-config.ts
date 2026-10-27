@@ -9,15 +9,14 @@
 export const SHIKI_THEME = { dark: 'github-dark-dimmed', light: 'github-light-default' } as const
 
 /**
- * `github-light-default` colors comments `#6e7781` (~4.2:1 against the code
- * card background) — borderline unreadable at our 11px code size, and worst of
- * all for shell snippets where a single `#` turns the rest of the line into one
- * long comment span. Remap light-mode comments to GitHub's darker muted gray
- * (`#57606a`, ~6.4:1). Dark mode (`#8b949e`, ~6.1:1) already reads fine, so we
- * leave it untouched. Keyed per theme name so the bump only applies in light.
+ * The two GitHub themes carry cool blue-grey neutrals (text, punctuation, comments). Remap those to the app's warm
+ * neutrals so code blocks sit in the same palette as the rest of the UI; the hued token colours (keywords, strings,
+ * numbers) are left alone. Light-mode comments also move to a darker grey (about 5.7:1 on the code card; the stock
+ * `#6e7781` is 4.2:1 and a single `#` turns a whole shell line into one comment span). Keyed per theme name.
  */
 export const SHIKI_COLOR_REPLACEMENTS: Record<string, Record<string, string>> = {
-  'github-light-default': { '#6e7781': '#57606a' }
+  'github-dark-dimmed': { '#adbac7': '#fffdfc', '#cdd9e5': '#fffdfc', '#768390': '#818581', '#636e7b': '#818581' },
+  'github-light-default': { '#1f2328': '#151313', '#24292f': '#151313', '#6e7781': '#575554', '#57606a': '#575554' }
 }
 
 /**

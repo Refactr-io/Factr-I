@@ -93,20 +93,20 @@ import {
   botBackendFor,
   computerStatus as botComputerStatus,
   computerActive,
+  computerWanted,
   configureBotComputers,
   destroyComputer,
   dockerBinaryCandidates,
   enabledCronJobs,
   ensureComputer,
   isBotProfile,
-  computerWanted,
-  setComputerWanted,
   listComputers,
   pauseComputer,
   reconcileComputers,
   refreshComputerRuntime,
   resumeComputer,
   setComputerHold,
+  setComputerWanted,
   stopComputer,
   stopUnscheduledComputers,
   touchComputer,
@@ -375,6 +375,7 @@ import { poolTouchKeys } from './pool-touch-scope'
 import { createKeepAwake } from './power-save'
 import { capturePreviewContents } from './preview-capture'
 import { PreviewReachRegistry } from './preview-reach'
+import { previewWatchWantsRecursive, shouldReloadPreviewFor } from './preview-watch'
 import {
   createPrimaryRemoteConnection,
   FirstRunSetupResetError,
@@ -5823,10 +5824,8 @@ async function watchPreviewFile(rawUrl) {
   const id = crypto.randomBytes(12).toString('base64url')
   let timer = null
 
-  const watcher = fs.watch(watchDir, (_eventType, filename) => {
-    const changedName = filename ? path.basename(String(filename)) : ''
-
-    if (changedName && changedName !== targetName) {
+  const onChange = (_eventType, filename) => {
+    if (!shouldReloadPreviewFor(targetName, filename ? String(filename) : '')) {
       return
     }
 
@@ -5843,7 +5842,18 @@ async function watchPreviewFile(rawUrl) {
 
       sendPreviewFileChanged({ id, path: filePath, url: pathToFileURL(filePath).toString() })
     }, PREVIEW_WATCH_DEBOUNCE_MS)
-  })
+  }
+
+  // A page also reloads for the css, scripts and images it loads (an agent writes index.html first and the assets after).
+  let watcher
+
+  try {
+    watcher = previewWatchWantsRecursive(targetName)
+      ? fs.watch(watchDir, { recursive: true }, onChange)
+      : fs.watch(watchDir, onChange)
+  } catch {
+    watcher = fs.watch(watchDir, onChange)
+  }
 
   previewWatchers.set(id, {
     close: () => {
@@ -11647,6 +11657,7 @@ async function runPoolBackendStart(
   assertPoolEntryStillOwned(poolKey, entry)
 
   const tokenLaunch = engineTokenLaunch(backend.kind, token)
+
   if (backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)) {
     entry.hasScheduledJobs = () => enabledCronJobs(profile) > 0
   }
@@ -11672,18 +11683,21 @@ async function runPoolBackendStart(
     FACTR_WEB_DIST: webDist,
     ...(readyFile ? { FACTR_DESKTOP_READY_FILE: readyFile } : {})
   }
+
   const sandbox = backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)
     ? prepareBotSandbox({ profile, configHome: FACTR_CONFIG_HOME, command: backend.command,
         args: [...backend.args, ...tokenLaunch.args], env,
         readRoots: [path.dirname(backend.command), path.join(process.resourcesPath, 'backend-python'),
           ...[path.join(FACTR_CONFIG_HOME, 'node')].filter(directoryExists)] })
     : null
+
   const child = spawnOwnedBackend(
     sandbox?.command || backend.command,
     sandbox?.args || [...backend.args, ...tokenLaunch.args],
     hiddenWindowsChildOptions({ cwd: sandbox?.cwd || factrCwd, env: sandbox?.env || env, shell: backend.shell, stdio: tokenLaunch.stdio,
       ...(sandbox && !IS_WINDOWS ? { detached: true } : {}) })
   )
+
   if (sandbox) {
     child.once('exit', sandbox.cleanup)
     child.once('error', sandbox.cleanup)
@@ -11869,6 +11883,7 @@ configureBotComputers({
   maxRunning: () => poolMaxBackends(),
   ...(IS_PACKAGED ? { hostRunning: profile => localProfilePoolKeys(profile).some(key => {
     const child = backendPool.get(key)?.process
+
     return child && child.exitCode === null && child.signalCode === null
   }), startBot: async profile => {
     try { return await ensureBackend(profile, { spawnPriority: 'background' }) }
@@ -14728,15 +14743,20 @@ ipcMain.handle('factr:bot-relay:tick', () => {
     return { ok: false, pending: 0 }
   }
 })
+
 function botSetupExecutable(name: string): string | undefined {
   if (name === 'Docker.app') { return fs.existsSync('/Applications/Docker.app') ? '/Applications/Docker.app' : undefined }
+
   if (name === 'docker' || name === 'docker.exe') { return dockerBinaryCandidates(process.platform, process.env).find(fileExists) }
+
   const candidates = [
     ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, name)),
     ...(process.platform === 'darwin' ? ['/opt/homebrew/bin', '/usr/local/bin'].map(dir => path.join(dir, name)) : [])
   ]
+
   return candidates.find(candidate => fs.existsSync(candidate))
 }
+
 const botDockerSetup = createDockerSetup({
   platform: process.platform,
   available: name => Boolean(botSetupExecutable(name)),
@@ -14752,10 +14772,12 @@ const botDockerSetup = createDockerSetup({
   })).response === 0,
   openExternal: url => shell.openExternal(url)
 })
+
 ipcMain.handle('factr:bot-computer:runtime-status', () => botDockerSetup.status())
 ipcMain.handle('factr:bot-computer:setup', async () => {
   const status = await botDockerSetup.setup()
   refreshComputerRuntime()
+
   return status
 })
 ipcMain.handle('factr:bot-computer:list', async () => {

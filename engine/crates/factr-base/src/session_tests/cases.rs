@@ -2377,8 +2377,10 @@ fn streaming_guard_creates_visible_macos_sleep_assertion() {
         .output()
         .expect("pmset -g assertions should run on macOS");
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // Other running copies of the app hold an assertion with the same reason text; only this process's own must be gone.
+    let mine = format!("pid {}(", std::process::id());
     assert!(
-        !stdout.contains(reason),
+        !stdout.lines().any(|line| line.contains(&mine) && line.contains(reason)),
         "streaming assertion should be released after guard drop; output was:\n{stdout}"
     );
 }

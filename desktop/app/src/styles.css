@@ -238,8 +238,381 @@
   --color-destructive: var(--dt-destructive);
   --color-destructive-foreground: var(--dt-destructive-foreground);
 
+  --color-black: #151313;
+  --color-white: #fffdfc;
   --color-midground: var(--dt-midground);
   --color-midground-foreground: var(--dt-midground-foreground);
+
+  /* Tailwind's palette names resolve to the semantic palette (and the grey names to warm ink tints), so a stray
+     amber, emerald, teal or zinc class follows the theme. Shades mix toward Rose Alloy (50 to 400) or Blackthorn Ink
+     (600 to 950). The typography plugin reads these at build time, so its prose colours follow too. */
+  --color-amber-50: color-mix(in srgb, var(--ui-orange) 8%, var(--color-rose-alloy));
+  --color-amber-100: color-mix(in srgb, var(--ui-orange) 16%, var(--color-rose-alloy));
+  --color-amber-200: color-mix(in srgb, var(--ui-orange) 30%, var(--color-rose-alloy));
+  --color-amber-300: color-mix(in srgb, var(--ui-orange) 52%, var(--color-rose-alloy));
+  --color-amber-400: color-mix(in srgb, var(--ui-orange) 78%, var(--color-rose-alloy));
+  --color-amber-500: var(--ui-orange);
+  --color-amber-600: color-mix(in srgb, var(--ui-orange) 84%, var(--color-blackthorn-ink));
+  --color-amber-700: color-mix(in srgb, var(--ui-orange) 68%, var(--color-blackthorn-ink));
+  --color-amber-800: color-mix(in srgb, var(--ui-orange) 52%, var(--color-blackthorn-ink));
+  --color-amber-900: color-mix(in srgb, var(--ui-orange) 38%, var(--color-blackthorn-ink));
+  --color-amber-950: color-mix(in srgb, var(--ui-orange) 26%, var(--color-blackthorn-ink));
+  --color-orange-50: color-mix(in srgb, var(--ui-orange) 8%, var(--color-rose-alloy));
+  --color-orange-100: color-mix(in srgb, var(--ui-orange) 16%, var(--color-rose-alloy));
+  --color-orange-200: color-mix(in srgb, var(--ui-orange) 30%, var(--color-rose-alloy));
+  --color-orange-300: color-mix(in srgb, var(--ui-orange) 52%, var(--color-rose-alloy));
+  --color-orange-400: color-mix(in srgb, var(--ui-orange) 78%, var(--color-rose-alloy));
+  --color-orange-500: var(--ui-orange);
+  --color-orange-600: color-mix(in srgb, var(--ui-orange) 84%, var(--color-blackthorn-ink));
+  --color-orange-700: color-mix(in srgb, var(--ui-orange) 68%, var(--color-blackthorn-ink));
+  --color-orange-800: color-mix(in srgb, var(--ui-orange) 52%, var(--color-blackthorn-ink));
+  --color-orange-900: color-mix(in srgb, var(--ui-orange) 38%, var(--color-blackthorn-ink));
+  --color-orange-950: color-mix(in srgb, var(--ui-orange) 26%, var(--color-blackthorn-ink));
+  --color-yellow-50: color-mix(in srgb, var(--ui-yellow) 8%, var(--color-rose-alloy));
+  --color-yellow-100: color-mix(in srgb, var(--ui-yellow) 16%, var(--color-rose-alloy));
+  --color-yellow-200: color-mix(in srgb, var(--ui-yellow) 30%, var(--color-rose-alloy));
+  --color-yellow-300: color-mix(in srgb, var(--ui-yellow) 52%, var(--color-rose-alloy));
+  --color-yellow-400: color-mix(in srgb, var(--ui-yellow) 78%, var(--color-rose-alloy));
+  --color-yellow-500: var(--ui-yellow);
+  --color-yellow-600: color-mix(in srgb, var(--ui-yellow) 84%, var(--color-blackthorn-ink));
+  --color-yellow-700: color-mix(in srgb, var(--ui-yellow) 68%, var(--color-blackthorn-ink));
+  --color-yellow-800: color-mix(in srgb, var(--ui-yellow) 52%, var(--color-blackthorn-ink));
+  --color-yellow-900: color-mix(in srgb, var(--ui-yellow) 38%, var(--color-blackthorn-ink));
+  --color-yellow-950: color-mix(in srgb, var(--ui-yellow) 26%, var(--color-blackthorn-ink));
+  --color-emerald-50: color-mix(in srgb, var(--ui-green) 8%, var(--color-rose-alloy));
+  --color-emerald-100: color-mix(in srgb, var(--ui-green) 16%, var(--color-rose-alloy));
+  --color-emerald-200: color-mix(in srgb, var(--ui-green) 30%, var(--color-rose-alloy));
+  --color-emerald-300: color-mix(in srgb, var(--ui-green) 52%, var(--color-rose-alloy));
+  --color-emerald-400: color-mix(in srgb, var(--ui-green) 78%, var(--color-rose-alloy));
+  --color-emerald-500: var(--ui-green);
+  --color-emerald-600: color-mix(in srgb, var(--ui-green) 84%, var(--color-blackthorn-ink));
+  --color-emerald-700: color-mix(in srgb, var(--ui-green) 68%, var(--color-blackthorn-ink));
+  --color-emerald-800: color-mix(in srgb, var(--ui-green) 52%, var(--color-blackthorn-ink));
+  --color-emerald-900: color-mix(in srgb, var(--ui-green) 38%, var(--color-blackthorn-ink));
+  --color-emerald-950: color-mix(in srgb, var(--ui-green) 26%, var(--color-blackthorn-ink));
+  --color-green-50: color-mix(in srgb, var(--ui-green) 8%, var(--color-rose-alloy));
+  --color-green-100: color-mix(in srgb, var(--ui-green) 16%, var(--color-rose-alloy));
+  --color-green-200: color-mix(in srgb, var(--ui-green) 30%, var(--color-rose-alloy));
+  --color-green-300: color-mix(in srgb, var(--ui-green) 52%, var(--color-rose-alloy));
+  --color-green-400: color-mix(in srgb, var(--ui-green) 78%, var(--color-rose-alloy));
+  --color-green-500: var(--ui-green);
+  --color-green-600: color-mix(in srgb, var(--ui-green) 84%, var(--color-blackthorn-ink));
+  --color-green-700: color-mix(in srgb, var(--ui-green) 68%, var(--color-blackthorn-ink));
+  --color-green-800: color-mix(in srgb, var(--ui-green) 52%, var(--color-blackthorn-ink));
+  --color-green-900: color-mix(in srgb, var(--ui-green) 38%, var(--color-blackthorn-ink));
+  --color-green-950: color-mix(in srgb, var(--ui-green) 26%, var(--color-blackthorn-ink));
+  --color-lime-50: color-mix(in srgb, var(--ui-green) 8%, var(--color-rose-alloy));
+  --color-lime-100: color-mix(in srgb, var(--ui-green) 16%, var(--color-rose-alloy));
+  --color-lime-200: color-mix(in srgb, var(--ui-green) 30%, var(--color-rose-alloy));
+  --color-lime-300: color-mix(in srgb, var(--ui-green) 52%, var(--color-rose-alloy));
+  --color-lime-400: color-mix(in srgb, var(--ui-green) 78%, var(--color-rose-alloy));
+  --color-lime-500: var(--ui-green);
+  --color-lime-600: color-mix(in srgb, var(--ui-green) 84%, var(--color-blackthorn-ink));
+  --color-lime-700: color-mix(in srgb, var(--ui-green) 68%, var(--color-blackthorn-ink));
+  --color-lime-800: color-mix(in srgb, var(--ui-green) 52%, var(--color-blackthorn-ink));
+  --color-lime-900: color-mix(in srgb, var(--ui-green) 38%, var(--color-blackthorn-ink));
+  --color-lime-950: color-mix(in srgb, var(--ui-green) 26%, var(--color-blackthorn-ink));
+  --color-red-50: color-mix(in srgb, var(--ui-red) 8%, var(--color-rose-alloy));
+  --color-red-100: color-mix(in srgb, var(--ui-red) 16%, var(--color-rose-alloy));
+  --color-red-200: color-mix(in srgb, var(--ui-red) 30%, var(--color-rose-alloy));
+  --color-red-300: color-mix(in srgb, var(--ui-red) 52%, var(--color-rose-alloy));
+  --color-red-400: color-mix(in srgb, var(--ui-red) 78%, var(--color-rose-alloy));
+  --color-red-500: var(--ui-red);
+  --color-red-600: color-mix(in srgb, var(--ui-red) 84%, var(--color-blackthorn-ink));
+  --color-red-700: color-mix(in srgb, var(--ui-red) 68%, var(--color-blackthorn-ink));
+  --color-red-800: color-mix(in srgb, var(--ui-red) 52%, var(--color-blackthorn-ink));
+  --color-red-900: color-mix(in srgb, var(--ui-red) 38%, var(--color-blackthorn-ink));
+  --color-red-950: color-mix(in srgb, var(--ui-red) 26%, var(--color-blackthorn-ink));
+  --color-rose-50: color-mix(in srgb, var(--ui-red) 8%, var(--color-rose-alloy));
+  --color-rose-100: color-mix(in srgb, var(--ui-red) 16%, var(--color-rose-alloy));
+  --color-rose-200: color-mix(in srgb, var(--ui-red) 30%, var(--color-rose-alloy));
+  --color-rose-300: color-mix(in srgb, var(--ui-red) 52%, var(--color-rose-alloy));
+  --color-rose-400: color-mix(in srgb, var(--ui-red) 78%, var(--color-rose-alloy));
+  --color-rose-500: var(--ui-red);
+  --color-rose-600: color-mix(in srgb, var(--ui-red) 84%, var(--color-blackthorn-ink));
+  --color-rose-700: color-mix(in srgb, var(--ui-red) 68%, var(--color-blackthorn-ink));
+  --color-rose-800: color-mix(in srgb, var(--ui-red) 52%, var(--color-blackthorn-ink));
+  --color-rose-900: color-mix(in srgb, var(--ui-red) 38%, var(--color-blackthorn-ink));
+  --color-rose-950: color-mix(in srgb, var(--ui-red) 26%, var(--color-blackthorn-ink));
+  --color-pink-50: color-mix(in srgb, var(--ui-red) 8%, var(--color-rose-alloy));
+  --color-pink-100: color-mix(in srgb, var(--ui-red) 16%, var(--color-rose-alloy));
+  --color-pink-200: color-mix(in srgb, var(--ui-red) 30%, var(--color-rose-alloy));
+  --color-pink-300: color-mix(in srgb, var(--ui-red) 52%, var(--color-rose-alloy));
+  --color-pink-400: color-mix(in srgb, var(--ui-red) 78%, var(--color-rose-alloy));
+  --color-pink-500: var(--ui-red);
+  --color-pink-600: color-mix(in srgb, var(--ui-red) 84%, var(--color-blackthorn-ink));
+  --color-pink-700: color-mix(in srgb, var(--ui-red) 68%, var(--color-blackthorn-ink));
+  --color-pink-800: color-mix(in srgb, var(--ui-red) 52%, var(--color-blackthorn-ink));
+  --color-pink-900: color-mix(in srgb, var(--ui-red) 38%, var(--color-blackthorn-ink));
+  --color-pink-950: color-mix(in srgb, var(--ui-red) 26%, var(--color-blackthorn-ink));
+  --color-sky-50: color-mix(in srgb, var(--ui-blue) 8%, var(--color-rose-alloy));
+  --color-sky-100: color-mix(in srgb, var(--ui-blue) 16%, var(--color-rose-alloy));
+  --color-sky-200: color-mix(in srgb, var(--ui-blue) 30%, var(--color-rose-alloy));
+  --color-sky-300: color-mix(in srgb, var(--ui-blue) 52%, var(--color-rose-alloy));
+  --color-sky-400: color-mix(in srgb, var(--ui-blue) 78%, var(--color-rose-alloy));
+  --color-sky-500: var(--ui-blue);
+  --color-sky-600: color-mix(in srgb, var(--ui-blue) 84%, var(--color-blackthorn-ink));
+  --color-sky-700: color-mix(in srgb, var(--ui-blue) 68%, var(--color-blackthorn-ink));
+  --color-sky-800: color-mix(in srgb, var(--ui-blue) 52%, var(--color-blackthorn-ink));
+  --color-sky-900: color-mix(in srgb, var(--ui-blue) 38%, var(--color-blackthorn-ink));
+  --color-sky-950: color-mix(in srgb, var(--ui-blue) 26%, var(--color-blackthorn-ink));
+  --color-blue-50: color-mix(in srgb, var(--ui-blue) 8%, var(--color-rose-alloy));
+  --color-blue-100: color-mix(in srgb, var(--ui-blue) 16%, var(--color-rose-alloy));
+  --color-blue-200: color-mix(in srgb, var(--ui-blue) 30%, var(--color-rose-alloy));
+  --color-blue-300: color-mix(in srgb, var(--ui-blue) 52%, var(--color-rose-alloy));
+  --color-blue-400: color-mix(in srgb, var(--ui-blue) 78%, var(--color-rose-alloy));
+  --color-blue-500: var(--ui-blue);
+  --color-blue-600: color-mix(in srgb, var(--ui-blue) 84%, var(--color-blackthorn-ink));
+  --color-blue-700: color-mix(in srgb, var(--ui-blue) 68%, var(--color-blackthorn-ink));
+  --color-blue-800: color-mix(in srgb, var(--ui-blue) 52%, var(--color-blackthorn-ink));
+  --color-blue-900: color-mix(in srgb, var(--ui-blue) 38%, var(--color-blackthorn-ink));
+  --color-blue-950: color-mix(in srgb, var(--ui-blue) 26%, var(--color-blackthorn-ink));
+  --color-indigo-50: color-mix(in srgb, var(--ui-blue) 8%, var(--color-rose-alloy));
+  --color-indigo-100: color-mix(in srgb, var(--ui-blue) 16%, var(--color-rose-alloy));
+  --color-indigo-200: color-mix(in srgb, var(--ui-blue) 30%, var(--color-rose-alloy));
+  --color-indigo-300: color-mix(in srgb, var(--ui-blue) 52%, var(--color-rose-alloy));
+  --color-indigo-400: color-mix(in srgb, var(--ui-blue) 78%, var(--color-rose-alloy));
+  --color-indigo-500: var(--ui-blue);
+  --color-indigo-600: color-mix(in srgb, var(--ui-blue) 84%, var(--color-blackthorn-ink));
+  --color-indigo-700: color-mix(in srgb, var(--ui-blue) 68%, var(--color-blackthorn-ink));
+  --color-indigo-800: color-mix(in srgb, var(--ui-blue) 52%, var(--color-blackthorn-ink));
+  --color-indigo-900: color-mix(in srgb, var(--ui-blue) 38%, var(--color-blackthorn-ink));
+  --color-indigo-950: color-mix(in srgb, var(--ui-blue) 26%, var(--color-blackthorn-ink));
+  --color-violet-50: color-mix(in srgb, var(--ui-purple) 8%, var(--color-rose-alloy));
+  --color-violet-100: color-mix(in srgb, var(--ui-purple) 16%, var(--color-rose-alloy));
+  --color-violet-200: color-mix(in srgb, var(--ui-purple) 30%, var(--color-rose-alloy));
+  --color-violet-300: color-mix(in srgb, var(--ui-purple) 52%, var(--color-rose-alloy));
+  --color-violet-400: color-mix(in srgb, var(--ui-purple) 78%, var(--color-rose-alloy));
+  --color-violet-500: var(--ui-purple);
+  --color-violet-600: color-mix(in srgb, var(--ui-purple) 84%, var(--color-blackthorn-ink));
+  --color-violet-700: color-mix(in srgb, var(--ui-purple) 68%, var(--color-blackthorn-ink));
+  --color-violet-800: color-mix(in srgb, var(--ui-purple) 52%, var(--color-blackthorn-ink));
+  --color-violet-900: color-mix(in srgb, var(--ui-purple) 38%, var(--color-blackthorn-ink));
+  --color-violet-950: color-mix(in srgb, var(--ui-purple) 26%, var(--color-blackthorn-ink));
+  --color-purple-50: color-mix(in srgb, var(--ui-purple) 8%, var(--color-rose-alloy));
+  --color-purple-100: color-mix(in srgb, var(--ui-purple) 16%, var(--color-rose-alloy));
+  --color-purple-200: color-mix(in srgb, var(--ui-purple) 30%, var(--color-rose-alloy));
+  --color-purple-300: color-mix(in srgb, var(--ui-purple) 52%, var(--color-rose-alloy));
+  --color-purple-400: color-mix(in srgb, var(--ui-purple) 78%, var(--color-rose-alloy));
+  --color-purple-500: var(--ui-purple);
+  --color-purple-600: color-mix(in srgb, var(--ui-purple) 84%, var(--color-blackthorn-ink));
+  --color-purple-700: color-mix(in srgb, var(--ui-purple) 68%, var(--color-blackthorn-ink));
+  --color-purple-800: color-mix(in srgb, var(--ui-purple) 52%, var(--color-blackthorn-ink));
+  --color-purple-900: color-mix(in srgb, var(--ui-purple) 38%, var(--color-blackthorn-ink));
+  --color-purple-950: color-mix(in srgb, var(--ui-purple) 26%, var(--color-blackthorn-ink));
+  --color-fuchsia-50: color-mix(in srgb, var(--ui-purple) 8%, var(--color-rose-alloy));
+  --color-fuchsia-100: color-mix(in srgb, var(--ui-purple) 16%, var(--color-rose-alloy));
+  --color-fuchsia-200: color-mix(in srgb, var(--ui-purple) 30%, var(--color-rose-alloy));
+  --color-fuchsia-300: color-mix(in srgb, var(--ui-purple) 52%, var(--color-rose-alloy));
+  --color-fuchsia-400: color-mix(in srgb, var(--ui-purple) 78%, var(--color-rose-alloy));
+  --color-fuchsia-500: var(--ui-purple);
+  --color-fuchsia-600: color-mix(in srgb, var(--ui-purple) 84%, var(--color-blackthorn-ink));
+  --color-fuchsia-700: color-mix(in srgb, var(--ui-purple) 68%, var(--color-blackthorn-ink));
+  --color-fuchsia-800: color-mix(in srgb, var(--ui-purple) 52%, var(--color-blackthorn-ink));
+  --color-fuchsia-900: color-mix(in srgb, var(--ui-purple) 38%, var(--color-blackthorn-ink));
+  --color-fuchsia-950: color-mix(in srgb, var(--ui-purple) 26%, var(--color-blackthorn-ink));
+  --color-teal-50: color-mix(in srgb, var(--ui-cyan) 8%, var(--color-rose-alloy));
+  --color-teal-100: color-mix(in srgb, var(--ui-cyan) 16%, var(--color-rose-alloy));
+  --color-teal-200: color-mix(in srgb, var(--ui-cyan) 30%, var(--color-rose-alloy));
+  --color-teal-300: color-mix(in srgb, var(--ui-cyan) 52%, var(--color-rose-alloy));
+  --color-teal-400: color-mix(in srgb, var(--ui-cyan) 78%, var(--color-rose-alloy));
+  --color-teal-500: var(--ui-cyan);
+  --color-teal-600: color-mix(in srgb, var(--ui-cyan) 84%, var(--color-blackthorn-ink));
+  --color-teal-700: color-mix(in srgb, var(--ui-cyan) 68%, var(--color-blackthorn-ink));
+  --color-teal-800: color-mix(in srgb, var(--ui-cyan) 52%, var(--color-blackthorn-ink));
+  --color-teal-900: color-mix(in srgb, var(--ui-cyan) 38%, var(--color-blackthorn-ink));
+  --color-teal-950: color-mix(in srgb, var(--ui-cyan) 26%, var(--color-blackthorn-ink));
+  --color-cyan-50: color-mix(in srgb, var(--ui-cyan) 8%, var(--color-rose-alloy));
+  --color-cyan-100: color-mix(in srgb, var(--ui-cyan) 16%, var(--color-rose-alloy));
+  --color-cyan-200: color-mix(in srgb, var(--ui-cyan) 30%, var(--color-rose-alloy));
+  --color-cyan-300: color-mix(in srgb, var(--ui-cyan) 52%, var(--color-rose-alloy));
+  --color-cyan-400: color-mix(in srgb, var(--ui-cyan) 78%, var(--color-rose-alloy));
+  --color-cyan-500: var(--ui-cyan);
+  --color-cyan-600: color-mix(in srgb, var(--ui-cyan) 84%, var(--color-blackthorn-ink));
+  --color-cyan-700: color-mix(in srgb, var(--ui-cyan) 68%, var(--color-blackthorn-ink));
+  --color-cyan-800: color-mix(in srgb, var(--ui-cyan) 52%, var(--color-blackthorn-ink));
+  --color-cyan-900: color-mix(in srgb, var(--ui-cyan) 38%, var(--color-blackthorn-ink));
+  --color-cyan-950: color-mix(in srgb, var(--ui-cyan) 26%, var(--color-blackthorn-ink));
+  --color-gray-50: color-mix(in srgb, var(--color-blackthorn-ink) 4%, var(--color-rose-alloy));
+  --color-gray-100: color-mix(in srgb, var(--color-blackthorn-ink) 8%, var(--color-rose-alloy));
+  --color-gray-200: color-mix(in srgb, var(--color-blackthorn-ink) 14%, var(--color-rose-alloy));
+  --color-gray-300: color-mix(in srgb, var(--color-blackthorn-ink) 24%, var(--color-rose-alloy));
+  --color-gray-400: color-mix(in srgb, var(--color-blackthorn-ink) 44%, var(--color-rose-alloy));
+  --color-gray-500: color-mix(in srgb, var(--color-blackthorn-ink) 56%, var(--color-rose-alloy));
+  --color-gray-600: color-mix(in srgb, var(--color-blackthorn-ink) 68%, var(--color-rose-alloy));
+  --color-gray-700: color-mix(in srgb, var(--color-blackthorn-ink) 78%, var(--color-rose-alloy));
+  --color-gray-800: color-mix(in srgb, var(--color-blackthorn-ink) 88%, var(--color-rose-alloy));
+  --color-gray-900: color-mix(in srgb, var(--color-blackthorn-ink) 94%, var(--color-rose-alloy));
+  --color-gray-950: color-mix(in srgb, var(--color-blackthorn-ink) 97%, var(--color-rose-alloy));
+  --color-slate-50: color-mix(in srgb, var(--color-blackthorn-ink) 4%, var(--color-rose-alloy));
+  --color-slate-100: color-mix(in srgb, var(--color-blackthorn-ink) 8%, var(--color-rose-alloy));
+  --color-slate-200: color-mix(in srgb, var(--color-blackthorn-ink) 14%, var(--color-rose-alloy));
+  --color-slate-300: color-mix(in srgb, var(--color-blackthorn-ink) 24%, var(--color-rose-alloy));
+  --color-slate-400: color-mix(in srgb, var(--color-blackthorn-ink) 44%, var(--color-rose-alloy));
+  --color-slate-500: color-mix(in srgb, var(--color-blackthorn-ink) 56%, var(--color-rose-alloy));
+  --color-slate-600: color-mix(in srgb, var(--color-blackthorn-ink) 68%, var(--color-rose-alloy));
+  --color-slate-700: color-mix(in srgb, var(--color-blackthorn-ink) 78%, var(--color-rose-alloy));
+  --color-slate-800: color-mix(in srgb, var(--color-blackthorn-ink) 88%, var(--color-rose-alloy));
+  --color-slate-900: color-mix(in srgb, var(--color-blackthorn-ink) 94%, var(--color-rose-alloy));
+  --color-slate-950: color-mix(in srgb, var(--color-blackthorn-ink) 97%, var(--color-rose-alloy));
+  --color-zinc-50: color-mix(in srgb, var(--color-blackthorn-ink) 4%, var(--color-rose-alloy));
+  --color-zinc-100: color-mix(in srgb, var(--color-blackthorn-ink) 8%, var(--color-rose-alloy));
+  --color-zinc-200: color-mix(in srgb, var(--color-blackthorn-ink) 14%, var(--color-rose-alloy));
+  --color-zinc-300: color-mix(in srgb, var(--color-blackthorn-ink) 24%, var(--color-rose-alloy));
+  --color-zinc-400: color-mix(in srgb, var(--color-blackthorn-ink) 44%, var(--color-rose-alloy));
+  --color-zinc-500: color-mix(in srgb, var(--color-blackthorn-ink) 56%, var(--color-rose-alloy));
+  --color-zinc-600: color-mix(in srgb, var(--color-blackthorn-ink) 68%, var(--color-rose-alloy));
+  --color-zinc-700: color-mix(in srgb, var(--color-blackthorn-ink) 78%, var(--color-rose-alloy));
+  --color-zinc-800: color-mix(in srgb, var(--color-blackthorn-ink) 88%, var(--color-rose-alloy));
+  --color-zinc-900: color-mix(in srgb, var(--color-blackthorn-ink) 94%, var(--color-rose-alloy));
+  --color-zinc-950: color-mix(in srgb, var(--color-blackthorn-ink) 97%, var(--color-rose-alloy));
+  --color-neutral-50: color-mix(in srgb, var(--color-blackthorn-ink) 4%, var(--color-rose-alloy));
+  --color-neutral-100: color-mix(in srgb, var(--color-blackthorn-ink) 8%, var(--color-rose-alloy));
+  --color-neutral-200: color-mix(in srgb, var(--color-blackthorn-ink) 14%, var(--color-rose-alloy));
+  --color-neutral-300: color-mix(in srgb, var(--color-blackthorn-ink) 24%, var(--color-rose-alloy));
+  --color-neutral-400: color-mix(in srgb, var(--color-blackthorn-ink) 44%, var(--color-rose-alloy));
+  --color-neutral-500: color-mix(in srgb, var(--color-blackthorn-ink) 56%, var(--color-rose-alloy));
+  --color-neutral-600: color-mix(in srgb, var(--color-blackthorn-ink) 68%, var(--color-rose-alloy));
+  --color-neutral-700: color-mix(in srgb, var(--color-blackthorn-ink) 78%, var(--color-rose-alloy));
+  --color-neutral-800: color-mix(in srgb, var(--color-blackthorn-ink) 88%, var(--color-rose-alloy));
+  --color-neutral-900: color-mix(in srgb, var(--color-blackthorn-ink) 94%, var(--color-rose-alloy));
+  --color-neutral-950: color-mix(in srgb, var(--color-blackthorn-ink) 97%, var(--color-rose-alloy));
+  --color-stone-50: color-mix(in srgb, var(--color-blackthorn-ink) 4%, var(--color-rose-alloy));
+  --color-stone-100: color-mix(in srgb, var(--color-blackthorn-ink) 8%, var(--color-rose-alloy));
+  --color-stone-200: color-mix(in srgb, var(--color-blackthorn-ink) 14%, var(--color-rose-alloy));
+  --color-stone-300: color-mix(in srgb, var(--color-blackthorn-ink) 24%, var(--color-rose-alloy));
+  --color-stone-400: color-mix(in srgb, var(--color-blackthorn-ink) 44%, var(--color-rose-alloy));
+  --color-stone-500: color-mix(in srgb, var(--color-blackthorn-ink) 56%, var(--color-rose-alloy));
+  --color-stone-600: color-mix(in srgb, var(--color-blackthorn-ink) 68%, var(--color-rose-alloy));
+  --color-stone-700: color-mix(in srgb, var(--color-blackthorn-ink) 78%, var(--color-rose-alloy));
+  --color-stone-800: color-mix(in srgb, var(--color-blackthorn-ink) 88%, var(--color-rose-alloy));
+  --color-stone-900: color-mix(in srgb, var(--color-blackthorn-ink) 94%, var(--color-rose-alloy));
+  --color-stone-950: color-mix(in srgb, var(--color-blackthorn-ink) 97%, var(--color-rose-alloy));
+  --color-midground: var(--dt-midground);
+  --color-midground-foreground: var(--dt-midground-foreground);
+
+  /* Tailwind's palette names resolve to the semantic palette, so a stray amber/emerald/red class follows the theme.
+     Shades mix the token toward white (50 to 400) or black (600 to 900). */
+  --color-amber-50: color-mix(in srgb, var(--ui-orange) 8%, var(--color-rose-alloy));
+  --color-amber-100: color-mix(in srgb, var(--ui-orange) 16%, var(--color-rose-alloy));
+  --color-amber-200: color-mix(in srgb, var(--ui-orange) 30%, var(--color-rose-alloy));
+  --color-amber-300: color-mix(in srgb, var(--ui-orange) 52%, var(--color-rose-alloy));
+  --color-amber-400: color-mix(in srgb, var(--ui-orange) 78%, var(--color-rose-alloy));
+  --color-amber-500: var(--ui-orange);
+  --color-amber-600: color-mix(in srgb, var(--ui-orange) 84%, var(--color-blackthorn-ink));
+  --color-amber-700: color-mix(in srgb, var(--ui-orange) 68%, var(--color-blackthorn-ink));
+  --color-amber-800: color-mix(in srgb, var(--ui-orange) 52%, var(--color-blackthorn-ink));
+  --color-amber-900: color-mix(in srgb, var(--ui-orange) 38%, var(--color-blackthorn-ink));
+  --color-orange-50: color-mix(in srgb, var(--ui-orange) 8%, var(--color-rose-alloy));
+  --color-orange-100: color-mix(in srgb, var(--ui-orange) 16%, var(--color-rose-alloy));
+  --color-orange-200: color-mix(in srgb, var(--ui-orange) 30%, var(--color-rose-alloy));
+  --color-orange-300: color-mix(in srgb, var(--ui-orange) 52%, var(--color-rose-alloy));
+  --color-orange-400: color-mix(in srgb, var(--ui-orange) 78%, var(--color-rose-alloy));
+  --color-orange-500: var(--ui-orange);
+  --color-orange-600: color-mix(in srgb, var(--ui-orange) 84%, var(--color-blackthorn-ink));
+  --color-orange-700: color-mix(in srgb, var(--ui-orange) 68%, var(--color-blackthorn-ink));
+  --color-orange-800: color-mix(in srgb, var(--ui-orange) 52%, var(--color-blackthorn-ink));
+  --color-orange-900: color-mix(in srgb, var(--ui-orange) 38%, var(--color-blackthorn-ink));
+  --color-yellow-50: color-mix(in srgb, var(--ui-yellow) 8%, var(--color-rose-alloy));
+  --color-yellow-100: color-mix(in srgb, var(--ui-yellow) 16%, var(--color-rose-alloy));
+  --color-yellow-200: color-mix(in srgb, var(--ui-yellow) 30%, var(--color-rose-alloy));
+  --color-yellow-300: color-mix(in srgb, var(--ui-yellow) 52%, var(--color-rose-alloy));
+  --color-yellow-400: color-mix(in srgb, var(--ui-yellow) 78%, var(--color-rose-alloy));
+  --color-yellow-500: var(--ui-yellow);
+  --color-yellow-600: color-mix(in srgb, var(--ui-yellow) 84%, var(--color-blackthorn-ink));
+  --color-yellow-700: color-mix(in srgb, var(--ui-yellow) 68%, var(--color-blackthorn-ink));
+  --color-yellow-800: color-mix(in srgb, var(--ui-yellow) 52%, var(--color-blackthorn-ink));
+  --color-yellow-900: color-mix(in srgb, var(--ui-yellow) 38%, var(--color-blackthorn-ink));
+  --color-emerald-50: color-mix(in srgb, var(--ui-green) 8%, var(--color-rose-alloy));
+  --color-emerald-100: color-mix(in srgb, var(--ui-green) 16%, var(--color-rose-alloy));
+  --color-emerald-200: color-mix(in srgb, var(--ui-green) 30%, var(--color-rose-alloy));
+  --color-emerald-300: color-mix(in srgb, var(--ui-green) 52%, var(--color-rose-alloy));
+  --color-emerald-400: color-mix(in srgb, var(--ui-green) 78%, var(--color-rose-alloy));
+  --color-emerald-500: var(--ui-green);
+  --color-emerald-600: color-mix(in srgb, var(--ui-green) 84%, var(--color-blackthorn-ink));
+  --color-emerald-700: color-mix(in srgb, var(--ui-green) 68%, var(--color-blackthorn-ink));
+  --color-emerald-800: color-mix(in srgb, var(--ui-green) 52%, var(--color-blackthorn-ink));
+  --color-emerald-900: color-mix(in srgb, var(--ui-green) 38%, var(--color-blackthorn-ink));
+  --color-green-50: color-mix(in srgb, var(--ui-green) 8%, var(--color-rose-alloy));
+  --color-green-100: color-mix(in srgb, var(--ui-green) 16%, var(--color-rose-alloy));
+  --color-green-200: color-mix(in srgb, var(--ui-green) 30%, var(--color-rose-alloy));
+  --color-green-300: color-mix(in srgb, var(--ui-green) 52%, var(--color-rose-alloy));
+  --color-green-400: color-mix(in srgb, var(--ui-green) 78%, var(--color-rose-alloy));
+  --color-green-500: var(--ui-green);
+  --color-green-600: color-mix(in srgb, var(--ui-green) 84%, var(--color-blackthorn-ink));
+  --color-green-700: color-mix(in srgb, var(--ui-green) 68%, var(--color-blackthorn-ink));
+  --color-green-800: color-mix(in srgb, var(--ui-green) 52%, var(--color-blackthorn-ink));
+  --color-green-900: color-mix(in srgb, var(--ui-green) 38%, var(--color-blackthorn-ink));
+  --color-red-50: color-mix(in srgb, var(--ui-red) 8%, var(--color-rose-alloy));
+  --color-red-100: color-mix(in srgb, var(--ui-red) 16%, var(--color-rose-alloy));
+  --color-red-200: color-mix(in srgb, var(--ui-red) 30%, var(--color-rose-alloy));
+  --color-red-300: color-mix(in srgb, var(--ui-red) 52%, var(--color-rose-alloy));
+  --color-red-400: color-mix(in srgb, var(--ui-red) 78%, var(--color-rose-alloy));
+  --color-red-500: var(--ui-red);
+  --color-red-600: color-mix(in srgb, var(--ui-red) 84%, var(--color-blackthorn-ink));
+  --color-red-700: color-mix(in srgb, var(--ui-red) 68%, var(--color-blackthorn-ink));
+  --color-red-800: color-mix(in srgb, var(--ui-red) 52%, var(--color-blackthorn-ink));
+  --color-red-900: color-mix(in srgb, var(--ui-red) 38%, var(--color-blackthorn-ink));
+  --color-rose-50: color-mix(in srgb, var(--ui-red) 8%, var(--color-rose-alloy));
+  --color-rose-100: color-mix(in srgb, var(--ui-red) 16%, var(--color-rose-alloy));
+  --color-rose-200: color-mix(in srgb, var(--ui-red) 30%, var(--color-rose-alloy));
+  --color-rose-300: color-mix(in srgb, var(--ui-red) 52%, var(--color-rose-alloy));
+  --color-rose-400: color-mix(in srgb, var(--ui-red) 78%, var(--color-rose-alloy));
+  --color-rose-500: var(--ui-red);
+  --color-rose-600: color-mix(in srgb, var(--ui-red) 84%, var(--color-blackthorn-ink));
+  --color-rose-700: color-mix(in srgb, var(--ui-red) 68%, var(--color-blackthorn-ink));
+  --color-rose-800: color-mix(in srgb, var(--ui-red) 52%, var(--color-blackthorn-ink));
+  --color-rose-900: color-mix(in srgb, var(--ui-red) 38%, var(--color-blackthorn-ink));
+  --color-pink-50: color-mix(in srgb, var(--ui-red) 8%, var(--color-rose-alloy));
+  --color-pink-100: color-mix(in srgb, var(--ui-red) 16%, var(--color-rose-alloy));
+  --color-pink-200: color-mix(in srgb, var(--ui-red) 30%, var(--color-rose-alloy));
+  --color-pink-300: color-mix(in srgb, var(--ui-red) 52%, var(--color-rose-alloy));
+  --color-pink-400: color-mix(in srgb, var(--ui-red) 78%, var(--color-rose-alloy));
+  --color-pink-500: var(--ui-red);
+  --color-pink-600: color-mix(in srgb, var(--ui-red) 84%, var(--color-blackthorn-ink));
+  --color-pink-700: color-mix(in srgb, var(--ui-red) 68%, var(--color-blackthorn-ink));
+  --color-pink-800: color-mix(in srgb, var(--ui-red) 52%, var(--color-blackthorn-ink));
+  --color-pink-900: color-mix(in srgb, var(--ui-red) 38%, var(--color-blackthorn-ink));
+  --color-sky-50: color-mix(in srgb, var(--ui-blue) 8%, var(--color-rose-alloy));
+  --color-sky-100: color-mix(in srgb, var(--ui-blue) 16%, var(--color-rose-alloy));
+  --color-sky-200: color-mix(in srgb, var(--ui-blue) 30%, var(--color-rose-alloy));
+  --color-sky-300: color-mix(in srgb, var(--ui-blue) 52%, var(--color-rose-alloy));
+  --color-sky-400: color-mix(in srgb, var(--ui-blue) 78%, var(--color-rose-alloy));
+  --color-sky-500: var(--ui-blue);
+  --color-sky-600: color-mix(in srgb, var(--ui-blue) 84%, var(--color-blackthorn-ink));
+  --color-sky-700: color-mix(in srgb, var(--ui-blue) 68%, var(--color-blackthorn-ink));
+  --color-sky-800: color-mix(in srgb, var(--ui-blue) 52%, var(--color-blackthorn-ink));
+  --color-sky-900: color-mix(in srgb, var(--ui-blue) 38%, var(--color-blackthorn-ink));
+  --color-blue-50: color-mix(in srgb, var(--ui-blue) 8%, var(--color-rose-alloy));
+  --color-blue-100: color-mix(in srgb, var(--ui-blue) 16%, var(--color-rose-alloy));
+  --color-blue-200: color-mix(in srgb, var(--ui-blue) 30%, var(--color-rose-alloy));
+  --color-blue-300: color-mix(in srgb, var(--ui-blue) 52%, var(--color-rose-alloy));
+  --color-blue-400: color-mix(in srgb, var(--ui-blue) 78%, var(--color-rose-alloy));
+  --color-blue-500: var(--ui-blue);
+  --color-blue-600: color-mix(in srgb, var(--ui-blue) 84%, var(--color-blackthorn-ink));
+  --color-blue-700: color-mix(in srgb, var(--ui-blue) 68%, var(--color-blackthorn-ink));
+  --color-blue-800: color-mix(in srgb, var(--ui-blue) 52%, var(--color-blackthorn-ink));
+  --color-blue-900: color-mix(in srgb, var(--ui-blue) 38%, var(--color-blackthorn-ink));
+  --color-violet-50: color-mix(in srgb, var(--ui-purple) 8%, var(--color-rose-alloy));
+  --color-violet-100: color-mix(in srgb, var(--ui-purple) 16%, var(--color-rose-alloy));
+  --color-violet-200: color-mix(in srgb, var(--ui-purple) 30%, var(--color-rose-alloy));
+  --color-violet-300: color-mix(in srgb, var(--ui-purple) 52%, var(--color-rose-alloy));
+  --color-violet-400: color-mix(in srgb, var(--ui-purple) 78%, var(--color-rose-alloy));
+  --color-violet-500: var(--ui-purple);
+  --color-violet-600: color-mix(in srgb, var(--ui-purple) 84%, var(--color-blackthorn-ink));
+  --color-violet-700: color-mix(in srgb, var(--ui-purple) 68%, var(--color-blackthorn-ink));
+  --color-violet-800: color-mix(in srgb, var(--ui-purple) 52%, var(--color-blackthorn-ink));
+  --color-violet-900: color-mix(in srgb, var(--ui-purple) 38%, var(--color-blackthorn-ink));
+  --color-purple-50: color-mix(in srgb, var(--ui-purple) 8%, var(--color-rose-alloy));
+  --color-purple-100: color-mix(in srgb, var(--ui-purple) 16%, var(--color-rose-alloy));
+  --color-purple-200: color-mix(in srgb, var(--ui-purple) 30%, var(--color-rose-alloy));
+  --color-purple-300: color-mix(in srgb, var(--ui-purple) 52%, var(--color-rose-alloy));
+  --color-purple-400: color-mix(in srgb, var(--ui-purple) 78%, var(--color-rose-alloy));
+  --color-purple-500: var(--ui-purple);
+  --color-purple-600: color-mix(in srgb, var(--ui-purple) 84%, var(--color-blackthorn-ink));
+  --color-purple-700: color-mix(in srgb, var(--ui-purple) 68%, var(--color-blackthorn-ink));
+  --color-purple-800: color-mix(in srgb, var(--ui-purple) 52%, var(--color-blackthorn-ink));
+  --color-purple-900: color-mix(in srgb, var(--ui-purple) 38%, var(--color-blackthorn-ink));
 
   --font-sans: var(--dt-font-sans);
   --font-mono: var(--dt-font-mono);
@@ -265,52 +638,55 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
 
-  --shadow-xs: 0 0.0625rem 0.125rem color-mix(in srgb, #000 5%, transparent);
+  --shadow-xs: 0 0.0625rem 0.125rem color-mix(in srgb, var(--color-blackthorn-ink) 5%, transparent);
   --shadow-sm:
     0 0 0 0.0625rem color-mix(in srgb, var(--dt-foreground) 6%, transparent),
-    0 0.125rem 0.5rem color-mix(in srgb, #000 4%, transparent);
+    0 0.125rem 0.5rem color-mix(in srgb, var(--color-blackthorn-ink) 4%, transparent);
   --shadow-md:
     0 0 0 0.0625rem color-mix(in srgb, var(--dt-foreground) 8%, transparent),
-    0 0.25rem 1rem color-mix(in srgb, #000 8%, transparent),
-    0 1rem 2rem -1.5rem color-mix(in srgb, #000 18%, transparent);
+    0 0.25rem 1rem color-mix(in srgb, var(--color-blackthorn-ink) 8%, transparent),
+    0 1rem 2rem -1.5rem color-mix(in srgb, var(--color-blackthorn-ink) 18%, transparent);
   /* Soft floating shadow for borderless modals/overlays. Single top light
      source: every layer is centered (x=0) and cast downward, with negative
      spread that grows with the blur so each layer is pulled horizontally inward
      — the shadow pools below the panel instead of bleeding out every side.
      Layered (contact → ambient) for a smooth, natural falloff. */
   --shadow-float:
-    0 0.125rem 0.25rem -0.125rem color-mix(in srgb, #000 7%, transparent),
-    0 0.5rem 0.75rem -0.375rem color-mix(in srgb, #000 6%, transparent),
-    0 1.25rem 1.75rem -0.875rem color-mix(in srgb, #000 6%, transparent),
-    0 2.25rem 3rem -1.75rem color-mix(in srgb, #000 0%, transparent);
+    0 0.125rem 0.25rem -0.125rem color-mix(in srgb, var(--color-blackthorn-ink) 7%, transparent),
+    0 0.5rem 0.75rem -0.375rem color-mix(in srgb, var(--color-blackthorn-ink) 6%, transparent),
+    0 1.25rem 1.75rem -0.875rem color-mix(in srgb, var(--color-blackthorn-ink) 6%, transparent),
+    0 2.25rem 3rem -1.75rem color-mix(in srgb, var(--color-blackthorn-ink) 0%, transparent);
   /* Hairline border paired with --shadow-float on borderless overlays.
      currentColor resolves per-element, so it adapts to text color/theme. */
   --stroke-float: color-mix(in srgb, currentColor 3%, transparent);
   --shadow-lg:
-    inset 0 0.0625rem 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 0.0625rem 0 color-mix(in srgb, var(--color-rose-alloy) 28%, transparent),
     0 0 0 0.0625rem color-mix(in srgb, var(--dt-foreground) 8%, transparent),
-    0 0.75rem 2rem color-mix(in srgb, #000 12%, transparent);
-  --shadow-composer: 0 0.0625rem 0.125rem color-mix(in srgb, #000 5%, transparent);
+    0 0.75rem 2rem color-mix(in srgb, var(--color-blackthorn-ink) 12%, transparent);
+  --shadow-composer: 0 0.0625rem 0.125rem color-mix(in srgb, var(--color-blackthorn-ink) 5%, transparent);
 }
 
 @layer base {
   :root {
     color-scheme: light;
 
-    --theme-foreground: #0a0a0a;
-    --theme-primary: #0a0a0a;
-    --theme-secondary: #f2ede5;
-    --theme-accent-soft: #f2ede5;
-    --theme-midground: #3b3b3b;
-    --theme-warm: #545454;
-    --theme-background-seed: #ffffff;
-    --theme-sidebar-seed: #f9f8f6;
-    --theme-card-seed: #f9f8f6;
-    --theme-elevated-seed: #ffffff;
-    --theme-bubble-seed: #f2ede5;
-    --theme-neutral-chrome: #ffffff;
-    --theme-neutral-sidebar: #f9f8f6;
-    --theme-neutral-card: #f9f8f6;
+    /* Palette definitions: the only place the two source neutrals are written as hex. */
+    --color-blackthorn-ink: #151313;
+    --color-rose-alloy: #fffdfc;
+    --theme-foreground: #151313;
+    --theme-primary: #151313;
+    --theme-secondary: #f1efee;
+    --theme-accent-soft: #e8e6e5;
+    --theme-midground: #6e6c6c;
+    --theme-warm: #151313;
+    --theme-background-seed: #fffdfc;
+    --theme-sidebar-seed: #f1efee;
+    --theme-card-seed: #fffdfc;
+    --theme-elevated-seed: #fffdfc;
+    --theme-bubble-seed: #f1efee;
+    --theme-neutral-chrome: #fffdfc;
+    --theme-neutral-sidebar: #f1efee;
+    --theme-neutral-card: #fffdfc;
     --theme-mix-chrome: 100%;
     --theme-mix-sidebar: 100%;
     --theme-mix-card: 100%;
@@ -334,13 +710,13 @@
     --ui-accent: var(--theme-midground);
     --ui-accent-secondary: var(--theme-primary);
     --ui-warm: var(--theme-warm);
-    --ui-red: #cf2d56;
-    --ui-orange: #db704b;
-    --ui-yellow: #c08532;
-    --ui-green: #1f8a65;
-    --ui-cyan: #4c7f8c;
-    --ui-blue: #545454;
-    --ui-purple: #9e94d5;
+    --ui-red: #a8402f;
+    --ui-orange: #955a14;
+    --ui-yellow: #8a6a1f;
+    --ui-green: #356e46;
+    --ui-cyan: #6f655a;
+    --ui-blue: #2b5fa6;
+    --ui-purple: #85607f;
     --context-usage-system: color-mix(in srgb, var(--ui-base) 55%, transparent);
     --context-usage-tools: var(--ui-purple);
     --context-usage-rules: var(--ui-green);
@@ -362,10 +738,10 @@
        away from it. */
     --ui-diff-add-border: var(--ui-green);
     --ui-diff-add-background: color-mix(in srgb, var(--ui-green) 12%, transparent);
-    --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 70%, #000);
+    --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 70%, var(--color-blackthorn-ink));
     --ui-diff-remove-border: var(--ui-red);
     --ui-diff-remove-background: color-mix(in srgb, var(--ui-red) 12%, transparent);
-    --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 70%, #000);
+    --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 70%, var(--color-blackthorn-ink));
 
     /* Overlay ladder. DESIGN.md: app-wide surfaces must not compete through
        ad-hoc z-index literals — pick the rung that describes the surface.
@@ -511,9 +887,9 @@
       var(--theme-neutral-card)
     );
     --ui-chat-bubble-opaque-background: var(--ui-bg-editor);
-    --ui-inline-code-background: color-mix(in srgb, #27251e 7%, transparent);
-    --ui-inline-code-foreground: #b02a4a;
-    --ui-selection-background: color-mix(in srgb, #d5d9e2 65%, transparent);
+    --ui-inline-code-background: color-mix(in srgb, var(--color-blackthorn-ink) 7%, transparent);
+    --ui-inline-code-foreground: #9c3a2c;
+    --ui-selection-background: color-mix(in srgb, #67eaa2 38%, transparent);
 
     --dt-background: var(--ui-bg-chrome);
     --dt-foreground: var(--ui-text-primary);
@@ -524,16 +900,23 @@
     --dt-popover: color-mix(in srgb, var(--ui-bg-elevated) 96%, transparent);
     --dt-popover-foreground: var(--ui-text-primary);
     --dt-primary: var(--theme-primary);
-    --dt-primary-foreground: #ffffff;
+    --dt-primary-foreground: #fffdfc;
     /* The "on" colour of controls (switch, checkbox, slider fill): the standard system blue. #007AFF in light is 4.0:1
        against Rose Alloy; the dark value is set under :root.dark. The thumb or check on it is Rose Alloy. */
     --ui-control-on: #007aff;
     --ui-control-on-foreground: #fffdfc;
+    /* The Settings area's accent: blue. Selected nav row fill (white text on it clears 4.5:1) and the nav icons. */
+    /* Brand accent: the one highest-intent action in a view (the approval Run button). Ink text on it is 13:1. */
+    --ui-brand-accent: #67eaa2;
+    --ui-brand-accent-foreground: #151313;
+    --ui-settings-accent: #0066cc;
+    --ui-settings-accent-foreground: var(--color-rose-alloy);
+    --ui-settings-accent-icon: #1a73d9;
     /* Selected segment of a segmented control: a raised surface chip over the tinted track. */
     --ui-segment-thumb: var(--ui-bg-editor);
     /* Fixed white/black boot-paint defaults, overridden by the active mode. */
     --dt-primary-solid: var(--theme-primary);
-    --dt-primary-solid-foreground: #ffffff;
+    --dt-primary-solid-foreground: var(--color-rose-alloy);
     --dt-secondary: var(--theme-secondary);
     --dt-secondary-foreground: var(--ui-text-secondary);
     --dt-accent: var(--theme-accent-soft);
@@ -562,8 +945,8 @@
        own surfaces — chroma 0 is the only thing removed. */
     --dt-scrollbar-thumb: oklch(from var(--dt-midground) l 0 h);
     --dt-composer-ring: var(--ui-base);
-    --dt-destructive: #cf2d56;
-    --dt-destructive-foreground: #ffffff;
+    --dt-destructive: #a8402f;
+    --dt-destructive-foreground: var(--color-rose-alloy);
     --dt-sidebar-bg: var(--ui-bg-sidebar);
     --dt-sidebar-border: var(--ui-stroke-secondary);
     /* `--user-bubble-keep` is the Settings → Appearance → Message Bubble lever
@@ -707,33 +1090,40 @@
 
   :root.dark {
     /* Per-mode mix knobs — overridden inline by `applyTheme()` per skin. */
-    --theme-foreground: #ffffff;
-    --theme-primary: #ffffff;
-    --theme-secondary: #242424;
-    --theme-accent-soft: #242424;
-    --theme-midground: #d5d9e2;
-    --theme-warm: #d5d9e2;
-    --theme-background-seed: #161616;
-    --theme-sidebar-seed: #151515;
-    --theme-card-seed: #1e1e1e;
-    --theme-elevated-seed: #262626;
-    --theme-bubble-seed: #242424;
+    --theme-foreground: #fffdfc;
+    --theme-primary: #fffdfc;
+    --theme-secondary: #2f2f2f;
+    --theme-accent-soft: #353534;
+    --theme-midground: #afaeac;
+    --theme-warm: #fffdfc;
+    --theme-background-seed: #151313;
+    --theme-sidebar-seed: #1e1e1d;
+    --theme-card-seed: #1e1e1d;
+    --theme-elevated-seed: #353534;
+    --theme-bubble-seed: #2f2f2f;
     --theme-mix-chrome: 100%;
     --theme-mix-card: 100%;
     --theme-mix-elevated: 100%;
     --theme-mix-bubble: 100%;
-    --theme-neutral-chrome: #161616;
-    --theme-neutral-sidebar: #151515;
-    --theme-neutral-card: #1e1e1e;
-    --dt-primary-foreground: #0a0a0a;
-    --dt-primary-solid-foreground: #0a0a0a;
+    --theme-neutral-chrome: #151313;
+    --theme-neutral-sidebar: #1e1e1d;
+    --theme-neutral-card: #1e1e1d;
+    --dt-primary-foreground: #151313;
+    --dt-primary-solid-foreground: #151313;
 
     /* Dark-only accent palette overrides. */
-    --ui-red: #e75e78;
-    --ui-green: #55a583;
-    --ui-cyan: #6f9ba6;
-    --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 62%, #fff);
-    --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 62%, #fff);
+    --ui-red: #e8948b;
+    --ui-orange: #d9a45e;
+    --ui-yellow: #d6b25c;
+    --ui-green: #84c79a;
+    --ui-blue: #86aee8;
+    --ui-cyan: #b3a898;
+    --ui-purple: #c4a3c0;
+    --ui-settings-accent: #1a6fd8;
+    --ui-settings-accent-foreground: var(--color-rose-alloy);
+    --ui-settings-accent-icon: #4da3ff;
+    --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 62%, var(--color-rose-alloy));
+    --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 62%, var(--color-rose-alloy));
 
     --sidebar-edge-border: color-mix(in srgb, var(--ui-base) 12%, transparent);
     --composer-ring-strength: 1.3;
@@ -744,14 +1134,14 @@
     /* Dark needs a lighter resting border than light mode. */
     --dt-input-border: 16%;
 
-    --ui-inline-code-background: color-mix(in srgb, #ffffff 9%, transparent);
-    --ui-inline-code-foreground: #ff9fb2;
-    --ui-selection-background: color-mix(in srgb, #d5d9e2 32%, transparent);
+    --ui-inline-code-background: color-mix(in srgb, var(--color-rose-alloy) 9%, transparent);
+    --ui-inline-code-foreground: #e8948b;
+    --ui-selection-background: color-mix(in srgb, #67eaa2 28%, transparent);
     /* A dark card sits ABOVE the chrome (#161618 over #0d0d0e), so an inline
        widget wearing the raw card fill reads as a lit panel. Take it down a
        touch — still clearly a surface, no longer the brightest thing in the
        transcript. Derived from the card so every skin follows its own seed. */
-    --ui-widget-surface-background: color-mix(in srgb, var(--ui-bg-editor) 88%, #000);
+    --ui-widget-surface-background: color-mix(in srgb, var(--ui-bg-editor) 88%, var(--color-blackthorn-ink));
   }
 
   /* ── Window glass (Settings → Appearance → Window Translucency: Glass) ──
@@ -794,7 +1184,7 @@
        the frame around the (opaque) block instead of merging into it. */
     background: color-mix(
       in srgb,
-      color-mix(in srgb, var(--shell-window-bg), black 12%) calc(var(--translucency-glass-keep, 100%) * 0.7),
+      color-mix(in srgb, var(--shell-window-bg), var(--color-blackthorn-ink) 12%) calc(var(--translucency-glass-keep, 100%) * 0.7),
       transparent
     );
   }
@@ -804,7 +1194,7 @@
   :root.dark[data-factr-glass] body {
     background: color-mix(
       in srgb,
-      color-mix(in srgb, var(--shell-window-bg), black 19%) max(52%, var(--translucency-glass-keep, 100%)),
+      color-mix(in srgb, var(--shell-window-bg), var(--color-blackthorn-ink) 19%) max(52%, var(--translucency-glass-keep, 100%)),
       transparent
     );
   }
@@ -872,7 +1262,7 @@
      mode='clear' and intensity > 0; !important because the utility classes
      live in a later cascade layer. */
   :root[data-factr-clear] [data-overlay-surface] {
-    background-color: rgb(0 0 0 / 0.55) !important;
+    background-color: rgb(21 19 19 / 0.55) !important;
     backdrop-filter: blur(0.5rem) !important;
   }
 
@@ -1685,7 +2075,7 @@ body.guest-pointer-lock :is(webview, iframe) {
 [data-slot='pane-tab'][data-closeable]:hover > .pane-tab-content {
   mask-image: linear-gradient(
     to right,
-    #000 calc(100% - var(--pane-tab-close-width) - 1rem),
+    var(--color-blackthorn-ink) calc(100% - var(--pane-tab-close-width) - 1rem),
     transparent calc(100% - var(--pane-tab-close-width))
   );
 }
@@ -1874,8 +2264,8 @@ body.guest-pointer-lock :is(webview, iframe) {
 
 .sticky-human-clamp[data-clamped='true'] {
   /* Fade only the last line; the rest of a clamped prompt stays fully readable. */
-  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, var(--color-blackthorn-ink) calc(100% - 1.25rem), transparent);
+  mask-image: linear-gradient(to bottom, var(--color-blackthorn-ink) calc(100% - 1.25rem), transparent);
 }
 
 /* Stick-to-bottom owns scrollTop while following. Once escaped, native anchoring
@@ -2161,8 +2551,8 @@ body.guest-pointer-lock :is(webview, iframe) {
   .aui-md
   [data-slot='code-card'][data-streaming='true']
   [data-slot='code-card-body'] {
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 1.5rem), rgb(0 0 0 / 64%) 100%);
-  mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 1.5rem), rgb(0 0 0 / 64%) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, var(--color-blackthorn-ink) 0%, var(--color-blackthorn-ink) calc(100% - 1.5rem), rgb(21 19 19 / 64%) 100%);
+  mask-image: linear-gradient(to bottom, var(--color-blackthorn-ink) 0%, var(--color-blackthorn-ink) calc(100% - 1.5rem), rgb(21 19 19 / 64%) 100%);
 }
 
 /* Themed at the renderer root so every `aui-md` consumer (assistant turns,
@@ -2618,14 +3008,14 @@ button[data-slot='aui_msg-reactions'] svg {
   border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
   background: radial-gradient(
     120% 90% at 32% 26%,
-    color-mix(in srgb, var(--ui-accent) 14%, #fff) 0%,
+    color-mix(in srgb, var(--ui-accent) 14%, var(--color-rose-alloy)) 0%,
     #f4ecd8 46%,
     #e4d3ad 100%
   );
   box-shadow:
-    inset -0.45rem -0.6rem 1.1rem color-mix(in srgb, #000 16%, transparent),
-    inset 0.35rem 0.4rem 0.7rem color-mix(in srgb, #fff 70%, transparent),
-    0 0.4rem 0.9rem color-mix(in srgb, #000 22%, transparent);
+    inset -0.45rem -0.6rem 1.1rem color-mix(in srgb, var(--color-blackthorn-ink) 16%, transparent),
+    inset 0.35rem 0.4rem 0.7rem color-mix(in srgb, var(--color-rose-alloy) 70%, transparent),
+    0 0.4rem 0.9rem color-mix(in srgb, var(--color-blackthorn-ink) 22%, transparent);
   transform-origin: 50% 88%;
   animation: pet-egg-wobble 2.4s ease-in-out infinite;
 }
@@ -2636,9 +3026,9 @@ button[data-slot='aui_msg-reactions'] svg {
   width: 3.25rem;
   height: 4.1rem;
   box-shadow:
-    inset -0.28rem -0.38rem 0.7rem color-mix(in srgb, #000 16%, transparent),
-    inset 0.22rem 0.26rem 0.45rem color-mix(in srgb, #fff 70%, transparent),
-    0 0.25rem 0.55rem color-mix(in srgb, #000 22%, transparent);
+    inset -0.28rem -0.38rem 0.7rem color-mix(in srgb, var(--color-blackthorn-ink) 16%, transparent),
+    inset 0.22rem 0.26rem 0.45rem color-mix(in srgb, var(--color-rose-alloy) 70%, transparent),
+    0 0.25rem 0.55rem color-mix(in srgb, var(--color-blackthorn-ink) 22%, transparent);
 }
 
 .pet-egg__shine {
@@ -2648,7 +3038,7 @@ button[data-slot='aui_msg-reactions'] svg {
   width: 28%;
   height: 22%;
   border-radius: 50%;
-  background: color-mix(in srgb, #fff 85%, transparent);
+  background: color-mix(in srgb, var(--color-rose-alloy) 85%, transparent);
   filter: blur(2px);
   opacity: 0.85;
 }
@@ -2677,7 +3067,7 @@ button[data-slot='aui_msg-reactions'] svg {
   /* Lighter on light backgrounds (~20% less ink); dark mode keeps it grounded. */
   background: radial-gradient(
     circle,
-    color-mix(in srgb, #000 var(--pet-egg-shadow-ink, 26%), transparent) 0%,
+    color-mix(in srgb, var(--color-blackthorn-ink) var(--pet-egg-shadow-ink, 26%), transparent) 0%,
     transparent 72%
   );
   animation: pet-egg-shadow 2.4s ease-in-out infinite;
@@ -2702,7 +3092,7 @@ button[data-slot='aui_msg-reactions'] svg {
   width: 55%;
   aspect-ratio: 100 / 28;
   transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, color-mix(in srgb, #000 42%, transparent) 0%, transparent 70%);
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--color-blackthorn-ink) 42%, transparent) 0%, transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -3006,7 +3396,7 @@ button[data-slot='aui_msg-reactions'] svg {
   z-index: 0;
   pointer-events: none;
   border-radius: var(--shape-radius-lg) var(--shape-radius-lg) 0 0;
-  background: rgb(12 14 18 / 0.62);
+  background: rgb(21 19 19 / 0.62);
   /* Slides down behind the bar as it fades. A TRANSFORM, not height: it is
      composited, so it stays smooth where animating height re-lays-out the panel
      every frame and looked coarse — and it leaves the box alone, which matters
@@ -3054,7 +3444,7 @@ button[data-slot='aui_msg-reactions'] svg {
   /* Same dark scrim under Glass. The docked thread's `--ui-bg-chrome` follows
      the theme and goes near-white on a light one, which is the wrong paper for
      this band's white ink — the HUD is over a game, not inside the app. */
-  background: rgb(12 14 18 / 0.55);
+  background: rgb(21 19 19 / 0.55);
 }
 
 /* The band spans the window edge to edge under glass. The 8px side inset keeps
@@ -3088,7 +3478,7 @@ button[data-slot='aui_msg-reactions'] svg {
    never below the resting tint, so a high lever cannot make focusing the
    composer paint MORE transparent than glancing at it. */
 :root[data-factr-glass-on] [data-hud-shell][data-hud-typing] [data-hud-glass] {
-  background: rgb(12 14 18 / 0.72);
+  background: rgb(21 19 19 / 0.72);
 }
 
 /* Engaged means the caret is in the composer, not merely that the window holds
@@ -3098,7 +3488,7 @@ button[data-slot='aui_msg-reactions'] svg {
    below stays on :focus-within — being permissive about what can be clicked is
    harmless, being permissive about what lights up is not. */
 [data-hud-shell][data-hud-typing] [data-hud-glass] {
-  background: rgb(12 14 18 / 0.82);
+  background: rgb(21 19 19 / 0.82);
 }
 
 /* Flipped, the sheet hangs from the bar instead of standing on it. */
@@ -3297,14 +3687,14 @@ button[data-slot='aui_msg-reactions'] svg {
    is a property of the surface. The scrim below is darkened to match, so white
    is right whether the sheet is up or not. */
 [data-hud-shell] [data-slot='composer-bounds'] {
-  --hud-overlay-ink: #fff;
+  --hud-overlay-ink: var(--color-rose-alloy);
   /* WoW-epic gold: reads as "yours" against white agent text and survives being
      over a dark cave or a bright loading screen. */
   --hud-overlay-ink-user: #ffcf6b;
   color: var(--hud-overlay-ink);
   text-shadow:
-    0 1px 2px rgb(0 0 0 / 0.9),
-    0 0 6px rgb(0 0 0 / 0.55);
+    0 1px 2px rgb(21 19 19 / 0.9),
+    0 0 6px rgb(21 19 19 / 0.55);
   /* Ramp the scrollback out at the top instead of guillotining it against the
      bar. With no sheet to end on, a hard edge reads as text sliced off; the
      fade says "there is more above" the way a game's chat log does. */
@@ -3320,8 +3710,8 @@ button[data-slot='aui_msg-reactions'] svg {
    consulted, which is why raising the value changed nothing on screen. Masking
    the viewport puts the ramp where the clipping actually happens. */
 [data-hud-shell] [data-slot='aui_thread-viewport'] {
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--hud-top-fade, 3.5rem));
-  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--hud-top-fade, 3.5rem));
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--color-blackthorn-ink) var(--hud-top-fade, 3.5rem));
+  mask-image: linear-gradient(to bottom, transparent 0, var(--color-blackthorn-ink) var(--hud-top-fade, 3.5rem));
 }
 
 /* Every descendant that sets its own colour — assistant prose, user text,
@@ -3727,7 +4117,7 @@ button[data-slot='aui_msg-reactions'] svg {
   /* Bottom edge only. Enough to lift the bar off whatever it is lying over —
      without it the HUD reads as pasted onto the other app — and tight enough
      that it never becomes a glow around a floating card. */
-  box-shadow: 0 2px 2px -1px rgb(0 0 0 / 0.12) !important;
+  box-shadow: 0 2px 2px -1px rgb(21 19 19 / 0.12) !important;
   transition: border-color var(--hud-reveal) var(--hud-ease-enter);
 }
 
@@ -3929,22 +4319,22 @@ html[data-hud-window] [data-slot='popover-content'] {
 :root {
   --shell-window-bg: var(--ui-bg-sidebar);
   --shell-block-bg: var(--ui-bg-chrome);
-  /* Light: the list sits on the block (a hair off it), so only the window frame is grey. */
-  --shell-list-bg: color-mix(in srgb, var(--shell-block-bg), var(--ui-base) 2%);
+  /* The list column wears the frame's tone, so the lighter content canvas reads as one card beside it. */
+  --shell-list-bg: var(--shell-window-bg);
   /* The block's rim is its own tone one small step off, not a light stroke:
      it reads as the block's edge, never as a stray line under the last row. */
-  --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), black 7%);
-  --shell-tab-active-bg: color-mix(in srgb, var(--shell-block-bg), black 5%);
+  --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), var(--color-blackthorn-ink) 7%);
+  --shell-tab-active-bg: color-mix(in srgb, var(--shell-block-bg), var(--color-blackthorn-ink) 5%);
 }
 
 :root[data-factr-mode='dark'] {
-  --shell-window-bg: var(--ui-bg-chrome);
-  /* A clear step lighter than the (see-through) frame, as in System Settings: the content block is the solid,
-     lighter surface and the frame around it is the glass. */
-  --shell-block-bg: color-mix(in srgb, var(--ui-bg-sidebar), white 6%);
-  --shell-list-bg: color-mix(in srgb, var(--shell-block-bg), var(--ui-base) 4%);
-  --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), white 5%);
-  --shell-tab-active-bg: color-mix(in srgb, var(--shell-block-bg), white 6%);
+  /* Same structure as light, from the reference palette: the frame and sidebar are the lighter tone and the content
+     block is the darker canvas. */
+  --shell-window-bg: var(--ui-bg-sidebar);
+  --shell-block-bg: var(--ui-bg-chrome);
+  --shell-list-bg: var(--shell-window-bg);
+  --shell-block-edge: color-mix(in srgb, var(--shell-block-bg), var(--color-rose-alloy) 5%);
+  --shell-tab-active-bg: color-mix(in srgb, var(--shell-block-bg), var(--color-rose-alloy) 6%);
 }
 
 [data-shell-block] {
@@ -4027,18 +4417,16 @@ html[data-hud-window] [data-slot='popover-content'] {
    give it depth; no refraction layer (it would scroll with long menus and cost
    an SVG filter per open). Reduced transparency gets the opaque surface. */
 .menu-glass {
-  --menu-glass-tint: color-mix(in srgb, #fdfdfc 74%, transparent);
+  --menu-glass-tint: color-mix(in srgb, var(--ui-bg-elevated) 92%, transparent);
 
   border: 1px solid color-mix(in srgb, var(--ui-text-primary) 9%, transparent);
   background: var(--menu-glass-tint);
   backdrop-filter: blur(22px) saturate(170%);
-  box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.18);
+  box-shadow: 0 6px 16px -8px rgb(21 19 19 / 0.18);
 }
 
 :root.dark .menu-glass {
-  --menu-glass-tint: color-mix(in srgb, #060606 72%, transparent);
-
-  box-shadow: 0 6px 16px -8px rgb(0 0 0 / 0.5);
+  box-shadow: 0 6px 16px -8px rgb(21 19 19 / 0.5);
 }
 
 @media (prefers-reduced-transparency: reduce) {

@@ -57,7 +57,7 @@ test('stopBackendChild tree-kills on Windows when the child has a pid', () => {
 test('stopBackendChild group-SIGTERMs on POSIX (negative pgid) when the child has a pid', () => {
   const { child, calls } = makeChild({ pid: 4242 })
   const treeKillCalls: number[] = []
-  const groupKills: Array<[number, string]> = []
+  const groupKills: Array<[number, number | string]> = []
 
   stopBackendChild(child, {
     forceKillProcessTree: (pid: number) => treeKillCalls.push(pid),

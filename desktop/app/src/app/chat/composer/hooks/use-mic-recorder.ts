@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { playSfx } from '@/lib/sfx'
+import { ensureSttReady } from '@/lib/stt-prepare'
 
 type BrowserAudioContext = typeof AudioContext
 
@@ -180,6 +181,9 @@ export function useMicRecorder(copy: MicRecorderErrorCopy): {
     if (recorderRef.current) {
       return
     }
+
+    // First use of dictation: get the local speech engine ready in the background (a notice shows how it goes).
+    void ensureSttReady()
 
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       throw new Error(copy.microphoneUnsupported)

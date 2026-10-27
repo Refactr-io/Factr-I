@@ -1701,6 +1701,18 @@ fn cost_usd(
 mod tests {
     use super::*;
 
+    /// Remove a test's temp folder. The observer's background writer can still be flushing for a moment after the test drops it,
+    /// which made a single `remove_dir_all` fail now and then with "Directory not empty"; retry instead of failing the test.
+    fn remove_test_dir(dir: &std::path::Path) {
+        for _ in 0..40 {
+            if std::fs::remove_dir_all(dir).is_ok() || !dir.exists() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn replays_sequenced_events_and_reports_eviction() {
         let dir = std::env::temp_dir().join(format!("factr-replay-{}", now()));
@@ -1718,7 +1730,7 @@ mod tests {
         assert!(!epoch.is_empty());
         assert_eq!(observer.replay_stats()["events"], REPLAY_EVENTS);
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -1741,7 +1753,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert!(!truncated);
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     /// An evicted chat restarts its sequence: a window that reconnects with a `last_seen` from before
@@ -1801,7 +1813,7 @@ mod tests {
         assert!(!observer.replay_since("hot", 0).0.is_empty(), "the active chat survives");
         assert!(observer.replay_since("chat0", 0).0.is_empty(), "the oldest was dropped");
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     /// Deltas are joined in the buffer, yet a window that last saw any event gets every later event
@@ -1838,7 +1850,7 @@ mod tests {
             assert_eq!(events, sent[last_seen as usize..], "replay after {last_seen}");
         }
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     /// A reply far longer than the old event cap stays whole, and a stream past the byte cap still
@@ -1872,7 +1884,7 @@ mod tests {
         assert_eq!(events.last().unwrap()["seq"], flood as u64);
         assert!(!observer.replay_since("flood", first - 1).2, "a window that saw up to the cut needs no reload");
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -1890,7 +1902,7 @@ mod tests {
         assert!(!known("done"));
         assert_eq!(observer.replay_stats()["events"], 0);
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -1923,7 +1935,7 @@ mod tests {
         assert_eq!(only_s2["spans"].as_array().unwrap().len(), 1);
         assert_eq!(only_s2["spans"][0]["attributes"]["approved"], false);
         drop((observer, db));
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -1941,7 +1953,7 @@ mod tests {
         let n: i64 = db.query_row("SELECT COUNT(*) FROM spans WHERE kind='memory.write'", [], |r| r.get(0)).unwrap();
         assert_eq!(n, 20);
         drop((observer, db));
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -1967,7 +1979,7 @@ mod tests {
         let body = observer.memory(None, 10).unwrap();
         assert!(body["spans"].as_array().unwrap().iter().any(|s| s["kind"] == "memory.write" && s["session_id"] == ""), "{body}");
         drop((observer, db));
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -2016,7 +2028,7 @@ mod tests {
         let observer = Observer::open(&dir, "ollama", "local", None).unwrap();
         assert_eq!(observer.list(10, None, None, None, None, None).unwrap()["runs"].as_array().unwrap().len(), 1);
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -2120,7 +2132,7 @@ mod tests {
             1
         );
         drop(db);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -2207,7 +2219,7 @@ mod tests {
         assert_eq!(child["priced"], false);
         assert!(child["cost_usd"].is_null());
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 
     #[test]
@@ -2440,6 +2452,6 @@ mod tests {
             observer.dropped.load(Ordering::Relaxed)
         );
         drop(observer);
-        std::fs::remove_dir_all(dir).unwrap();
+        remove_test_dir(&dir);
     }
 }

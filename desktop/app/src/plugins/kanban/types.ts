@@ -227,11 +227,11 @@ export interface KanbanProfile {
 export const COLUMN_META: Record<string, { codicon: string; tone: string }> = {
   triage: { codicon: 'inbox', tone: 'var(--ui-text-tertiary)' },
   todo: { codicon: 'circle-outline', tone: 'var(--ui-text-secondary)' },
-  scheduled: { codicon: 'watch', tone: '#a78bfa' },
-  ready: { codicon: 'play-circle', tone: '#60a5fa' },
-  running: { codicon: 'sync', tone: '#34d399' },
-  blocked: { codicon: 'error', tone: '#f87171' },
-  review: { codicon: 'eye', tone: '#fbbf24' },
+  scheduled: { codicon: 'watch', tone: 'var(--ui-purple)' },
+  ready: { codicon: 'play-circle', tone: 'var(--ui-blue)' },
+  running: { codicon: 'sync', tone: 'var(--ui-green)' },
+  blocked: { codicon: 'error', tone: 'var(--ui-red)' },
+  review: { codicon: 'eye', tone: 'var(--ui-orange)' },
   done: { codicon: 'pass', tone: 'var(--ui-text-tertiary)' },
   archived: { codicon: 'archive', tone: 'var(--ui-text-quaternary)' }
 }
@@ -242,5 +242,5 @@ export const columnMeta = (name: string) =>
 export const SEVERITY_TONE: Record<Diagnostic['severity'], string> = {
   critical: 'var(--destructive, #f87171)',
   error: 'var(--destructive, #f87171)',
-  warning: '#fbbf24'
+  warning: 'var(--ui-orange)'
 }

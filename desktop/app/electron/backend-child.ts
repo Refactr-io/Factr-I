@@ -30,7 +30,7 @@ export interface StopBackendChildDeps {
    * Injectable so the negative-pid group send is asserted in tests without a
    * live process group. Defaults to process.kill.
    */
-  killGroup?: (pgid: number, signal: string) => void
+  killGroup?: (pgid: number, signal: number | string) => void
 }
 
 export interface StopBackendTreesForUpdateDeps {
@@ -68,6 +68,30 @@ export async function waitForBackendExit(
 
   const exited = () => child.exitCode !== null || child.signalCode !== null
 
+  // The backend is its own process group (see stopBackendChild). Once it is gone, whatever it started and left
+  // running (a package install still winding down after SIGTERM, an MCP server) has no owner: reap the group so
+  // quitting leaves nothing behind. A group id is not reused while any member is alive, so this only ever hits them.
+  const reapGroup = () => {
+    if ((deps.isWindows ?? process.platform === 'win32') || !Number.isInteger(child.pid)) {
+      return
+    }
+
+    const killGroup = deps.killGroup ?? ((pgid, signal) => process.kill(pgid, signal as NodeJS.Signals | number))
+    const pgid = -(child.pid as number)
+
+    try {
+      killGroup(pgid, 0)
+    } catch {
+      return
+    }
+
+    try {
+      killGroup(pgid, 'SIGKILL')
+    } catch {
+      // Gone between the probe and the kill.
+    }
+  }
+
   const wait = (delay: number) =>
     new Promise<void>(resolve => {
       if (exited()) {
@@ -89,6 +113,8 @@ export async function waitForBackendExit(
   await wait(timeoutMs)
 
   if (exited()) {
+    reapGroup()
+
     return
   }
 
@@ -110,6 +136,10 @@ export async function waitForBackendExit(
   }
 
   await wait(1000)
+
+  if (exited()) {
+    reapGroup()
+  }
 
   if (!exited()) {
     throw new Error(

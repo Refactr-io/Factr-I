@@ -372,9 +372,15 @@ const ApprovalCard: FC<ApprovalCardProps> = ({ request, total, position, stack }
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        <Button data-approval-run="" disabled={busy} onClick={() => void respond('once')} size="sm">
+        <Button
+          className="bg-(--ui-brand-accent) text-(--ui-brand-accent-foreground) hover:bg-(--ui-brand-accent) hover:text-(--ui-brand-accent-foreground) hover:brightness-95"
+          data-approval-run=""
+          disabled={busy}
+          onClick={() => void respond('once')}
+          size="sm"
+        >
           {submitting === 'once' ? <Loader2 className="size-3 animate-spin" /> : copy.run}
-          <span className="opacity-60">↵</span>
+          <span className="opacity-75">↵</span>
         </Button>
       </div>
 

@@ -25,7 +25,9 @@ export function profileColor(name: null | string | undefined): null | string {
     return null
   }
 
-  const hue = hashString(key) % 360
+  // Skip the teal-to-cyan band (160 to 210 degrees): the palette has no teal.
+  const raw = hashString(key) % 310
+  const hue = raw < 160 ? raw : raw + 50
 
   return `hsl(${hue} ${PROFILE_TAG_SATURATION}% ${PROFILE_TAG_LIGHTNESS}%)`
 }
@@ -44,9 +46,8 @@ export function resolveProfileColor(name: null | string | undefined, overrides: 
 
 // Curated swatches for the rail color picker — evenly spaced hues at the same
 // saturation/lightness as the deterministic palette, so picks stay cohesive.
-export const PROFILE_SWATCHES: readonly string[] = Array.from(
-  { length: 12 },
-  (_, index) => `hsl(${index * 30} ${PROFILE_TAG_SATURATION}% ${PROFILE_TAG_LIGHTNESS}%)`
+export const PROFILE_SWATCHES: readonly string[] = [0, 30, 60, 90, 120, 150, 210, 240, 270, 300, 330, 350].map(
+  hue => `hsl(${hue} ${PROFILE_TAG_SATURATION}% ${PROFILE_TAG_LIGHTNESS}%)`
 )
 
 // Translucent fill derived from a profile color, for tag backgrounds.

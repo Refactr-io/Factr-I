@@ -920,3 +920,12 @@ fn browser_suppressed_inside_test_harness_without_env_overrides() {
         "browser opens must be suppressed in test binaries even without --no-browser/env vars"
     );
 }
+
+#[test]
+fn a_test_binary_is_told_by_its_deps_directory_whatever_the_target_directory_is_called() {
+    assert!(super::is_test_binary_path("/w/engine/target/debug/deps/factr_base-0123456789abcdef"));
+    assert!(super::is_test_binary_path("/w/ci-build/debug/deps/factr_base-0123456789abcdef"));
+    assert!(super::is_test_binary_path("C:/w/out/debug/deps/factr_base-0123456789abcdef.exe"));
+    assert!(!super::is_test_binary_path("/usr/local/bin/factr"));
+    assert!(!super::is_test_binary_path("/w/pkg/deps/factr"));
+}

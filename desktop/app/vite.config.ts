@@ -1,6 +1,6 @@
 import babel from '@rolldown/plugin-babel'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 
 /** React Compiler preset scoped to modules that can actually contain
  *  components/hooks (JSX syntax or a react-ish import). The preset's default
@@ -112,9 +112,42 @@ const emojibaseAssets = () => ({
   }
 })
 
+// The palette has no pure black or pure white (Blackthorn Ink and Rose Alloy are the extremes). Tailwind internals and
+// bundled library stylesheets still write `#fff` / `#000` as defaults; map them onto the two palette neutrals in the
+// emitted CSS so nothing pure ships. The typography plugin's prose colours are cool greys with no theme hook, so they
+// are pointed at the app's own text, stroke and surface tokens.
+const PROSE_GREY = /(--tw-prose-[a-z-]+):oklch\([^)]*\)/g
+const proseToken = (name: string) =>
+  /borders?|-hr$/.test(name)
+    ? 'var(--ui-stroke-secondary)'
+    : /-pre-bg$/.test(name)
+      ? 'var(--ui-bg-tertiary)'
+      : /-(headings|bold|links|code)$/.test(name)
+        ? 'var(--ui-text-primary)'
+        : 'var(--ui-text-secondary)'
+const PURE_COLOR = /(?<![0-9a-zA-Z_#-])#(fff(?:fff)?|000(?:000)?)([0-9a-fA-F]{2})?(?![0-9a-zA-Z_-])/g
+
+function paletteNeutrals(): Plugin {
+  return {
+    name: 'factr-palette-neutrals',
+    generateBundle(_options, bundle) {
+      for (const file of Object.values(bundle)) {
+        if (file.type === 'asset' && file.fileName.endsWith('.css') && typeof file.source === 'string') {
+          file.source = file.source
+            .replace(PROSE_GREY, (_m, name: string) => `${name}:${proseToken(name)}`)
+            .replace(
+              PURE_COLOR,
+              (_m, base: string, alpha = '') => (base.startsWith('f') ? '#fffdfc' : '#151313') + alpha
+            )
+        }
+      }
+    }
+  }
+}
+
 export default defineConfig(({ command }) => ({
   base: './',
-  plugins: [react(), babel({ presets: [compilerPreset()] }), tailwindcss(), emojibaseAssets()],
+  plugins: [react(), babel({ presets: [compilerPreset()] }), tailwindcss(), emojibaseAssets(), paletteNeutrals()],
   css: {
     // Pin an explicit (empty) PostCSS config. Tailwind is handled entirely by
     // `@tailwindcss/vite`, so the renderer needs no PostCSS plugins — and

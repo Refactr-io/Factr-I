@@ -31,7 +31,7 @@ fn env_number(name: &str) -> Option<u64> {
 }
 
 /// Create the run's goal when the task names a check. `true` when the run is persisting.
-pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeout: Duration) -> bool {
+pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, cwd: Option<&str>, timeout: Duration) -> bool {
     let checks = task_check_commands(prompt);
     if checks.is_empty() {
         return false;
@@ -57,6 +57,9 @@ pub(crate) fn start(store: &ControlStore, session_id: &str, prompt: &str, timeou
             gate
         })
         .collect();
+    // What the model runs itself is remembered per run, so the end-of-turn check is not repeated on the same files.
+    let gates: Vec<(String, u64)> = goal.gates.iter().map(|g| (g.command.clone(), g.timeout_seconds.max(1) as u64)).collect();
+    factr_learn::check_memo::register(session_id, &gates, cwd.map(std::path::Path::new));
     store.set_goal(session_id, Some(&goal)).is_ok()
 }
 
@@ -113,6 +116,7 @@ pub(crate) fn finish(store: &ControlStore, session_id: &str) -> Value {
         g.release_checkpoints(session_id);
     }
     let _ = store.forget_session(session_id);
+    factr_learn::check_memo::forget(session_id);
     report
 }
 
@@ -126,9 +130,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = ControlStore::open(&dir).unwrap();
-        assert!(!start(&store, "none", "Fix the bug in this directory.", Duration::from_secs(600)));
+        assert!(!start(&store, "none", "Fix the bug in this directory.", None, Duration::from_secs(600)));
         assert!(store.get_goal("none").unwrap().is_none());
-        assert!(start(&store, "s", "Fix it. Test with ./run_check.sh and make it pass.", Duration::from_secs(900)));
+        assert!(start(&store, "s", "Fix it. Test with ./run_check.sh and make it pass.", None, Duration::from_secs(900)));
         let goal = store.get_goal("s").unwrap().unwrap();
         assert!(goal.unattended && goal.max_turns == 0);
         assert_eq!(goal.gates.len(), 1);
@@ -168,7 +172,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let store = ControlStore::open(&dir).unwrap();
-        start(&store, "s", "Test with ./check.sh", Duration::from_secs(600));
+        start(&store, "s", "Test with ./check.sh", None, Duration::from_secs(600));
         let mut goal = store.get_goal("s").unwrap().unwrap();
         goal.status = GoalStatus::Done;
         goal.turns_used = 2;

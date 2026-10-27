@@ -2724,6 +2724,8 @@ export interface Translations {
     placeholderStarting: string
     placeholderReadOnly: string
     placeholderReconnecting: string
+    notSentStarting: string
+    notSentStopped: string
     placeholderFollowUp: string
     newSessionPlaceholders: readonly string[]
     followUpPlaceholders: readonly string[]
@@ -2754,6 +2756,10 @@ export interface Translations {
     voiceEngineChangeFailed: string
     voiceEngineChainedShort: string
     voiceEngineLiveShort: string
+    dictationFailed: string
+    dictationPreparing: string
+    dictationReady: string
+    dictationRetry: string
     voiceDictation: string
     speakReplies: string
     stopSpeakingReplies: string
@@ -3485,6 +3491,7 @@ export interface Translations {
     popIn: string
     popOut: string
     linkHint: string
+    htmlLinkHint: string
     sourceLineTitle: string
     source: string
     renderedPreview: string

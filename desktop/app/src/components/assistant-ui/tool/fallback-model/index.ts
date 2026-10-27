@@ -3,6 +3,7 @@ import { stripAnsi } from '@factr/shared/ansi'
 import { type ToolTitleKey, translateNow } from '@/i18n'
 import { normalizeExternalUrl } from '@/lib/external-link'
 import { isFileMediaPath, mediaKind } from '@/lib/media'
+import { htmlFileInPatch, htmlFileWrittenByShell } from '@/lib/shell-html-target'
 import { summarizeShellCommand } from '@/lib/summarize-command'
 import { capitalize, firstStringField, normalize } from '@/lib/text'
 import { CONNECTION_CARD_KEY, isCardTool, isFileEditTool, isSilentTool } from '@/lib/tool-render-class'
@@ -755,6 +756,9 @@ function durationLabel(resultRecord: Record<string, unknown>): string | undefine
   return formatDurationSeconds(seconds)
 }
 
+const SHELL_TOOLS = new Set(['bash', 'execute_bash', 'run_shell_command', 'shell', 'terminal'])
+const FILE_WRITING_TOOLS = new Set(['apply_patch', 'edit', 'edit_file', 'multiedit', 'patch', 'replace', 'write', 'write_file'])
+
 function toolPreviewTarget(toolName: string, args: Record<string, unknown>, result: Record<string, unknown>): string {
   // Reading an existing file is not producing a deliverable.
   if (toolName === 'read_file' || toolName === 'search_files' || toolName === 'list_files') {
@@ -774,6 +778,31 @@ function toolPreviewTarget(toolName: string, args: Record<string, unknown>, resu
     const explicit = firstStringField(args, ['url', 'search_term', 'query']) || firstStringField(result, ['url'])
 
     return looksLikeUrl(explicit) ? explicit : findFirstUrl(args, result)
+  }
+
+  // The web page a tool wrote: named in its arguments (`file_path` is what the write and edit tools call it).
+  if (FILE_WRITING_TOOLS.has(toolName)) {
+    const written = firstStringField(args, ['file_path', 'path', 'file', 'filepath'])
+
+    if (written && /\.html?$/i.test(written) && !looksLikeUrl(written)) {
+      return looksLikePath(written) ? written : `./${written}`
+    }
+
+    // apply_patch names its files inside the patch text, not in a path argument.
+    const patched = htmlFileInPatch(firstStringField(args, ['patch_text', 'patch', 'input', 'diff']))
+
+    if (patched) {
+      return looksLikePath(patched) ? patched : `./${patched}`
+    }
+  }
+
+  // A page written by a shell command (heredoc, printf or tee into an .html file).
+  if (SHELL_TOOLS.has(toolName)) {
+    const written = htmlFileWrittenByShell(firstStringField(args, ['command', 'cmd']))
+
+    if (written) {
+      return looksLikePath(written) ? written : `./${written}`
+    }
   }
 
   if (isFileEditTool(toolName)) {
