@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.0.14
+
+- **Update now updates the app.** The Update now button (in About, the update dialog and the command palette) used to open the release page in your browser. It now downloads the new version with a progress bar, checks it against the release's sha256, swaps the app in place and reopens it, with the Factr-I update screen on top while it happens. This works on macOS, Windows and Linux: macOS replaces the app (the old one is kept until the new one reports healthy, and put back if it does not), Windows runs the installer silently over the existing install (a copy of the old install folder is restored if the install or the first start fails), and Linux replaces the running AppImage atomically (the old image is kept and put back if the new one does not come up). If an update cannot be installed in place (a copy opened from a disk image, a read-only folder, a package-manager install), you get a clear message and the file is shown or opened as before. It never starts while an agent task is running.
+- The download is retried when you press Update now after a failed attempt, and a download left from an earlier session shows as ready on every platform, not only macOS.
+
 ## v0.0.13
 
 - A web page the agent builds now opens inside Factr-I. When the agent writes an HTML file, it appears in the in-app browser pane the first time, with its CSS, scripts and images beside it, and reloads there when the agent edits it. Clicking the file's link in the status bar opens it in the pane too (⌘/Ctrl-click opens your system browser), and so does a `file:` link to an HTML page in a message. The page runs sandboxed, with no access to the app or its data. PDFs and other files open as before. If you close the tab, later edits of the same file do not reopen it.

@@ -7,7 +7,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { parseSemver } from './update-feed'
+import { expectedAssets, parseSemver } from './update-feed'
 import type { PostUpdate, ReadyUpdate } from './update-swap'
 
 const compare = (a: string, b: string): number => {
@@ -57,6 +57,43 @@ export function findReadyZip(updatesDir: string, currentVersion: string): null |
 
     if (!best || compare(version, best.version) > 0) {
       best = { file, kind: 'zip', version }
+    }
+  }
+
+  return best
+}
+
+/**
+ * The newest verified installer for this platform (zip on macOS, exe on Windows, AppImage on Linux) under
+ * <updatesDir>/<version>/ that is newer than the running app, with the same skip markers as findReadyZip.
+ */
+export function findReadyInstaller(updatesDir: string, currentVersion: string, platform: string, arch: string): null | ReadyUpdate {
+  let best: null | ReadyUpdate = null
+  let versions: string[]
+
+  try {
+    versions = fs.readdirSync(updatesDir)
+  } catch {
+    return null
+  }
+
+  for (const version of versions) {
+    if (!parseSemver(version) || compare(version, currentVersion) <= 0) {
+      continue
+    }
+
+    const dir = path.join(updatesDir, version)
+
+    if (['rolledback', 'attempted', 'skipped'].some(marker => fs.existsSync(path.join(dir, marker)))) {
+      continue
+    }
+
+    const found = expectedAssets(version, platform, arch)
+      .map(asset => ({ ...asset, file: path.join(dir, asset.name) }))
+      .find(asset => asset.kind !== 'dmg' && fs.existsSync(asset.file))
+
+    if (found && (!best || compare(version, best.version) > 0)) {
+      best = { file: found.file, kind: found.kind, version }
     }
   }
 

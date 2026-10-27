@@ -339,6 +339,7 @@ describe('adopt (a verified file from an earlier session)', () => {
   it('shows Ready at once when idle and never replaces a running download', async () => {
     const { createUpdateDownloader } = await import('./update-download')
     const seen: string[] = []
+
     const dl = createUpdateDownloader({
       fetch: async () => {
         throw new Error('no network at launch')
@@ -355,5 +356,51 @@ describe('adopt (a verified file from an earlier session)', () => {
     dl.adopt({ file: '/u/0.0.10/Factr-I-0.0.10-mac-arm64.zip', version: '0.0.10' })
     expect(dl.getState()).toMatchObject({ status: 'ready', version: '0.0.10', kind: 'zip' })
     expect(seen).toEqual(['ready'])
+  })
+})
+
+describe('what "Update now" needs from the downloader', () => {
+  it('reports the promised size while downloading, and settled() resolves once the file is ready', async () => {
+    const data = bytes('installer-bytes-0123456789')
+    const seen: unknown[] = []
+    const { dl, deps } = setup({ onState: s => void seen.push(s) })
+
+    vi.mocked(deps.fetch).mockResolvedValue(ok(chunks(data)))
+    dl.maybeStart(status(data))
+
+    const done = await dl.settled()
+
+    expect(seen[0]).toMatchObject({ status: 'downloading', received: 0, total: data.byteLength })
+    expect(done).toMatchObject({ status: 'ready', version: '0.0.9' })
+  })
+
+  it('settled() resolves at once when nothing is running', async () => {
+    const { dl } = setup()
+
+    expect(await dl.settled()).toMatchObject({ status: 'idle' })
+  })
+
+  it('an explicit click can retry a version that failed earlier in the run', async () => {
+    const data = bytes('installer-bytes-0123456789')
+    const { dl, deps } = setup()
+
+    vi.mocked(deps.fetch).mockResolvedValueOnce(ok(chunks(bytes('wrong-bytes-wrong-bytes!!')))).mockResolvedValueOnce(ok(chunks(data)))
+    dl.maybeStart(status(data))
+    expect(await dl.settled()).toMatchObject({ status: 'failed-silent' })
+
+    dl.maybeStart(status(data))
+    await settle()
+    expect(deps.fetch).toHaveBeenCalledTimes(1)
+
+    dl.maybeStart(status(data), { retry: true })
+    expect(await dl.settled()).toMatchObject({ status: 'ready' })
+    expect(deps.fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('adopt keeps the installer kind (exe / appimage), not only zip', () => {
+    const { dl } = setup()
+
+    dl.adopt({ file: '/u/0.0.10/Factr-I-0.0.10-win-x64.exe', kind: 'exe', version: '0.0.10' })
+    expect(dl.getState()).toMatchObject({ status: 'ready', kind: 'exe' })
   })
 })
