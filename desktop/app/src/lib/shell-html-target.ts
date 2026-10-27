@@ -38,3 +38,25 @@ export function htmlFileWrittenByShell(command: string): string {
     ? `${dir.replace(/\/+$/, '')}/${file.replace(/^\.\//, '')}`
     : file
 }
+
+const PATCH_FILE = /^\*\*\* (?:Add|Update) File:\s*(\S.*?)\s*$/gm
+const DIFF_FILE = /^\+\+\+ (?:b\/)?(\S+\.html?)\s*$/gm
+
+/** The HTML file a patch adds or updates (`*** Add File: path` of the apply_patch tool, or a unified diff's `+++ b/path`): index.html when several. */
+export function htmlFileInPatch(patch: string): string {
+  const found: string[] = []
+
+  for (const pattern of [PATCH_FILE, DIFF_FILE]) {
+    pattern.lastIndex = 0
+
+    for (const match of patch.matchAll(pattern)) {
+      const file = match[1]?.trim()
+
+      if (file && /\.html?$/i.test(file)) {
+        found.push(file)
+      }
+    }
+  }
+
+  return found.find(f => /(?:^|\/)index\.html?$/i.test(f)) ?? found[0] ?? ''
+}

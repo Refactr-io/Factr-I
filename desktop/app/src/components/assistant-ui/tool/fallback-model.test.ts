@@ -585,6 +585,11 @@ describe('toolPreviewOutcome for a file a tool wrote', () => {
     expect(outcome('bash', { command: 'echo hi > /work/notes.txt' })).toBe('')
   })
 
+  it('names the page an apply_patch adds, whose path is inside the patch text', () => {
+    expect(outcome('apply_patch', { patch_text: '*** Begin Patch\n*** Add File: /work/site/index.html\n+<h1>x</h1>\n*** End Patch' })).toBe('/work/site/index.html')
+    expect(outcome('apply_patch', { patch_text: '*** Begin Patch\n*** Add File: /work/site/app.js\n+1\n*** End Patch' })).toBe('')
+  })
+
   it('leaves other files and addresses alone', () => {
     expect(outcome('write', { file_path: '/work/site/app.js' })).toBe('')
     expect(outcome('write', { file_path: '/work/report.pdf' })).toBe('')

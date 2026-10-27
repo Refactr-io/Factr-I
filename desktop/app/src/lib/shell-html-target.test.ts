@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { htmlFileWrittenByShell } from './shell-html-target'
+import { htmlFileInPatch, htmlFileWrittenByShell } from './shell-html-target'
 
 describe('the web page a shell command writes', () => {
   it('finds a heredoc and a printf redirect', () => {
@@ -28,5 +28,17 @@ describe('the web page a shell command writes', () => {
     expect(htmlFileWrittenByShell('open /tmp/site/index.html')).toBe('')
     expect(htmlFileWrittenByShell('echo hello > /tmp/notes.txt')).toBe('')
     expect(htmlFileWrittenByShell('curl -o page.html https://example.com/index.html')).toBe('')
+  })
+})
+
+describe('the web page a patch adds', () => {
+  it('reads the path of an apply_patch Add File or Update File', () => {
+    expect(htmlFileInPatch('*** Begin Patch\n*** Add File: /tmp/site/index.html\n+<h1>x</h1>\n*** Add File: /tmp/site/style.css\n+b{}\n*** End Patch')).toBe('/tmp/site/index.html')
+    expect(htmlFileInPatch('*** Begin Patch\n*** Update File: site/page.htm\n@@\n-a\n+b\n*** End Patch')).toBe('site/page.htm')
+  })
+
+  it('reads a unified diff and ignores non-HTML files', () => {
+    expect(htmlFileInPatch('--- a/x.html\n+++ b/x.html\n@@\n-a\n+b')).toBe('x.html')
+    expect(htmlFileInPatch('*** Begin Patch\n*** Add File: /tmp/app.js\n+1\n*** End Patch')).toBe('')
   })
 })

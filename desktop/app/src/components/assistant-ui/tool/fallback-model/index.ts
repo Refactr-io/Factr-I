@@ -3,7 +3,7 @@ import { stripAnsi } from '@factr/shared/ansi'
 import { type ToolTitleKey, translateNow } from '@/i18n'
 import { normalizeExternalUrl } from '@/lib/external-link'
 import { isFileMediaPath, mediaKind } from '@/lib/media'
-import { htmlFileWrittenByShell } from '@/lib/shell-html-target'
+import { htmlFileInPatch, htmlFileWrittenByShell } from '@/lib/shell-html-target'
 import { summarizeShellCommand } from '@/lib/summarize-command'
 import { capitalize, firstStringField, normalize } from '@/lib/text'
 import { CONNECTION_CARD_KEY, isCardTool, isFileEditTool, isSilentTool } from '@/lib/tool-render-class'
@@ -786,6 +786,13 @@ function toolPreviewTarget(toolName: string, args: Record<string, unknown>, resu
 
     if (written && /\.html?$/i.test(written) && !looksLikeUrl(written)) {
       return looksLikePath(written) ? written : `./${written}`
+    }
+
+    // apply_patch names its files inside the patch text, not in a path argument.
+    const patched = htmlFileInPatch(firstStringField(args, ['patch_text', 'patch', 'input', 'diff']))
+
+    if (patched) {
+      return looksLikePath(patched) ? patched : `./${patched}`
     }
   }
 
