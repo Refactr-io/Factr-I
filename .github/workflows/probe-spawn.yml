@@ -1,0 +1,44 @@
+name: probe-spawn
+on:
+  push:
+    branches: ['release/0.0.14']
+    paths: ['.github/workflows/probe-spawn.yml']
+jobs:
+  probe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: spawn variants
+        shell: bash
+        run: |
+          mkdir probe && cd probe
+          cat > h.ps1 <<'PS'
+          param([string]$Out)
+          Set-Content -LiteralPath $Out -Value "ran"
+          PS
+          cat > child.mjs <<'JS'
+          import { spawn } from 'node:child_process'
+          const [name, script, out] = process.argv.slice(2)
+          const base = ['-NoProfile', '-ExecutionPolicy', 'Bypass']
+          const v = {
+            current: ['powershell.exe', [...base, '-NonInteractive', '-WindowStyle', 'Hidden', '-File', script, '-Out', out], { detached: true, stdio: 'ignore', windowsHide: true }],
+            nohide: ['powershell.exe', [...base, '-NonInteractive', '-WindowStyle', 'Hidden', '-File', script, '-Out', out], { detached: true, stdio: 'ignore' }],
+            nowindowstyle: ['powershell.exe', [...base, '-NonInteractive', '-File', script, '-Out', out], { detached: true, stdio: 'ignore', windowsHide: true }],
+            noninter: ['powershell.exe', [...base, '-File', script, '-Out', out], { detached: true, stdio: 'ignore', windowsHide: true }],
+            cmdstart: ['cmd.exe', ['/c', 'start', '""', '/B', 'powershell.exe', ...base, '-File', script, '-Out', out], { detached: true, stdio: 'ignore', windowsHide: true }],
+            nodetach: ['powershell.exe', [...base, '-File', script, '-Out', out], { stdio: 'ignore', windowsHide: true }],
+            pipes: ['powershell.exe', [...base, '-File', script, '-Out', out], { detached: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }],
+          }[name]
+          const c = spawn(v[0], v[1], v[2])
+          c.on('error', e => console.log(name, 'spawn error', e.message))
+          c.unref()
+          setTimeout(() => process.exit(0), 300)
+          JS
+          for v in current nohide nowindowstyle noninter cmdstart nodetach pipes; do
+            rm -f "out-$v.txt"
+            node child.mjs "$v" "$(cygpath -w "$PWD/h.ps1")" "$(cygpath -w "$PWD/out-$v.txt")"
+            sleep 8
+            if [ -f "out-$v.txt" ]; then echo "VARIANT $v: RAN"; else echo "VARIANT $v: DID NOT RUN"; fi
+          done
