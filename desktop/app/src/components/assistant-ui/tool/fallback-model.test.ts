@@ -576,6 +576,15 @@ describe('toolPreviewOutcome for a file a tool wrote', () => {
     expect(outcome('edit', { file_path: 'site/page.htm' })).toBe('./site/page.htm')
   })
 
+  it('names the page a shell command wrote, as a person would see it built', () => {
+    expect(outcome('bash', { command: "mkdir -p /work/site && printf '%s\\n' '<h1>x</h1>' > /work/site/index.html" })).toBe(
+      '/work/site/index.html'
+    )
+    expect(outcome('bash', { command: 'cd /work/site && cat > index.html <<EOF\n<h1>x</h1>\nEOF' })).toBe('/work/site/index.html')
+    expect(outcome('bash', { command: 'cat /work/site/index.html' })).toBe('')
+    expect(outcome('bash', { command: 'echo hi > /work/notes.txt' })).toBe('')
+  })
+
   it('leaves other files and addresses alone', () => {
     expect(outcome('write', { file_path: '/work/site/app.js' })).toBe('')
     expect(outcome('write', { file_path: '/work/report.pdf' })).toBe('')
