@@ -3183,6 +3183,8 @@ export const en: Translations = {
     placeholderStarting: 'Starting Factr-I...',
     placeholderReadOnly: 'This is a scheduled run. Its transcript is read-only.',
     placeholderReconnecting: 'Reconnecting to Factr-I…',
+    notSentStarting: 'Not sent yet: the engine for this chat is still starting. Your message is kept; send it again in a moment.',
+    notSentStopped: 'Not sent: the engine for this chat is not running or failed to start. Your message is kept. Try again, or restart Factr-I if it keeps happening.',
     placeholderFollowUp: 'Send follow-up',
     newSessionPlaceholders: [
       'What are we building?',

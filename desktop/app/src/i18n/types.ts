@@ -2724,6 +2724,8 @@ export interface Translations {
     placeholderStarting: string
     placeholderReadOnly: string
     placeholderReconnecting: string
+    notSentStarting: string
+    notSentStopped: string
     placeholderFollowUp: string
     newSessionPlaceholders: readonly string[]
     followUpPlaceholders: readonly string[]

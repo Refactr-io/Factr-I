@@ -13,6 +13,7 @@ import { hasBlockingPromptRequest } from '@/store/prompts'
 
 import { cloneAttachments, type QueueEditState } from '../composer-utils'
 import { onComposerSubmitRequest } from '../focus'
+import { announceNotSent } from '../not-sent'
 import { pathifyRefs } from '../path-refs'
 import { composerPlainText } from '../rich-editor'
 import { useComposerScope, useComposerSurfaceId } from '../scope'
@@ -192,6 +193,8 @@ export function useComposerSubmit({
 
   const submitDraft = () => {
     if (disabled) {
+      announceNotSent()
+
       return
     }
 

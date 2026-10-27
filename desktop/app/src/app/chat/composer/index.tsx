@@ -85,6 +85,7 @@ import { useStatusDrawer } from './hooks/use-status-drawer'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
 import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
+import { announceNotSent } from './not-sent'
 import { chipTypedPathOnSpace, pathifyRefs } from './path-refs'
 import { QueuePanel } from './queue-panel'
 import { RestoredDraftNotice } from './restored-draft-notice'
@@ -1034,6 +1035,10 @@ export function ChatBar({
       const hasLivePayload = editorText.trim().length > 0 || attachments.length > 0
 
       if (disabled) {
+        if (hasLivePayload) {
+          announceNotSent()
+        }
+
         return
       }
 
