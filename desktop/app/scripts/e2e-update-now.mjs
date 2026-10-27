@@ -189,10 +189,11 @@ const helperLog = path.join(updates, 'helper.log')
 const marker = path.join(updates, NEW_V, 'ok')
 
 if (mode === 'good') {
-  for (let i = 0; i < 300; i += 1) {
+  // a runner is slow: the silent Windows installer alone takes minutes, then the new app boots cold
+  for (let i = 0; i < 900; i += 1) {
     const h = fs.existsSync(helperLog) ? fs.readFileSync(helperLog, 'utf8') : ''
 
-    if (fs.existsSync(marker) || /rollback done|abort|installer did not finish/.test(h)) {
+    if (fs.existsSync(marker) || /rollback done|abort|installer did not finish|ok: the new app/.test(h)) {
       break
     }
 
