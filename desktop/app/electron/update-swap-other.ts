@@ -299,8 +299,9 @@ if (-not (Test-Path -LiteralPath $Marker) -and (InstallAlive)) {
   while (-not (Test-Path -LiteralPath $Marker) -and (InstallAlive) -and $j -lt ($extraWait * 2)) { $j++; Start-Sleep -Milliseconds 500 }
 }
 if (Test-Path -LiteralPath $Marker) {
+  Log 'ok: the new app reported healthy; removing the backup'
   Remove-Item -LiteralPath $BackupDir -Recurse -Force -ErrorAction SilentlyContinue
-  Log 'ok: the new app reported healthy; the backup was removed'
+  Log 'backup removed'
   exit 0
 }
 

@@ -201,7 +201,10 @@ if (mode === 'good') {
   }
 }
 
-await sleep(3000)
+// the helper logs "ok" right after it sees the marker; give it time on a slow runner before reading the log
+for (let i = 0; i < 180 && mode === 'good' && !/ok: the new app/.test(fs.existsSync(helperLog) ? fs.readFileSync(helperLog, 'utf8') : ''); i += 1) {
+  await sleep(1000)
+}
 
 const helper = fs.existsSync(helperLog) ? fs.readFileSync(helperLog, 'utf8') : '(no helper log)'
 
