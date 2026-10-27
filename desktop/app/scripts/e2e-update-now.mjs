@@ -205,6 +205,34 @@ await sleep(3000)
 const helper = fs.existsSync(helperLog) ? fs.readFileSync(helperLog, 'utf8') : '(no helper log)'
 
 console.log('--- helper.log\n' + helper)
+// what the app and the helper left behind, for the CI artifact and the log
+function dump(dir, depth = 0) {
+  if (depth > 3 || !fs.existsSync(dir)) {
+    return
+  }
+
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+
+    if (entry.isDirectory()) {
+      if (!/node_modules|Cache|GPUCache|Code Cache|Dawn|Partitions|Local Storage|Session Storage|blob_storage|engine$/.test(entry.name)) {
+        dump(full, depth + 1)
+      }
+    } else if (/\.(log|json|ps1|sh|txt)$/.test(entry.name) || dir.endsWith('updates')) {
+      console.log(`--- ${full} (${fs.statSync(full).size} bytes)`)
+
+      if (/\.(log|ps1|sh|txt|json)$/.test(entry.name) && fs.statSync(full).size < 60000) {
+        console.log(fs.readFileSync(full, 'utf8').split('\n').slice(-60).join('\n'))
+      }
+    }
+  }
+}
+
+if (process.env.E2E_DUMP !== '0') {
+  dump(UD)
+  dump(path.join(CFG, 'logs'))
+}
+
 console.log('--- downloads served:', downloads, '| mascot seen:', sawMascot)
 
 let pass

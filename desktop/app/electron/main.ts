@@ -17472,7 +17472,10 @@ function swapDeps(): SwapDeps {
       writeFile: (file, content, mode) => fs.promises.writeFile(file, content, { mode })
     },
     spawnDetached: (command, args) => {
-      spawn(command, args, { detached: true, stdio: 'ignore' }).unref()
+      const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true })
+
+      child.on('error', error => rememberLog(`[update] helper failed to start: ${error.message}`))
+      child.unref()
     },
     quit: () => app.quit(),
     log: rememberLog
