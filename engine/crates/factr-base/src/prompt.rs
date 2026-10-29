@@ -87,13 +87,33 @@ impl PromptCapabilities {
     }
 }
 
+/// Guidance only the desktop app gets (it has the in-app preview pane).
+pub const DESKTOP_PROMPT: &str = include_str!("prompt/desktop_prompt.md");
+
+/// True when the desktop app launched this engine (it sets `FACTR_DESKTOP=1`). Headless and
+/// benchmark runs never do, so desktop-only tools and prompt text stay out of them.
+pub fn desktop_client() -> bool {
+    std::env::var("FACTR_DESKTOP").is_ok_and(|v| v == "1")
+}
+
 fn base_system_prompt_parts(
     capabilities: PromptCapabilities,
     working_dir: Option<&Path>,
 ) -> Vec<String> {
+    base_system_prompt_parts_for(capabilities, working_dir, desktop_client())
+}
+
+fn base_system_prompt_parts_for(
+    capabilities: PromptCapabilities,
+    working_dir: Option<&Path>,
+    desktop: bool,
+) -> Vec<String> {
     let mut parts = vec![load_base_system_prompt(working_dir)];
     if capabilities.mermaid {
         parts.push(MERMAID_PROMPT.to_string());
+    }
+    if desktop {
+        parts.push(DESKTOP_PROMPT.trim().to_string());
     }
     parts
 }

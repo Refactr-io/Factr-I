@@ -36,6 +36,7 @@ import { Button } from '@/components/ui/button'
 import { Codicon } from '@/components/ui/codicon'
 import { CopyButton } from '@/components/ui/copy-button'
 import { DisclosureCaret } from '@/components/ui/disclosure-caret'
+import { FilePathLink } from '@/components/assistant-ui/file-path-link'
 import { FadeText } from '@/components/ui/fade-text'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { Loader } from '@/components/ui/loader'
@@ -302,8 +303,10 @@ function ToolTitle({
   legendary,
   status,
   title,
-  titleAction
+  titleAction,
+  filePath
 }: {
+  filePath?: string
   isPending: boolean
   legendary?: boolean
   status: ToolStatus
@@ -326,6 +329,8 @@ function ToolTitle({
           <span className="shimmer">{titleAction.text}</span>
           {titleAction.suffix}
         </>
+      ) : filePath ? (
+        <FilePathLink pathRef={{ path: filePath }}>{title}</FilePathLink>
       ) : (
         title
       )}
@@ -609,6 +614,7 @@ function ToolEntry({ part }: ToolEntryProps) {
               toolName={part.toolName}
             />
             <ToolTitle
+              filePath={isFileEdit && !isPending && view.status !== 'error' ? view.subtitle : undefined}
               isPending={isPending}
               legendary={memoryLegendary}
               status={view.status}

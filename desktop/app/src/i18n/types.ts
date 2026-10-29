@@ -3854,6 +3854,7 @@ export interface Translations {
     }
     tool: {
       copyCode: string
+      runInTerminal: string
       renderingImage: string
       copyOutput: string
       copyCommand: string

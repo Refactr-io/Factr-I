@@ -62,6 +62,11 @@ pub trait FactrHost: Send + Sync {
     async fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value>;
     /// Ask the person a question and wait for the answer.
     async fn clarify(&self, session_id: &str, question: &str, choices: &[String]) -> ClarifyReply;
+    /// Send a gateway event (`preview.open`, `preview.close`) to the windows showing the session.
+    /// False when no window shows it (the `preview` tool then says so).
+    async fn emit_event(&self, _session_id: &str, _event: &str, _payload: Value) -> bool {
+        false
+    }
     /// Whether a feature backend is behind `call` (a host that only answers `clarify` has none).
     fn has_backend(&self) -> bool {
         true
@@ -75,7 +80,7 @@ pub fn install_host(host: Arc<dyn FactrHost>) {
     *HOST.write().unwrap_or_else(|e| e.into_inner()) = Some(host);
 }
 
-fn installed() -> Option<Arc<dyn FactrHost>> {
+pub(crate) fn installed() -> Option<Arc<dyn FactrHost>> {
     HOST.read().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
