@@ -919,3 +919,15 @@ fn every_tool_or_code_line_sits_below_the_no_tools_override_or_makes_the_excepti
         }
     }
 }
+
+#[test]
+fn desktop_prompt_only_for_desktop_client() {
+    let caps = PromptCapabilities { mermaid: false };
+    let headless = base_system_prompt_parts_for(caps, None, false);
+    assert_eq!(headless, vec![load_base_system_prompt(None)]);
+    assert!(!headless.join("\n").contains("preview"));
+    let desktop = base_system_prompt_parts_for(caps, None, true);
+    assert_eq!(desktop.len(), 2);
+    assert!(desktop[1].contains("`preview` tool"));
+    assert_eq!(desktop[0], headless[0]);
+}

@@ -23,6 +23,7 @@ mod ls;
 pub mod mcp;
 mod memory;
 mod open;
+mod preview;
 pub mod patch;
 mod office_text;
 mod read;
@@ -585,6 +586,10 @@ impl Registry {
                 Self::insert_tool(&mut tools_map, "factr", factr_bridge::FactrTool::new());
             }
             Self::insert_tool(&mut tools_map, "clarify", factr_bridge::ClarifyTool::new());
+            // Only the desktop app has a preview pane; headless/benchmark runs never see this tool.
+            if factr_base::prompt::desktop_client() {
+                Self::insert_tool(&mut tools_map, "preview", preview::PreviewTool::new());
+            }
         }
         let session_tools_ms = session_tools_start.elapsed().as_millis();
 

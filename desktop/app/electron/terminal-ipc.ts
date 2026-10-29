@@ -2,7 +2,7 @@
 // registry, and the factr:terminal:* IPC surface. Extracted from main.ts; the
 // factory owns the session map and returns the dispose helpers main.ts needs
 // for SSH teardown. findOnPath / logging / connection routing stay injected.
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -356,6 +356,33 @@ export function registerTerminalIpc({
     event.sender.once('destroyed', () => disposeTerminalSession(id))
 
     return { cwd: remote ? null : cwd, id, shell: remote ? 'ssh' : name }
+  })
+
+  // One-shot run of a command the user explicitly clicked Run on (chat code
+  // block). Output streams on factr:terminal:<id>:data / :exit; POSIX only.
+  ipcMain.handle('factr:terminal:run', (event, payload = {}) => {
+    const text = String(payload?.command ?? '')
+
+    if (isWindows || !text.trim()) {
+      return null
+    }
+
+    const id = crypto.randomUUID()
+    const child = spawn(terminalShellCommand().command, ['-c', text], { cwd: safeTerminalCwd(payload?.cwd), env: terminalShellEnv() })
+
+    const send = (suffix, data) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send(terminalChannel(id, suffix), data)
+      }
+    }
+
+    child.stdout.on('data', chunk => send('data', String(chunk)))
+    child.stderr.on('data', chunk => send('data', String(chunk)))
+    child.on('error', error => send('data', String(error.message)))
+    child.on('close', (code, signal) => send('exit', { code, signal }))
+    event.sender.once('destroyed', () => child.kill())
+
+    return id
   })
 
   ipcMain.handle('factr:terminal:attach', (event, id) => {

@@ -4614,6 +4614,7 @@ export const en: Translations = {
     },
     tool: {
       copyCode: 'Copy code',
+      runInTerminal: 'Run in terminal',
       renderingImage: 'Rendering image',
       copyOutput: 'Copy output',
       copyCommand: 'Copy command',

@@ -104,6 +104,23 @@ export function isLoopbackPreviewUrl(value: string): boolean {
   }
 }
 
+/** An http(s) URL whose host a browser could actually reach: localhost, an IP, or a dotted name. */
+export function isLoadableHttpUrl(value: string): boolean {
+  try {
+    const { hostname, protocol } = new URL(value)
+
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      return false
+    }
+
+    const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '')
+
+    return host === 'localhost' || host.endsWith('.localhost') || host.includes(':') || /^[^.]+(\.[^.]+)+$/.test(host)
+  } catch {
+    return false
+  }
+}
+
 export function validatedRemoteHtmlDataUrl(value: string): string | null {
   const prefix = 'data:text/html;base64,'
 
@@ -210,7 +227,9 @@ export function localPreviewTarget(rawTarget: string, cwd?: string | null): Prev
   }
 
   if (/^https?:\/\//i.test(raw)) {
-    return { kind: 'url', label: basename(raw), source: raw, url: raw }
+    // A bare scheme or a symbol host ("https://√") is not a page; opening it
+    // left the pane on a dead address.
+    return isLoadableHttpUrl(raw) ? { kind: 'url', label: basename(raw), source: raw, url: raw } : null
   }
 
   let path = raw
