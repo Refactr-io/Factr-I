@@ -651,7 +651,8 @@ export function CronView({ onClose, onOpenSession, setStatusbarItemGroup: _setSt
     <Panel closeLabel={c.close} onClose={onClose}>
       <PanelHeader subtitle={c.count(totalCount)} title={c.title} />
 
-      {loading && jobs.length === 0 ? (
+      {/* Hold the loader until blueprints settle too: the empty state and the blueprint list are different layouts. */}
+      {(loading && jobs.length === 0) || (totalCount === 0 && blueprintsQuery.isPending) ? (
         <PageLoader label={c.loading} />
       ) : totalCount === 0 && visibleBlueprints.length === 0 ? (
         <PanelEmpty
