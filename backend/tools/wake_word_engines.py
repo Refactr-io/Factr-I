@@ -38,8 +38,13 @@ class _Engine:
     last_match: Optional[tuple[str, str]] = None
 
     def __init__(self, cfg: Dict[str, Any]):
-        _ensure_dep(self.feature)
+        _ensure_dep(self._dep_feature(cfg))
         self._build(cfg, _sub(cfg, self.section), _ww())
+
+    def _dep_feature(self, cfg: Dict[str, Any]) -> str:
+        """The lazy_deps feature to ensure before ``_build``. Engines override it when the microphone is fed from
+        outside (``cfg["_client_capture"]``) and PortAudio is not needed."""
+        return self.feature
 
     def _build(self, cfg: Dict[str, Any], sub: Dict[str, Any], ww) -> None:
         raise NotImplementedError
@@ -70,6 +75,10 @@ class _OpenWakeWordEngine(_Engine):
 
     feature, section = "wake.openwakeword", "openwakeword"
     frame_length = 1280  # openWakeWord recommends 80 ms frames.
+
+    def _dep_feature(self, cfg: Dict[str, Any]) -> str:
+        # A client-fed microphone (the desktop app) needs the engine only, not sounddevice/PortAudio.
+        return "wake.openwakeword.engine" if cfg.get("_client_capture") else self.feature
 
     def _build(self, cfg, sub, ww) -> None:
         import openwakeword

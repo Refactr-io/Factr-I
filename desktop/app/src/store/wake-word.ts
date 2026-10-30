@@ -2,6 +2,7 @@ import { atom } from 'nanostores'
 
 import { type ClientWakeCaptureHandle, startClientWakeCapture } from '@/lib/wake-client-capture'
 import { $gateway } from '@/store/gateway'
+import { dismissNotification, notify } from '@/store/notifications'
 
 // "Hey Factr" wake-word listener state for the composer toggle. The gateway is
 // the single source of truth (the listener lives in the backend and is shared
@@ -285,6 +286,20 @@ export async function armWakeWord(request: WakeRequester = gatewayRequester): Pr
   }
 }
 
+const WAKE_NOTICE_ID = 'wake-word'
+
+/** A deliberate click that did not turn the wake word on must say why: a tooltip nobody hovers is not an answer
+ *  (the toggle used to snap back to off in silence). */
+function announceWakeFailure(reason: string): void {
+  notify({
+    detail: reason || undefined,
+    durationMs: 0,
+    id: WAKE_NOTICE_ID,
+    kind: 'error',
+    message: 'Hey Factr could not be turned on'
+  })
+}
+
 /** The composer button's click handler: stop when listening, start otherwise. */
 export async function toggleWakeWord(request: WakeRequester = gatewayRequester): Promise<void> {
   const state = $wakeWord.get()
@@ -301,6 +316,16 @@ export async function toggleWakeWord(request: WakeRequester = gatewayRequester):
     pending: true
   })
 
+  if (!state.listening) {
+    notify({
+      detail: 'First use installs the detection engine, which takes about a minute.',
+      durationMs: 0,
+      id: WAKE_NOTICE_ID,
+      kind: 'info',
+      message: 'Getting Hey Factr ready'
+    })
+  }
+
   try {
     if (state.listening) {
       applyWakeStopResult(await request<WakeStopResponse>('wake.stop', { persist: true }))
@@ -308,22 +333,31 @@ export async function toggleWakeWord(request: WakeRequester = gatewayRequester):
       // persist: true — a deliberate click is consent, so the backend flips
       // wake_word.enabled in config.yaml (on/off) and the choice sticks for
       // future sessions. Auto-arm (armWakeWord) never passes it.
-      applyWakeStartResult(
-        await request<WakeStartResponse>('wake.start', {
-          persist: true,
-          surface: 'gui',
-          client_capture: true
-        })
-      )
+      const started = await request<WakeStartResponse>('wake.start', {
+        persist: true,
+        surface: 'gui',
+        client_capture: true
+      })
+
+      applyWakeStartResult(started)
+
+      if (started?.started) {
+        dismissNotification(WAKE_NOTICE_ID)
+      } else {
+        announceWakeFailure($wakeWord.get().notice || 'The wake word could not start.')
+      }
     }
   } catch (error) {
     const current = $wakeWord.get()
+    const message = error instanceof Error ? error.message : String(error)
 
     $wakeWord.set({
       ...current,
-      notice: error instanceof Error ? error.message : String(error),
+      notice: message,
       pending: false
     })
+
+    announceWakeFailure(message)
   }
 }
 

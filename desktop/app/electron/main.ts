@@ -4386,8 +4386,12 @@ async function resolveFactrBackend(backendArgs) {
         // environment found". An explicit setting wins.
         FACTR_LAZY_INSTALL_TARGET:
           process.env.FACTR_LAZY_INSTALL_TARGET || path.join(FACTR_CONFIG_HOME, 'lazy-packages'),
-        // Only voice transcription installs packages at runtime; provider discovery must not download SDKs.
-        FACTR_LAZY_INSTALL_ONLY: process.env.FACTR_LAZY_INSTALL_ONLY || 'stt.faster_whisper',
+        // Only voice features install packages at runtime (transcription, and the "Hey Factr" detection engine the
+        // first time it is turned on); provider discovery must not download SDKs. The wake word is listed
+        // feature by feature: the engine (the desktop streams the microphone itself, so no PortAudio) and the
+        // tflite runtime macOS needs.
+        FACTR_LAZY_INSTALL_ONLY:
+          process.env.FACTR_LAZY_INSTALL_ONLY || 'stt.faster_whisper,wake.openwakeword.engine,wake.openwakeword.tflite',
         // Tool schemas alone exceed Ollama's default 4k window; engine warms to this.
         FACTR_OLLAMA_NUM_CTX: process.env.FACTR_OLLAMA_NUM_CTX || '32768'
       },
