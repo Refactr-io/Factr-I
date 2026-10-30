@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $notifications, clearNotifications } from './notifications'
 import {
   $wakeWord,
   applyWakeStartResult,
@@ -19,6 +20,7 @@ const requester = (impl: (method: string, params?: Record<string, unknown>) => u
 
 beforeEach(() => {
   resetWakeWordState()
+  clearNotifications()
 })
 
 describe('applyWakeStatus', () => {
@@ -62,6 +64,85 @@ describe('applyWakeStatus', () => {
     const state = $wakeWord.get()
     expect(state.listening).toBe(true)
     expect(state.notice).toBe('Microphone delivers only silence — grant mic access')
+  })
+})
+
+describe('toggleWakeWord tells the person when it cannot turn on', () => {
+  const wakeNotices = () => $notifications.get().filter(item => item.id === 'wake-word')
+
+  it('shows the reason as an error notice when start is refused (it used to snap back to off in silence)', async () => {
+    applyWakeStatus({ available: true, listening: false, phrase: 'hey factr' })
+
+    await toggleWakeWord(
+      requester(() => ({
+        hint: "wake.openwakeword is not installed at runtime in the desktop app",
+        reason: 'unavailable',
+        started: false
+      }))
+    )
+
+    const [notice] = wakeNotices()
+    expect(notice).toMatchObject({ kind: 'error', message: 'Hey Factr could not be turned on' })
+    expect(notice?.detail).toContain('not installed at runtime')
+  })
+
+  it('shows the error when the RPC throws', async () => {
+    applyWakeStatus({ available: true, listening: false, phrase: 'hey factr' })
+
+    await toggleWakeWord(
+      requester(() => {
+        throw new Error('timed out while installing')
+      })
+    )
+
+    expect(wakeNotices()[0]).toMatchObject({ detail: 'timed out while installing', kind: 'error' })
+  })
+
+  it('says it is getting ready only when the first install is slow, and clears that when it starts', async () => {
+    vi.useFakeTimers()
+
+    try {
+      applyWakeStatus({ available: true, listening: false, phrase: 'hey factr' })
+
+      let release: (value: unknown) => void = () => undefined
+      const slow = requester(() => new Promise(resolve => (release = resolve)))
+      const pending = toggleWakeWord(slow)
+
+      await vi.advanceTimersByTimeAsync(500)
+      expect(wakeNotices()).toEqual([])
+
+      await vi.advanceTimersByTimeAsync(1200)
+      expect(wakeNotices().map(item => item.message)).toEqual(['Getting Hey Factr ready'])
+
+      release({ phrase: 'hey factr', started: true })
+      await pending
+      expect(wakeNotices()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not flash a getting-ready notice when the arm is quick', async () => {
+    vi.useFakeTimers()
+
+    try {
+      applyWakeStatus({ available: true, listening: false, phrase: 'hey factr' })
+
+      await toggleWakeWord(requester(() => ({ phrase: 'hey factr', started: true })))
+      await vi.advanceTimersByTimeAsync(3000)
+
+      expect(wakeNotices()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stays quiet when turning it off', async () => {
+    applyWakeStatus({ available: true, listening: true, phrase: 'hey factr' })
+
+    await toggleWakeWord(requester(() => ({ reason: null, stopped: true })))
+
+    expect(wakeNotices()).toEqual([])
   })
 })
 

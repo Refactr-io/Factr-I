@@ -92,6 +92,14 @@ LAZY_DEPS: dict[str, tuple[str, ...]] = {
         "sounddevice==0.5.5",
         "numpy==2.4.3",
     ),
+    # The detection engine alone, for surfaces that feed it the microphone themselves (the desktop app
+    # streams client capture, so the backend never opens PortAudio). Without sounddevice: it pulls cffi ->
+    # a pycparser inside uv's 14-day quarantine, and that unsatisfiable resolve made every first arm fail.
+    "wake.openwakeword.engine": (
+        "openwakeword==0.6.0",
+        "onnxruntime==1.27.0",
+        "numpy==2.4.3",
+    ),
     # Open-vocabulary keyword spotting. sentencepiece is needed by
     # sherpa_onnx.text2token but undeclared by sherpa-onnx.
     "wake.sherpa": (

@@ -370,8 +370,14 @@ def check_wake_word_requirements(cfg: Optional[Dict[str, Any]] = None) -> Dict[s
     provider = _provider(cfg)
     from tools import lazy_deps
     feature = _PROVIDERS.get(provider, ("", "wake.openwakeword"))[1]
+    capture_mode = resolve_capture_mode(cfg)
+    if feature == "wake.openwakeword" and capture_mode == "client":
+        feature = "wake.openwakeword.engine"  # a client-fed mic needs the engine only (see _OpenWakeWordEngine)
     deps_ok = lazy_deps.is_available(feature)
-    lazy_ok = lazy_deps._allow_lazy_installs()
+    # Installable here only if the policy allows it AND this host's gate lets this feature install: the desktop app
+    # names the features it may install, and an unlisted one used to read as "available" and then fail silently.
+    gate_reason = lazy_deps._unsupported_feature_reason(feature)
+    lazy_ok = lazy_deps._allow_lazy_installs() and not gate_reason
     # The audio probe imports sounddevice + numpy — packages the lazy installer would
     # fetch — so only trust it once deps are installed; on a fresh install the engine
     # constructors' ``lazy_deps.ensure()`` + stream-open surface any real audio problem.
@@ -381,15 +387,16 @@ def check_wake_word_requirements(cfg: Optional[Dict[str, Any]] = None) -> Dict[s
     stt_ok, tts_ok = _stt_ready(), _tts_ready()
     # tflite needs a runtime openWakeWord doesn't declare off Linux; report it as a
     # remediation instead of arming a detector that can't fire.
-    tflite_ok = (feature != "wake.openwakeword" or resolve_inference_framework(cfg) != "tflite"
-                 or ensure_tflite_runtime() or lazy_deps.is_available("wake.openwakeword.tflite") or lazy_ok)
+    tflite_installable = lazy_ok and not lazy_deps._unsupported_feature_reason("wake.openwakeword.tflite")
+    tflite_ok = (not feature.startswith("wake.openwakeword") or resolve_inference_framework(cfg) != "tflite"
+                 or ensure_tflite_runtime() or lazy_deps.is_available("wake.openwakeword.tflite") or tflite_installable)
     key_ok = provider != "porcupine" or bool((os.getenv("PORCUPINE_ACCESS_KEY") or "").strip())
-    capture_mode = resolve_capture_mode(cfg)
     missing = " and ".join(n for n, ok in (("speech-to-text", stt_ok), ("text-to-speech", tts_ok)) if not ok)
 
     # Ordered remediation ladder: first true predicate wins.
     ladder = (
         (not key_ok, lambda: "Set PORCUPINE_ACCESS_KEY (free key at https://console.picovoice.ai)."),
+        (not deps_ok and bool(gate_reason), lambda: f"The wake word cannot be set up here: {gate_reason}"),
         (not deps_ok and not lazy_ok, lambda: lazy_deps.feature_install_command(feature) or ""),
         (not tflite_ok,
          lambda: "The wake word needs the tflite runtime on this Mac: pip install ai-edge-litert"),
@@ -778,6 +785,8 @@ def start_listening(on_wake: Callable[[], None], *, owner: object, config: Optio
         _detector_file_lock = _acquire_machine_lock()
         try:
             cfg = config if config is not None else load_wake_word_config()
+            if external_audio:
+                cfg = {**cfg, "_client_capture": True}  # the engine then installs without PortAudio's sounddevice
             _detector = WakeWordDetector(_build_engine(cfg), on_wake, on_failure=_detector_failed,
                                          input_device=_input_device(cfg), external_audio=external_audio)
             _detector_owner = owner
