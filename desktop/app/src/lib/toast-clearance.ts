@@ -24,6 +24,8 @@ export function toastBottomOffset(
   toastRight: number
 ): number {
   let offset = TOAST_BASE_OFFSET_PX
+  // Never lift the stack past the middle of the window (a composer floating high up must not push toasts off screen).
+  const ceiling = Math.max(TOAST_BASE_OFFSET_PX, Math.floor(viewportHeight * 0.5))
 
   for (const rect of composers) {
     const visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < viewportHeight
@@ -34,5 +36,5 @@ export function toastBottomOffset(
     }
   }
 
-  return offset
+  return Math.min(offset, ceiling)
 }

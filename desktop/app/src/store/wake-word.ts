@@ -287,6 +287,7 @@ export async function armWakeWord(request: WakeRequester = gatewayRequester): Pr
 }
 
 const WAKE_NOTICE_ID = 'wake-word'
+const WAKE_READY_NOTICE_DELAY_MS = 1500
 
 /** A deliberate click that did not turn the wake word on must say why: a tooltip nobody hovers is not an answer
  *  (the toggle used to snap back to off in silence). */
@@ -316,15 +317,18 @@ export async function toggleWakeWord(request: WakeRequester = gatewayRequester):
     pending: true
   })
 
-  if (!state.listening) {
-    notify({
-      detail: 'First use installs the detection engine, which takes about a minute.',
-      durationMs: 0,
-      id: WAKE_NOTICE_ID,
-      kind: 'info',
-      message: 'Getting Hey Factr ready'
-    })
-  }
+  // Only when it is slow: with the engine already installed the arm takes a moment and a toast would just flash.
+  const readyTimer = state.listening
+    ? null
+    : setTimeout(() => {
+        notify({
+          detail: 'The first time, this installs the detection engine, which can take a minute.',
+          durationMs: 0,
+          id: WAKE_NOTICE_ID,
+          kind: 'info',
+          message: 'Getting Hey Factr ready'
+        })
+      }, WAKE_READY_NOTICE_DELAY_MS)
 
   try {
     if (state.listening) {
@@ -339,6 +343,10 @@ export async function toggleWakeWord(request: WakeRequester = gatewayRequester):
         client_capture: true
       })
 
+      if (readyTimer) {
+        clearTimeout(readyTimer)
+      }
+
       applyWakeStartResult(started)
 
       if (started?.started) {
@@ -348,6 +356,10 @@ export async function toggleWakeWord(request: WakeRequester = gatewayRequester):
       }
     }
   } catch (error) {
+    if (readyTimer) {
+      clearTimeout(readyTimer)
+    }
+
     const current = $wakeWord.get()
     const message = error instanceof Error ? error.message : String(error)
 

@@ -262,6 +262,11 @@ _NO_SPEECH_PROB_THRESHOLD_DEFAULT = 0.6
 _LOGPROB_THRESHOLD_DEFAULT = -1.0
 
 
+def _clamp(value, low, high):
+    """Keep a tuning value inside a range that cannot silently drop every word (a typo such as 40 for 0.4)."""
+    return max(low, min(high, value))
+
+
 def build_local_transcribe_kwargs(stt_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Kwargs for EVERY local faster-whisper ``model.transcribe`` call — single owner of the anti-hallucination hardening."""
     from tools.transcription_tools import _load_stt_config, _resolve_stt_language
@@ -275,13 +280,17 @@ def build_local_transcribe_kwargs(stt_config: Optional[Dict[str, Any]] = None) -
         "vad_filter": vad_enabled is None or bool(vad_enabled)}
     if kwargs["vad_filter"]:
         kwargs["vad_parameters"] = {
-            "min_silence_duration_ms": _config_number(local_cfg, "vad_min_silence_ms", _VAD_MIN_SILENCE_MS_DEFAULT, int),
-            "threshold": _config_number(local_cfg, "vad_threshold", _VAD_THRESHOLD_DEFAULT, float),
-            "speech_pad_ms": _config_number(local_cfg, "vad_speech_pad_ms", _VAD_SPEECH_PAD_MS_DEFAULT, int),
+            "min_silence_duration_ms": _clamp(_config_number(local_cfg, "vad_min_silence_ms", _VAD_MIN_SILENCE_MS_DEFAULT, int), 100, 10_000),
+            "threshold": _clamp(_config_number(local_cfg, "vad_threshold", _VAD_THRESHOLD_DEFAULT, float), 0.05, 0.95),
+            "speech_pad_ms": _clamp(_config_number(local_cfg, "vad_speech_pad_ms", _VAD_SPEECH_PAD_MS_DEFAULT, int), 0, 5_000),
         }
-    # ``hotwords`` unset = the product names; set it (or "" to switch it off) under ``stt.local``.
+    forced_lang = _resolve_stt_language("local", stt_config)
+    # ``hotwords`` unset = the product names; set it (or "" to switch it off) under ``stt.local``. The default is
+    # English-only (or auto-detect): a Latin-script bias can pull other languages toward transliteration.
     hotwords = local_cfg.get("hotwords")
-    hotwords = _HOTWORDS_DEFAULT if hotwords is None else str(hotwords).strip()
+    if hotwords is None:
+        hotwords = _HOTWORDS_DEFAULT if not forced_lang or str(forced_lang).lower().startswith("en") else ""
+    hotwords = str(hotwords).strip()
     if hotwords:
         kwargs["hotwords"] = hotwords
     # Push the confidence gate into faster-whisper itself: its internal defaults drop
@@ -289,7 +298,6 @@ def build_local_transcribe_kwargs(stt_config: Optional[Dict[str, Any]] = None) -
     # threshold knobs were dead for that first gate (non-English speech decodes at
     # lower avg_logprob and was silently discarded). Same values feed both gates.
     kwargs["no_speech_threshold"], kwargs["log_prob_threshold"] = _confidence_thresholds(local_cfg)
-    forced_lang = _resolve_stt_language("local", stt_config)
     if forced_lang:
         kwargs["language"] = forced_lang
     initial_prompt = local_cfg.get("initial_prompt")

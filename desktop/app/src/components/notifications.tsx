@@ -167,7 +167,9 @@ function BottomRightStack({
       return
     }
 
-    const composers = () => [...document.querySelectorAll<HTMLElement>('[data-slot="composer-root"]')]
+    // Docked composers only: a popped-out composer floats wherever the person put it.
+    const composers = () =>
+      [...document.querySelectorAll<HTMLElement>('[data-slot="composer-root"]')].filter(el => !el.closest('[data-popped-out]') && !el.hasAttribute('data-popped-out'))
 
     const measure = () => {
       const own = region.getBoundingClientRect()
@@ -187,10 +189,13 @@ function BottomRightStack({
 
     composers().forEach(el => observer.observe(el))
     window.addEventListener('resize', measure)
+    // A composer that mounts or moves while a toast is up (a new tile, a pop-in) is not observed: re-measure now and then.
+    const interval = window.setInterval(measure, 500)
 
     return () => {
       observer.disconnect()
       window.removeEventListener('resize', measure)
+      window.clearInterval(interval)
     }
   }, [notifications.length])
 
@@ -200,11 +205,11 @@ function BottomRightStack({
       className={cn(
         REGION_BASE,
         'right-4 w-[min(24rem,calc(100%-2rem))] flex-col-reverse p-1',
-        expanded && 'max-h-[70vh] overflow-y-auto overscroll-contain'
+        expanded && 'overflow-y-auto overscroll-contain'
       )}
       ref={regionRef}
       role="region"
-      style={{ bottom }}
+      style={{ bottom, ...(expanded ? { maxHeight: `calc(100vh - ${bottom}px - 3rem)` } : null) }}
     >
       {older.length > 0 && (
         <div className="pointer-events-auto flex items-center justify-between px-2 text-xs">

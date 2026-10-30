@@ -884,3 +884,35 @@ def test_openwakeword_engine_ensures_the_engine_feature_for_client_capture(monke
     eng._OpenWakeWordEngine({"_client_capture": True})
     eng._OpenWakeWordEngine({})
     assert ensured == ["wake.openwakeword.engine", "wake.openwakeword"]
+
+
+def test_offline_first_use_says_the_model_download_failed(monkeypatch):
+    """Without a network the detection models cannot be fetched; the model load then fails. The person must be told
+    about the download, not shown an opaque model-load error."""
+    _install_fake_openwakeword(monkeypatch)
+    import sys as _sys
+
+    def _no_network(names=[]):
+        raise OSError("Network is unreachable")
+
+    _sys.modules["openwakeword"].utils = types.SimpleNamespace(download_models=_no_network)
+
+    def _missing(self, wakeword_models, inference_framework="onnx"):
+        raise ValueError("melspectrogram.onnx not found")
+
+    _sys.modules["openwakeword.model"].Model = type("M", (), {"__init__": _missing})
+    with pytest.raises(RuntimeError, match="download.*failed.*internet connection"):
+        ww._OpenWakeWordEngine({"provider": "openwakeword"})
+
+
+def test_tflite_install_is_gated_like_the_engine(monkeypatch):
+    """An allow-list that lists the engine but not tflite must not read as available on a Mac that needs tflite."""
+    monkeypatch.setenv("FACTR_LAZY_INSTALL_ONLY", "stt.faster_whisper,wake.openwakeword.engine")
+    _voice_loop_ready(monkeypatch)
+    monkeypatch.setattr("tools.lazy_deps.is_available", lambda f: False)
+    monkeypatch.setattr("tools.lazy_deps._allow_lazy_installs", lambda: True)
+    monkeypatch.setattr(ww, "ensure_tflite_runtime", lambda *a, **k: False)
+    monkeypatch.setattr(ww, "resolve_inference_framework", lambda cfg: "tflite")
+    reqs = ww.check_wake_word_requirements({"capture": "client", "provider": "openwakeword"})
+    assert reqs["available"] is False
+    assert "tflite" in reqs["hint"]

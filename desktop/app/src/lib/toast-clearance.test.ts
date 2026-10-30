@@ -30,6 +30,11 @@ describe('toastBottomOffset', () => {
     expect(toastBottomOffset([rect(300, 900, 1000, 990)], 800, 600, 984)).toBe(TOAST_BASE_OFFSET_PX)
   })
 
+  it('never lifts the stack past the middle of the window', () => {
+    // a composer floating near the top of the window
+    expect(toastBottomOffset([rect(300, 40, 1000, 130)], 800, 600, 984)).toBe(400)
+  })
+
   it('clears the tallest composer when several are visible', () => {
     const tall = rect(300, 600, 1000, 800)
     const short = rect(300, 740, 1000, 800)

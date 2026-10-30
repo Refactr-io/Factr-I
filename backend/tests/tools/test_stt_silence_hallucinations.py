@@ -39,6 +39,19 @@ class TestBuildLocalTranscribeKwargs:
         bad = build_local_transcribe_kwargs({"local": {"vad_threshold": "loud"}})
         assert bad["vad_parameters"]["threshold"] == 0.4
 
+    def test_vad_values_are_clamped(self):
+        # 40 instead of 0.4 would otherwise treat everything as non-speech and drop every word.
+        local = {"vad_threshold": 40, "vad_speech_pad_ms": -5, "vad_min_silence_ms": 99999999}
+        params = build_local_transcribe_kwargs({"local": local})["vad_parameters"]
+        assert params == {"min_silence_duration_ms": 10000, "threshold": 0.95, "speech_pad_ms": 0}
+
+    def test_default_hotwords_are_english_only(self):
+        assert "hotwords" not in build_local_transcribe_kwargs({"language": "de", "local": {"language": "de"}})
+        assert build_local_transcribe_kwargs({"language": "en-US"})["hotwords"] == "Factr-I Factr"
+        # An explicit setting is honoured whatever the language.
+        explicit = build_local_transcribe_kwargs({"local": {"language": "de", "hotwords": "Factr-I"}})
+        assert explicit["hotwords"] == "Factr-I"
+
     def test_product_name_hotwords_by_default_and_switchable(self):
         assert build_local_transcribe_kwargs({})["hotwords"] == "Factr-I Factr"
         assert build_local_transcribe_kwargs({"local": {"hotwords": "Factr-I Acme"}})["hotwords"] == "Factr-I Acme"

@@ -93,11 +93,19 @@ class _OpenWakeWordEngine(_Engine):
             model_ref = ww._bundled_wakeword_path(framework)
         # download_models() also fetches the shared feature models (melspectrogram +
         # embedding) needed for ANY model, so a custom path must call it too.
+        download_error = None
         try:
             openwakeword.utils.download_models([model_ref])
         except Exception as e:  # pragma: no cover - network/path dependent
+            download_error = e
             logger.debug("openwakeword model download skipped: %s", e)
-        self._model = Model(wakeword_models=[model_ref], inference_framework=framework)
+        try:
+            self._model = Model(wakeword_models=[model_ref], inference_framework=framework)
+        except Exception as e:
+            if download_error is not None:  # offline first use: say so instead of an opaque model-load error
+                raise RuntimeError("The wake word downloads its detection models once, and that download failed "
+                                   f"({download_error}). Check your internet connection and try again.") from e
+            raise
         self._labels = list(self._model.models.keys())
 
     @staticmethod

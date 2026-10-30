@@ -387,8 +387,9 @@ def check_wake_word_requirements(cfg: Optional[Dict[str, Any]] = None) -> Dict[s
     stt_ok, tts_ok = _stt_ready(), _tts_ready()
     # tflite needs a runtime openWakeWord doesn't declare off Linux; report it as a
     # remediation instead of arming a detector that can't fire.
+    tflite_installable = lazy_ok and not lazy_deps._unsupported_feature_reason("wake.openwakeword.tflite")
     tflite_ok = (not feature.startswith("wake.openwakeword") or resolve_inference_framework(cfg) != "tflite"
-                 or ensure_tflite_runtime() or lazy_deps.is_available("wake.openwakeword.tflite") or lazy_ok)
+                 or ensure_tflite_runtime() or lazy_deps.is_available("wake.openwakeword.tflite") or tflite_installable)
     key_ok = provider != "porcupine" or bool((os.getenv("PORCUPINE_ACCESS_KEY") or "").strip())
     missing = " and ".join(n for n, ok in (("speech-to-text", stt_ok), ("text-to-speech", tts_ok)) if not ok)
 
