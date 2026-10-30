@@ -20,6 +20,7 @@ aiosqlite = false
 alibabacloud-dingtalk = false
 anthropic = false
 asyncpg = false
+av = false
 azure-identity = false
 boto3 = false
 brotlicffi = false
