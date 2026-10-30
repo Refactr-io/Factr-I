@@ -204,6 +204,16 @@ def _ensure_av_open_compat() -> None:
     av.open = _open
 
 
+def _log_stt_versions() -> None:
+    """One INFO line with the audio-stack versions, so a "dictation fails" report carries the evidence (the av /
+    faster-whisper mismatch that breaks decoding is invisible otherwise)."""
+    try:
+        from importlib.metadata import version
+        logger.info("local STT stack: faster-whisper %s, av %s", version("faster-whisper"), version("av"))
+    except Exception:
+        pass
+
+
 def _load_local_whisper_model(model_name: str, device: str = "auto", compute_type: str = "auto"):
     """Load faster-whisper with graceful CUDA → CPU fallback. ``device="auto"`` picks CUDA
     whenever the ctranslate2 wheel ships CUDA libs, even on hosts without the NVIDIA runtime (WSL2,
@@ -214,6 +224,7 @@ def _load_local_whisper_model(model_name: str, device: str = "auto", compute_typ
     explicit values from ``stt.local.device`` / ``stt.local.compute_type`` to pin a configuration (#9088).
     """
     _ensure_av_open_compat()  # every model load, not just the dictation path
+    _log_stt_versions()
     force_cpu = _should_force_faster_whisper_cpu()
     if force_cpu:
         # Importing ctranslate2 can itself abort on Apple Silicon/Rosetta when
