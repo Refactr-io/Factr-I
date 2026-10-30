@@ -128,6 +128,12 @@ def live_instructions(live: Optional[Dict[str, Any]] = None) -> str:
     return f"{LIVE_PERSONA}\n\n{extra}" if extra else LIVE_PERSONA
 
 
+# Shown in the desktop's voice menu. A ChatGPT/Codex login is not an API key, so say so (the menu item is greyed out
+# and used to give no hint why for someone who is signed in).
+_NEEDS_KEY_REASON = ("needs an OpenAI API key: a ChatGPT or Codex login is not enough. Add one under Settings > "
+                     "API keys (OPENAI_API_KEY), or set voice.gpt_live.api_key")
+
+
 def resolve_gpt_live_status() -> Dict[str, Any]:
     """Non-secret readiness verdict for the client: which mode is selected and whether GPT-Live
     can start (a key resolves). Never returns the key."""
@@ -138,7 +144,7 @@ def resolve_gpt_live_status() -> Dict[str, Any]:
     return {
         "mode": mode,
         "available": bool(api_key),
-        "reason": None if api_key else "no OpenAI API key (set OPENAI_API_KEY or voice.gpt_live.api_key)",
+        "reason": None if api_key else _NEEDS_KEY_REASON,
         "model": str(live.get("model") or DEFAULT_LIVE_MODEL),
         "voice": str(live.get("voice") or DEFAULT_LIVE_VOICE),
     }
@@ -169,7 +175,8 @@ def create_webrtc_session(sdp_offer: str, history: Optional[list] = None) -> Dic
     live = _live_section()
     api_key, base_url = _resolve_credentials(live)
     if not api_key:
-        raise ValueError("GPT-Live needs an OpenAI API key (OPENAI_API_KEY or voice.gpt_live.api_key)")
+        raise ValueError("GPT-Live needs an OpenAI API key: a ChatGPT or Codex login is not enough "
+                         "(add one under Settings > API keys, or set voice.gpt_live.api_key)")
     body = json.dumps({
         "session": build_session_config(history),
         "transport": {"type": "webrtc", "sdp": sdp_offer},

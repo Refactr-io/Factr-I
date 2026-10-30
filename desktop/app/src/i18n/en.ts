@@ -3227,7 +3227,7 @@ export const en: Translations = {
     voiceEngine: 'Voice chat engine',
     voiceEngineChained: 'Speech-to-text + Factr-I voice',
     voiceEngineLive: 'GPT-Live (full-duplex, delegates to Factr-I)',
-    voiceEngineLiveNeedsKey: 'Needs an OpenAI API key',
+    voiceEngineLiveNeedsKey: 'Needs an OpenAI API key (a ChatGPT or Codex login is not enough)',
     voiceEngineChangeFailed: 'Could not change the voice chat engine',
     voiceEngineChainedShort: 'speech-to-text',
     voiceEngineLiveShort: 'GPT-Live',
