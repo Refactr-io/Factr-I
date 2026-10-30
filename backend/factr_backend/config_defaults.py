@@ -1145,7 +1145,11 @@ DEFAULT_CONFIG = {
             # (false = raw audio, for music/ambient). A segment is dropped only if no_speech_prob
             # ABOVE no_speech_prob_threshold AND avg_logprob BELOW logprob_threshold.
             "vad": True,
-            "vad_min_silence_ms": 500,  # min silence (ms) that splits speech chunks
+            "vad_min_silence_ms": 1000,  # min silence (ms) that splits speech chunks
+            "vad_threshold": 0.4,  # Silero speech probability above which audio counts as speech (lower = keeps quieter speech)
+            "vad_speech_pad_ms": 600,  # audio kept around each speech chunk so word edges are not clipped
+            # Words the model should spell right ("Factr-I" is otherwise heard as "Factor I"). "" = none.
+            "hotwords": "Factr-I Factr",
             "no_speech_prob_threshold": 0.6,
             "logprob_threshold": -1.0,
             "unload_after_idle_seconds": 0,  # 0 = never; e.g. 300 frees the model after 5min

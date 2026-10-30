@@ -238,7 +238,15 @@ def _load_local_whisper_model(model_name: str, device: str = "auto", compute_typ
 # Silero VAD so silence never reaches the model (``vad: false`` restores raw behaviour
 # for music/ambient audio); condition_on_previous_text=False so one hallucinated token
 # can't seed a run; and the segment confidence gate in _is_hallucinated_segment.
-_VAD_MIN_SILENCE_MS_DEFAULT = 500
+# VAD tuning, measured on synthetic dictation (pauses, soft speech, room noise and keyboard-click noise): a slightly
+# more sensitive threshold, wider padding around speech and longer-pause tolerance keep ~10% more of the real
+# audio (soft speech included) than the old 500 ms / default-threshold setting, while pure noise still yields nothing.
+_VAD_MIN_SILENCE_MS_DEFAULT = 1000
+_VAD_THRESHOLD_DEFAULT = 0.4
+_VAD_SPEECH_PAD_MS_DEFAULT = 600
+# Whisper hears the product name as the English word "Factor" ("Hey Factor", "Factor I"). Hotwords bias decoding toward
+# the real spelling without the side effects of an initial prompt (a prompt made it drop a leading "Hey" on soft speech).
+_HOTWORDS_DEFAULT = "Factr-I Factr"
 _NO_SPEECH_PROB_THRESHOLD_DEFAULT = 0.6
 _LOGPROB_THRESHOLD_DEFAULT = -1.0
 
@@ -256,8 +264,15 @@ def build_local_transcribe_kwargs(stt_config: Optional[Dict[str, Any]] = None) -
         "vad_filter": vad_enabled is None or bool(vad_enabled)}
     if kwargs["vad_filter"]:
         kwargs["vad_parameters"] = {
-            "min_silence_duration_ms": _config_number(local_cfg, "vad_min_silence_ms", _VAD_MIN_SILENCE_MS_DEFAULT, int)
+            "min_silence_duration_ms": _config_number(local_cfg, "vad_min_silence_ms", _VAD_MIN_SILENCE_MS_DEFAULT, int),
+            "threshold": _config_number(local_cfg, "vad_threshold", _VAD_THRESHOLD_DEFAULT, float),
+            "speech_pad_ms": _config_number(local_cfg, "vad_speech_pad_ms", _VAD_SPEECH_PAD_MS_DEFAULT, int),
         }
+    # ``hotwords`` unset = the product names; set it (or "" to switch it off) under ``stt.local``.
+    hotwords = local_cfg.get("hotwords")
+    hotwords = _HOTWORDS_DEFAULT if hotwords is None else str(hotwords).strip()
+    if hotwords:
+        kwargs["hotwords"] = hotwords
     # Push the confidence gate into faster-whisper itself: its internal defaults drop
     # low-confidence segments BEFORE our post-filter sees them, so the ``stt.local``
     # threshold knobs were dead for that first gate (non-English speech decodes at

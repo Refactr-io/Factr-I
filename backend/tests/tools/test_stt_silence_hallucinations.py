@@ -29,7 +29,22 @@ class TestBuildLocalTranscribeKwargs:
     def test_vad_on_by_default(self):
         kwargs = build_local_transcribe_kwargs({})
         assert kwargs["vad_filter"] is True
-        assert kwargs["vad_parameters"] == {"min_silence_duration_ms": 500}
+        assert kwargs["vad_parameters"] == {"min_silence_duration_ms": 1000, "threshold": 0.4, "speech_pad_ms": 600}
+
+    def test_vad_tuning_is_configurable(self):
+        local = {"vad_min_silence_ms": 700, "vad_threshold": "0.5", "vad_speech_pad_ms": 300}
+        kwargs = build_local_transcribe_kwargs({"local": local})
+        assert kwargs["vad_parameters"] == {"min_silence_duration_ms": 700, "threshold": 0.5, "speech_pad_ms": 300}
+        # A bad value falls back to the default instead of breaking dictation.
+        bad = build_local_transcribe_kwargs({"local": {"vad_threshold": "loud"}})
+        assert bad["vad_parameters"]["threshold"] == 0.4
+
+    def test_product_name_hotwords_by_default_and_switchable(self):
+        assert build_local_transcribe_kwargs({})["hotwords"] == "Factr-I Factr"
+        assert build_local_transcribe_kwargs({"local": {"hotwords": "Factr-I Acme"}})["hotwords"] == "Factr-I Acme"
+        # "" switches it off, and an unset/None value means the default.
+        assert "hotwords" not in build_local_transcribe_kwargs({"local": {"hotwords": ""}})
+        assert build_local_transcribe_kwargs({"local": {"hotwords": None}})["hotwords"] == "Factr-I Factr"
 
     def test_conditioning_always_off(self):
         assert build_local_transcribe_kwargs({})["condition_on_previous_text"] is False
@@ -119,7 +134,8 @@ class TestTranscribeLocalWiring:
         captured, result = self._run(monkeypatch, {})
         assert result["success"] is True
         assert captured["vad_filter"] is True
-        assert captured["vad_parameters"] == {"min_silence_duration_ms": 500}
+        assert captured["vad_parameters"] == {"min_silence_duration_ms": 1000, "threshold": 0.4, "speech_pad_ms": 600}
+        assert captured["hotwords"] == "Factr-I Factr"
         assert captured["condition_on_previous_text"] is False
         assert captured["no_speech_threshold"] == _NO_SPEECH_PROB_THRESHOLD_DEFAULT
         assert captured["log_prob_threshold"] == _LOGPROB_THRESHOLD_DEFAULT
