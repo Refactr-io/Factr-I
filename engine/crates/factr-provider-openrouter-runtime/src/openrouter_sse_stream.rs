@@ -121,12 +121,13 @@ pub(super) async fn run_stream_with_retries(
                 // Full anyhow chain ({:#}) so a `.context(...)`-wrapped transport
                 // cause (e.g. TLS BadRecordMac) is visible to the classifier.
                 let error_str = format!("{e:#}").to_lowercase();
+                let in_stream = e.downcast_ref::<TransientStreamEvent>().is_some();
                 // A provider error delivered inside a 200 stream gets a smaller budget
                 // (4 attempts, ~2/4/8 s) than a failed HTTP request.
-                let in_stream = error_str.contains(STREAM_ERROR_EVENT);
-                let attempt_limit = if in_stream { max_retries.min(STREAM_ERROR_EVENT_ATTEMPTS) } else { max_retries };
-                retry_base_ms = if in_stream { STREAM_ERROR_EVENT_BASE_MS } else { RETRY_BASE_DELAY_MS };
-                if is_retryable_error(&error_str) && attempt + 1 < attempt_limit {
+                let limited = in_stream || error_str.contains(SCHEMA_MISMATCH);
+                let attempt_limit = if limited { max_retries.min(STREAM_ERROR_EVENT_ATTEMPTS) } else { max_retries };
+                retry_base_ms = if limited { STREAM_ERROR_EVENT_BASE_MS } else { RETRY_BASE_DELAY_MS };
+                if (in_stream || is_retryable_error(&error_str)) && attempt + 1 < attempt_limit {
                     if saw_output {
                         // Partial output already reached the consumer; tell it
                         // to discard the partial attempt so the retried
@@ -138,7 +139,7 @@ pub(super) async fn run_stream_with_retries(
                         let _ = tx
                             .send(Ok(StreamEvent::RetryRollback {
                                 attempt: attempt + 2,
-                                max: max_retries,
+                                max: attempt_limit,
                             }))
                             .await;
                     } else {
@@ -303,7 +304,7 @@ async fn stream_response(
         if let StreamEvent::Error { message, .. } = &event
             && is_transient_stream_error(message)
         {
-            anyhow::bail!("OpenAI-compatible {STREAM_ERROR_EVENT}\n  endpoint: {url}\n  model: {model}\n  error: {message}");
+            return Err(TransientStreamEvent(message.clone()).into());
         }
         if tx.send(Ok(event)).await.is_err() {
             return Ok(());
@@ -313,7 +314,19 @@ async fn stream_response(
     Ok(())
 }
 
-const STREAM_ERROR_EVENT: &str = "stream error event";
+/// A transient provider error event from an open stream. Displays as the bare provider message so the
+/// final error after exhausted retries reads exactly as the un-retried event did.
+#[derive(Debug)]
+struct TransientStreamEvent(String);
+
+impl std::fmt::Display for TransientStreamEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for TransientStreamEvent {}
+
 const STREAM_ERROR_EVENT_ATTEMPTS: u32 = 4;
 #[cfg(not(test))]
 const STREAM_ERROR_EVENT_BASE_MS: u64 = 2000;
@@ -321,17 +334,26 @@ const STREAM_ERROR_EVENT_BASE_MS: u64 = 2000;
 const STREAM_ERROR_EVENT_BASE_MS: u64 = 1;
 const SCHEMA_MISMATCH: &str = "did not match the declared schema";
 
+/// The `(code N)` suffix the stream parser adds to a provider error event.
+fn error_code(m: &str) -> Option<u16> {
+    m.trim_end().strip_suffix(')')?.rsplit_once("(code ")?.1.trim().parse().ok()
+}
+
 /// Router-generated tool-argument validation failures, rate limits and overloads reported as an error
 /// event on an already-open stream. Context-length, auth and other request faults stay terminal.
 fn is_transient_stream_error(message: &str) -> bool {
     let m = message.to_ascii_lowercase();
-    ["context length", "context_length", "maximum context", "unauthorized", "invalid api key", "forbidden"]
-        .iter()
-        .all(|bad| !m.contains(bad))
-        && (m.contains(SCHEMA_MISMATCH)
-            || ["rate limit", "overloaded", "try again", "temporarily", "service unavailable", "internal server error", "too many requests", "timed out"]
-                .iter()
-                .any(|ok| m.contains(ok)))
+    if ["context length", "context_length", "maximum context", "unauthorized", "invalid api key", "forbidden"].iter().any(|bad| m.contains(bad)) {
+        return false;
+    }
+    if m.contains(SCHEMA_MISMATCH) {
+        return true;
+    }
+    // An explicit status code decides; wording is only consulted when there is none.
+    match error_code(&m) {
+        Some(c) => c == 429 || (500..600).contains(&c),
+        None => ["rate limit", "overloaded", "service unavailable", "internal server error", "too many requests"].iter().any(|ok| m.contains(ok)),
+    }
 }
 
 /// Extract the HTTP status code reported in a formatted provider error string.
@@ -357,10 +379,11 @@ fn is_retryable_error(error_str: &str) -> bool {
     // (auth, billing, malformed request) where retrying is futile and just
     // burns time/credits. 429 (rate limit) is classified explicitly so it does
     // not depend on provider-specific body wording.
-    if error_str.contains(SCHEMA_MISMATCH) {
+    let status = parsed_http_status(error_str);
+    if error_str.contains(SCHEMA_MISMATCH) && matches!(status, None | Some(400)) {
         return true;
     }
-    match parsed_http_status(error_str) {
+    match status {
         Some(400 | 401 | 402 | 403 | 404 | 405 | 406 | 422) => return false,
         Some(429) => return true,
         _ => {}
@@ -448,6 +471,12 @@ mod tests {
         assert!(is_retryable_error("status: 400 bad request\n  response: the selected model returned tool arguments that did not match the declared schema."));
         assert!(is_transient_stream_error("The selected model returned tool arguments that did not match the declared schema."));
         assert!(!is_transient_stream_error("maximum context length exceeded, try again with less"));
+        assert!(!is_transient_stream_error("content policy violation, please try again"));
+        assert!(is_transient_stream_error("Something odd (code 502)"));
+        assert!(!is_transient_stream_error("bad input (code 400)"));
+        assert!(!is_transient_stream_error("rate limit wording but (code 402)"));
+        assert!(is_transient_stream_error("did not match the declared schema (code 400)"));
+        assert!(!is_retryable_error("status: 401 unauthorized\n response: did not match the declared schema"));
         assert!(!is_transient_stream_error("invalid api key"));
     }
 

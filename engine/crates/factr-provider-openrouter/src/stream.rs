@@ -375,6 +375,12 @@ impl OpenRouterStream {
                     .and_then(|v| v.as_str())
                     .unwrap_or("OpenRouter error")
                     .to_string();
+                // Keep an error status code (4xx/5xx) so the runtime can retry the attempt.
+                let code = error.get("code").and_then(|c| c.as_u64().or_else(|| c.as_str().and_then(|s| s.trim().parse().ok())));
+                let message = match code {
+                    Some(c @ 400..=599) => format!("{message} (code {c})"),
+                    _ => message,
+                };
                 return Some(StreamEvent::Error {
                     message,
                     retry_after_secs: None,
