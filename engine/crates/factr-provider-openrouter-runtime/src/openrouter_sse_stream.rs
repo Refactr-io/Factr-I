@@ -50,6 +50,7 @@ pub(super) async fn run_stream_with_retries(
 ) {
     let mut last_error = None;
     let mut next_retry_delay = None;
+    let mut retry_base_ms = RETRY_BASE_DELAY_MS;
     let config = factr_base::config::config();
     let max_retries = config.provider.max_retries.max(1);
     let retry_backoff_cap =
@@ -59,7 +60,7 @@ pub(super) async fn run_stream_with_retries(
         if attempt > 0 {
             let delay = factr_provider_core::retry_after::retry_delay(
                 attempt,
-                RETRY_BASE_DELAY_MS,
+                retry_base_ms,
                 next_retry_delay.take(),
             )
             .min(retry_backoff_cap);
@@ -120,7 +121,12 @@ pub(super) async fn run_stream_with_retries(
                 // Full anyhow chain ({:#}) so a `.context(...)`-wrapped transport
                 // cause (e.g. TLS BadRecordMac) is visible to the classifier.
                 let error_str = format!("{e:#}").to_lowercase();
-                if is_retryable_error(&error_str) && attempt + 1 < max_retries {
+                // A provider error delivered inside a 200 stream gets a smaller budget
+                // (4 attempts, ~2/4/8 s) than a failed HTTP request.
+                let in_stream = error_str.contains(STREAM_ERROR_EVENT);
+                let attempt_limit = if in_stream { max_retries.min(STREAM_ERROR_EVENT_ATTEMPTS) } else { max_retries };
+                retry_base_ms = if in_stream { STREAM_ERROR_EVENT_BASE_MS } else { RETRY_BASE_DELAY_MS };
+                if is_retryable_error(&error_str) && attempt + 1 < attempt_limit {
                     if saw_output {
                         // Partial output already reached the consumer; tell it
                         // to discard the partial attempt so the retried
@@ -292,12 +298,40 @@ async fn stream_response(
                 );
             }
         };
+        // A transient provider error inside a 200 stream is a failed attempt, not a final event:
+        // fail it so `run_stream_with_retries` rolls back partial output and resends the same request.
+        if let StreamEvent::Error { message, .. } = &event
+            && is_transient_stream_error(message)
+        {
+            anyhow::bail!("OpenAI-compatible {STREAM_ERROR_EVENT}\n  endpoint: {url}\n  model: {model}\n  error: {message}");
+        }
         if tx.send(Ok(event)).await.is_err() {
             return Ok(());
         }
     }
 
     Ok(())
+}
+
+const STREAM_ERROR_EVENT: &str = "stream error event";
+const STREAM_ERROR_EVENT_ATTEMPTS: u32 = 4;
+#[cfg(not(test))]
+const STREAM_ERROR_EVENT_BASE_MS: u64 = 2000;
+#[cfg(test)]
+const STREAM_ERROR_EVENT_BASE_MS: u64 = 1;
+const SCHEMA_MISMATCH: &str = "did not match the declared schema";
+
+/// Router-generated tool-argument validation failures, rate limits and overloads reported as an error
+/// event on an already-open stream. Context-length, auth and other request faults stay terminal.
+fn is_transient_stream_error(message: &str) -> bool {
+    let m = message.to_ascii_lowercase();
+    ["context length", "context_length", "maximum context", "unauthorized", "invalid api key", "forbidden"]
+        .iter()
+        .all(|bad| !m.contains(bad))
+        && (m.contains(SCHEMA_MISMATCH)
+            || ["rate limit", "overloaded", "try again", "temporarily", "service unavailable", "internal server error", "too many requests", "timed out"]
+                .iter()
+                .any(|ok| m.contains(ok)))
 }
 
 /// Extract the HTTP status code reported in a formatted provider error string.
@@ -323,6 +357,9 @@ fn is_retryable_error(error_str: &str) -> bool {
     // (auth, billing, malformed request) where retrying is futile and just
     // burns time/credits. 429 (rate limit) is classified explicitly so it does
     // not depend on provider-specific body wording.
+    if error_str.contains(SCHEMA_MISMATCH) {
+        return true;
+    }
     match parsed_http_status(error_str) {
         Some(400 | 401 | 402 | 403 | 404 | 405 | 406 | 422) => return false,
         Some(429) => return true,
@@ -404,6 +441,14 @@ mod tests {
         ));
         // Provider overload messages should still be retried.
         assert!(is_retryable_error("overloaded"));
+    }
+
+    #[test]
+    fn schema_mismatch_is_retryable_even_as_a_400() {
+        assert!(is_retryable_error("status: 400 bad request\n  response: the selected model returned tool arguments that did not match the declared schema."));
+        assert!(is_transient_stream_error("The selected model returned tool arguments that did not match the declared schema."));
+        assert!(!is_transient_stream_error("maximum context length exceeded, try again with less"));
+        assert!(!is_transient_stream_error("invalid api key"));
     }
 
     #[test]

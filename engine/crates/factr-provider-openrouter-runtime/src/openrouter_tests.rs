@@ -3783,3 +3783,80 @@ async fn a_rotated_key_reaches_the_next_request_without_rebuilding_the_provider(
     assert!(seen_rx.recv().unwrap().ends_with("Bearer key-one"));
     assert!(seen_rx.recv().unwrap().ends_with("Bearer key-two"));
 }
+
+// ---- transient error event inside a 200 stream is retried ----
+
+/// Fake SSE server: answers the first `fail_first` connections with a 200 stream that carries a partial delta and
+/// then a provider error event, and every later connection with a clean response. Returns the base URL and a hit counter.
+fn spawn_error_event_server(fail_first: usize) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake provider server");
+    let addr = listener.local_addr().expect("addr");
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = Arc::clone(&hits);
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut stream) = conn else { break };
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+            let mut request = vec![0u8; 65536];
+            let _ = stream.read(&mut request);
+            let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let body = if n < fail_first {
+                concat!(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n",
+                    "data: {\"error\":{\"message\":\"The selected model returned tool arguments that did not match the declared schema.\"}}\n\n",
+                )
+            } else {
+                concat!(
+                    "data: {\"choices\":[{\"delta\":{\"content\":\"final answer\"},\"finish_reason\":\"stop\"}]}\n\n",
+                    "data: [DONE]\n\n",
+                )
+            };
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+    (format!("http://{addr}/v1"), hits)
+}
+
+fn run_against_error_event_server(fail_first: usize) -> (Vec<anyhow::Result<StreamEvent>>, usize) {
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    rt.block_on(async {
+        let (api_base, hits) = spawn_error_event_server(fail_first);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<anyhow::Result<StreamEvent>>(64);
+        let request = serde_json::json!({"model": "test-model", "messages": [{"role": "user", "content": "hi"}], "stream": true});
+        super::openrouter_sse_stream::run_stream_with_retries(
+            reqwest::Client::new(),
+            api_base,
+            ProviderAuth::None { label: "test".to_string() },
+            false,
+            new_conversation_id(),
+            request,
+            tx,
+            Arc::new(Mutex::new(None)),
+            "test-model".to_string(),
+        )
+        .await;
+        let mut events = Vec::new();
+        while let Some(item) = rx.recv().await {
+            events.push(item);
+        }
+        (events, hits.load(std::sync::atomic::Ordering::SeqCst))
+    })
+}
+
+#[test]
+fn schema_error_event_twice_then_success_is_retried() {
+    let (events, hits) = run_against_error_event_server(2);
+    assert_eq!(hits, 3);
+    assert!(events.iter().all(|e| e.is_ok()), "no error may surface: {events:?}");
+    assert!(events.iter().any(|e| matches!(e, Ok(StreamEvent::TextDelta(t)) if t.contains("final answer"))));
+    assert!(!events.iter().any(|e| matches!(e, Ok(StreamEvent::Error { .. }))));
+}
+
+#[test]
+fn permanent_schema_error_event_still_fails_after_four_attempts() {
+    let (events, hits) = run_against_error_event_server(usize::MAX);
+    assert_eq!(hits, 4);
+    let last = events.last().expect("an event");
+    assert!(matches!(last, Err(e) if e.to_string().contains("declared schema")), "{last:?}");
+}
