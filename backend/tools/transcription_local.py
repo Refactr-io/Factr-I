@@ -201,6 +201,7 @@ def _ensure_av_open_compat() -> None:
             return orig(*args, **kwargs)
 
     _open._factr_compat = True
+    _open._orig = orig
     av.open = _open
 
 

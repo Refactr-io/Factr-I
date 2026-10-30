@@ -33,3 +33,26 @@ def test_faster_whisper_decodes_with_the_installed_av(tone):
     _ensure_av_open_compat()
     audio = decode_audio(tone, sampling_rate=16000)
     assert audio.shape == (16000,)
+
+
+def _major(version: str) -> int:
+    return int(version.split(".")[0])
+
+
+@pytest.mark.skipif(_major(av.__version__) < 18, reason="needs the incompatible PyAV (18+) this regression is about")
+def test_the_incompatible_pair_fails_without_the_shim_and_decodes_with_it(tone):
+    """The premise, asserted: faster-whisper 1.2.1 + PyAV >= 18 raises on the removed keyword; the shim is what fixes it."""
+    from faster_whisper.audio import decode_audio
+
+    from tools import transcription_local
+
+    original = av.open
+    if getattr(original, "_factr_compat", False):  # an earlier test in this process already installed the shim
+        av.open = getattr(original, "_orig", original)
+    try:
+        with pytest.raises(TypeError, match="metadata_errors"):
+            decode_audio(tone, sampling_rate=16000)
+    finally:
+        av.open = original
+    transcription_local._ensure_av_open_compat()
+    assert decode_audio(tone, sampling_rate=16000).shape == (16000,)
