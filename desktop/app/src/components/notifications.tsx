@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -10,6 +10,7 @@ import { CopyButton } from '@/components/ui/copy-button'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { AlertCircle, AlertTriangle, CheckCircle2, type IconComponent, Info } from '@/lib/icons'
+import { TOAST_BASE_OFFSET_PX, toastBottomOffset } from '@/lib/toast-clearance'
 import { cn } from '@/lib/utils'
 import {
   $notifications,
@@ -149,6 +150,8 @@ function BottomRightStack({
 }) {
   const [expanded, setExpanded] = useState(false)
   const older = notifications.slice(1)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const [bottom, setBottom] = useState(TOAST_BASE_OFFSET_PX)
 
   useEffect(() => {
     if (!older.length) {
@@ -156,15 +159,52 @@ function BottomRightStack({
     }
   }, [older.length])
 
+  // Sit above the docked composer instead of on top of its controls and the status line.
+  useLayoutEffect(() => {
+    const region = regionRef.current
+
+    if (!region) {
+      return
+    }
+
+    const composers = () => [...document.querySelectorAll<HTMLElement>('[data-slot="composer-root"]')]
+
+    const measure = () => {
+      const own = region.getBoundingClientRect()
+
+      setBottom(
+        toastBottomOffset(
+          composers().map(el => el.getBoundingClientRect()),
+          window.innerHeight,
+          own.left,
+          own.right
+        )
+      )
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+
+    composers().forEach(el => observer.observe(el))
+    window.addEventListener('resize', measure)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [notifications.length])
+
   return createPortal(
     <div
       aria-label={copy.region}
       className={cn(
         REGION_BASE,
-        'right-4 bottom-4 w-[min(24rem,calc(100%-2rem))] flex-col-reverse p-1',
+        'right-4 w-[min(24rem,calc(100%-2rem))] flex-col-reverse p-1',
         expanded && 'max-h-[70vh] overflow-y-auto overscroll-contain'
       )}
+      ref={regionRef}
       role="region"
+      style={{ bottom }}
     >
       {older.length > 0 && (
         <div className="pointer-events-auto flex items-center justify-between px-2 text-xs">
