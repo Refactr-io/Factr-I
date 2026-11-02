@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.15
+
+- **Better at finishing coding tasks.** The agent now reproduces a reported bug with the exact example before editing and again after, checks sibling and alias code paths for the same flaw, reuses existing helpers and the request's own names, runs the tests of the modules it touched, never hides error output, and no longer edits an existing test just to make it pass (a test that passed before and now fails means the change is wrong, unless the request asks for the new behaviour).
+- **Provider turn faults are retried.** A model turn that ends with "spent its whole output limit thinking", "ended before completing a tool call" or an internal protocol marker is retried like other transient stream errors instead of ending the run with no edit.
+- **The environment line reports the shell's Python.** It probes the same `python3` the agent's commands use, so it no longer claims pytest or numpy are missing when the project has them.
+- The agent can preview a page or app it builds, shell code blocks have a Run button with inline output, and file paths in messages are clickable.
+- Retries for coded 429 and 5xx errors delivered inside a 200 stream, and the fixes from the v0.0.14 test report: new-bot crash loop, browser consent focus, terminal early keystrokes, scheduled-job empty-state layout, wake word, dictation and toasts.
+- The local observability database records an error class for failed tool calls and runs (invalid arguments, environment, provider, timeout, aborted) and a label for how the next message followed each turn (continue, repeat, still broken, undo). Only the label is stored, never the text. Existing databases upgrade on first start.
+
 ## v0.0.14
 
 - **Update now updates the app.** The Update now button (in About, the update dialog and the command palette) used to open the release page in your browser. It now downloads the new version with a progress bar, checks it against the release's sha256, swaps the app in place and reopens it, with the Factr-I update screen on top while it happens. This works on macOS, Windows and Linux: macOS replaces the app (the old one is kept until the new one reports healthy, and put back if it does not), Windows runs the installer silently over the existing install (a copy of the old install folder is restored if the install or the first start fails), and Linux replaces the running AppImage atomically (the old image is kept and put back if the new one does not come up). If an update cannot be installed in place (a copy opened from a disk image, a read-only folder, a package-manager install), you get a clear message and the file is shown or opened as before. It never starts while an agent task is running.
