@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   verify-version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Tag must match the version in every manifest
@@ -51,7 +51,7 @@ jobs:
             os: windows-latest
             dist: npm run dist:win:nsis
           - name: linux-x64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             dist: npm run build && npm run builder -- --linux AppImage
     env:
       FACTR_RELEASE_BUILD: '1'
@@ -125,7 +125,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

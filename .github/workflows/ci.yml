@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, windows-latest]
+        os: [ubuntu-24.04, macos-14, windows-latest]
     defaults:
       run:
         working-directory: engine
@@ -71,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, windows-latest]
+        os: [ubuntu-24.04, macos-14, windows-latest]
     defaults:
       run:
         working-directory: desktop
@@ -105,7 +105,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, windows-latest]
+        os: [ubuntu-24.04, macos-14, windows-latest]
     # The Windows leg is informational: these tests were only run on macOS, and some
     # backend code paths assume POSIX behaviour. A Windows failure is reported in the
     # job summary without failing the run.
@@ -137,7 +137,7 @@ jobs:
           echo "Backend smoke tests on Windows are non-blocking (not yet verified on Windows). Status: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
 
   name-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
