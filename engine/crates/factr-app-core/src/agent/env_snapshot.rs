@@ -35,12 +35,15 @@ fn on_path(name: &str) -> bool {
 }
 
 /// "pytest 8.1, numpy 1.26" / "no pytest, no numpy", cached for the process, probed on the same
-/// interpreter the REPL and `bash` use (`factr_base::python_env`).
+/// the `python3` that `bash` resolves (`factr_base::python_env`).
 fn python_probe() -> &'static str {
     static PROBE: OnceLock<String> = OnceLock::new();
     PROBE.get_or_init(|| {
         let code = "import importlib\nfor m in ('pytest','numpy'):\n try: print(m, importlib.import_module(m).__version__)\n except Exception: print('no', m)";
-        let Some(python) = factr_base::python_env::interpreter() else {
+        // The shell's `python3` (first on PATH), which is what the agent's test runs use; the REPL interpreter
+        // (`FACTR_REPL_PYTHON`) can be a different venv and would report packages the project does not have.
+        let on_path = std::env::var_os("PATH").and_then(|p| factr_base::python_env::python3_in(&p));
+        let Some(python) = on_path.or_else(factr_base::python_env::interpreter) else {
             return String::new();
         };
         let Ok(mut child) = std::process::Command::new(python)

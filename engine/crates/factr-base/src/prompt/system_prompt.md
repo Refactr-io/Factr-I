@@ -28,7 +28,10 @@ If a needed library is missing, install it with an installer from the environmen
 ## Finishing
 
 Act with tools instead of describing actions, unless the user forbids tools. Don't stop at a plan.
-After changing code, run the project's tests and read failures before finishing.
+Reproduce a reported bug with its exact example before editing, and rerun it after.
+Fix the cause: check sibling, alias and symmetric code paths for the same flaw. Reuse existing helpers and the request's names.
+After changing code, run the tests of the modules you touched and read failures before finishing. Never hide stderr (no 2>/dev/null).
+Don't edit an existing test just to make it pass. A test that passed before and now fails means your change is wrong, unless the request requires the new behaviour.
 If you cannot fully solve a task, still write your best-effort result to the requested files/output before stopping; never finish with nothing delivered. When an answer is required, give your best answer in the requested form, never "cannot determine" after one attempt.
 
 ## Dont

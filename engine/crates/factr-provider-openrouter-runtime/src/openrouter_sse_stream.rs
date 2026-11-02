@@ -333,6 +333,9 @@ const STREAM_ERROR_EVENT_BASE_MS: u64 = 2000;
 #[cfg(test)]
 const STREAM_ERROR_EVENT_BASE_MS: u64 = 1;
 const SCHEMA_MISMATCH: &str = "did not match the declared schema";
+/// Router turn faults that a resend usually clears (sampling is random): the model burned its output limit
+/// on reasoning, or the turn ended before a tool call completed. Without this the whole run ends with no edit.
+const TURN_FAULTS: [&str; 3] = ["whole output limit thinking", "ended before completing a tool call", "internal protocol marker"];
 
 /// The `(code N)` suffix the stream parser adds to a provider error event.
 fn error_code(m: &str) -> Option<u16> {
@@ -346,7 +349,7 @@ fn is_transient_stream_error(message: &str) -> bool {
     if ["context length", "context_length", "maximum context", "unauthorized", "invalid api key", "forbidden"].iter().any(|bad| m.contains(bad)) {
         return false;
     }
-    if m.contains(SCHEMA_MISMATCH) {
+    if m.contains(SCHEMA_MISMATCH) || TURN_FAULTS.iter().any(|f| m.contains(f)) {
         return true;
     }
     // An explicit status code decides; wording is only consulted when there is none.
@@ -380,7 +383,7 @@ fn is_retryable_error(error_str: &str) -> bool {
     // burns time/credits. 429 (rate limit) is classified explicitly so it does
     // not depend on provider-specific body wording.
     let status = parsed_http_status(error_str);
-    if error_str.contains(SCHEMA_MISMATCH) && matches!(status, None | Some(400)) {
+    if (error_str.contains(SCHEMA_MISMATCH) || TURN_FAULTS.iter().any(|f| error_str.to_ascii_lowercase().contains(f))) && matches!(status, None | Some(400)) {
         return true;
     }
     match status {
@@ -476,6 +479,10 @@ mod tests {
         assert!(!is_transient_stream_error("bad input (code 400)"));
         assert!(!is_transient_stream_error("rate limit wording but (code 402)"));
         assert!(is_transient_stream_error("did not match the declared schema (code 400)"));
+        assert!(is_transient_stream_error("The selected model spent its whole output limit thinking and produced no visible answer."));
+        assert!(is_transient_stream_error("The selected model ended before completing a tool call."));
+        assert!(is_retryable_error("The selected model ended before completing a tool call."));
+        assert!(!is_transient_stream_error("maximum context length exceeded: ended before completing a tool call"));
         assert!(!is_retryable_error("status: 401 unauthorized\n response: did not match the declared schema"));
         assert!(!is_transient_stream_error("invalid api key"));
     }
