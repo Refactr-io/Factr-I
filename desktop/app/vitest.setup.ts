@@ -1,10 +1,16 @@
 import { configure } from '@testing-library/react'
+import { MotionGlobalConfig } from 'motion/react'
 
 import { stubResizeObserver } from './src/test/jsdom'
 
 // Shared tooltips now measure their arrow through Radix's useSize hook.
 // Geometry assertions still belong in a real browser, not this inert observer.
 stubResizeObserver()
+
+// Animations resolve their keyframes asynchronously and can finish after jsdom is torn down, which
+// surfaces as an unhandled `HTMLElement is not defined` and fails the run on Linux CI. Tests assert
+// end states, so make every animation jump straight to its final value.
+MotionGlobalConfig.skipAnimations = true
 
 // jsdom has no matchMedia; border-beam reads it unguarded on mount.
 if (typeof window !== 'undefined' && !window.matchMedia) {
