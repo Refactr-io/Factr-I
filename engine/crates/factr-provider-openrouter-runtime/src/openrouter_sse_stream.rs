@@ -124,7 +124,7 @@ pub(super) async fn run_stream_with_retries(
                 let in_stream = e.downcast_ref::<TransientStreamEvent>().is_some();
                 // A provider error delivered inside a 200 stream gets a smaller budget
                 // (4 attempts, ~2/4/8 s) than a failed HTTP request.
-                let limited = in_stream || error_str.contains(SCHEMA_MISMATCH);
+                let limited = in_stream || error_str.contains(SCHEMA_MISMATCH) || TURN_FAULTS.iter().any(|f| error_str.contains(f));
                 let attempt_limit = if limited { max_retries.min(STREAM_ERROR_EVENT_ATTEMPTS) } else { max_retries };
                 retry_base_ms = if limited { STREAM_ERROR_EVENT_BASE_MS } else { RETRY_BASE_DELAY_MS };
                 if (in_stream || is_retryable_error(&error_str)) && attempt + 1 < attempt_limit {
