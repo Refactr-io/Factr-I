@@ -3698,6 +3698,7 @@ export const ru = defineLocale({
     },
     tool: {
       copyCode: 'Копировать код',
+      runInTerminal: 'Запустить в терминале',
       renderingImage: 'Рендеринг изображения',
       copyOutput: 'Копировать вывод',
       copyCommand: 'Копировать команду',

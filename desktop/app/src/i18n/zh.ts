@@ -4167,6 +4167,7 @@ export const zh = defineLocale({
     },
     tool: {
       copyCode: '复制代码',
+      runInTerminal: '在终端中运行',
       renderingImage: '正在渲染图片',
       copyOutput: '复制输出',
       copyCommand: '复制命令',

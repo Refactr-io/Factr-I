@@ -38,8 +38,13 @@ class _Engine:
     last_match: Optional[tuple[str, str]] = None
 
     def __init__(self, cfg: Dict[str, Any]):
-        _ensure_dep(self.feature)
+        _ensure_dep(self._dep_feature(cfg))
         self._build(cfg, _sub(cfg, self.section), _ww())
+
+    def _dep_feature(self, cfg: Dict[str, Any]) -> str:
+        """The lazy_deps feature to ensure before ``_build``. Engines override it when the microphone is fed from
+        outside (``cfg["_client_capture"]``) and PortAudio is not needed."""
+        return self.feature
 
     def _build(self, cfg: Dict[str, Any], sub: Dict[str, Any], ww) -> None:
         raise NotImplementedError
@@ -71,6 +76,10 @@ class _OpenWakeWordEngine(_Engine):
     feature, section = "wake.openwakeword", "openwakeword"
     frame_length = 1280  # openWakeWord recommends 80 ms frames.
 
+    def _dep_feature(self, cfg: Dict[str, Any]) -> str:
+        # A client-fed microphone (the desktop app) needs the engine only, not sounddevice/PortAudio.
+        return "wake.openwakeword.engine" if cfg.get("_client_capture") else self.feature
+
     def _build(self, cfg, sub, ww) -> None:
         import openwakeword
         from openwakeword.model import Model
@@ -84,11 +93,19 @@ class _OpenWakeWordEngine(_Engine):
             model_ref = ww._bundled_wakeword_path(framework)
         # download_models() also fetches the shared feature models (melspectrogram +
         # embedding) needed for ANY model, so a custom path must call it too.
+        download_error = None
         try:
             openwakeword.utils.download_models([model_ref])
         except Exception as e:  # pragma: no cover - network/path dependent
+            download_error = e
             logger.debug("openwakeword model download skipped: %s", e)
-        self._model = Model(wakeword_models=[model_ref], inference_framework=framework)
+        try:
+            self._model = Model(wakeword_models=[model_ref], inference_framework=framework)
+        except Exception as e:
+            if download_error is not None:  # offline first use: say so instead of an opaque model-load error
+                raise RuntimeError("The wake word downloads its detection models once, and that download failed "
+                                   f"({download_error}). Check your internet connection and try again.") from e
+            raise
         self._labels = list(self._model.models.keys())
 
     @staticmethod

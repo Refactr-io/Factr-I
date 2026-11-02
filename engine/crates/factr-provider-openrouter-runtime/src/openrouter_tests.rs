@@ -3783,3 +3783,128 @@ async fn a_rotated_key_reaches_the_next_request_without_rebuilding_the_provider(
     assert!(seen_rx.recv().unwrap().ends_with("Bearer key-one"));
     assert!(seen_rx.recv().unwrap().ends_with("Bearer key-two"));
 }
+
+// ---- transient error event inside a 200 stream is retried ----
+
+const SCHEMA_ERR: &str = "data: {\"error\":{\"message\":\"The selected model returned tool arguments that did not match the declared schema.\"}}\n\n";
+const OK_BODY: &str = concat!(
+    "data: {\"choices\":[{\"delta\":{\"content\":\"final answer\"},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n",
+);
+const PARTIAL_TOOL: &str = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"p\\\":1}\"}}]}}]}\n\n";
+const OK_TOOL: &str = concat!(
+    "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"p\\\":1}\"}}]}}]}\n\n",
+    "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\n",
+    "data: [DONE]\n\n",
+);
+
+/// Fake SSE server: connection N gets `bodies[N]` (the last body repeats) as a 200 stream. Returns the base URL and a hit counter.
+fn spawn_scripted_server(bodies: Vec<String>) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake provider server");
+    let addr = listener.local_addr().expect("addr");
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = Arc::clone(&hits);
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut stream) = conn else { break };
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+            let mut request = vec![0u8; 65536];
+            let _ = stream.read(&mut request);
+            let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let body = &bodies[n.min(bodies.len() - 1)];
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+    (format!("http://{addr}/v1"), hits)
+}
+
+fn run_scripted(bodies: Vec<String>) -> (Vec<anyhow::Result<StreamEvent>>, usize) {
+    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
+    rt.block_on(async {
+        let (api_base, hits) = spawn_scripted_server(bodies);
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<anyhow::Result<StreamEvent>>(64);
+        let request = serde_json::json!({"model": "test-model", "messages": [{"role": "user", "content": "hi"}], "stream": true});
+        super::openrouter_sse_stream::run_stream_with_retries(
+            reqwest::Client::new(),
+            api_base,
+            ProviderAuth::None { label: "test".to_string() },
+            false,
+            new_conversation_id(),
+            request,
+            tx,
+            Arc::new(Mutex::new(None)),
+            "test-model".to_string(),
+        )
+        .await;
+        let mut events = Vec::new();
+        while let Some(item) = rx.recv().await {
+            events.push(item);
+        }
+        (events, hits.load(std::sync::atomic::Ordering::SeqCst))
+    })
+}
+
+fn partial_then_error(error: &str) -> String {
+    format!("data: {{\"choices\":[{{\"delta\":{{\"content\":\"partial\"}}}}]}}\n\n{error}")
+}
+
+#[test]
+fn schema_error_event_twice_then_success_is_retried() {
+    let bad = partial_then_error(SCHEMA_ERR);
+    let (events, hits) = run_scripted(vec![bad.clone(), bad, OK_BODY.to_string()]);
+    assert_eq!(hits, 3);
+    assert!(events.iter().all(|e| e.is_ok()), "no error may surface: {events:?}");
+    let rollbacks: Vec<_> = events.iter().filter_map(|e| match e { Ok(StreamEvent::RetryRollback { max, .. }) => Some(*max), _ => None }).collect();
+    assert_eq!(rollbacks, vec![4, 4], "rollback labelled with the 4-attempt budget");
+    assert!(events.iter().any(|e| matches!(e, Ok(StreamEvent::TextDelta(t)) if t.contains("final answer"))));
+    assert!(!events.iter().any(|e| matches!(e, Ok(StreamEvent::Error { .. }))));
+}
+
+#[test]
+fn permanent_schema_error_event_fails_after_four_attempts_with_the_provider_text() {
+    let (events, hits) = run_scripted(vec![partial_then_error(SCHEMA_ERR)]);
+    assert_eq!(hits, 4);
+    let last = events.last().expect("an event");
+    assert!(matches!(last, Err(e) if e.to_string() == "The selected model returned tool arguments that did not match the declared schema."), "{last:?}");
+}
+
+#[test]
+fn partial_tool_call_then_error_rolls_back_and_the_tool_call_arrives_once_after_it() {
+    let (events, hits) = run_scripted(vec![format!("{PARTIAL_TOOL}{SCHEMA_ERR}"), OK_TOOL.to_string()]);
+    assert_eq!(hits, 2);
+    assert!(events.iter().all(|e| e.is_ok()), "{events:?}");
+    let rb = events.iter().position(|e| matches!(e, Ok(StreamEvent::RetryRollback { .. }))).expect("RetryRollback emitted");
+    let starts = |r: &[anyhow::Result<StreamEvent>]| r.iter().filter(|e| matches!(e, Ok(StreamEvent::ToolUseStart { .. }))).count();
+    assert_eq!(starts(&events[..rb]), 1, "partial attempt streamed the call before the rollback");
+    assert_eq!(starts(&events[rb..]), 1, "the replay delivers the call exactly once");
+}
+
+#[test]
+fn terminal_error_event_arrives_once_with_a_single_request() {
+    for msg in ["maximum context length exceeded", "invalid api key"] {
+        let body = format!("data: {{\"error\":{{\"message\":\"{msg}\"}}}}\n\n");
+        let (events, hits) = run_scripted(vec![body]);
+        assert_eq!(hits, 1, "{msg}");
+        let errs: Vec<_> = events.iter().filter(|e| matches!(e, Ok(StreamEvent::Error { .. }))).collect();
+        assert_eq!(errs.len(), 1, "{msg}: {events:?}");
+        assert!(!events.iter().any(|e| matches!(e, Ok(StreamEvent::RetryRollback { .. }))));
+    }
+}
+
+#[test]
+fn coded_502_provider_returned_error_is_retried() {
+    let bad = "data: {\"error\":{\"message\":\"Provider returned error\",\"code\":502}}\n\n".to_string();
+    let (events, hits) = run_scripted(vec![bad, OK_BODY.to_string()]);
+    assert_eq!(hits, 2);
+    assert!(events.iter().all(|e| e.is_ok()), "{events:?}");
+    assert!(events.iter().any(|e| matches!(e, Ok(StreamEvent::TextDelta(t)) if t.contains("final answer"))));
+}
+
+#[test]
+fn coded_400_error_event_stays_terminal() {
+    let bad = "data: {\"error\":{\"message\":\"Provider returned error\",\"code\":400}}\n\n".to_string();
+    let (events, hits) = run_scripted(vec![bad]);
+    assert_eq!(hits, 1);
+    assert!(events.iter().any(|e| matches!(e, Ok(StreamEvent::Error { .. }))), "{events:?}");
+}

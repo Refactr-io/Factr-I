@@ -112,7 +112,7 @@ import {
   touchComputer,
   validateBotProfile
 } from './bot-computers'
-import { docker as runBotDocker } from './bot-computers'
+import { docker as runBotDocker, seedBotAuth } from './bot-computers'
 import { createDockerSetup } from './bot-docker-setup'
 import { prepareBotSandbox } from './bot-local-sandbox'
 import {
@@ -1642,6 +1642,9 @@ let poolLimits = readPersistedPoolLimits()
 // preference: setPoolLimits() pushes a new max into the coordinator.
 const localBackendSpawnCoordinator = new LocalBackendSpawnCoordinator(poolLimits.maxBackends)
 const backgroundSlotRetryBackoff = new BackgroundSlotRetryBackoff()
+// Spawn failures of one profile backend (exit before ready, bad login): 5s doubling to 60s.
+const profileSpawnBackoff = new BackgroundSlotRetryBackoff({ baseDelayMs: 5000, maxDelayMs: 60_000 })
+const profileSpawnLastError = new Map<string, unknown>()
 // How long a spawn may wait for a free local slot. Must stay under the
 // renderer's BACKEND_BOOT_WAIT_TIMEOUT_MS (45s, src/lib/with-timeout.ts) so
 // the queued ticket fails before the renderer does and the user sees why.
@@ -4386,8 +4389,12 @@ async function resolveFactrBackend(backendArgs) {
         // environment found". An explicit setting wins.
         FACTR_LAZY_INSTALL_TARGET:
           process.env.FACTR_LAZY_INSTALL_TARGET || path.join(FACTR_CONFIG_HOME, 'lazy-packages'),
-        // Only voice transcription installs packages at runtime; provider discovery must not download SDKs.
-        FACTR_LAZY_INSTALL_ONLY: process.env.FACTR_LAZY_INSTALL_ONLY || 'stt.faster_whisper',
+        // Only voice features install packages at runtime (transcription, and the "Hey Factr" detection engine the
+        // first time it is turned on); provider discovery must not download SDKs. The wake word is listed
+        // feature by feature: the engine (the desktop streams the microphone itself, so no PortAudio) and the
+        // tflite runtime macOS needs.
+        FACTR_LAZY_INSTALL_ONLY:
+          process.env.FACTR_LAZY_INSTALL_ONLY || 'stt.faster_whisper,wake.openwakeword.engine,wake.openwakeword.tflite',
         // Tool schemas alone exceed Ollama's default 4k window; engine warms to this.
         FACTR_OLLAMA_NUM_CTX: process.env.FACTR_OLLAMA_NUM_CTX || '32768'
       },
@@ -10423,6 +10430,13 @@ async function ensureBackend(
   }
 
   assertNotPassiveSpawn(passive, key)
+
+  // A profile backend that keeps failing (e.g. a bot with no login exits at once) is not respawned on
+  // every renderer retry: the caller gets the last error until the backoff expires.
+  if (!profileSpawnBackoff.canAttempt(key)) {
+    throw profileSpawnLastError.get(key) ?? new Error(`Backend for profile "${key}" failed to start; retrying shortly.`)
+  }
+
   // The hard slot is released only after the evicted child exits. Wait for
   // that teardown before entering the spawn queue; otherwise a successful
   // LRU choice still leaves this wake racing the old child for 30 seconds. A foreground open of a LOCAL engine
@@ -10453,6 +10467,8 @@ async function ensureBackend(
     // beyond renderer-side rejections users never see in a bundle.
     logPoolSpawnFailure(`"${key}"`, error)
 
+    profileSpawnBackoff.recordFailure(key)
+    profileSpawnLastError.set(key, error)
     await teardownFailedLocalBackend(key, entry)
     throw error
   })
@@ -10460,6 +10476,7 @@ async function ensureBackend(
   startPoolIdleReaper()
 
   const connection = await entry.connectionPromise
+  profileSpawnBackoff.clear(key)
   setWslBridgeProfileState(key, connection.mode !== 'remote')
 
   return connection
@@ -11683,6 +11700,14 @@ async function runPoolBackendStart(
     ...parentIdentityEnv,
     FACTR_WEB_DIST: webDist,
     ...(readyFile ? { FACTR_DESKTOP_READY_FILE: readyFile } : {})
+  }
+
+  if (backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)) {
+    // A new bot starts signed in with the global login (one-time copy, never overwrites its own).
+    seedBotAuth(
+      process.env.FACTR_HOME || path.join(app.getPath('home'), '.factr', 'engine'),
+      path.join(FACTR_CONFIG_HOME, 'profiles', profile)
+    )
   }
 
   const sandbox = backend.kind === 'factr' && isBotProfile(FACTR_CONFIG_HOME, profile)

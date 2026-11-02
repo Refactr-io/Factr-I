@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { readUseRealProfile } from '@/app/settings/browser-real-profile-panel'
 import { Button } from '@/components/ui/button'
@@ -53,6 +53,7 @@ export function RealProfileConsentDialog({ tabId }: RealProfileConsentDialogProp
   const { data: config, writeScope } = useFactrConfigRecord()
   const setConfig = factrConfigCacheWriter()
   const [busy, setBusy] = useState(false)
+  const enableRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     claimRealProfilePrompt(tabId)
@@ -112,7 +113,15 @@ export function RealProfileConsentDialog({ tabId }: RealProfileConsentDialogProp
       }}
       open
     >
-      <DialogContent className="max-w-md" showCloseButton={false}>
+      <DialogContent
+        className="max-w-md"
+        onOpenAutoFocus={event => {
+          // Radix focuses the first control ("Don't show again"); one Enter would dismiss the prompt for good.
+          event.preventDefault()
+          enableRef.current?.focus()
+        }}
+        showCloseButton={false}
+      >
         <DialogHeader>
           <DialogTitle icon={Globe}>{prompt.title}</DialogTitle>
           <DialogDescription>{prompt.body}</DialogDescription>
@@ -140,7 +149,7 @@ export function RealProfileConsentDialog({ tabId }: RealProfileConsentDialogProp
             <Button disabled={busy} onClick={() => $realProfilePromptMuted.set(true)} type="button" variant="ghost">
               {prompt.notNow}
             </Button>
-            <Button disabled={busy} onClick={() => void enable()} type="button">
+            <Button disabled={busy} onClick={() => void enable()} ref={enableRef} type="button">
               {prompt.enable}
             </Button>
           </div>

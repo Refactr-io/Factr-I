@@ -763,12 +763,17 @@ export function useTerminalSession({
 
     fitRef.current = fitAndResize
 
+    let pendingInput = ''
+
     const dataDisposable = term.onData(data => {
       hasSessionActivityRef.current = true
       const id = sessionIdRef.current
 
       if (id) {
         void terminalApi.write(id, data)
+      } else {
+        // Typed before the shell session exists: hold it and flush once the session starts.
+        pendingInput += data
       }
     })
 
@@ -856,6 +861,12 @@ export function useTerminalSession({
           }
 
           sessionIdRef.current = session.id
+
+          if (pendingInput) {
+            void terminalApi.write(session.id, pendingInput)
+            pendingInput = ''
+          }
+
           lastSentSize = { cols: term.cols, rows: term.rows }
           shellNameRef.current = session.shell || 'shell'
           setShellName(session.shell || 'shell')

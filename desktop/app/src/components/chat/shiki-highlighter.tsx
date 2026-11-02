@@ -5,6 +5,7 @@ import { type FC, lazy, Suspense, useMemo } from 'react'
 
 import { CodeCard, CodeCardBody } from '@/components/chat/code-card'
 import { ExpandableBlock } from '@/components/chat/expandable-block'
+import { isShellLanguage, RunCommandButton, ShellRun } from '@/components/chat/run-command-button'
 // Theme constants live in shiki-config (dependency-free) so the lazy shiki
 // chunk can import them without pulling this module into the shiki bundle.
 import { SHIKI_COLOR_REPLACEMENTS } from '@/components/chat/shiki-config'
@@ -147,8 +148,14 @@ export const SyntaxHighlighter: FC<FactrSyntaxHighlighterProps> = ({
 
   const plain = defer || exceedsHighlightBudget(content)
 
-  return (
+  const card = (
     <CodeCard data-streaming={defer ? 'true' : undefined}>
+      {isShellLanguage(language) && (
+        <RunCommandButton
+          className="absolute right-10 top-1.5 z-10 opacity-0 transition-opacity group-hover/code:opacity-100 focus-visible:opacity-100"
+          command={content}
+        />
+      )}
       <CopyButton
         appearance="inline"
         className="absolute right-4 top-1.5 z-10 h-5 gap-0 rounded-md px-1 opacity-0 transition-opacity group-hover/code:opacity-100 focus-visible:opacity-100"
@@ -170,4 +177,6 @@ export const SyntaxHighlighter: FC<FactrSyntaxHighlighterProps> = ({
       </CodeCardBody>
     </CodeCard>
   )
+
+  return isShellLanguage(language) ? <ShellRun command={content}>{card}</ShellRun> : card
 }

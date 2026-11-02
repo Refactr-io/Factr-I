@@ -1996,3 +1996,34 @@ async fn empty_required_strings_fail_before_the_tool_runs() {
         }
     }
 }
+
+#[tokio::test]
+async fn preview_tool_exists_only_for_the_desktop_client() {
+    let _env = crate::storage::lock_test_env();
+    let saved: Vec<_> = ["FACTR_REPL_WORKER", "FACTR_DESKTOP"].map(|k| (k, std::env::var_os(k))).into();
+    crate::env::set_var("FACTR_REPL_WORKER", "/bin/factr");
+    let names = |on: bool| async move {
+        if on {
+            crate::env::set_var("FACTR_DESKTOP", "1");
+        } else {
+            crate::env::remove_var("FACTR_DESKTOP");
+        }
+        let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+        Registry::new(provider).await.tool_names().await
+    };
+    let headless = names(false).await;
+    let desktop = names(true).await;
+    for (k, v) in saved {
+        match v {
+            Some(v) => crate::env::set_var(k, v),
+            None => crate::env::remove_var(k),
+        }
+    }
+    assert!(!headless.iter().any(|n| n == "preview"));
+    let mut expected = headless.clone();
+    expected.push("preview".into());
+    expected.sort();
+    let mut got = desktop;
+    got.sort();
+    assert_eq!(got, expected, "desktop adds exactly one tool");
+}

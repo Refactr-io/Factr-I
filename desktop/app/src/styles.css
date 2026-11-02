@@ -1390,6 +1390,15 @@
   --ref-color: var(--ui-text-secondary);
 }
 
+/* Paths the agent mentions that open on click: a real link blue, not the neutral file tone. */
+[data-ref='file'].file-link {
+  --ref-color: #1f6feb;
+}
+
+:root.dark [data-ref='file'].file-link {
+  --ref-color: #6cb0ff;
+}
+
 [data-ref='url'],
 [data-ref='image'],
 [data-ref='session'],

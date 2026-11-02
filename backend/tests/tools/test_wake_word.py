@@ -817,3 +817,102 @@ def test_feed_audio_rejects_wrong_owner(monkeypatch, tmp_path):
     ww.start_listening(lambda: None, owner=owner, config={}, external_audio=True)
     assert ww.feed_audio(owner=object(), pcm_int16=b"\x00\x00") is False
     assert ww.stop_listening(owner=owner) is True
+
+
+# ── Desktop app: the wake word installs its engine on first use (it used to fail silently) ──
+
+_DESKTOP_LAZY_ONLY = "stt.faster_whisper,wake.openwakeword.engine,wake.openwakeword.tflite"
+
+
+def test_desktop_client_capture_installs_only_the_engine(monkeypatch):
+    """The desktop streams the microphone itself, so the wake word must need the engine alone: sounddevice pulls
+    cffi -> pycparser, which uv's quarantine made unresolvable (every first arm failed)."""
+    from tools import lazy_deps
+    assert not any(s.startswith("sounddevice") for s in lazy_deps.LAZY_DEPS["wake.openwakeword.engine"])
+    assert any(s.startswith("openwakeword") for s in lazy_deps.LAZY_DEPS["wake.openwakeword.engine"])
+    assert any(s.startswith("sounddevice") for s in lazy_deps.LAZY_DEPS["wake.openwakeword"])  # CLI local capture keeps it
+
+    monkeypatch.setenv("FACTR_LAZY_INSTALL_ONLY", _DESKTOP_LAZY_ONLY)
+    _voice_loop_ready(monkeypatch)
+    monkeypatch.setattr("tools.lazy_deps.is_available", lambda f: False)
+    monkeypatch.setattr("tools.lazy_deps._allow_lazy_installs", lambda: True)
+    reqs = ww.check_wake_word_requirements({"capture": "client", "provider": "openwakeword"})
+    assert reqs["available"] is True
+    assert reqs["hint"] == ""
+    for feature in ("wake.openwakeword.engine", "wake.openwakeword.tflite"):
+        assert lazy_deps._unsupported_feature_reason(feature) is None
+    for feature in ("wake.openwakeword", "wake.sherpa", "wake.porcupine"):
+        assert lazy_deps._unsupported_feature_reason(feature)
+
+
+def test_a_gated_wake_feature_is_reported_unavailable_with_the_reason(monkeypatch):
+    """The old desktop setting listed only transcription: the wake word read as available, then wake.start failed
+    with a log line. It must say so up front."""
+    monkeypatch.setenv("FACTR_LAZY_INSTALL_ONLY", "stt.faster_whisper")
+    _voice_loop_ready(monkeypatch)
+    monkeypatch.setattr("tools.lazy_deps.is_available", lambda f: False)
+    monkeypatch.setattr("tools.lazy_deps._allow_lazy_installs", lambda: True)
+    reqs = ww.check_wake_word_requirements({"capture": "client", "provider": "openwakeword"})
+    assert reqs["available"] is False
+    assert "cannot be set up here" in reqs["hint"]
+    assert "wake.openwakeword.engine" in reqs["hint"]
+
+
+def test_client_capture_builds_the_engine_without_portaudio(monkeypatch, tmp_path):
+    seen = {}
+
+    def _build(cfg):
+        seen.update(cfg)
+        return _FakeEngine(fire=False)
+
+    monkeypatch.setattr(ww, "_build_engine", _build)
+    monkeypatch.setattr(ww, "_lock_path", lambda: tmp_path / "wake.lock")
+    owner = object()
+    det = ww.start_listening(lambda: None, owner=owner, config={"provider": "openwakeword"}, external_audio=True)
+    try:
+        assert seen.get("_client_capture") is True
+    finally:
+        ww.stop_listening(owner=owner)
+    assert det is not None
+
+
+def test_openwakeword_engine_ensures_the_engine_feature_for_client_capture(monkeypatch):
+    from tools import wake_word_engines as eng
+    ensured = []
+    monkeypatch.setattr(eng, "_ensure_dep", lambda feature: ensured.append(feature))
+    monkeypatch.setattr(eng._OpenWakeWordEngine, "_build", lambda self, cfg, sub, ww_mod: None)
+    eng._OpenWakeWordEngine({"_client_capture": True})
+    eng._OpenWakeWordEngine({})
+    assert ensured == ["wake.openwakeword.engine", "wake.openwakeword"]
+
+
+def test_offline_first_use_says_the_model_download_failed(monkeypatch):
+    """Without a network the detection models cannot be fetched; the model load then fails. The person must be told
+    about the download, not shown an opaque model-load error."""
+    _install_fake_openwakeword(monkeypatch)
+    import sys as _sys
+
+    def _no_network(names=[]):
+        raise OSError("Network is unreachable")
+
+    _sys.modules["openwakeword"].utils = types.SimpleNamespace(download_models=_no_network)
+
+    def _missing(self, wakeword_models, inference_framework="onnx"):
+        raise ValueError("melspectrogram.onnx not found")
+
+    _sys.modules["openwakeword.model"].Model = type("M", (), {"__init__": _missing})
+    with pytest.raises(RuntimeError, match="download.*failed.*internet connection"):
+        ww._OpenWakeWordEngine({"provider": "openwakeword"})
+
+
+def test_tflite_install_is_gated_like_the_engine(monkeypatch):
+    """An allow-list that lists the engine but not tflite must not read as available on a Mac that needs tflite."""
+    monkeypatch.setenv("FACTR_LAZY_INSTALL_ONLY", "stt.faster_whisper,wake.openwakeword.engine")
+    _voice_loop_ready(monkeypatch)
+    monkeypatch.setattr("tools.lazy_deps.is_available", lambda f: False)
+    monkeypatch.setattr("tools.lazy_deps._allow_lazy_installs", lambda: True)
+    monkeypatch.setattr(ww, "ensure_tflite_runtime", lambda *a, **k: False)
+    monkeypatch.setattr(ww, "resolve_inference_framework", lambda cfg: "tflite")
+    reqs = ww.check_wake_word_requirements({"capture": "client", "provider": "openwakeword"})
+    assert reqs["available"] is False
+    assert "tflite" in reqs["hint"]

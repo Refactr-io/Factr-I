@@ -52,6 +52,10 @@ impl FactrHost for Host {
         self.hub.clarify(session_id, question, choices).await
     }
 
+    async fn emit_event(&self, session_id: &str, event: &str, payload: Value) -> bool {
+        self.hub.emit_to_session(session_id, event, payload).await
+    }
+
     fn has_backend(&self) -> bool {
         self.features.is_some()
     }

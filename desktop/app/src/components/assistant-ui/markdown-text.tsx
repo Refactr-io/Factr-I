@@ -19,6 +19,7 @@ import { ErrorBoundary } from '@/components/error-boundary'
 import { detectArtifact } from '@/lib/artifact-detect'
 import { renderMediaTags } from '@/lib/chat-messages/parts'
 import { normalizeExternalUrl, openExternalLink, PrettyLink } from '@/lib/external-link'
+import { findPathRefs } from '@/lib/file-paths'
 import { parseMarkdownIntoBlocksCached } from '@/lib/markdown-blocks'
 import { preprocessMarkdown } from '@/lib/markdown-preprocess'
 import {
@@ -44,6 +45,7 @@ import { cn } from '@/lib/utils'
 import { ArtifactCard } from './artifact-card'
 import { SessionRefLink } from './directive-text'
 import { detectEmbed, extractAlert, MarkdownAlert, RichCodeBlock, UrlEmbed } from './embeds'
+import { FilePathLink, linkifyPaths } from './file-path-link'
 import { ResizableMarkdownTable, ResizableMarkdownTh } from './markdown-table'
 import { paragraphPlainText, TranscriptDirectiveLeaf, useResolvedParagraph } from './transcript-directive'
 
@@ -567,7 +569,7 @@ function MarkdownParagraph({
 
   return (
     <p className={paragraphClass} {...props}>
-      {children}
+      {streaming ? children : linkifyPaths(children)}
     </p>
   )
 }
@@ -621,9 +623,21 @@ function MarkdownTextSurface({
         // mirroring the CSS isolate that already keeps it out of the
         // plaintext scan. Fenced code never reaches this override; it goes
         // through the code plugin's CodeCard path.
-        inlineCode: ({ className, ...props }: ComponentProps<'code'>) => (
-          <code className={className} dir="ltr" {...props} />
-        ),
+        inlineCode: ({ children, className, ...props }: ComponentProps<'code'>) => {
+          const code = (
+            <code className={className} dir="ltr" {...props}>
+              {children}
+            </code>
+          )
+
+          const hit = !isStreaming && typeof children === 'string' ? findPathRefs(children) : []
+
+          return hit.length === 1 && hit[0].start === 0 && hit[0].end === children?.toString().length ? (
+            <FilePathLink pathRef={hit[0].ref}>{code}</FilePathLink>
+          ) : (
+            code
+          )
+        },
         // `---` as quiet spacing, not a heavy full-width rule.
         hr: (_props: ComponentProps<'hr'>) => <div aria-hidden className="my-3" />,
         // Lists and blockquotes have chrome that sits *beside* the text

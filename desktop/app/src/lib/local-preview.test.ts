@@ -215,4 +215,11 @@ describe('PDF previews', () => {
     })
     expect(readDesktopFileDataUrl).not.toHaveBeenCalled()
   })
+
+  it('rejects a symbol host instead of opening a dead preview', () => {
+    expect(localPreviewTarget('https://√')).toBeNull()
+    expect(localPreviewTarget('https://')).toBeNull()
+    expect(localPreviewTarget('http://localhost:5174/')?.kind).toBe('url')
+    expect(localPreviewTarget('https://example.com/a')?.kind).toBe('url')
+  })
 })

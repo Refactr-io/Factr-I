@@ -20,6 +20,7 @@ aiosqlite = false
 alibabacloud-dingtalk = false
 anthropic = false
 asyncpg = false
+av = false
 azure-identity = false
 boto3 = false
 brotlicffi = false
@@ -1288,7 +1289,7 @@ wheels = [
 
 [[package]]
 name = "factr-backend"
-version = "0.0.14"
+version = "0.0.15"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },

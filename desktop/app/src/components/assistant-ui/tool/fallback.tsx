@@ -19,6 +19,7 @@ import {
 
 import { useSessionView } from '@/app/chat/session-view'
 import { AnsiText } from '@/components/assistant-ui/ansi-text'
+import { FilePathLink } from '@/components/assistant-ui/file-path-link'
 import { MarkdownImage } from '@/components/assistant-ui/markdown-text'
 import { TimelineTimestamp } from '@/components/assistant-ui/thread/timeline-timestamp'
 import { useElapsedSeconds } from '@/components/chat/activity-timer'
@@ -302,8 +303,10 @@ function ToolTitle({
   legendary,
   status,
   title,
-  titleAction
+  titleAction,
+  filePath
 }: {
+  filePath?: string
   isPending: boolean
   legendary?: boolean
   status: ToolStatus
@@ -326,6 +329,8 @@ function ToolTitle({
           <span className="shimmer">{titleAction.text}</span>
           {titleAction.suffix}
         </>
+      ) : filePath ? (
+        <FilePathLink pathRef={{ path: filePath }}>{title}</FilePathLink>
       ) : (
         title
       )}
@@ -609,6 +614,7 @@ function ToolEntry({ part }: ToolEntryProps) {
               toolName={part.toolName}
             />
             <ToolTitle
+              filePath={isFileEdit && !isPending && view.status !== 'error' ? view.subtitle : undefined}
               isPending={isPending}
               legendary={memoryLegendary}
               status={view.status}

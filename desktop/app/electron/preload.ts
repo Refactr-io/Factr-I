@@ -470,6 +470,7 @@ contextBridge.exposeInMainWorld('factrDesktop', {
     attach: id => ipcRenderer.invoke('factr:terminal:attach', id),
     cwd: id => ipcRenderer.invoke('factr:terminal:cwd', id),
     dispose: id => ipcRenderer.invoke('factr:terminal:dispose', id),
+    run: options => ipcRenderer.invoke('factr:terminal:run', options),
     resize: (id, size) => ipcRenderer.invoke('factr:terminal:resize', id, size),
     start: options => ipcRenderer.invoke('factr:terminal:start', options),
     write: (id, data) => ipcRenderer.invoke('factr:terminal:write', id, data),

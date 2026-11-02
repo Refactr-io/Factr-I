@@ -201,7 +201,18 @@ def _ensure_av_open_compat() -> None:
             return orig(*args, **kwargs)
 
     _open._factr_compat = True
+    _open._orig = orig
     av.open = _open
+
+
+def _log_stt_versions() -> None:
+    """One INFO line with the audio-stack versions, so a "dictation fails" report carries the evidence (the av /
+    faster-whisper mismatch that breaks decoding is invisible otherwise)."""
+    try:
+        from importlib.metadata import version
+        logger.info("local STT stack: faster-whisper %s, av %s", version("faster-whisper"), version("av"))
+    except Exception:
+        pass
 
 
 def _load_local_whisper_model(model_name: str, device: str = "auto", compute_type: str = "auto"):
@@ -214,6 +225,7 @@ def _load_local_whisper_model(model_name: str, device: str = "auto", compute_typ
     explicit values from ``stt.local.device`` / ``stt.local.compute_type`` to pin a configuration (#9088).
     """
     _ensure_av_open_compat()  # every model load, not just the dictation path
+    _log_stt_versions()
     force_cpu = _should_force_faster_whisper_cpu()
     if force_cpu:
         # Importing ctranslate2 can itself abort on Apple Silicon/Rosetta when
@@ -238,9 +250,22 @@ def _load_local_whisper_model(model_name: str, device: str = "auto", compute_typ
 # Silero VAD so silence never reaches the model (``vad: false`` restores raw behaviour
 # for music/ambient audio); condition_on_previous_text=False so one hallucinated token
 # can't seed a run; and the segment confidence gate in _is_hallucinated_segment.
-_VAD_MIN_SILENCE_MS_DEFAULT = 500
+# VAD tuning, measured on synthetic dictation (pauses, soft speech, room noise and keyboard-click noise): a slightly
+# more sensitive threshold, wider padding around speech and longer-pause tolerance keep ~10% more of the real
+# audio (soft speech included) than the old 500 ms / default-threshold setting, while pure noise still yields nothing.
+_VAD_MIN_SILENCE_MS_DEFAULT = 1000
+_VAD_THRESHOLD_DEFAULT = 0.4
+_VAD_SPEECH_PAD_MS_DEFAULT = 600
+# Whisper hears the product name as the English word "Factor" ("Hey Factor", "Factor I"). Hotwords bias decoding toward
+# the real spelling without the side effects of an initial prompt (a prompt made it drop a leading "Hey" on soft speech).
+_HOTWORDS_DEFAULT = "Factr-I Factr"
 _NO_SPEECH_PROB_THRESHOLD_DEFAULT = 0.6
 _LOGPROB_THRESHOLD_DEFAULT = -1.0
+
+
+def _clamp(value, low, high):
+    """Keep a tuning value inside a range that cannot silently drop every word (a typo such as 40 for 0.4)."""
+    return max(low, min(high, value))
 
 
 def build_local_transcribe_kwargs(stt_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -256,14 +281,24 @@ def build_local_transcribe_kwargs(stt_config: Optional[Dict[str, Any]] = None) -
         "vad_filter": vad_enabled is None or bool(vad_enabled)}
     if kwargs["vad_filter"]:
         kwargs["vad_parameters"] = {
-            "min_silence_duration_ms": _config_number(local_cfg, "vad_min_silence_ms", _VAD_MIN_SILENCE_MS_DEFAULT, int)
+            "min_silence_duration_ms": _clamp(_config_number(local_cfg, "vad_min_silence_ms", _VAD_MIN_SILENCE_MS_DEFAULT, int), 100, 10_000),
+            "threshold": _clamp(_config_number(local_cfg, "vad_threshold", _VAD_THRESHOLD_DEFAULT, float), 0.05, 0.95),
+            "speech_pad_ms": _clamp(_config_number(local_cfg, "vad_speech_pad_ms", _VAD_SPEECH_PAD_MS_DEFAULT, int), 0, 5_000),
         }
+    forced_lang = _resolve_stt_language("local", stt_config)
+    # ``hotwords`` unset = the product names; set it (or "" to switch it off) under ``stt.local``. The default is
+    # English-only (or auto-detect): a Latin-script bias can pull other languages toward transliteration.
+    hotwords = local_cfg.get("hotwords")
+    if hotwords is None:
+        hotwords = _HOTWORDS_DEFAULT if not forced_lang or str(forced_lang).lower().startswith("en") else ""
+    hotwords = str(hotwords).strip()
+    if hotwords:
+        kwargs["hotwords"] = hotwords
     # Push the confidence gate into faster-whisper itself: its internal defaults drop
     # low-confidence segments BEFORE our post-filter sees them, so the ``stt.local``
     # threshold knobs were dead for that first gate (non-English speech decodes at
     # lower avg_logprob and was silently discarded). Same values feed both gates.
     kwargs["no_speech_threshold"], kwargs["log_prob_threshold"] = _confidence_thresholds(local_cfg)
-    forced_lang = _resolve_stt_language("local", stt_config)
     if forced_lang:
         kwargs["language"] = forced_lang
     initial_prompt = local_cfg.get("initial_prompt")

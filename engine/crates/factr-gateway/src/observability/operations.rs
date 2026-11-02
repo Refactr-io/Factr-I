@@ -560,6 +560,27 @@ pub fn run_outcome(status: &str, error: &Option<String>, model_calls: u64) -> &'
     }
 }
 
+/// Coarse failure class of a tool call or run, for `error_kind` columns. Only called when an error
+/// is set (a non-zero bash exit is not an error). The provider-SDK path reports just "Tool error",
+/// so the tool output is read too.
+pub fn error_kind(error: &str, output: &str, status: &str) -> &'static str {
+    let text = format!("{error}\n{output}").to_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| text.contains(n));
+    if status == "interrupted" || (has(&["interrupted", "denied", "cancelled", "canceled"]) && !has(&["permission denied"])) {
+        "UserAborted"
+    } else if has(&["unknown tool", "invalid type", "missing field", "missing required", "invalid argument", "invalid parameter", "validation", "schema", "is empty (the call"]) {
+        "InvalidArguments"
+    } else if has(&["timed out", "timeout"]) {
+        "Timeout"
+    } else if has(&["http status", "status code", "rate limit", "overloaded", "context length", "context_length", "context window", "429", "503", "529"]) {
+        "ProviderError"
+    } else if has(&["enoent", "permission denied", "eacces", "no such file", "not found", "command not found"]) {
+        "UnexpectedEnvironment"
+    } else {
+        "Unknown"
+    }
+}
+
 pub fn apply_run_end_flags(
     tx: &rusqlite::Transaction<'_>,
     id: &str,

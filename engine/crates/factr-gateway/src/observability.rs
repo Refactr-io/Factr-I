@@ -6,7 +6,7 @@ mod otlp;
 mod schema;
 
 use operations::{
-    apply_run_end_flags, budget_status, evaluate_alerts, list_alerts, list_approvals, list_filtered, list_memory_deletions, list_memory_spans, list_sessions, facts,
+    apply_run_end_flags, budget_status, error_kind, evaluate_alerts, list_alerts, list_approvals, list_filtered, list_memory_deletions, list_memory_spans, list_sessions, facts,
     monitors, promote_run, turn_index, window_ms, write_approval,
 };
 use rusqlite::{Connection, params};
@@ -21,6 +21,25 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const QUEUE: usize = 1024;
+
+/// How a user message relates to the previous one: a fixed label, English keywords only.
+fn classify_followup(prev: &str, next: &str) -> &'static str {
+    let words = |t: &str| t.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect::<std::collections::HashSet<_>>();
+    let (a, b) = (words(prev), words(next));
+    let low = next.to_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| low.contains(n));
+    if !a.is_empty() && !b.is_empty() && a.intersection(&b).count() as f64 / a.len().max(b.len()) as f64 >= 0.8 {
+        "repeat"
+    } else if has(&["undo", "revert", "roll back", "rollback", "go back"]) {
+        "undo"
+    } else if has(&["still", "not working", "doesn't work", "didn't work", "same error", "broken", "fails", "failed again"]) {
+        "still_broken"
+    } else if has(&["continue", "keep going", "go on", "carry on", "proceed", "next"]) {
+        "continue"
+    } else {
+        "unknown"
+    }
+}
 const BATCH: usize = 128;
 const CONTENT_LIMIT: usize = 4096;
 /// What a reconnecting window replays is the gap since it dropped, not the chat: the transcript is the
@@ -209,6 +228,7 @@ enum Op {
         id: String,
         status: String,
         error: Option<String>,
+        error_kind: Option<&'static str>,
         at: i64,
     },
     /// A finished memory or learning step (`factr_base::obs_sink`): one closed span, ids and counts only.
@@ -244,6 +264,11 @@ enum Op {
         started: i64,
         ended: i64,
     },
+    /// How the next user message related to the run `id` (a fixed label, never text).
+    Followup {
+        id: String,
+        label: &'static str,
+    },
     Content {
         id: String,
         input: Option<String>,
@@ -265,6 +290,9 @@ struct Active {
     error: Option<String>,
     tools: HashMap<String, (String, bool)>,
     tool_errors: HashMap<String, String>,
+    /// Memory-only prompts (capped) of runs not yet finished, and the last finished user run.
+    prompts: HashMap<String, String>,
+    last: Option<(String, String)>,
     chat_started: Option<i64>,
     /// The open model request has streamed a reply (text, reasoning or a tool call). A request
     /// that replied but reported no `token_usage` is still a model call: the next
@@ -499,6 +527,14 @@ impl Observer {
             });
         active.next += 1;
         let run = format!("{session}:{}:{}", now(), active.next);
+        let mut followup = None;
+        if kind == "invoke_agent" {
+            // Only a finished previous user run is judged; a queued or running one is not a follow-up.
+            if active.run.is_none() {
+                followup = active.last.take().map(|(id, prev)| (id, classify_followup(&prev, prompt)));
+            }
+            active.prompts.insert(run.clone(), prompt.chars().take(500).collect());
+        }
         let status = if active.run.is_none() {
             active.run = Some(run.clone());
             active.root = Some(run.clone());
@@ -529,6 +565,9 @@ impl Observer {
             },
             false,
         );
+        if let Some((id, label)) = followup {
+            self.send(Op::Followup { id, label }, false);
+        }
         if self.capture_content {
             self.send(
                 Op::Content {
@@ -593,6 +632,12 @@ impl Observer {
         let started = ended - span.duration_ms as i64;
         let id = format!("{session}:span:{ended}:{}", SEQ.fetch_add(1, Ordering::Relaxed));
         let error = span.error.as_deref().map(capped);
+        if span.kind == "undo.turn" {
+            let last = self.sessions.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&session).and_then(|a| a.last.take());
+            if let Some((id, _)) = last {
+                self.send(Op::Followup { id, label: "undo" }, false);
+            }
+        }
         let (run, root) = match self.active_run_id(&session) {
             Some(run) => {
                 let root = self.sessions.lock().unwrap_or_else(|e| e.into_inner()).get(&session).and_then(|a| a.root.clone()).unwrap_or_else(|| run.clone());
@@ -683,6 +728,7 @@ impl Observer {
                         Op::SpanEnd {
                             id: span.clone(),
                             status: status.into(),
+                            error_kind: error.as_deref().map(|e| error_kind(e, result, "")),
                             error: error.clone(),
                             at: now(),
                         },
@@ -760,6 +806,7 @@ impl Observer {
                     },
                     false,
                 );
+                active.last = active.prompts.remove(&run).map(|p| (run.clone(), p));
                 if self.capture_content {
                     self.send(
                         Op::Content {
@@ -1354,8 +1401,8 @@ fn write_batch(db: &mut Connection, batch: Vec<Op>) -> rusqlite::Result<()> {
                 model_calls,
             } => {
                 tx.execute(
-                    "UPDATE fact_turn SET status=?2,error=?3,ended_at_ms=?4 WHERE id=?1",
-                    params![id, status, error, at],
+                    "UPDATE fact_turn SET status=?2,error=?3,ended_at_ms=?4,error_kind=?5 WHERE id=?1",
+                    params![id, status, error, at, error.as_deref().map(|e| error_kind(e, "", &status))],
                 )?;
                 apply_run_end_flags(&tx, &id, &status, &error, model_calls)?;
             }
@@ -1394,16 +1441,20 @@ fn write_batch(db: &mut Connection, batch: Vec<Op>) -> rusqlite::Result<()> {
                 id,
                 status,
                 error,
+                error_kind,
                 at,
             } => {
                 tx.execute(
-                    "UPDATE spans SET status=?2,error=?3,ended_at_ms=?4 WHERE id=?1",
-                    params![id, status, error, at],
+                    "UPDATE spans SET status=?2,error=?3,ended_at_ms=?4,error_kind=?5 WHERE id=?1",
+                    params![id, status, error, at, error_kind],
                 )?;
+            }
+            Op::Followup { id, label } => {
+                tx.execute("UPDATE fact_turn SET followup=?2 WHERE id=?1", params![id, label])?;
             }
             Op::Span { id, run, root, kind, error, attributes, input, output, started, ended } => {
                 let status = if error.is_some() { "error" } else { "complete" };
-                tx.execute("INSERT OR IGNORE INTO spans(id,run_id,parent_id,root_id,kind,name,status,started_at_ms,ended_at_ms,input_tokens,output_tokens,error,attributes) VALUES(?1,?2,?2,?3,?4,?4,?5,?6,?7,?8,?9,?10,?11)", params![id,run,root,kind,status,started,ended,input,output,error,attributes.to_string()])?;
+                tx.execute("INSERT OR IGNORE INTO spans(id,run_id,parent_id,root_id,kind,name,status,started_at_ms,ended_at_ms,input_tokens,output_tokens,error,attributes,error_kind) VALUES(?1,?2,?2,?3,?4,?4,?5,?6,?7,?8,?9,?10,?11,?12)", params![id,run,root,kind,status,started,ended,input,output,error,attributes.to_string(),error.as_deref().map(|e| error_kind(e, "", ""))])?;
             }
             Op::Usage {
                 run,
@@ -1902,6 +1953,69 @@ mod tests {
         assert!(!known("done"));
         assert_eq!(observer.replay_stats()["events"], 0);
         drop(observer);
+        remove_test_dir(&dir);
+    }
+
+    #[test]
+    fn error_kind_maps_the_producer_strings() {
+        for (error, output, status, want) in [
+            ("Unknown tool: foo. Available tools: bash.", "", "", "InvalidArguments"),
+            ("edit: path is empty (the call may have been cut off by the output limit; resend it in full)", "", "", "InvalidArguments"),
+            ("Tool error", "invalid type: null, expected a string", "", "InvalidArguments"),
+            ("Tool error", "missing field `command`", "", "InvalidArguments"),
+            ("blocked", "Interrupted by user", "interrupted", "UserAborted"),
+            ("Tool error", "denied by user", "", "UserAborted"),
+            ("x", "", "interrupted", "UserAborted"),
+            ("Command timed out after 5000ms (5.0s)", "", "", "Timeout"),
+            ("SDK tool callback timed out after 120 seconds", "", "", "Timeout"),
+            ("Tool error", "HTTP status 500", "", "ProviderError"),
+            ("Tool error", "rate limit exceeded", "", "ProviderError"),
+            ("Tool error", "Overloaded", "", "ProviderError"),
+            ("Tool error", "maximum context length exceeded", "", "ProviderError"),
+            ("Tool error", "ENOENT: no such file", "", "UnexpectedEnvironment"),
+            ("Tool error", "bash: foo: command not found", "", "UnexpectedEnvironment"),
+            ("Tool error", "cat: x: Permission denied", "", "UnexpectedEnvironment"),
+            ("boom", "", "", "Unknown"),
+        ] {
+            assert_eq!(error_kind(error, output, status), want, "{error} / {output}");
+        }
+    }
+
+    #[test]
+    fn followup_classifier_labels() {
+        for (prev, next, want) in [
+            ("fix the login bug", "Fix the login bug", "repeat"),
+            ("fix the login bug", "please undo that", "undo"),
+            ("fix the login bug", "it is still not working", "still_broken"),
+            ("fix the login bug", "continue", "continue"),
+            ("fix the login bug", "now add docs", "unknown"),
+        ] {
+            assert_eq!(classify_followup(prev, next), want, "{next}");
+        }
+    }
+
+    #[test]
+    fn tool_error_kind_and_followup_are_recorded() {
+        let dir = std::env::temp_dir().join(format!("factr-error-kind-{}", now()));
+        let observer = Observer::open(&dir, "ollama", "local", None).unwrap();
+        let first = observer.start_turn("s1", "fix the login bug", "invoke_agent", None);
+        observer.event("s1", "tool.start", &json!({"tool_id":"t1","name":"read"}));
+        observer.harness_event(&json!({"ev":"tool_done","session_id":"s1","call_id":"t1","error":"Tool error"}));
+        observer.event("s1", "tool.complete", &json!({"tool_id":"t1","result_text":"ENOENT: no such file"}));
+        observer.event("s1", "message.complete", &json!({"status":"complete"}));
+        observer.start_turn("s1", "it is still not working", "invoke_agent", None);
+        let db = Connection::open(dir.join("factr.db")).unwrap();
+        let mut got = (None, None);
+        for _ in 0..100 {
+            got = (
+                db.query_row("SELECT error_kind FROM spans WHERE kind='execute_tool'", [], |r| r.get::<_, Option<String>>(0)).ok().flatten(),
+                db.query_row("SELECT followup FROM fact_turn WHERE id=?1", [&first], |r| r.get::<_, Option<String>>(0)).ok().flatten(),
+            );
+            if got.0.is_some() && got.1.is_some() { break; }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(got, (Some("UnexpectedEnvironment".into()), Some("still_broken".into())));
+        drop((observer, db));
         remove_test_dir(&dir);
     }
 

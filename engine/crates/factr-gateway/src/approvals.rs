@@ -657,6 +657,20 @@ impl Hub {
         }
     }
 
+    /// Send a gateway event to every window that has `session_id` open. False when none does.
+    pub async fn emit_to_session(&self, session_id: &str, ty: &str, payload: Value) -> bool {
+        let frame = json!({ "jsonrpc": "2.0", "method": "event",
+            "params": { "type": ty, "session_id": session_id, "payload": payload } })
+        .to_string();
+        let mut sent = false;
+        for client in self.clients.lock().await.clone() {
+            if client.sessions.lock().await.contains(session_id) {
+                sent |= client.to_ws.send(Message::Text(frame.clone())).await.is_ok();
+            }
+        }
+        sent
+    }
+
     /// A window answered a `clarify` request (`result.answer`; anything else is a skip). Only a
     /// client attached to the request's session may answer it.
     pub async fn answer_clarify(&self, from: &Client, request_id: &str, frame: &Value) -> bool {

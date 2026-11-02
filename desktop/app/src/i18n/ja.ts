@@ -3553,6 +3553,7 @@ export const ja = defineLocale({
     },
     tool: {
       copyCode: 'コードをコピー',
+      runInTerminal: 'ターミナルで実行',
       renderingImage: '画像をレンダリング中',
       copyOutput: '出力をコピー',
       copyCommand: 'コマンドをコピー',

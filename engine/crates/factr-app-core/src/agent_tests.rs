@@ -2259,7 +2259,9 @@ async fn the_first_request_prefix_stays_under_its_token_ceiling() {
     // large-input guidance 4371. The margin is one new parameter on one tool at
     // the per-description caps of `tool/tests.rs` (tool description 20 + parameter description
     // 25 = 45): a change bigger than that re-measures here.
-    const MEASURED_TOKENS: usize = 4791;
+    // Coding-quality rules in Finishing (reproduce, sibling paths, no test edits to pass, tests of touched
+    // modules): 4791 to 4898 tokens (system 2771, +107).
+    const MEASURED_TOKENS: usize = 4898;
     const CEILING_TOKENS: usize = MEASURED_TOKENS + 20 + 25;
     let _lock = crate::storage::lock_test_env();
     let home = tempfile::tempdir().unwrap();

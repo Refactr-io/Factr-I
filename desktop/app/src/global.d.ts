@@ -534,6 +534,8 @@ declare global {
         onData: (id: string, callback: (payload: string) => void) => () => void
         onExit: (id: string, callback: (payload: FactrTerminalExit) => void) => () => void
         resize: (id: string, size: { cols: number; rows: number }) => Promise<boolean>
+        /** One-shot run of an explicitly clicked command; streams on onData/onExit. Null if unsupported. */
+        run: (options: { command: string; cwd?: string }) => Promise<null | string>
         start: (options?: { cols?: number; cwd?: string; rows?: number }) => Promise<FactrTerminalSession>
         write: (id: string, data: string) => Promise<boolean>
       }
