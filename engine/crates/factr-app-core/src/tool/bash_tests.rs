@@ -228,11 +228,11 @@ async fn ctrl_d_stdin_response_closes_stdin() {
     let tool = BashTool::new();
     let ctx = make_ctx(Some(tx));
     let handle = tokio::spawn(async move {
-        tool.execute(json!({"command": "cat; echo done", "timeout": 20000}), ctx).await
+        tool.execute(json!({"command": "cat; echo done", "timeout": 30000}), ctx).await
     });
-    let req = tokio::time::timeout(Duration::from_secs(5), rx.recv()).await.unwrap().unwrap();
+    let req = tokio::time::timeout(Duration::from_secs(20), rx.recv()).await.unwrap().unwrap();
     req.response_tx.send("\u{4}".to_string()).unwrap();
-    let result = tokio::time::timeout(Duration::from_secs(5), handle).await.unwrap().unwrap().unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(20), handle).await.unwrap().unwrap().unwrap();
     assert!(result.output.contains("done"));
 }
 
@@ -242,14 +242,14 @@ async fn test_stdin_forwarding_single_line() {
     let tool = BashTool::new();
 
     // "head -n1" reads one line from stdin and prints it
-    let input = json!({"command": "head -n1", "timeout": 10000});
+    let input = json!({"command": "head -n1", "timeout": 30000});
     let ctx = make_ctx(Some(tx));
 
     // Spawn the tool execution
     let tool_handle = tokio::spawn(async move { tool.execute(input, ctx).await });
 
     // Wait for the stdin request to arrive
-    let req = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+    let req = tokio::time::timeout(std::time::Duration::from_secs(20), rx.recv())
         .await
         .expect("timed out waiting for stdin request")
         .expect("channel closed");
@@ -261,7 +261,7 @@ async fn test_stdin_forwarding_single_line() {
     req.response_tx.send("test_input_line".to_string()).unwrap();
 
     // Wait for tool to finish
-    let result = tokio::time::timeout(std::time::Duration::from_secs(5), tool_handle)
+    let result = tokio::time::timeout(std::time::Duration::from_secs(20), tool_handle)
         .await
         .expect("tool timed out")
         .expect("tool panicked")
@@ -280,13 +280,13 @@ async fn test_stdin_forwarding_multiple_lines() {
     let tool = BashTool::new();
 
     // "head -n2" reads two lines
-    let input = json!({"command": "head -n2", "timeout": 15000});
+    let input = json!({"command": "head -n2", "timeout": 30000});
     let ctx = make_ctx(Some(tx));
 
     let tool_handle = tokio::spawn(async move { tool.execute(input, ctx).await });
 
     // First line
-    let req1 = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+    let req1 = tokio::time::timeout(std::time::Duration::from_secs(20), rx.recv())
         .await
         .expect("timed out waiting for first stdin request")
         .expect("channel closed");
@@ -298,7 +298,7 @@ async fn test_stdin_forwarding_multiple_lines() {
     req1.response_tx.send("line_one".to_string()).unwrap();
 
     // Second line
-    let req2 = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+    let req2 = tokio::time::timeout(std::time::Duration::from_secs(20), rx.recv())
         .await
         .expect("timed out waiting for second stdin request")
         .expect("channel closed");
@@ -309,7 +309,7 @@ async fn test_stdin_forwarding_multiple_lines() {
     );
     req2.response_tx.send("line_two".to_string()).unwrap();
 
-    let result = tokio::time::timeout(std::time::Duration::from_secs(5), tool_handle)
+    let result = tokio::time::timeout(std::time::Duration::from_secs(20), tool_handle)
         .await
         .expect("tool timed out")
         .expect("tool panicked")

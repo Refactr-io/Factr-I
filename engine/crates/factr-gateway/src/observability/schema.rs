@@ -24,6 +24,9 @@ pub fn open(db: &mut Connection) -> rusqlite::Result<()> {
         ("fact_turn", "outcome", "TEXT NOT NULL DEFAULT 'running'"),
         ("fact_turn", "span_coverage", "TEXT NOT NULL DEFAULT 'none'"),
         ("fact_turn", "ttft_ms", "INTEGER"),
+        ("fact_turn", "error_kind", "TEXT"),
+        ("fact_turn", "followup", "TEXT"),
+        ("spans", "error_kind", "TEXT"),
         ("approvals", "request_kind", "TEXT"),
         ("approvals", "approver_via", "TEXT NOT NULL DEFAULT 'unidentified'"),
     ] {
@@ -92,7 +95,7 @@ const DDL: &str = "
         SELECT s.id AS span_id, s.run_id, r.session_id, s.name AS tool_name, s.started_at_ms,
                s.ended_at_ms - s.started_at_ms AS duration_ms,
                CASE s.status WHEN 'complete' THEN 1 WHEN 'error' THEN 0 END AS ok,
-               s.error AS error_message,
+               s.error AS error_message, s.error_kind,
                length(c.input) AS arguments_bytes, length(c.output) AS result_bytes
         FROM spans s JOIN fact_turn r ON r.id = s.run_id
         LEFT JOIN span_content c ON c.id = s.id
@@ -119,6 +122,18 @@ const DDL: &str = "
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn existing_db_gains_error_kind_and_followup() {
+        let mut db = Connection::open_in_memory().unwrap();
+        open(&mut db).unwrap();
+        db.execute_batch("DROP VIEW fact_tool_call; ALTER TABLE spans DROP COLUMN error_kind; ALTER TABLE fact_turn DROP COLUMN error_kind; ALTER TABLE fact_turn DROP COLUMN followup;").unwrap();
+        open(&mut db).unwrap();
+        for (t, c) in [("spans", "error_kind"), ("fact_turn", "error_kind"), ("fact_turn", "followup")] {
+            assert!(db.prepare("SELECT 1 FROM pragma_table_info(?1) WHERE name=?2").unwrap().exists([t, c]).unwrap(), "{t}.{c}");
+        }
+        db.prepare("SELECT error_kind FROM fact_tool_call").unwrap();
+    }
 
     #[test]
     fn legacy_obs_tables_are_renamed_once() {
