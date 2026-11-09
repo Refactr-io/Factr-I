@@ -34,7 +34,9 @@ pub(super) fn websocket_request(
 
 /// The prepared prefix has no conversation items. Compare every remaining
 /// request setting, not just model or item counts, before reusing its ID.
-pub(super) fn prewarm_request(request: &Value) -> Value {
+/// `omit_cache_key`: the ChatGPT-mode key names the session, which an idle prewarm does not know
+/// yet, so it is left out of the warmup and the comparison (the key stays on the real request).
+pub(super) fn prewarm_request(request: &Value, omit_cache_key: bool) -> Value {
     let mut settings: serde_json::Map<String, Value> = request
         .as_object()
         .into_iter()
@@ -43,7 +45,7 @@ pub(super) fn prewarm_request(request: &Value) -> Value {
             !matches!(
                 key.as_str(),
                 "input" | "stream" | "background" | "previous_response_id"
-            )
+            ) && !(omit_cache_key && key.as_str() == "prompt_cache_key")
         })
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
@@ -88,6 +90,18 @@ impl PrewarmSlot {
             .is_some_and(|job| !job.ready.is_empty())
     }
 
+    #[cfg(test)]
+    pub(super) fn insert_ready_for_test(&self, request: Value, state: PersistentWsState) {
+        let (tx, ready) = oneshot::channel();
+        let _ = tx.send(state);
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(PrewarmJob {
+            request,
+            started_at: Instant::now(),
+            ready,
+            task: tokio::spawn(std::future::pending()),
+        });
+    }
+
     pub(super) fn clear(&self) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).take();
     }
@@ -96,8 +110,9 @@ impl PrewarmSlot {
         self: &Arc<Self>,
         credentials: Arc<RwLock<CodexCredentials>>,
         request: &Value,
+        omit_cache_key: bool,
     ) {
-        let request = prewarm_request(request);
+        let request = prewarm_request(request, omit_cache_key);
         let mut guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if guard
             .as_ref()
@@ -179,10 +194,11 @@ impl PrewarmSlot {
         &self,
         request: &Value,
         credentials: &CodexCredentials,
+        omit_cache_key: bool,
     ) -> Option<PersistentWsState> {
         let mut job = self.0.lock().unwrap_or_else(|e| e.into_inner()).take()?;
-        let compatible =
-            job.request == prewarm_request(request) && job.started_at.elapsed() < PREWARM_TTL;
+        let compatible = job.request == prewarm_request(request, omit_cache_key)
+            && job.started_at.elapsed() < PREWARM_TTL;
         let state = compatible
             .then(|| job.ready.try_recv().ok())
             .flatten()
@@ -308,12 +324,12 @@ mod tests {
         });
         let abort = task.abort_handle();
         *slot.0.lock().unwrap() = Some(PrewarmJob {
-            request: prewarm_request(&request),
+            request: prewarm_request(&request, false),
             started_at: Instant::now(),
             ready,
             task,
         });
-        assert!(slot.take_ready(&request, &credentials()).is_none());
+        assert!(slot.take_ready(&request, &credentials(), false).is_none());
         tokio::task::yield_now().await;
         assert!(abort.is_finished(), "cancelled warmup must not detach");
         assert!(slot.0.lock().unwrap().is_none());
@@ -329,6 +345,7 @@ mod tests {
         slot.start(
             Arc::clone(&credentials),
             &serde_json::json!({"model":"gpt-5.6-sol"}),
+            false,
         );
         tokio::task::yield_now().await;
         let mut job = slot.0.lock().unwrap().take().unwrap();
@@ -351,12 +368,12 @@ mod tests {
         let (sender, ready) = oneshot::channel();
         assert!(sender.send(state).is_ok());
         *slot.0.lock().unwrap() = Some(PrewarmJob {
-            request: prewarm_request(&request),
+            request: prewarm_request(&request, false),
             started_at: Instant::now() - PREWARM_TTL,
             ready,
             task: tokio::spawn(std::future::pending()),
         });
-        assert!(slot.take_ready(&request, &credentials()).is_none());
+        assert!(slot.take_ready(&request, &credentials(), false).is_none());
         tokio::time::timeout(Duration::from_secs(1), server)
             .await
             .expect("expired socket should close")
@@ -372,7 +389,7 @@ mod tests {
             "stream": true, "background": false, "store": false,
             "previous_response_id": "old_chain", "reasoning": {"effort":"low"}
         });
-        let warm = prewarm_request(&request);
+        let warm = prewarm_request(&request, false);
         assert_eq!(warm["type"], "response.create");
         assert_eq!(warm["generate"], false);
         assert_eq!(warm["input"], serde_json::json!([]));
@@ -398,7 +415,10 @@ mod tests {
         });
         let mut next = request.clone();
         next["input"] = serde_json::json!([{"role":"user", "content":"new message"}]);
-        assert_eq!(prewarm_request(&request), prewarm_request(&next));
+        assert_eq!(
+            prewarm_request(&request, false),
+            prewarm_request(&next, false)
+        );
         for key in request
             .as_object()
             .unwrap()
@@ -408,8 +428,8 @@ mod tests {
             let mut changed = next.clone();
             changed.as_object_mut().unwrap().remove(key);
             assert_ne!(
-                prewarm_request(&request),
-                prewarm_request(&changed),
+                prewarm_request(&request, false),
+                prewarm_request(&changed, false),
                 "must compare {key}"
             );
         }

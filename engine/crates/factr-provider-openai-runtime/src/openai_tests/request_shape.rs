@@ -94,8 +94,13 @@ fn golden_messages() -> Vec<ChatMessage> {
     ]
 }
 
-fn golden_full_request(is_chatgpt_mode: bool, input: &[Value], api_tools: &[Value]) -> Value {
-    let mut request = OpenAIProvider::build_response_request(
+fn golden_full_request(
+    is_chatgpt_mode: bool,
+    input: &[Value],
+    api_tools: &[Value],
+    shape: Option<&RequestShape>,
+) -> Value {
+    let args = (
         "gpt-5.4",
         "golden system".to_string(),
         input,
@@ -109,23 +114,40 @@ fn golden_full_request(is_chatgpt_mode: bool, input: &[Value], api_tools: &[Valu
         Some("24h"),
         Some(160_000),
     );
+    let mut request = match shape {
+        // The pre-switch entry point, pinned to the baseline shape.
+        None => OpenAIProvider::build_response_request(
+            args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+            args.10, args.11,
+        ),
+        Some(shape) => OpenAIProvider::build_response_request_with_shape(
+            args.0, args.1, args.2, args.3, args.4, args.5, args.6, args.7, args.8, args.9,
+            args.10, args.11, shape,
+        ),
+    };
     // `text` comes from the user's config file, not from the request shape.
     request.as_object_mut().unwrap().remove("text");
     request
 }
 
-/// Every golden request, built through the production builders.
-fn golden_requests() -> Vec<(&'static str, Value)> {
+/// Every golden request, built through the production builders: with `None` through the public
+/// wrappers (the ones the Copilot runtime also calls), with a shape through the shape-aware ones.
+fn golden_requests(shape: Option<&RequestShape>) -> Vec<(&'static str, Value)> {
+    let tools = golden_tools();
     let input = build_responses_input(&golden_messages());
-    let api_tools = build_tools(&golden_tools());
-    let chatgpt = golden_full_request(true, &input, &api_tools);
-    let api_key = golden_full_request(false, &input, &api_tools);
+    let api_tools = match shape {
+        None => build_tools(&tools),
+        Some(shape) => build_tools_with_shape(&tools, shape),
+    };
+    let chatgpt = golden_full_request(true, &input, &api_tools, shape);
+    let api_key = golden_full_request(false, &input, &api_tools, shape);
     let continuation = openai_stream_runtime::build_continuation_request(
         &chatgpt,
         "resp_golden",
         &input[input.len() - 2..],
     );
-    let prewarm = openai_websocket_prewarm::prewarm_request(&chatgpt);
+    let omit_cache_key = shape.is_some_and(|shape| shape.chatgpt_cache_key);
+    let prewarm = openai_websocket_prewarm::prewarm_request(&chatgpt, omit_cache_key);
     let compaction = openai_provider_impl::native_compaction_request("gpt-5.4", &input);
     vec![
         ("full_chatgpt", chatgpt),
@@ -139,7 +161,14 @@ fn golden_requests() -> Vec<(&'static str, Value)> {
 #[test]
 fn baseline_requests_match_golden_fixtures() {
     let write = std::env::var("FACTR_WRITE_REQUEST_GOLDEN").is_ok_and(|v| v == "1");
-    for (name, request) in golden_requests() {
+    let wrappers = golden_requests(None);
+    let baseline = golden_requests(Some(&RequestShape::BASELINE));
+    for ((name, request), (_, shaped)) in wrappers.into_iter().zip(baseline) {
+        assert_eq!(
+            serde_json::to_string(&shaped).unwrap(),
+            serde_json::to_string(&request).unwrap(),
+            "{name}: the baseline shape differs from the wrappers"
+        );
         let path = format!("{GOLDEN_DIR}/{name}.json");
         // The compact form is the exact bytes put on the wire.
         let bytes = serde_json::to_string(&request).unwrap();
@@ -171,4 +200,78 @@ fn variant_tools_are_not_strict_and_keep_the_compatible_schema() {
         serde_json::to_string(&build_tools_with_shape(&tools, &RequestShape::BASELINE)).unwrap(),
         serde_json::to_string(&build_tools(&tools)).unwrap()
     );
+}
+
+/// An idle prewarm runs before any session context exists, so its cache key is the instance key;
+/// the foreground request names the session. With the ChatGPT key on, they must still match.
+#[tokio::test]
+async fn variant_idle_prewarm_is_adopted_by_a_foreground_request_with_a_session_key() {
+    for shape in [
+        RequestShape::VARIANT,
+        RequestShape {
+            parallel_tool_calls: true,
+            ..RequestShape::VARIANT
+        },
+    ] {
+        let api_tools = build_tools_with_shape(&golden_tools(), &shape);
+        let build = |input: &[Value], key: &str| {
+            OpenAIProvider::build_response_request_with_shape(
+                "gpt-5.4",
+                "golden system".to_string(),
+                input,
+                &api_tools,
+                true,
+                false,
+                None,
+                Some("high"),
+                None,
+                Some(key),
+                None,
+                Some(160_000),
+                &shape,
+            )
+        };
+        let idle = build(&[], "factr-session-instance");
+        let foreground = build(
+            &build_responses_input(&golden_messages()),
+            "factr-session-real",
+        );
+        assert_eq!(foreground["prompt_cache_key"], "factr-session-real");
+        let omit = shape.chatgpt_cache_key;
+        assert_ne!(
+            openai_websocket_prewarm::prewarm_request(&idle, false),
+            openai_websocket_prewarm::prewarm_request(&foreground, false),
+            "without the omission the session key would discard every warm socket"
+        );
+
+        let (mut state, _server) = test_persistent_ws_state().await;
+        let credentials = CodexCredentials {
+            access_token: "test-access".into(),
+            refresh_token: "test-refresh".into(),
+            id_token: None,
+            account_id: Some("test-account".into()),
+            expires_at: None,
+        };
+        state.identity = openai_websocket_prewarm::prewarm_identity(&credentials);
+        let slot = openai_websocket_prewarm::PrewarmSlot::default();
+        slot.insert_ready_for_test(
+            openai_websocket_prewarm::prewarm_request(&idle, omit),
+            state,
+        );
+        assert!(
+            slot.take_ready(&foreground, &credentials, omit).is_some(),
+            "the idle warm socket must be adopted"
+        );
+
+        let continuation =
+            openai_stream_runtime::build_continuation_request(&foreground, "resp_golden", &[]);
+        assert_eq!(
+            continuation["prompt_cache_key"],
+            foreground["prompt_cache_key"]
+        );
+        assert_eq!(
+            continuation["parallel_tool_calls"],
+            foreground["parallel_tool_calls"]
+        );
+    }
 }

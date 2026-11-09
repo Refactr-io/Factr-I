@@ -89,13 +89,8 @@ impl Provider for OpenAIProvider {
         let Ok(credentials) = self.credentials.try_read() else {
             return;
         };
-        let request = self.response_request_for_model(
-            model,
-            &[],
-            tools,
-            system,
-            Self::is_chatgpt_mode(&credentials),
-        );
+        let is_chatgpt_mode = Self::is_chatgpt_mode(&credentials);
+        let request = self.response_request_for_model(model, &[], tools, system, is_chatgpt_mode);
         drop(credentials);
         if matches!(mode, OpenAITransportMode::Auto)
             && websocket_cooldown_remaining(
@@ -107,7 +102,11 @@ impl Provider for OpenAIProvider {
         {
             return;
         }
-        self.prewarm.start(Arc::clone(&self.credentials), &request);
+        self.prewarm.start(
+            Arc::clone(&self.credentials),
+            &request,
+            is_chatgpt_mode && RequestShape::current().chatgpt_cache_key,
+        );
     }
 
     async fn complete(
@@ -138,9 +137,11 @@ impl Provider for OpenAIProvider {
             OpenAITransportMode::Auto => Self::should_prefer_websocket(&model_id),
         };
         if use_websocket_transport {
-            let warmed = self
-                .prewarm
-                .take_ready(&request, &*self.credentials.read().await);
+            let warmed = self.prewarm.take_ready(
+                &request,
+                &*self.credentials.read().await,
+                is_chatgpt_mode && RequestShape::current().chatgpt_cache_key,
+            );
             if let Some(state) = warmed {
                 let mut guard = persistent_ws.lock().await;
                 if guard.is_none() {

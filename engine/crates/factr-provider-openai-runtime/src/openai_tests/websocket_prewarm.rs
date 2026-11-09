@@ -231,7 +231,7 @@ async fn unfinished_or_incompatible_prewarm_is_cancelled_without_foreground_wait
             Ok(None) | Ok(Some(Ok(WsMessage::Close(_)))) | Ok(Some(Err(_)))
         ));
     });
-    slot.start(Arc::new(RwLock::new(credentials.clone())), &request);
+    slot.start(Arc::new(RwLock::new(credentials.clone())), &request, false);
     accepted.notified().await;
 
     let incompatible = serde_json::json!({
@@ -239,7 +239,7 @@ async fn unfinished_or_incompatible_prewarm_is_cancelled_without_foreground_wait
         "input": [], "stream": true
     });
     let before = Instant::now();
-    assert!(slot.take_ready(&incompatible, &credentials).is_none());
+    assert!(slot.take_ready(&incompatible, &credentials, false).is_none());
     assert!(
         before.elapsed() < Duration::from_millis(100),
         "foreground must not wait for warmup"
@@ -273,12 +273,12 @@ async fn ready_prewarm_with_different_settings_is_invalidated() {
         )).await.unwrap();
         let _ = socket.next().await;
     });
-    slot.start(Arc::new(RwLock::new(credentials.clone())), &request);
+    slot.start(Arc::new(RwLock::new(credentials.clone())), &request, false);
     wait_for_prewarm(&slot).await;
     let changed = serde_json::json!({
         "model": "gpt-5.6-sol", "instructions": "changed", "tools": [], "input": []
     });
-    assert!(slot.take_ready(&changed, &credentials).is_none());
+    assert!(slot.take_ready(&changed, &credentials, false).is_none());
     server.await.expect("settings mismatch server");
 }
 
@@ -306,8 +306,8 @@ async fn rejected_warmup_is_not_adopted() {
             r#"{"type":"response.completed","response":{"id":"resp_rejected","status":"failed","output":[]}}"#.into(),
         )).await.unwrap();
     });
-    slot.start(Arc::new(RwLock::new(credentials.clone())), &request);
+    slot.start(Arc::new(RwLock::new(credentials.clone())), &request, false);
     server.await.expect("rejection server");
     tokio::time::sleep(Duration::from_millis(20)).await;
-    assert!(slot.take_ready(&request, &credentials).is_none());
+    assert!(slot.take_ready(&request, &credentials, false).is_none());
 }

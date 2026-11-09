@@ -1267,7 +1267,7 @@ impl OpenAIProvider {
             .unwrap_or_else(|poisoned| poisoned.into_inner().clone());
         let native_compaction_threshold =
             self.native_compaction_threshold_for_context_window(self.context_window());
-        Self::build_response_request(
+        Self::build_response_request_with_shape(
             model_id,
             system.to_string(),
             input,
@@ -1285,9 +1285,11 @@ impl OpenAIProvider {
             )),
             self.prompt_cache_retention.as_deref(),
             native_compaction_threshold,
+            shape,
         )
     }
 
+    #[cfg(test)]
     #[expect(
         clippy::too_many_arguments,
         reason = "request construction threads explicit per-request OpenAI settings without hidden state"
@@ -1305,6 +1307,42 @@ impl OpenAIProvider {
         prompt_cache_key: Option<&str>,
         prompt_cache_retention: Option<&str>,
         native_compaction_threshold: Option<usize>,
+    ) -> Value {
+        Self::build_response_request_with_shape(
+            model_id,
+            instructions,
+            input,
+            api_tools,
+            is_chatgpt_mode,
+            image_generation_allowed,
+            max_output_tokens,
+            reasoning_effort,
+            service_tier,
+            prompt_cache_key,
+            prompt_cache_retention,
+            native_compaction_threshold,
+            &RequestShape::BASELINE,
+        )
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "request construction threads explicit per-request OpenAI settings without hidden state"
+    )]
+    fn build_response_request_with_shape(
+        model_id: &str,
+        instructions: String,
+        input: &[Value],
+        api_tools: &[Value],
+        is_chatgpt_mode: bool,
+        image_generation_allowed: bool,
+        max_output_tokens: Option<u32>,
+        reasoning_effort: Option<&str>,
+        service_tier: Option<&str>,
+        prompt_cache_key: Option<&str>,
+        prompt_cache_retention: Option<&str>,
+        native_compaction_threshold: Option<usize>,
+        shape: &RequestShape,
     ) -> Value {
         let mut tools = api_tools.to_vec();
         // The hosted `image_generation` tool is only available to general
@@ -1358,15 +1396,17 @@ impl OpenAIProvider {
             ]);
         }
 
-        if !is_chatgpt_mode {
-            if let Some(key) = prompt_cache_key {
-                request["prompt_cache_key"] = serde_json::json!(key);
-            }
-            if let Some(retention) =
+        // The reference clients also send the key on the ChatGPT backend; retention stays API-key-only.
+        if (!is_chatgpt_mode || shape.chatgpt_cache_key)
+            && let Some(key) = prompt_cache_key
+        {
+            request["prompt_cache_key"] = serde_json::json!(key);
+        }
+        if !is_chatgpt_mode
+            && let Some(retention) =
                 Self::effective_prompt_cache_retention(model_id, prompt_cache_retention)
-            {
-                request["prompt_cache_retention"] = serde_json::json!(retention);
-            }
+        {
+            request["prompt_cache_retention"] = serde_json::json!(retention);
         }
 
         request
