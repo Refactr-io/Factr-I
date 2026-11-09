@@ -15,6 +15,8 @@ use async_trait::async_trait;
 use futures::{FutureExt, SinkExt, StreamExt as FuturesStreamExt};
 use factr_base::auth::codex::CodexCredentials;
 use factr_base::auth::oauth;
+use factr_base::provider::openai_request::build_responses_input_with_shape;
+#[cfg(test)]
 use factr_base::provider::openai_request::build_responses_input;
 #[cfg(test)]
 use factr_base::provider::openai_request::build_tools;
@@ -1363,7 +1365,8 @@ impl OpenAIProvider {
             // Deliberately serial: one tool call per model step. The agent loop, the approval
             // flow and the per-call tool policy checks all assume tool calls arrive one at a time,
             // and a run's tool order must stay reproducible. Do not flip this without those.
-            "parallel_tool_calls": false,
+            // The switch exists for measurement; several calls from one response still run one at a time, in order.
+            "parallel_tool_calls": shape.parallel_tool_calls,
             "stream": true,
             "store": false,
             "include": ["reasoning.encrypted_content"],

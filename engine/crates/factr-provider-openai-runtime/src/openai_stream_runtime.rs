@@ -504,7 +504,11 @@ pub(super) fn build_continuation_request(
         continuation_request["prompt_cache_retention"] = prompt_cache_retention.clone();
     }
     continuation_request["store"] = serde_json::json!(false);
-    continuation_request["parallel_tool_calls"] = serde_json::json!(false);
+    // Same value as the full request, so a continuation never differs from it.
+    continuation_request["parallel_tool_calls"] = request
+        .get("parallel_tool_calls")
+        .cloned()
+        .unwrap_or(serde_json::json!(false));
     continuation_request
 }
 

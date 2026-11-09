@@ -109,6 +109,14 @@ pub fn build_responses_input(messages: &[ChatMessage]) -> Vec<Value> {
 
 pub fn build_responses_input_with_logger(
     messages: &[ChatMessage],
+    logger: impl FnMut(OpenAiRequestLogLevel, &str),
+) -> Vec<Value> {
+    build_responses_input_with_logger_and_shape(messages, &RequestShape::BASELINE, logger)
+}
+
+pub fn build_responses_input_with_logger_and_shape(
+    messages: &[ChatMessage],
+    shape: &RequestShape,
     mut logger: impl FnMut(OpenAiRequestLogLevel, &str),
 ) -> Vec<Value> {
     let missing_output = format!("[Error] {}", TOOL_OUTPUT_MISSING_TEXT);
@@ -247,7 +255,6 @@ pub fn build_responses_input_with_logger(
                         } => {
                             let mut item = serde_json::json!({
                                 "type": "reasoning",
-                                "id": id,
                                 "summary": summary
                                     .iter()
                                     .map(|text| serde_json::json!({
@@ -256,6 +263,10 @@ pub fn build_responses_input_with_logger(
                                     }))
                                     .collect::<Vec<_>>(),
                             });
+                            // With `store: false` the id cannot be resolved; one reference client drops it.
+                            if shape.replay_reasoning_id {
+                                item["id"] = serde_json::json!(id);
+                            }
                             if let Some(encrypted_content) = encrypted_content {
                                 item["encrypted_content"] = serde_json::json!(encrypted_content);
                             }

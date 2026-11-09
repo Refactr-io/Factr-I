@@ -134,10 +134,15 @@ fn golden_full_request(
 /// wrappers (the ones the Copilot runtime also calls), with a shape through the shape-aware ones.
 fn golden_requests(shape: Option<&RequestShape>) -> Vec<(&'static str, Value)> {
     let tools = golden_tools();
-    let input = build_responses_input(&golden_messages());
-    let api_tools = match shape {
-        None => build_tools(&tools),
-        Some(shape) => build_tools_with_shape(&tools, shape),
+    let (input, api_tools) = match shape {
+        None => (
+            build_responses_input(&golden_messages()),
+            build_tools(&tools),
+        ),
+        Some(shape) => (
+            build_responses_input_with_shape(&golden_messages(), shape),
+            build_tools_with_shape(&tools, shape),
+        ),
     };
     let chatgpt = golden_full_request(true, &input, &api_tools, shape);
     let api_key = golden_full_request(false, &input, &api_tools, shape);
@@ -274,4 +279,128 @@ async fn variant_idle_prewarm_is_adopted_by_a_foreground_request_with_a_session_
             foreground["parallel_tool_calls"]
         );
     }
+}
+
+/// Leaf paths where two JSON values differ (array items are indexed, objects keyed).
+fn json_diff(a: &Value, b: &Value, path: String, out: &mut Vec<String>) {
+    match (a, b) {
+        (Value::Object(x), Value::Object(y)) => {
+            let keys: std::collections::BTreeSet<_> = x.keys().chain(y.keys()).collect();
+            for k in keys {
+                let (va, vb) = (x.get(k), y.get(k));
+                match (va, vb) {
+                    (Some(va), Some(vb)) => json_diff(va, vb, format!("{path}.{k}"), out),
+                    _ => out.push(format!("{path}.{k}")),
+                }
+            }
+        }
+        (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
+            for (i, (va, vb)) in x.iter().zip(y).enumerate() {
+                json_diff(va, vb, format!("{path}[{i}]"), out);
+            }
+        }
+        _ if a != b => out.push(path),
+        _ => {}
+    }
+}
+
+fn shape_diff(a: &RequestShape, b: &RequestShape) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    for ((name, ra), (_, rb)) in golden_requests(Some(a))
+        .into_iter()
+        .zip(golden_requests(Some(b)))
+    {
+        let mut paths = Vec::new();
+        json_diff(&ra, &rb, String::new(), &mut paths);
+        out.extend(paths.into_iter().map(|p| (name, p)));
+    }
+    out
+}
+
+#[test]
+fn variant_defaults_through_the_production_builders() {
+    let requests: HashMap<_, _> = golden_requests(Some(&RequestShape::VARIANT))
+        .into_iter()
+        .collect();
+    let chatgpt = &requests["full_chatgpt"];
+    for tool in chatgpt["tools"].as_array().unwrap() {
+        assert_eq!(tool["strict"], false);
+    }
+    assert_eq!(chatgpt["prompt_cache_key"], "factr-session-golden");
+    assert!(chatgpt.get("prompt_cache_retention").is_none());
+    assert_eq!(chatgpt["parallel_tool_calls"], false);
+    assert_eq!(chatgpt["input"][1]["type"], "reasoning");
+    assert_eq!(chatgpt["input"][1]["id"], "rs_golden");
+    assert_eq!(
+        requests["continuation_chatgpt"]["parallel_tool_calls"],
+        false
+    );
+    // The prewarm payload leaves the session key out (see the adoption test).
+    assert!(
+        requests["prewarm_chatgpt"]
+            .get("prompt_cache_key")
+            .is_none()
+    );
+}
+
+#[test]
+fn each_switch_alone_changes_only_its_own_fields() {
+    let v = RequestShape::VARIANT;
+    let is_tool_field = |p: &str| {
+        p.starts_with(".tools[") && (p.contains("].strict") || p.contains("].parameters"))
+    };
+
+    let strict = shape_diff(
+        &v,
+        &RequestShape {
+            strict_tools: true,
+            ..v
+        },
+    );
+    assert!(!strict.is_empty());
+    for (name, path) in &strict {
+        assert!(is_tool_field(path), "strict changed {name}{path}");
+    }
+
+    let key = shape_diff(
+        &v,
+        &RequestShape {
+            chatgpt_cache_key: false,
+            ..v
+        },
+    );
+    let expected: Vec<(&str, String)> = vec![
+        ("full_chatgpt", ".prompt_cache_key".into()),
+        ("continuation_chatgpt", ".prompt_cache_key".into()),
+    ];
+    assert_eq!(key, expected);
+
+    let parallel = shape_diff(
+        &v,
+        &RequestShape {
+            parallel_tool_calls: true,
+            ..v
+        },
+    );
+    let expected: Vec<(&str, String)> = vec![
+        ("full_chatgpt", ".parallel_tool_calls".into()),
+        ("full_api_key", ".parallel_tool_calls".into()),
+        ("continuation_chatgpt", ".parallel_tool_calls".into()),
+        ("prewarm_chatgpt", ".parallel_tool_calls".into()),
+    ];
+    assert_eq!(parallel, expected);
+
+    let id = shape_diff(
+        &v,
+        &RequestShape {
+            replay_reasoning_id: false,
+            ..v
+        },
+    );
+    let expected: Vec<(&str, String)> = vec![
+        ("full_chatgpt", ".input[1].id".into()),
+        ("full_api_key", ".input[1].id".into()),
+        ("native_compaction", ".input[1].id".into()),
+    ];
+    assert_eq!(id, expected);
 }

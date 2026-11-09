@@ -116,7 +116,7 @@ impl Provider for OpenAIProvider {
         system: &str,
         _resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
-        let input = build_responses_input(messages);
+        let input = build_responses_input_with_shape(messages, RequestShape::current());
         let input_item_count = input.len();
         let request = self.response_request(&input, tools, system).await;
         let model_id = openai_request_model(&request);
@@ -1155,7 +1155,10 @@ impl Provider for OpenAIProvider {
                 }]
             }));
         }
-        input.extend(build_responses_input(messages));
+        input.extend(build_responses_input_with_shape(
+            messages,
+            RequestShape::current(),
+        ));
 
         let mut builder = self
             .client
