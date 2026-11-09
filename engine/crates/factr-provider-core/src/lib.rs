@@ -13,6 +13,7 @@ pub mod pricing;
 pub mod reasoning;
 pub mod rate_limits;
 pub mod refusal;
+pub mod request_shape;
 pub mod retry_after;
 pub mod selection;
 pub mod stream_lifetime;

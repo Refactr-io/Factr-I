@@ -152,3 +152,23 @@ fn baseline_requests_match_golden_fixtures() {
         assert_eq!(bytes, golden, "{name} drifted from its golden fixture");
     }
 }
+
+#[test]
+fn variant_tools_are_not_strict_and_keep_the_compatible_schema() {
+    let tools = golden_tools();
+    let built = build_tools_with_shape(&tools, &RequestShape::VARIANT);
+    for (api, def) in built.iter().zip(&tools) {
+        assert_eq!(api["strict"], false, "{}", def.name);
+        assert_eq!(
+            api["parameters"],
+            factr_provider_core::openai_schema::openai_compatible_schema(&def.input_schema),
+            "{}",
+            def.name
+        );
+    }
+    // The baseline sibling and the public wrapper (also used by the Copilot runtime) agree.
+    assert_eq!(
+        serde_json::to_string(&build_tools_with_shape(&tools, &RequestShape::BASELINE)).unwrap(),
+        serde_json::to_string(&build_tools(&tools)).unwrap()
+    );
+}

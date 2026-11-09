@@ -15,7 +15,11 @@ use async_trait::async_trait;
 use futures::{FutureExt, SinkExt, StreamExt as FuturesStreamExt};
 use factr_base::auth::codex::CodexCredentials;
 use factr_base::auth::oauth;
-use factr_base::provider::openai_request::{build_responses_input, build_tools};
+use factr_base::provider::openai_request::build_responses_input;
+#[cfg(test)]
+use factr_base::provider::openai_request::build_tools;
+use factr_provider_core::request_shape::RequestShape;
+use factr_provider_openai::build_tools_with_shape;
 #[cfg(test)]
 use factr_message_types::TOOL_OUTPUT_MISSING_TEXT;
 use factr_message_types::{Message as ChatMessage, StreamEvent, ToolDefinition};
@@ -1237,7 +1241,8 @@ impl OpenAIProvider {
         system: &str,
         is_chatgpt_mode: bool,
     ) -> Value {
-        let api_tools = build_tools(tools);
+        let shape = RequestShape::current();
+        let api_tools = build_tools_with_shape(tools, shape);
         // The hosted image tool follows the run's tool policy (the session this turn is for).
         let image_generation_allowed = factr_base::tool_policy::tool_allowed(
             factr_base::logging::current_session().as_deref(),

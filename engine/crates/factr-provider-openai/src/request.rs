@@ -5,6 +5,7 @@ use factr_message_types::{
 use factr_provider_core::openai_schema::{
     openai_compatible_schema, schema_supports_strict, strict_normalize_schema,
 };
+use factr_provider_core::request_shape::RequestShape;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -48,11 +49,16 @@ pub fn is_openai_encrypted_content_too_large_error(error: &str) -> bool {
 }
 
 pub fn build_tools(tools: &[ToolDefinition]) -> Vec<Value> {
+    build_tools_with_shape(tools, &RequestShape::BASELINE)
+}
+
+pub fn build_tools_with_shape(tools: &[ToolDefinition], shape: &RequestShape) -> Vec<Value> {
     tools
         .iter()
         .map(|t| {
             let compatible_schema = openai_compatible_schema(&t.input_schema);
-            let supports_strict = schema_supports_strict(&compatible_schema);
+            // With strict tools off, every tool goes out as the compatible, non-strict schema.
+            let supports_strict = shape.strict_tools && schema_supports_strict(&compatible_schema);
             let parameters = if supports_strict {
                 strict_normalize_schema(&compatible_schema)
             } else {
