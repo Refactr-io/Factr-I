@@ -34,7 +34,7 @@ pub(super) fn websocket_request(
 
 /// The prepared prefix has no conversation items. Compare every remaining
 /// request setting, not just model or item counts, before reusing its ID.
-fn prewarm_request(request: &Value) -> Value {
+pub(super) fn prewarm_request(request: &Value) -> Value {
     let mut settings: serde_json::Map<String, Value> = request
         .as_object()
         .into_iter()

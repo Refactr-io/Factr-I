@@ -25,6 +25,15 @@ pub(crate) fn is_text_only_openai_model(model: &str) -> bool {
         || id.contains("codex-spark")
 }
 
+/// The body of the explicit native-compaction request.
+pub(crate) fn native_compaction_request(model: &str, input: &[Value]) -> Value {
+    serde_json::json!({
+        "model": model,
+        "input": input,
+        "store": false,
+    })
+}
+
 #[async_trait]
 impl Provider for OpenAIProvider {
     /// The Responses API takes `input_image` parts. The trait default (false) made the engine
@@ -1161,11 +1170,7 @@ impl Provider for OpenAIProvider {
         }
 
         let response = builder
-            .json(&serde_json::json!({
-                "model": self.model_id().await,
-                "input": input,
-                "store": false,
-            }))
+            .json(&native_compaction_request(&self.model_id().await, &input))
             .send()
             .await
             .context("Failed to send OpenAI compact request")?;

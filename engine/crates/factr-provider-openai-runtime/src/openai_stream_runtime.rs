@@ -456,6 +456,58 @@ pub(super) enum PersistentWsResult {
     Failed(String),
 }
 
+/// The WebSocket continuation request: the new items plus `previous_response_id`, with the
+/// settings copied from the full request.
+pub(super) fn build_continuation_request(
+    request: &Value,
+    previous_response_id: &str,
+    incremental_items: &[Value],
+) -> Value {
+    let mut continuation_request = serde_json::json!({
+        "type": "response.create",
+        "previous_response_id": previous_response_id,
+        "input": incremental_items,
+    });
+
+    // Copy over model, tools, and other settings from the original request
+    if let Some(model) = request.get("model") {
+        continuation_request["model"] = model.clone();
+    }
+    if let Some(tools) = request.get("tools") {
+        continuation_request["tools"] = tools.clone();
+    }
+    if let Some(tool_choice) = request.get("tool_choice") {
+        continuation_request["tool_choice"] = tool_choice.clone();
+    }
+    if let Some(instructions) = request.get("instructions") {
+        continuation_request["instructions"] = instructions.clone();
+    }
+    if let Some(max_output_tokens) = request.get("max_output_tokens") {
+        continuation_request["max_output_tokens"] = max_output_tokens.clone();
+    }
+    if let Some(reasoning) = request.get("reasoning") {
+        continuation_request["reasoning"] = reasoning.clone();
+    }
+    if let Some(context_management) = request.get("context_management") {
+        continuation_request["context_management"] = context_management.clone();
+    }
+    if let Some(include) = request.get("include") {
+        continuation_request["include"] = include.clone();
+    }
+    if let Some(service_tier) = request.get("service_tier") {
+        continuation_request["service_tier"] = service_tier.clone();
+    }
+    if let Some(prompt_cache_key) = request.get("prompt_cache_key") {
+        continuation_request["prompt_cache_key"] = prompt_cache_key.clone();
+    }
+    if let Some(prompt_cache_retention) = request.get("prompt_cache_retention") {
+        continuation_request["prompt_cache_retention"] = prompt_cache_retention.clone();
+    }
+    continuation_request["store"] = serde_json::json!(false);
+    continuation_request["parallel_tool_calls"] = serde_json::json!(false);
+    continuation_request
+}
+
 /// Try to continue a conversation on an existing persistent WebSocket connection
 /// using `previous_response_id` to send only incremental input.
 pub(super) async fn try_persistent_ws_continuation(
@@ -753,48 +805,8 @@ async fn continue_persistent_ws_locked(
     );
 
     // Build the incremental request - only include new items + previous_response_id
-    let mut continuation_request = serde_json::json!({
-        "type": "response.create",
-        "previous_response_id": previous_response_id,
-        "input": incremental_items,
-    });
-
-    // Copy over model, tools, and other settings from the original request
-    if let Some(model) = request.get("model") {
-        continuation_request["model"] = model.clone();
-    }
-    if let Some(tools) = request.get("tools") {
-        continuation_request["tools"] = tools.clone();
-    }
-    if let Some(tool_choice) = request.get("tool_choice") {
-        continuation_request["tool_choice"] = tool_choice.clone();
-    }
-    if let Some(instructions) = request.get("instructions") {
-        continuation_request["instructions"] = instructions.clone();
-    }
-    if let Some(max_output_tokens) = request.get("max_output_tokens") {
-        continuation_request["max_output_tokens"] = max_output_tokens.clone();
-    }
-    if let Some(reasoning) = request.get("reasoning") {
-        continuation_request["reasoning"] = reasoning.clone();
-    }
-    if let Some(context_management) = request.get("context_management") {
-        continuation_request["context_management"] = context_management.clone();
-    }
-    if let Some(include) = request.get("include") {
-        continuation_request["include"] = include.clone();
-    }
-    if let Some(service_tier) = request.get("service_tier") {
-        continuation_request["service_tier"] = service_tier.clone();
-    }
-    if let Some(prompt_cache_key) = request.get("prompt_cache_key") {
-        continuation_request["prompt_cache_key"] = prompt_cache_key.clone();
-    }
-    if let Some(prompt_cache_retention) = request.get("prompt_cache_retention") {
-        continuation_request["prompt_cache_retention"] = prompt_cache_retention.clone();
-    }
-    continuation_request["store"] = serde_json::json!(false);
-    continuation_request["parallel_tool_calls"] = serde_json::json!(false);
+    let continuation_request =
+        build_continuation_request(request, &previous_response_id, &incremental_items);
 
     let continuation_tools = continuation_request
         .get("tools")
