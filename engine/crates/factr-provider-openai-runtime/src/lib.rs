@@ -22,6 +22,7 @@ use factr_base::provider::openai_request::build_responses_input;
 use factr_base::provider::openai_request::build_tools;
 use factr_provider_core::request_shape::RequestShape;
 use factr_provider_openai::build_tools_with_shape;
+use factr_provider_openai::stream_timing::StreamTiming;
 #[cfg(test)]
 use factr_message_types::TOOL_OUTPUT_MISSING_TEXT;
 use factr_message_types::{Message as ChatMessage, StreamEvent, ToolDefinition};

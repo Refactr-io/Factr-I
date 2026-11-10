@@ -112,6 +112,22 @@ pub(super) async fn force_refresh_openai_token(
 }
 
 /// Stream the response from OpenAI API
+/// Sends one event downstream; with stream timing on, the time spent waiting on the bounded
+/// channel is added to the call's `channel_wait_ms`.
+async fn send_event(
+    tx: &mpsc::Sender<Result<StreamEvent>>,
+    event: StreamEvent,
+    timing: Option<&mut StreamTiming>,
+) -> Result<(), mpsc::error::SendError<Result<StreamEvent>>> {
+    let Some(timing) = timing else {
+        return tx.send(Ok(event)).await;
+    };
+    let started = Instant::now();
+    let sent = tx.send(Ok(event)).await;
+    timing.add_channel_wait(started.elapsed());
+    sent
+}
+
 pub(super) async fn stream_response(
     client: Client,
     credentials: Arc<RwLock<CodexCredentials>>,
@@ -168,6 +184,12 @@ pub(super) async fn stream_response(
     let connect_start = std::time::Instant::now();
     let idle_timeout = effective_https_idle_timeout(&request);
 
+    let timing = StreamTiming::start(
+        factr_provider_openai::stream_timing::sink(),
+        "https",
+        &request,
+        RequestShape::current(),
+    );
     let response = factr_provider_core::transport::send_with_initial_response_timeout(
         builder.json(&request),
         idle_timeout,
@@ -307,7 +329,7 @@ pub(super) async fn stream_response(
         .await;
 
     // Stream the response
-    let mut stream = OpenAIResponsesStream::new(response.bytes_stream());
+    let mut stream = OpenAIResponsesStream::new_with_timing(response.bytes_stream(), timing);
     let mut saw_message_end = false;
 
     // Idle timeout between streamed events. Without this, a silently dead
@@ -371,7 +393,7 @@ pub(super) async fn stream_response(
                     }
                 }
                 usage_recorder.observe(&event).await;
-                if tx.send(Ok(event)).await.is_err() {
+                if send_event(&tx, event, stream.timing_mut()).await.is_err() {
                     // Receiver dropped, stop streaming
                     log_openai_stream_lifecycle(
                         factr_base::logging::LogLevel::Warn,
@@ -530,6 +552,7 @@ pub(super) async fn try_persistent_ws_continuation(
         input,
         input_item_count,
         tx,
+        factr_provider_openai::stream_timing::sink(),
     )
     .await;
     // Invalidate under the same lock that protected the attempt. Clearing in
@@ -552,13 +575,14 @@ pub(super) async fn try_persistent_ws_continuation(
     result
 }
 
-async fn continue_persistent_ws_locked(
+pub(super) async fn continue_persistent_ws_locked(
     guard: &mut Option<PersistentWsState>,
     credentials: &Arc<RwLock<CodexCredentials>>,
     request: &Value,
     input: &[Value],
     input_item_count: usize,
     tx: &mpsc::Sender<Result<StreamEvent>>,
+    timing_sink: Option<fn(&str)>,
 ) -> PersistentWsResult {
     let request_model = openai_request_model(request);
     let state = match guard.as_mut() {
@@ -921,6 +945,12 @@ async fn continue_persistent_ws_locked(
         return PersistentWsResult::NotAvailable;
     }
     let mut usage_recorder = OAuthUsageRecorder::capture(&send_credentials, request);
+    let mut timing = StreamTiming::start(
+        timing_sink,
+        "ws-continuation",
+        &continuation_request,
+        RequestShape::current(),
+    );
     if let Err(e) = state.ws_stream.send(WsMessage::Text(request_text)).await {
         return PersistentWsResult::Failed(format!("send error: {}", e));
     }
@@ -998,6 +1028,9 @@ async fn continue_persistent_ws_locked(
         match result {
             Ok(WsMessage::Text(text)) => {
                 let text = text.to_string();
+                if let Some(timing) = timing.as_mut() {
+                    timing.observe(&text, Instant::now());
+                }
                 if !logged_first_server_event {
                     emit_connection_phase(tx, factr_message_types::ConnectionPhase::Streaming)
                         .await;
@@ -1076,7 +1109,7 @@ async fn continue_persistent_ws_locked(
                         return PersistentWsResult::TerminalError;
                     }
                     usage_recorder.observe(&event).await;
-                    if tx.send(Ok(event)).await.is_err() {
+                    if send_event(tx, event, timing.as_mut()).await.is_err() {
                         consumer_dropped = true;
                         break;
                     }
@@ -1103,7 +1136,7 @@ async fn continue_persistent_ws_locked(
                         saw_response_completed = true;
                     }
                     usage_recorder.observe(&event).await;
-                    if tx.send(Ok(event)).await.is_err() {
+                    if send_event(tx, event, timing.as_mut()).await.is_err() {
                         consumer_dropped = true;
                         break;
                     }
@@ -1353,6 +1386,12 @@ pub(super) async fn stream_response_websocket_persistent(
     })?;
     let request_send_started_at = Instant::now();
     emit_connection_phase(&tx, ConnectionPhase::SendingRequest).await;
+    let mut timing = StreamTiming::start(
+        factr_provider_openai::stream_timing::sink(),
+        "websocket",
+        &request_event,
+        RequestShape::current(),
+    );
     ws_stream
         .send(WsMessage::Text(request_text))
         .await
@@ -1437,6 +1476,9 @@ pub(super) async fn stream_response_websocket_persistent(
             Ok(message) => match message {
                 WsMessage::Text(text) => {
                     let text = text.to_string();
+                    if let Some(timing) = timing.as_mut() {
+                        timing.observe(&text, Instant::now());
+                    }
                     if !logged_first_server_event {
                         emit_connection_phase(&tx, ConnectionPhase::Streaming).await;
                         factr_base::logging::info(&format!(
@@ -1510,7 +1552,7 @@ pub(super) async fn stream_response_websocket_persistent(
                             }
                         }
                         usage_recorder.observe(&event).await;
-                        if tx.send(Ok(event)).await.is_err() {
+                        if send_event(&tx, event, timing.as_mut()).await.is_err() {
                             log_openai_stream_lifecycle(
                                 factr_base::logging::LogLevel::Warn,
                                 "consumer_dropped",
@@ -1547,7 +1589,7 @@ pub(super) async fn stream_response_websocket_persistent(
                             saw_response_completed = true;
                         }
                         usage_recorder.observe(&event).await;
-                        if tx.send(Ok(event)).await.is_err() {
+                        if send_event(&tx, event, timing.as_mut()).await.is_err() {
                             log_openai_stream_lifecycle(
                                 factr_base::logging::LogLevel::Warn,
                                 "consumer_dropped",

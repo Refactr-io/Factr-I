@@ -1,5 +1,6 @@
 pub mod request;
 pub mod stream;
+pub mod stream_timing;
 pub mod websocket_health;
 
 pub use request::{

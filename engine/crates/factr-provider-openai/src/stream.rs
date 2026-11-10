@@ -962,10 +962,20 @@ pub struct OpenAIResponsesStream {
     saw_thinking_delta: bool,
     streaming_tool_calls: HashMap<String, StreamingToolCallState>,
     completed_tool_items: HashSet<String>,
+    /// Optional observer of the raw events (`FACTR_STREAM_TIMING=1`); `None` for every other caller.
+    timing: Option<crate::stream_timing::StreamTiming>,
+    chunk_read_at: Option<std::time::Instant>,
 }
 
 impl OpenAIResponsesStream {
     pub fn new(stream: impl Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static) -> Self {
+        Self::new_with_timing(stream, None)
+    }
+
+    pub fn new_with_timing(
+        stream: impl Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+        timing: Option<crate::stream_timing::StreamTiming>,
+    ) -> Self {
         Self {
             inner: Box::pin(stream),
             buffer: String::new(),
@@ -975,7 +985,13 @@ impl OpenAIResponsesStream {
             saw_thinking_delta: false,
             streaming_tool_calls: HashMap::new(),
             completed_tool_items: HashSet::new(),
+            timing,
+            chunk_read_at: None,
         }
+    }
+
+    pub fn timing_mut(&mut self) -> Option<&mut crate::stream_timing::StreamTiming> {
+        self.timing.as_mut()
     }
 
     fn parse_next_event(&mut self) -> Option<StreamEvent> {
@@ -999,6 +1015,9 @@ impl OpenAIResponsesStream {
             }
 
             let data = data_lines.join("\n");
+            if let (Some(timing), Some(read_at)) = (self.timing.as_mut(), self.chunk_read_at) {
+                timing.observe(&data, read_at);
+            }
             if let Some(event) = parse_openai_response_event(
                 &data,
                 &mut self.saw_text_delta,
@@ -1059,6 +1078,9 @@ impl Stream for OpenAIResponsesStream {
 
             match self.inner.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(bytes))) => {
+                    if self.timing.is_some() {
+                        self.chunk_read_at = Some(std::time::Instant::now());
+                    }
                     let text = self.utf8.decode(&bytes);
                     self.buffer.push_str(&text);
                 }
