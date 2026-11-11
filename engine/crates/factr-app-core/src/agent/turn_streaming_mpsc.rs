@@ -245,6 +245,7 @@ impl Agent {
             if let Some(nudge) = stop_nudge.take_pending() {
                 injections.push(&mut messages_with_memory, Message::user(&nudge));
             }
+            deadline.set_no_run(self.current_check_ban() != factr_base::task_policy::CheckBan::None);
             if let Some(m) = deadline.poll(&self.session.id) {
                 injections.push(&mut messages_with_memory, Message::user(m));
             }
@@ -1339,6 +1340,7 @@ impl Agent {
                     && {
                         stop_nudge.set_late(deadline.past_70());
                         stop_nudge.set_half(deadline.past_50());
+                        stop_nudge.check_ban = self.current_check_ban();
                         stop_nudge.on_text_only_stop(&self.session.id, &text_content)
                     }
                 {

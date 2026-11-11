@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 
 const MSG_70: &str = "<system-reminder>About 30% of the time budget is left: stop exploring, write your best-effort result to the requested output now, then verify if time remains.</system-reminder>";
 const MSG_70_NO_TOOLS: &str = "<system-reminder>About 30% of the time budget is left: stop exploring and give your best answer now, without tools.</system-reminder>";
+/// `MSG_70` for a task that forbids running or checking the result.
+const MSG_70_NO_RUN: &str = "<system-reminder>About 30% of the time budget is left: stop exploring and write your best-effort result to the requested output now.</system-reminder>";
 const MSG_90: &str = "<system-reminder>Time is almost up: make sure the requested output files exist with your best result, then give a short final answer.</system-reminder>";
 
 pub(super) struct TurnDeadline {
@@ -14,6 +16,7 @@ pub(super) struct TurnDeadline {
     total: Option<Duration>,
     stage: u8,
     no_tools: bool,
+    no_run: bool,
 }
 
 fn total_budget(turn_s: Option<&str>, hard_unix: Option<&str>, now_unix: u64) -> Option<Duration> {
@@ -46,12 +49,17 @@ impl TurnDeadline {
             std::env::var("FACTR_HARD_DEADLINE_UNIX").ok().as_deref(),
             now,
         );
-        Self { start: Instant::now(), total, stage: 0, no_tools: false }
+        Self { start: Instant::now(), total, stage: 0, no_tools: false, no_run: false }
     }
 
     /// The task forbids tools: the reminders then never mention verifying.
     pub(super) fn set_no_tools(&mut self, no_tools: bool) {
         self.no_tools = no_tools;
+    }
+
+    /// The user forbade running or checking the result: the 70% reminder does not ask to verify.
+    pub(super) fn set_no_run(&mut self, no_run: bool) {
+        self.no_run = no_run;
     }
 
     /// Time left in the runner's budget; `None` when no deadline is set.
@@ -72,6 +80,7 @@ impl TurnDeadline {
     /// The reminder to inject before the next model request, if one is due.
     pub(super) fn poll(&mut self, session_id: &str) -> Option<&'static str> {
         let (stage, reason, msg) = due(self.start.elapsed(), self.total?, self.stage, self.no_tools)?;
+        let msg = if self.no_run && msg == MSG_70 { MSG_70_NO_RUN } else { msg };
         self.stage = stage;
         factr_base::obs_sink::emit(
             factr_base::obs_sink::Span::new("loop.guard").session(session_id).attr("reason", reason),
@@ -115,8 +124,18 @@ mod tests {
     }
 
     #[test]
+    fn the_70_reminder_drops_verify_when_running_is_forbidden() {
+        let start = Instant::now() - Duration::from_secs(80);
+        let mut d = TurnDeadline { start, total: Some(Duration::from_secs(100)), stage: 0, no_tools: false, no_run: true };
+        let m = d.poll("s").unwrap();
+        assert!(!m.contains("verify") && m.contains("best-effort result"), "{m}");
+        let mut plain = TurnDeadline { start, total: Some(Duration::from_secs(100)), stage: 0, no_tools: false, no_run: false };
+        assert_eq!(plain.poll("s"), Some(MSG_70));
+    }
+
+    #[test]
     fn off_without_env() {
-        let mut d = TurnDeadline { start: Instant::now(), total: None, stage: 0, no_tools: false };
+        let mut d = TurnDeadline { start: Instant::now(), total: None, stage: 0, no_tools: false, no_run: false };
         assert!(d.poll("s").is_none());
     }
 }

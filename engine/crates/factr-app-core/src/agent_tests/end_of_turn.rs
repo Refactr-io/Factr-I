@@ -67,3 +67,23 @@ async fn a_missing_required_line_gets_one_format_nudge_and_the_labelled_reply_is
     let (_, text) = run_headless_task(task, &["RESULT: 7\nbecause the count of rows is seven, as shown above in detail.", "Here is a long unlabelled follow-up that comes after, more than forty characters."]).await;
     assert!(text.starts_with("RESULT: 7"), "{text}");
 }
+
+#[tokio::test]
+async fn the_check_ban_follows_the_newest_user_instruction_and_its_switch() {
+    use factr_base::task_policy::CheckBan;
+    let _lock = crate::storage::lock_test_env();
+    let provider = RefusalScriptProvider { script: Default::default(), calls: Default::default() };
+    let mut agent = Agent::new(Arc::new(provider), Registry::empty());
+    agent.loop_shape.respect_no_verify = true;
+    let user = |agent: &mut Agent, text: &str| agent.add_message(Role::User, vec![ContentBlock::Text { text: text.into(), cache_control: None }]);
+    user(&mut agent, "Write one file with the file tool, do not run it, reply DONE");
+    assert_eq!(agent.current_check_ban(), CheckBan::Run);
+    user(&mut agent, "<system-reminder>Run or read back what you produced.</system-reminder>");
+    assert_eq!(agent.current_check_ban(), CheckBan::Run, "a reminder is not the user's word");
+    user(&mut agent, "Actually, run it now.");
+    assert_eq!(agent.current_check_ban(), CheckBan::None, "a later correction wins");
+    user(&mut agent, "Do not verify anything.");
+    assert_eq!(agent.current_check_ban(), CheckBan::Check);
+    agent.loop_shape.respect_no_verify = false;
+    assert_eq!(agent.current_check_ban(), CheckBan::None, "switch off");
+}

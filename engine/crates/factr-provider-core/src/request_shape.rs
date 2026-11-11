@@ -71,14 +71,19 @@ pub struct LoopShape {
     /// Messages injected into one call's request (nudges, reminders, unsaved memory) stay at
     /// the same position in every later call of the turn, so the next input extends this one.
     pub sticky_nudges: bool,
+    /// A user instruction not to run the result stops the auto-verify gate and the deadline's
+    /// "verify" wording; one not to check it also stops the verify nudge.
+    pub respect_no_verify: bool,
 }
 
 impl LoopShape {
     pub const BASELINE: Self = Self {
         sticky_nudges: false,
+        respect_no_verify: false,
     };
     pub const VARIANT: Self = Self {
         sticky_nudges: true,
+        respect_no_verify: true,
     };
 
     /// Same rules as [`RequestShape::resolve`].
@@ -87,7 +92,10 @@ impl LoopShape {
             return Self::BASELINE;
         }
         let mut shape = Self::VARIANT;
-        for (name, field) in [("FACTR_LOOP_STICKY_NUDGES", &mut shape.sticky_nudges)] {
+        for (name, field) in [
+            ("FACTR_LOOP_STICKY_NUDGES", &mut shape.sticky_nudges),
+            ("FACTR_LOOP_RESPECT_NO_VERIFY", &mut shape.respect_no_verify),
+        ] {
             match env(name).as_deref() {
                 Some("0") => *field = false,
                 Some("1") => *field = true,
@@ -188,7 +196,19 @@ mod tests {
         LoopShape::resolve(&|name| vars.get(name).cloned())
     }
 
-    const LOOP_SWITCHES: [&str; 1] = ["FACTR_LOOP_STICKY_NUDGES"];
+    const LOOP_SWITCHES: [&str; 2] = ["FACTR_LOOP_STICKY_NUDGES", "FACTR_LOOP_RESPECT_NO_VERIFY"];
+
+    /// VARIANT with only the field behind `name` flipped.
+    fn loop_flipped(name: &str) -> LoopShape {
+        let mut s = LoopShape::VARIANT;
+        let field = match name {
+            "FACTR_LOOP_STICKY_NUDGES" => &mut s.sticky_nudges,
+            "FACTR_LOOP_RESPECT_NO_VERIFY" => &mut s.respect_no_verify,
+            _ => unreachable!("{name}"),
+        };
+        *field = !*field;
+        s
+    }
 
     #[test]
     fn loop_baseline_master_wins_and_each_loop_switch_flips_one_field() {
@@ -199,8 +219,8 @@ mod tests {
         assert_eq!(resolve_loop(&master), LoopShape::BASELINE);
         for name in LOOP_SWITCHES {
             let (off, on) = (resolve_loop(&[(name, "0")]), resolve_loop(&[(name, "1")]));
-            assert_ne!(off, on, "{name}");
-            assert!(off == LoopShape::VARIANT || on == LoopShape::VARIANT, "{name}");
+            let (v, flipped) = (LoopShape::VARIANT, loop_flipped(name));
+            assert!((off, on) == (v, flipped) || (off, on) == (flipped, v), "{name}");
             for junk in ["", "true", "2"] {
                 assert_eq!(resolve_loop(&[(name, junk)]), LoopShape::VARIANT, "{name}={junk:?}");
             }

@@ -59,6 +59,79 @@ pub fn gating_on() -> bool {
     std::env::var("FACTR_GUARD_NOTOOLS").map_or(true, |v| v != "0")
 }
 
+/// What the user said about checking the result of the work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CheckBan {
+    /// Nothing forbidden (silent, optional wording, or an explicit request to run or check).
+    #[default]
+    None,
+    /// Running the result is forbidden ("do not run it"); reading it back is still allowed.
+    Run,
+    /// Any check of the result is forbidden ("do not verify", "no review").
+    Check,
+}
+
+const BAN_NEG: &str = r"do not|don't|never|must not|should not|shouldn't|please don't";
+
+fn run_ban_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(&format!(
+            r"\b(?:(?:{BAN_NEG})\s+(?:run|execute|test)\b|without (?:running|executing|testing)\b)"
+        ))
+        .unwrap()
+    })
+}
+
+fn check_ban_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(&format!(
+            r"\b(?:(?:{BAN_NEG})\s+(?:verify|review|check(\s+(?:in|out)\b)?)\b|without (?:verifying|checking|reviewing)\b|\bno (?:verification|checking|review)\b)"
+        ))
+        .unwrap()
+    })
+}
+
+/// "run it", "go ahead and test it": an explicit request that overrides an earlier ban.
+fn allow_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        Regex::new(r"\b(?:run|execute|test|verify|check)\s+(?:it|this|that|them|the (?:file|script|code|program|result|tests?))\b").unwrap()
+    })
+}
+
+/// Text in double quotes, backticks or code blocks is content, not an instruction.
+fn strip_quoted(text: &str) -> String {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"(?s)```.*?```|`[^`]*`|"[^"]*"|\u{201C}[^\u{201D}]*\u{201D}"#).unwrap())
+        .replace_all(text, " ")
+        .into_owned()
+}
+
+/// One user message's stance: `Some(ban)` when it forbids or explicitly asks for a run or check
+/// (`Some(CheckBan::None)`), `None` when it says nothing about it. "no need to test" and
+/// "you may skip tests" are optional, not a ban, so they say nothing.
+pub fn check_stance(text: &str) -> Option<CheckBan> {
+    let t = normalise(&strip_quoted(&text.replace(['\u{2019}', '\u{2018}', '\u{02bc}'], "'")));
+    // "do not check in / check out" is about version control, not about checking the result.
+    if check_ban_re().captures_iter(&t).any(|c| c.get(1).is_none()) {
+        Some(CheckBan::Check)
+    } else if run_ban_re().is_match(&t) {
+        Some(CheckBan::Run)
+    } else if allow_re().is_match(&t) {
+        Some(CheckBan::None)
+    } else {
+        None
+    }
+}
+
+/// The effective ban for the turn: user messages newest first; the newest one with a stance
+/// decides, so a later correction wins over the first task text.
+pub fn check_ban<'a>(newest_first: impl IntoIterator<Item = &'a str>) -> CheckBan {
+    newest_first.into_iter().find_map(check_stance).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::forbids_tools;
@@ -109,5 +182,51 @@ mod tests {
         for t in no {
             assert!(!forbids_tools(t), "should allow: {t}");
         }
+    }
+}
+
+#[cfg(test)]
+mod check_ban_tests {
+    use super::{check_ban, check_stance, CheckBan};
+
+    #[test]
+    fn check_ban_phrases() {
+        let cases = [
+            ("Write one file with the file tool, do not run it, reply DONE", Some(CheckBan::Run)),
+            ("Don't execute anything, just write the script.", Some(CheckBan::Run)),
+            ("Don\u{2019}t run it.", Some(CheckBan::Run)),
+            ("Write the parser without running it.", Some(CheckBan::Run)),
+            ("Do not test it yet.", Some(CheckBan::Run)),
+            ("Do not verify the output.", Some(CheckBan::Check)),
+            ("Do not check or review it, just write it.", Some(CheckBan::Check)),
+            ("No verification needed.", Some(CheckBan::Check)),
+            // Optional wording is not a ban ("test it" reads as allowing a test, which bans nothing).
+            ("No need to test it.", Some(CheckBan::None)),
+            ("No need to test.", None),
+            ("You may skip tests.", None),
+            // Must not match as a ban.
+            ("Do not stop until it runs.", None),
+            ("Run it without arguments.", Some(CheckBan::None)),
+            ("Never mind, run it.", Some(CheckBan::None)),
+            ("Do not check in the build folder.", None),
+            ("Write the code and run the tests.", Some(CheckBan::None)),
+            ("Fix the bug.", None),
+            // Quoted text and code are content, not instructions.
+            ("Add a README line that says \"do not run it as root\".", None),
+            ("Print `don't execute` on error.", None),
+            ("Use this banner:\n```\nDo not verify\n```", None),
+            ("", None),
+        ];
+        for (text, want) in cases {
+            assert_eq!(check_stance(text), want, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn the_newest_message_with_a_stance_decides() {
+        assert_eq!(check_ban(["Also add a docstring.", "Write it, do not run it."]), CheckBan::Run);
+        assert_eq!(check_ban(["Actually, run it now.", "Write it, do not run it."]), CheckBan::None);
+        assert_eq!(check_ban(["Do not verify anything.", "Write it and run it."]), CheckBan::Check);
+        assert_eq!(check_ban(Vec::<&str>::new()), CheckBan::None);
     }
 }

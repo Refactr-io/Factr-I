@@ -130,6 +130,8 @@ pub(super) struct StopNudge {
     // bash or the REPL can run (policy and install), and the task forbids tools.
     pub(super) compute_tool: bool,
     forbids_tools: bool,
+    /// What the user said about running or checking the result (`LoopShape::respect_no_verify`).
+    pub(super) check_ban: factr_base::task_policy::CheckBan,
     // `FACTR_GUARD_NOTOOLS=0`: the no-tools gating (and the shared detector) are off.
     notools_off: bool,
     cwd_files: Vec<String>,
@@ -310,6 +312,18 @@ impl super::Agent {
     /// Per-turn nudge/gate state. The gate is off for subagents, goal
     /// sessions (their own gates), past a hard deadline, and when
     /// the cwd is missing, `/`, or a home directory.
+    /// The user's current word on running or checking the result: the newest user message that
+    /// says something about it wins (`CheckBan::None` with the switch off).
+    pub(super) fn current_check_ban(&self) -> factr_base::task_policy::CheckBan {
+        if !self.loop_shape.respect_no_verify {
+            return factr_base::task_policy::CheckBan::None;
+        }
+        let texts = self.session.messages.iter().rev().filter(|m| m.role == factr_message_types::Role::User).filter_map(|m| {
+            first_task_text(std::iter::once(m.content.as_slice()))
+        });
+        factr_base::task_policy::check_ban(texts)
+    }
+
     pub(super) fn new_stop_nudge(&self) -> StopNudge {
         let mut n = StopNudge::default();
         let cwd = self.session.working_dir.as_deref().map(std::path::PathBuf::from);
@@ -689,7 +703,8 @@ impl StopNudge {
     }
 
     fn on_text_only_stop_with(&mut self, session_id: &str, text: &str, run: Runner) -> bool {
-        if self.auto_verify(session_id, run) == Some(true) {
+        // A ban on running the result also stops the gate that runs it.
+        if self.check_ban == factr_base::task_policy::CheckBan::None && self.auto_verify(session_id, run) == Some(true) {
             return true;
         }
         let lower = text.to_ascii_lowercase();
@@ -704,7 +719,7 @@ impl StopNudge {
             let routes = (self.queries.len() + self.hosts.len()) as u32;
             let fresh = self.headless && !self.late && !text.trim().is_empty();
             let wrote = self.last_write > 0 || self.shell_write_seq > 0;
-            picked = if !no_tools && fresh && guard_on("VERIFY") && !self.verify_sent && !self.gate_ran && self.unexecuted_write() {
+            picked = if !no_tools && fresh && guard_on("VERIFY") && self.check_ban != factr_base::task_policy::CheckBan::Check && !self.verify_sent && !self.gate_ran && self.unexecuted_write() {
                 self.verify_sent = true;
                 Some((VERIFY_NUDGE.into(), "verify_nudge"))
             } else if !no_tools && !self.gate_ran && self.last_check > self.last_write && self.last_check_exit != 0 {
@@ -1636,6 +1651,37 @@ mod tests {
         GateResult { passed: false, exit_code: 1, output: out.into() }
     }
     const OK: fn() -> GateResult = || GateResult { passed: true, exit_code: 0, output: String::new() };
+
+    #[test]
+    fn a_ban_on_running_stops_the_gate_and_a_ban_on_checking_also_stops_the_verify_nudge() {
+        use factr_base::task_policy::CheckBan;
+        let runs = RefCell::new(0);
+        let run = |_: &str, _: &std::path::Path, _: std::time::Duration| {
+            *runs.borrow_mut() += 1;
+            fail("FAIL: test_x")
+        };
+        // No ban: the gate runs and feeds back.
+        let (mut n, _d) = gate_nudge(&[("test_a.py", "")]);
+        n.observe("write", &json!({"file_path": "a.py"}), 0);
+        assert!(n.on_text_only_stop_with("s", "Done.", &run));
+        assert!(n.take_pending().unwrap().contains("Auto-verify"));
+        assert_eq!(*runs.borrow(), 1);
+        // "do not run it": no gate run; reading back is still allowed, so the verify nudge fires.
+        let (mut r, _d) = gate_nudge(&[("test_a.py", "")]);
+        r.headless = true;
+        r.check_ban = CheckBan::Run;
+        r.observe("write", &json!({"file_path": "a.py"}), 0);
+        assert!(r.on_text_only_stop_with("s", "Done.", &run));
+        assert_eq!(r.take_pending(), Some(VERIFY_NUDGE.to_string()));
+        assert_eq!(*runs.borrow(), 1, "the gate did not run");
+        // "do not check it": no gate run and no verify nudge.
+        let (mut c, _d) = gate_nudge(&[("test_a.py", "")]);
+        c.headless = true;
+        c.check_ban = CheckBan::Check;
+        c.observe("write", &json!({"file_path": "a.py"}), 0);
+        assert!(!c.on_text_only_stop_with("s", "Done.", &run));
+        assert_eq!(*runs.borrow(), 1);
+    }
 
     #[test]
     fn gate_feeds_back_failure_then_ends_on_pass() {
