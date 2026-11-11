@@ -719,7 +719,7 @@ fn new_prompt_cache_key() -> String {
 
 /// The cache key for a request: the factr session it runs for, so a re-attached or restarted
 /// session (a new provider instance) keeps its cache hits; the instance key outside any session.
-/// Experiment (`RequestShape::content_cache_key`): `pck_` + the first 24 hex chars of
+/// Opt-in, off by default (`RequestShape::content_cache_key`): `pck_` + the first 24 hex chars of
 /// sha256(instructions, 0x00, tools sorted by name or type as compact JSON with sorted keys).
 /// The reference client hashes the same parts plus a session scope; this leaves the scope out, so
 /// every session with the same prompt and tool set shares one key.

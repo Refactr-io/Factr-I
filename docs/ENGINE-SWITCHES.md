@@ -1,32 +1,31 @@
-# Request-shape variant (branch `perf/request-shape-variant`)
+# Engine switches
 
-A build whose OpenAI Responses requests can take the shape the reference clients (the Codex CLI and the Python agent) send, so a streaming-speed gap can be tested with one binary. Every change has its own switch, and one master switch makes the build send byte-identical requests to `main`. Other providers (the Copilot runtime included) are not affected: they keep calling the public builders, which stay on the baseline shape.
+Since v0.0.16 the OpenAI Responses requests take the shape the reference clients (the Codex CLI and the Python agent) send, and the agent loop has a few new defaults. Every change has its own environment switch, and one master switch, `FACTR_VARIANT_BASELINE=1`, restores the v0.0.15 behaviour (byte-identical requests, proven by golden fixtures). Other providers (the Copilot runtime included) are not affected: they keep calling the public builders, which stay on the baseline shape.
 
 The shape is read once per process (`RequestShape::current()` in `factr-provider-core/src/request_shape.rs`), so the prewarm payload, the first request, retries, the HTTPS fallback, model switches and every continuation use the same values.
 
 ## Switches
 
-| Env | Field | `main` (baseline) | Variant default | What it changes |
+| Env | Field | v0.0.15 (baseline) | Default | What it changes |
 |---|---|---|---|---|
-| `FACTR_VARIANT_BASELINE=1` | all | | | Master switch: exactly the `main` request, every other switch ignored |
+| `FACTR_VARIANT_BASELINE=1` | all | | | Master switch: exactly the v0.0.15 request and loop, every other switch ignored |
 | `FACTR_OPENAI_STRICT_TOOLS` | `strict_tools` | `1` | `0` | Off: every tool is sent with the compatible (not strict-rewritten) schema and `strict: false` |
 | `FACTR_OPENAI_CHATGPT_CACHE_KEY` | `chatgpt_cache_key` | `0` | `1` | On: the session `prompt_cache_key` is also sent in ChatGPT mode. `prompt_cache_retention` stays API-key-only. The idle prewarm payload leaves the key out so warm sockets are still adopted |
 | `FACTR_OPENAI_PARALLEL_TOOLS` | `parallel_tool_calls` | `0` | `0` | On: `parallel_tool_calls: true` on the full request and its continuation. Calls from one response still run one at a time, in order |
 | `FACTR_OPENAI_REPLAY_REASONING_ID` | `replay_reasoning_id` | `1` | `1` | Off: replayed reasoning items carry no `id` (full request and explicit native-compaction request) |
 | `FACTR_OPENAI_WS_FAILED_ENDS` | `ws_failed_response_ends` | `0` | `1` | On: a fresh WebSocket attempt that gets `response.failed` (or an `error` event) not on the retry list forwards it once and ends, without saving the socket for reuse, as a socket continuation already did. Off, the backend sends no `response.completed` after it and keeps the socket open, so the attempt waited up to the 300s idle limit, then fell back to HTTPS and sent the request again. The default simple completion (REPL sub-calls, other background calls) then returns that error instead of empty text. This was the REPL "stall": about one sub-call in twenty, each ending in a failed response within 1-7s |
 | `FACTR_OPENAI_IMAGE_TOOL_NEEDS_TOOLS` | `image_tool_needs_tools` | `0` | `1` | On: the hosted `image_generation` tool (ChatGPT mode) is attached only to a request that carries tools of its own. A REPL sub-call or any other simple completion sends none. These calls run where the session's tool policy is not visible, so they got the image tool even in runs that do not allow it; a classification sub-call that called it failed with `image_generation_user_error` ("Complexity 'medium' is not supported for this image model"), which was the failed response behind the stall |
-
-| `FACTR_OPENAI_CACHE_KEY_MODE` | `content_cache_key` | (no key) | `session` | Experiment. `content`: in ChatGPT mode the key is `pck_` + 24 hex chars of sha256(instructions, NUL, tools sorted by name as sorted-key JSON), with no session id, so sessions with the same prompt and tool set share it; the idle prewarm then sends and compares the key. `session`: the per-session key above. API-key mode always keeps its session key |
+| `FACTR_OPENAI_CACHE_KEY_MODE` | `content_cache_key` | (no key) | `session` | Opt-in, off by default. `content`: in ChatGPT mode the key is `pck_` + 24 hex chars of sha256(instructions, NUL, tools sorted by name as sorted-key JSON), with no session id, so sessions with the same prompt and tool set share it; the idle prewarm then sends and compares the key. `session`: the per-session key above. API-key mode always keeps its session key |
 
 Each switch takes `0` or `1` (the cache-key mode takes `session` or `content`); any other value keeps the default. Native compaction already has its own switch: `FACTR_OPENAI_NATIVE_COMPACTION_MODE`.
 
-The reference client's own key is content-addressed within one logical session (it hashes a session scope with the instructions and tools), so `content` mode is a separate experiment, not a copy of it.
+The reference client's own key is content-addressed within one logical session (it hashes a session scope with the instructions and tools), so `content` mode is a separate design, not a copy of it.
 
 ## Loop switches
 
 The agent loop around the requests has its own table, `LoopShape` (same file, same master switch, read once per process). These apply to every provider.
 
-| Env | Field | `main` (baseline) | Variant default | What it changes |
+| Env | Field | v0.0.15 (baseline) | Default | What it changes |
 |---|---|---|---|---|
 | `FACTR_LOOP_STICKY_NUDGES` | `sticky_nudges` | `0` | `1` | Messages injected into one call's request (stop nudges, the turn's system reminder, repeat-guard, deadline and batch reminders, unsaved memory) stay at the position they were first sent at for the rest of the turn, so the next input extends the last one and a socket chain can continue. Never written to the session; dropped at the end of the turn, and on compaction or a rewritten history |
 | `FACTR_LOOP_RESPECT_NO_VERIFY` | `respect_no_verify` | `0` | `1` | The newest user message that says so decides. "do not run it": no auto-verify gate run and no "verify" in the 70% deadline reminder (reading back stays allowed). "do not verify / check / review": also no verify nudge. Optional wording ("no need to test") bans nothing; quoted text and code are ignored |
@@ -43,6 +42,11 @@ The agent loop around the requests has its own table, `LoopShape` (same file, sa
 
 - That the backend accepts `strict: false` with the compatible schema is inferred from the reference clients; nothing local shows it.
 - That the ChatGPT backend accepts `prompt_cache_key` is inferred from the reference clients; nothing local shows it.
+
+## Known issues
+
+- The hosted image tool follows the run's tool policy through the logging context, which is keyed by the tokio task that started the turn. The main loop builds its requests in that task, so it sees the policy. A REPL sub-call or another background completion runs in a different task, sees no session and is treated as allowed. With `FACTR_OPENAI_IMAGE_TOOL_NEEDS_TOOLS` on (the default) those calls carry no tools and so never get the image tool; with it off, or with `FACTR_VARIANT_BASELINE=1`, they get it as in v0.0.15, even in runs whose toolsets do not allow it.
+- Image calls in ChatGPT mode have been seen to fail with `image_generation_user_error` ("Complexity 'medium' is not supported for this image model"). The engine sends the hosted tool as a bare `{"type": "image_generation"}` with no options (unchanged since v0.0.0), so the rejected value is chosen by the backend or by the model's call, not by Factr-I. Which values the backend accepts now has not been checked (it needs a model call); until it is, image generation in ChatGPT mode may fail.
 
 ## Stream timing line
 
@@ -62,12 +66,12 @@ An attempt that ends with no terminal response (an error, a timeout, a dropped r
 
 The times are application-observed, not network-exact. `t0` is taken just before the request is handed to the transport (before the WebSocket send, before the HTTPS request goes out). Each event is stamped when the runtime reads its frame or chunk, before conversion and before it is passed on. The reader is not decoupled from delivery, so a slow consumer can still delay later reads; `channel_wait_ms` shows how much of that happened.
 
-## Later test (text only, not run)
+## Measuring the streaming rate
 
 One binary, the same prompt producing about 2k output tokens at effort high, one request at a time, three calls per arm:
 
 1. `FACTR_VARIANT_BASELINE=1`.
-2. Variant defaults.
+2. The defaults (no switch set).
 3. Single toggles: leave the master switch unset and set all four switches to their baseline values (`FACTR_OPENAI_STRICT_TOOLS=1 FACTR_OPENAI_CHATGPT_CACHE_KEY=0 FACTR_OPENAI_PARALLEL_TOOLS=0 FACTR_OPENAI_REPLAY_REASONING_ID=1`), then flip one: strict off only, cache key only, native compaction off only (`FACTR_OPENAI_NATIVE_COMPACTION_MODE=off`), parallel on only, reasoning id off only.
 
 Two ways to compute the rate:

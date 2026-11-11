@@ -405,7 +405,7 @@ fn each_switch_alone_changes_only_its_own_fields() {
     assert_eq!(id, expected);
 }
 
-/// Experiment: `FACTR_OPENAI_CACHE_KEY_MODE=content`.
+/// Opt-in: `FACTR_OPENAI_CACHE_KEY_MODE=content`.
 fn content_shape() -> RequestShape {
     RequestShape {
         content_cache_key: true,

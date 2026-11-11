@@ -1,5 +1,6 @@
 //! Switches for the shape of OpenAI Responses requests. `BASELINE` is the request the engine
-//! has always sent; `VARIANT` matches the reference clients (the Codex CLI and the Python agent).
+//! sent up to v0.0.15 (`FACTR_VARIANT_BASELINE=1`); `VARIANT` is the default since v0.0.16 and
+//! matches the reference clients (the Codex CLI and the Python agent). See `docs/ENGINE-SWITCHES.md`.
 
 use std::sync::OnceLock;
 
@@ -9,7 +10,7 @@ pub struct RequestShape {
     pub chatgpt_cache_key: bool,
     pub parallel_tool_calls: bool,
     pub replay_reasoning_id: bool,
-    /// Experiment (`FACTR_OPENAI_CACHE_KEY_MODE=content`): in ChatGPT mode the key is a hash of
+    /// Opt-in, off by default (`FACTR_OPENAI_CACHE_KEY_MODE=content`): in ChatGPT mode the key is a hash of
     /// the instructions and the sorted tools, with no session id, so sessions that share a
     /// prompt and tool set share a key. `session` (false) keeps the per-session key.
     pub content_cache_key: bool,
@@ -101,7 +102,7 @@ impl RequestShape {
 }
 
 /// Switches for the agent loop around the requests (what is injected, what is echoed back).
-/// `BASELINE` is the loop the engine has always run; `FACTR_VARIANT_BASELINE=1` selects it.
+/// `BASELINE` is the loop up to v0.0.15; `FACTR_VARIANT_BASELINE=1` selects it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoopShape {
     /// Messages injected into one call's request (nudges, reminders, unsaved memory) stay at
