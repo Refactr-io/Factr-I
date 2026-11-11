@@ -2281,8 +2281,14 @@ async fn the_first_request_prefix_stays_under_its_token_ceiling() {
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
     agent.session.working_dir = None;
+    // Measured on the baseline loop; the steering sentences (`LoopShape::tool_steering`) are
+    // measured on their own below.
+    agent.loop_shape.tool_steering = false;
     let split = agent.build_system_prompt_split(None);
     let tools = agent.tool_definitions().await;
+    agent.loop_shape.tool_steering = true;
+    agent.locked_tools = None;
+    let steered = agent.tool_definitions().await;
     for (key, value) in saved {
         match value {
             Some(value) => crate::env::set_var(key, value),
@@ -2293,6 +2299,9 @@ async fn the_first_request_prefix_stays_under_its_token_ceiling() {
     assert!(!split.static_part.contains("learn-"), "the shipped REPL wrapper skills stay out of the skills index");
     let system = split.estimated_tokens();
     let schemas = crate::message::ToolDefinition::aggregate_prompt_token_estimate(&tools);
+    // The steering sentences on bash, read, agentgrep and write: 94 tokens.
+    let steering = crate::message::ToolDefinition::aggregate_prompt_token_estimate(&steered) - schemas;
+    assert!(steering <= 94, "tool steering adds {steering} tokens");
     assert!(
         system + schemas <= CEILING_TOKENS,
         "first-request prefix is {} tokens (system {system} + tool schemas {schemas}); ceiling {CEILING_TOKENS}",
@@ -2715,3 +2724,6 @@ mod sticky_injections;
 
 #[path = "agent_tests/compact_write_result.rs"]
 mod compact_write_result;
+
+#[path = "agent_tests/tool_steering.rs"]
+mod tool_steering;

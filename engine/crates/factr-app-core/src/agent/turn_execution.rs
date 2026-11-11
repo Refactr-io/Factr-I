@@ -641,6 +641,10 @@ impl Agent {
             tools.retain(|tool| !self.registry.tool_is_disabled(&disabled, &tool.name));
         }
         self.defer_tools(&mut tools, enabled.is_none() && self.allowed_tools.is_none());
+        if self.loop_shape.tool_steering {
+            let custom = sdk.map(|c| c.custom.into_iter().map(|t| t.name).collect()).unwrap_or_default();
+            super::tool_steering::steer(&mut tools, &custom);
+        }
         tools
     }
 
