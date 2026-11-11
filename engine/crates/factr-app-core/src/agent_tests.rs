@@ -2709,3 +2709,6 @@ fn mcp_default_defer_threshold_is_a_multiple_of_the_fixed_surface() {
     let threshold = factr_base::config::ToolConfig::default().mcp_tools_token_threshold;
     assert!(threshold >= 6 * surface, "inline MCP schemas are paid on every request: {threshold} vs fixed {surface}");
 }
+
+#[path = "agent_tests/sticky_injections.rs"]
+mod sticky_injections;

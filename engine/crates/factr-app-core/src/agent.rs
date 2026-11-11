@@ -16,6 +16,7 @@ mod rewind_stack;
 mod auto_verify;
 mod env_snapshot;
 mod stop_nudge;
+mod sticky_injections;
 mod bg_guard;
 mod provider_fallback;
 mod turn_deadline;
@@ -213,6 +214,8 @@ pub struct Agent {
     /// Transient reminder injected into provider requests for the current turn only.
     /// Not persisted to session history.
     current_turn_system_reminder: Option<String>,
+    /// Loop switches (`LoopShape::current()`), a field so tests can set them per agent.
+    loop_shape: factr_provider_core::request_shape::LoopShape,
     /// Tool call ids observed in the current session transcript.
     tool_call_ids: HashSet<String>,
     /// Tool result ids observed in the current session transcript.
@@ -329,6 +332,7 @@ impl Agent {
             last_status_detail: None,
             pending_alerts: Vec::new(),
             current_turn_system_reminder: None,
+            loop_shape: *factr_provider_core::request_shape::LoopShape::current(),
             tool_call_ids: HashSet::new(),
             tool_result_ids: HashSet::new(),
             tool_output_scan_index: 0,

@@ -64,6 +64,46 @@ impl RequestShape {
     }
 }
 
+/// Switches for the agent loop around the requests (what is injected, what is echoed back).
+/// `BASELINE` is the loop the engine has always run; `FACTR_VARIANT_BASELINE=1` selects it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoopShape {
+    /// Messages injected into one call's request (nudges, reminders, unsaved memory) stay at
+    /// the same position in every later call of the turn, so the next input extends this one.
+    pub sticky_nudges: bool,
+}
+
+impl LoopShape {
+    pub const BASELINE: Self = Self {
+        sticky_nudges: false,
+    };
+    pub const VARIANT: Self = Self {
+        sticky_nudges: true,
+    };
+
+    /// Same rules as [`RequestShape::resolve`].
+    pub fn resolve(env: &dyn Fn(&str) -> Option<String>) -> Self {
+        if env("FACTR_VARIANT_BASELINE").as_deref() == Some("1") {
+            return Self::BASELINE;
+        }
+        let mut shape = Self::VARIANT;
+        for (name, field) in [("FACTR_LOOP_STICKY_NUDGES", &mut shape.sticky_nudges)] {
+            match env(name).as_deref() {
+                Some("0") => *field = false,
+                Some("1") => *field = true,
+                _ => {}
+            }
+        }
+        shape
+    }
+
+    /// Read once per process.
+    pub fn current() -> &'static Self {
+        static SHAPE: OnceLock<LoopShape> = OnceLock::new();
+        SHAPE.get_or_init(|| Self::resolve(&|name| std::env::var(name).ok()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,6 +177,33 @@ mod tests {
                 (off, on) == (v, flipped) || (off, on) == (flipped, v),
                 "{name}"
             );
+        }
+    }
+
+    fn resolve_loop(vars: &[(&str, &str)]) -> LoopShape {
+        let vars: HashMap<String, String> = vars
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        LoopShape::resolve(&|name| vars.get(name).cloned())
+    }
+
+    const LOOP_SWITCHES: [&str; 1] = ["FACTR_LOOP_STICKY_NUDGES"];
+
+    #[test]
+    fn loop_baseline_master_wins_and_each_loop_switch_flips_one_field() {
+        assert_eq!(resolve_loop(&[]), LoopShape::VARIANT);
+        let all_on: Vec<_> = LOOP_SWITCHES.iter().map(|n| (*n, "1")).collect();
+        let mut master = all_on.clone();
+        master.push(("FACTR_VARIANT_BASELINE", "1"));
+        assert_eq!(resolve_loop(&master), LoopShape::BASELINE);
+        for name in LOOP_SWITCHES {
+            let (off, on) = (resolve_loop(&[(name, "0")]), resolve_loop(&[(name, "1")]));
+            assert_ne!(off, on, "{name}");
+            assert!(off == LoopShape::VARIANT || on == LoopShape::VARIANT, "{name}");
+            for junk in ["", "true", "2"] {
+                assert_eq!(resolve_loop(&[(name, junk)]), LoopShape::VARIANT, "{name}={junk:?}");
+            }
         }
     }
 
