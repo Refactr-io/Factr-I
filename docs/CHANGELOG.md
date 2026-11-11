@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.16
+
+- **Better and cheaper at coding tasks.** The OpenAI requests now take the shape the reference clients send, and the agent loop keeps nudges in place, respects "do not run it" or "do not verify", and stops asking for read-backs after a file-tool write. On a 15-task coding gate with gpt-6-luna the new loop passed 15 against 12 for v0.0.15, with about 15% fewer input tokens and 23% less wall time.
+- **Long classify jobs no longer lose a whole wave.** Each REPL sub-call has a deadline, and a wave that runs out of time keeps the replies that came back; only the missing items are reported.
+- **A failed response on a fresh connection ends at once.** It used to idle for minutes before falling back and sending the request again.
+- Every change has its own switch, and `FACTR_VARIANT_BASELINE=1` restores the v0.0.15 behaviour; see `docs/ENGINE-SWITCHES.md`.
+
 ## v0.0.15
 
 - **Better at finishing coding tasks.** The agent now reproduces a reported bug with the exact example before editing and again after, checks sibling and alias code paths for the same flaw, reuses existing helpers and the request's own names, runs the tests of the modules it touched, never hides error output, and no longer edits an existing test just to make it pass (a test that passed before and now fails means the change is wrong, unless the request asks for the new behaviour).
