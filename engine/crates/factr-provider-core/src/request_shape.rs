@@ -74,16 +74,21 @@ pub struct LoopShape {
     /// A user instruction not to run the result stops the auto-verify gate and the deadline's
     /// "verify" wording; one not to check it also stops the verify nudge.
     pub respect_no_verify: bool,
+    /// When every unexecuted write came from the edit tools, the verify nudge does not ask for a
+    /// read-back (the content is already in context).
+    pub nudge_no_reread: bool,
 }
 
 impl LoopShape {
     pub const BASELINE: Self = Self {
         sticky_nudges: false,
         respect_no_verify: false,
+        nudge_no_reread: false,
     };
     pub const VARIANT: Self = Self {
         sticky_nudges: true,
         respect_no_verify: true,
+        nudge_no_reread: true,
     };
 
     /// Same rules as [`RequestShape::resolve`].
@@ -95,6 +100,7 @@ impl LoopShape {
         for (name, field) in [
             ("FACTR_LOOP_STICKY_NUDGES", &mut shape.sticky_nudges),
             ("FACTR_LOOP_RESPECT_NO_VERIFY", &mut shape.respect_no_verify),
+            ("FACTR_LOOP_NUDGE_NO_REREAD", &mut shape.nudge_no_reread),
         ] {
             match env(name).as_deref() {
                 Some("0") => *field = false,
@@ -196,7 +202,11 @@ mod tests {
         LoopShape::resolve(&|name| vars.get(name).cloned())
     }
 
-    const LOOP_SWITCHES: [&str; 2] = ["FACTR_LOOP_STICKY_NUDGES", "FACTR_LOOP_RESPECT_NO_VERIFY"];
+    const LOOP_SWITCHES: [&str; 3] = [
+        "FACTR_LOOP_STICKY_NUDGES",
+        "FACTR_LOOP_RESPECT_NO_VERIFY",
+        "FACTR_LOOP_NUDGE_NO_REREAD",
+    ];
 
     /// VARIANT with only the field behind `name` flipped.
     fn loop_flipped(name: &str) -> LoopShape {
@@ -204,6 +214,7 @@ mod tests {
         let field = match name {
             "FACTR_LOOP_STICKY_NUDGES" => &mut s.sticky_nudges,
             "FACTR_LOOP_RESPECT_NO_VERIFY" => &mut s.respect_no_verify,
+            "FACTR_LOOP_NUDGE_NO_REREAD" => &mut s.nudge_no_reread,
             _ => unreachable!("{name}"),
         };
         *field = !*field;

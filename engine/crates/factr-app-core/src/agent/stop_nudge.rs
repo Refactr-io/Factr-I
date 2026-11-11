@@ -24,6 +24,9 @@ const ACTION_PHRASES: [&str; 17] = [
 ];
 
 const VERIFY_NUDGE: &str = "<system-reminder>Run or read back what you produced and check it against each stated requirement, then finish.</system-reminder>";
+/// `VERIFY_NUDGE` when every unexecuted write came from the edit tools: the content is already in
+/// the model's context, so it is not asked to read it back (`LoopShape::nudge_no_reread`).
+const VERIFY_NUDGE_IN_CONTEXT: &str = "<system-reminder>Check what you produced against each stated requirement; it is already in your context, so do not re-read a file unless you need to see it again. Run it if the task allows, then finish.</system-reminder>";
 const STEER: &str = "Two attempts have not fixed this. Step back: read the failing output again, write down two different hypotheses for the cause, test the most likely one with a quick command before editing again, and do not repeat an edit you already tried.";
 const NO_TOOLS_QUESTION_NUDGE: &str = "<system-reminder>No user is available to answer. Give your answer now, without tools.</system-reminder>";
 const QUESTION_NUDGE: &str = "<system-reminder>No user is available to answer. Act on the most likely reading of the task now, do the work, and verify it.</system-reminder>";
@@ -132,6 +135,8 @@ pub(super) struct StopNudge {
     forbids_tools: bool,
     /// What the user said about running or checking the result (`LoopShape::respect_no_verify`).
     pub(super) check_ban: factr_base::task_policy::CheckBan,
+    /// `LoopShape::nudge_no_reread`.
+    pub(super) no_reread: bool,
     // `FACTR_GUARD_NOTOOLS=0`: the no-tools gating (and the shared detector) are off.
     notools_off: bool,
     cwd_files: Vec<String>,
@@ -346,6 +351,7 @@ impl super::Agent {
             && cwd.as_deref().is_some_and(|d| d.is_dir() && !is_home(d))
             && !self.in_goal();
         n.headless = factr_base::headless::is(&self.session.id);
+        n.no_reread = self.loop_shape.nudge_no_reread;
         n.large_input = n.headless
             && self.session.parent_id.is_none()
             && cwd.as_deref().is_some_and(|d| !is_home(d) && has_large_input(d));
@@ -721,7 +727,9 @@ impl StopNudge {
             let wrote = self.last_write > 0 || self.shell_write_seq > 0;
             picked = if !no_tools && fresh && guard_on("VERIFY") && self.check_ban != factr_base::task_policy::CheckBan::Check && !self.verify_sent && !self.gate_ran && self.unexecuted_write() {
                 self.verify_sent = true;
-                Some((VERIFY_NUDGE.into(), "verify_nudge"))
+                let shell_write_unexecuted = self.shell_write_seq > 0 && self.last_exec <= self.shell_write_seq;
+                let text = if self.no_reread && !shell_write_unexecuted { VERIFY_NUDGE_IN_CONTEXT } else { VERIFY_NUDGE };
+                Some((text.into(), "verify_nudge"))
             } else if !no_tools && !self.gate_ran && self.last_check > self.last_write && self.last_check_exit != 0 {
                 Some((FAILED_CHECK_NUDGE.into(), "failed_check_nudge"))
             } else if !no_tools && guard_on("PENDING") && !self.passed && !self.pending_sent && self.pending_check.is_some() {
@@ -1653,6 +1661,32 @@ mod tests {
     const OK: fn() -> GateResult = || GateResult { passed: true, exit_code: 0, output: String::new() };
 
     #[test]
+    fn the_verify_nudge_skips_the_read_back_when_only_edit_tools_wrote() {
+        let mut n = StopNudge { no_reread: true, ..headless() };
+        n.observe("write", &json!({"file_path": "out.py"}), 0);
+        assert!(n.on_text_only_stop("s", "DONE"));
+        assert_eq!(n.take_pending(), Some(VERIFY_NUDGE_IN_CONTEXT.to_string()));
+        assert!(!n.on_text_only_stop("s", "DONE"), "once per turn");
+        // A shell write that nothing ran keeps the read-back text.
+        let d = std::env::temp_dir().join(format!("sn-reread-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let mut s = StopNudge { no_reread: true, snapshot: Some(fs_snapshot(&d)), snapshot_dir: Some(d.clone()), ..headless() };
+        s.observe("write", &json!({"file_path": "out.py"}), 0);
+        std::fs::write(d.join("gen.txt"), "x").unwrap();
+        s.observe_full("bash", &json!({"command": "echo x > gen.txt"}), 0, None, Some(""));
+        s.observe("write", &json!({"file_path": "out2.py"}), 0);
+        assert!(s.on_text_only_stop("s", "DONE"));
+        assert_eq!(s.take_pending(), Some(VERIFY_NUDGE.to_string()));
+        let _ = std::fs::remove_dir_all(&d);
+        // Switch off: the old text.
+        let mut off = headless();
+        off.observe("write", &json!({"file_path": "out.py"}), 0);
+        assert!(off.on_text_only_stop("s", "DONE"));
+        assert_eq!(off.take_pending(), Some(VERIFY_NUDGE.to_string()));
+    }
+
+    #[test]
     fn a_ban_on_running_stops_the_gate_and_a_ban_on_checking_also_stops_the_verify_nudge() {
         use factr_base::task_policy::CheckBan;
         let runs = RefCell::new(0);
@@ -1810,7 +1844,7 @@ mod tests {
         let mut all: Vec<String> = [
             VERIFY_NUDGE, STEER, QUESTION_NUDGE, NO_TOOLS_QUESTION_NUDGE, FAILED_CHECK_NUDGE, SNIPPET_NUDGE, DECLINE_NUDGE, DECLINE_MANY_ROUTES_NUDGE,
             DECLINE_NO_TOOLS_NUDGE, DECLINE_NUDGE_V1, DECLINE_NO_TOOLS_NUDGE_V1, ITERATE_NUDGE, COMPUTE_GUARD_NUDGE, SKIPPED_NUDGE, NO_RUNNER_NOTE, UNVERIFIED_NUDGE,
-            MEASURE_NUDGE, ACTION_NUDGE,
+            MEASURE_NUDGE, ACTION_NUDGE, VERIFY_NUDGE_IN_CONTEXT,
         ]
         .iter()
         .map(|s| s.to_string())
