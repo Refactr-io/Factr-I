@@ -151,7 +151,7 @@ fn golden_requests(shape: Option<&RequestShape>) -> Vec<(&'static str, Value)> {
         "resp_golden",
         &input[input.len() - 2..],
     );
-    let omit_cache_key = shape.is_some_and(|shape| shape.chatgpt_cache_key);
+    let omit_cache_key = shape.is_some_and(|shape| shape.prewarm_omits_cache_key(true));
     let prewarm = openai_websocket_prewarm::prewarm_request(&chatgpt, omit_cache_key);
     let compaction = openai_provider_impl::native_compaction_request("gpt-5.4", &input);
     vec![
@@ -403,4 +403,102 @@ fn each_switch_alone_changes_only_its_own_fields() {
         ("native_compaction", ".input[1].id".into()),
     ];
     assert_eq!(id, expected);
+}
+
+/// Experiment: `FACTR_OPENAI_CACHE_KEY_MODE=content`.
+fn content_shape() -> RequestShape {
+    RequestShape {
+        content_cache_key: true,
+        ..RequestShape::VARIANT
+    }
+}
+
+fn content_request(system: &str, tools: &[ToolDefinition], input: &[Value], session_key: &str, chatgpt: bool) -> Value {
+    let shape = content_shape();
+    OpenAIProvider::build_response_request_with_shape(
+        "gpt-5.4",
+        system.to_string(),
+        input,
+        &build_tools_with_shape(tools, &shape),
+        chatgpt,
+        false,
+        None,
+        Some("high"),
+        None,
+        Some(session_key),
+        None,
+        Some(160_000),
+        &shape,
+    )
+}
+
+#[test]
+fn content_key_depends_on_instructions_and_tools_not_on_the_session() {
+    let tools = golden_tools();
+    let input = build_responses_input(&golden_messages());
+    let a = content_request("golden system", &tools, &input, "factr-session-a", true);
+    let b = content_request("golden system", &tools, &[], "factr-session-b", true);
+    let key = a["prompt_cache_key"].as_str().unwrap();
+    assert!(key.starts_with("pck_") && key.len() == 28, "{key}");
+    assert_eq!(a["prompt_cache_key"], b["prompt_cache_key"], "two sessions, same prompt and tools");
+    let mut reordered = tools.clone();
+    reordered.reverse();
+    assert_eq!(content_request("golden system", &reordered, &[], "x", true)["prompt_cache_key"], a["prompt_cache_key"]);
+    assert_ne!(content_request("golden system", &tools[..2], &[], "x", true)["prompt_cache_key"], a["prompt_cache_key"]);
+    assert_ne!(content_request("other system", &tools, &[], "x", true)["prompt_cache_key"], a["prompt_cache_key"]);
+    // API-key mode keeps its session key.
+    assert_eq!(content_request("golden system", &tools, &[], "factr-session-a", false)["prompt_cache_key"], "factr-session-a");
+}
+
+#[test]
+fn content_key_alone_changes_only_the_cache_key_and_the_prewarm_keeps_it() {
+    let diff = shape_diff(&RequestShape::VARIANT, &content_shape());
+    let expected: Vec<(&str, String)> = vec![
+        ("full_chatgpt", ".prompt_cache_key".into()),
+        ("continuation_chatgpt", ".prompt_cache_key".into()),
+        ("prewarm_chatgpt", ".prompt_cache_key".into()),
+    ];
+    assert_eq!(diff, expected);
+}
+
+/// In content mode the prewarm sends the key and adoption compares it: the same prompt and
+/// tools adopt the warm socket, a different tool list does not.
+#[tokio::test]
+async fn content_key_prewarm_is_adopted_only_with_the_same_key() {
+    let shape = content_shape();
+    let omit = shape.prewarm_omits_cache_key(true);
+    assert!(!omit);
+    assert!(RequestShape::VARIANT.prewarm_omits_cache_key(true), "session mode still omits");
+    let credentials = CodexCredentials {
+        access_token: "test-access".into(),
+        refresh_token: "test-refresh".into(),
+        id_token: None,
+        account_id: Some("test-account".into()),
+        expires_at: None,
+    };
+    let tools = golden_tools();
+    let idle = content_request("golden system", &tools, &[], "factr-session-instance", true);
+    let warm = openai_websocket_prewarm::prewarm_request(&idle, omit);
+    assert_eq!(warm["prompt_cache_key"], idle["prompt_cache_key"], "the warmup carries the key");
+    let input = build_responses_input(&golden_messages());
+    for (foreground, adopted) in [
+        (content_request("golden system", &tools, &input, "factr-session-real", true), true),
+        (content_request("golden system", &tools[..2], &input, "factr-session-real", true), false),
+    ] {
+        let (mut state, _server) = test_persistent_ws_state().await;
+        state.identity = openai_websocket_prewarm::prewarm_identity(&credentials);
+        let slot = openai_websocket_prewarm::PrewarmSlot::default();
+        slot.insert_ready_for_test(warm.clone(), state);
+        assert_eq!(slot.take_ready(&foreground, &credentials, omit).is_some(), adopted);
+    }
+    // A different key alone (same tools, other instructions) is also rejected.
+    let other = content_request("other system", &tools, &input, "s", true);
+    let mut only_key = idle.clone();
+    only_key["prompt_cache_key"] = other["prompt_cache_key"].clone();
+    let (mut state, _server) = test_persistent_ws_state().await;
+    state.identity = openai_websocket_prewarm::prewarm_identity(&credentials);
+    let slot = openai_websocket_prewarm::PrewarmSlot::default();
+    slot.insert_ready_for_test(openai_websocket_prewarm::prewarm_request(&only_key, omit), state);
+    let foreground = content_request("golden system", &tools, &input, "s", true);
+    assert!(slot.take_ready(&foreground, &credentials, omit).is_none(), "mismatched content key");
 }

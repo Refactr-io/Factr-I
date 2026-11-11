@@ -9,6 +9,10 @@ pub struct RequestShape {
     pub chatgpt_cache_key: bool,
     pub parallel_tool_calls: bool,
     pub replay_reasoning_id: bool,
+    /// Experiment (`FACTR_OPENAI_CACHE_KEY_MODE=content`): in ChatGPT mode the key is a hash of
+    /// the instructions and the sorted tools, with no session id, so sessions that share a
+    /// prompt and tool set share a key. `session` (false) keeps the per-session key.
+    pub content_cache_key: bool,
 }
 
 impl RequestShape {
@@ -17,12 +21,14 @@ impl RequestShape {
         chatgpt_cache_key: false,
         parallel_tool_calls: false,
         replay_reasoning_id: true,
+        content_cache_key: false,
     };
     pub const VARIANT: Self = Self {
         strict_tools: false,
         chatgpt_cache_key: true,
         parallel_tool_calls: false,
         replay_reasoning_id: true,
+        content_cache_key: false,
     };
 
     /// `FACTR_VARIANT_BASELINE=1` wins over everything; otherwise each switch set to `0` or `1`
@@ -53,7 +59,18 @@ impl RequestShape {
                 _ => {}
             }
         }
+        match env("FACTR_OPENAI_CACHE_KEY_MODE").as_deref() {
+            Some("session") => shape.content_cache_key = false,
+            Some("content") => shape.content_cache_key = true,
+            _ => {}
+        }
         shape
+    }
+
+    /// ChatGPT mode: the idle prewarm leaves a per-session key out of the warmup and of the
+    /// adoption check (it cannot know the session); a content key is sent and compared.
+    pub fn prewarm_omits_cache_key(&self, is_chatgpt_mode: bool) -> bool {
+        is_chatgpt_mode && self.chatgpt_cache_key && !self.content_cache_key
     }
 
     /// Read once per process, so the prewarm payload, the first request, retries and every
@@ -198,6 +215,23 @@ mod tests {
                 },
             ),
         ];
+        // The cache-key mode takes words, not 0/1.
+        let content = RequestShape {
+            content_cache_key: true,
+            ..v
+        };
+        assert_eq!(resolve(&[("FACTR_OPENAI_CACHE_KEY_MODE", "content")]), content);
+        assert_eq!(resolve(&[("FACTR_OPENAI_CACHE_KEY_MODE", "session")]), v);
+        assert_eq!(
+            resolve(&[
+                ("FACTR_VARIANT_BASELINE", "1"),
+                ("FACTR_OPENAI_CACHE_KEY_MODE", "content")
+            ]),
+            RequestShape::BASELINE
+        );
+        for junk in ["", "1", "Content", "global"] {
+            assert_eq!(resolve(&[("FACTR_OPENAI_CACHE_KEY_MODE", junk)]), v, "{junk:?}");
+        }
         for (name, flipped) in cases {
             let (off, on) = (resolve(&[(name, "0")]), resolve(&[(name, "1")]));
             // One value keeps the default, the other differs in this field only.

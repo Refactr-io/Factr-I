@@ -105,7 +105,7 @@ impl Provider for OpenAIProvider {
         self.prewarm.start(
             Arc::clone(&self.credentials),
             &request,
-            is_chatgpt_mode && RequestShape::current().chatgpt_cache_key,
+            RequestShape::current().prewarm_omits_cache_key(is_chatgpt_mode),
         );
     }
 
@@ -140,7 +140,7 @@ impl Provider for OpenAIProvider {
             let warmed = self.prewarm.take_ready(
                 &request,
                 &*self.credentials.read().await,
-                is_chatgpt_mode && RequestShape::current().chatgpt_cache_key,
+                RequestShape::current().prewarm_omits_cache_key(is_chatgpt_mode),
             );
             if let Some(state) = warmed {
                 let mut guard = persistent_ws.lock().await;

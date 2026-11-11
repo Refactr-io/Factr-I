@@ -719,6 +719,25 @@ fn new_prompt_cache_key() -> String {
 
 /// The cache key for a request: the factr session it runs for, so a re-attached or restarted
 /// session (a new provider instance) keeps its cache hits; the instance key outside any session.
+/// Experiment (`RequestShape::content_cache_key`): `pck_` + the first 24 hex chars of
+/// sha256(instructions, 0x00, tools sorted by name or type as compact JSON with sorted keys).
+/// The reference client hashes the same parts plus a session scope; this leaves the scope out, so
+/// every session with the same prompt and tool set shares one key.
+fn content_cache_key(instructions: &Value, tools: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let mut tools: Vec<&Value> = tools.as_array().into_iter().flatten().collect();
+    let sort_key = |t: &&Value| t.get("name").or(t.get("type")).and_then(Value::as_str).unwrap_or("").to_string();
+    tools.sort_by_key(sort_key);
+    // serde_json's map is ordered by key here (no `preserve_order`), so this is sorted-key JSON.
+    let content = format!(
+        "{}\0{}",
+        instructions.as_str().unwrap_or(""),
+        serde_json::to_string(&tools).unwrap_or_default()
+    );
+    let hex: String = Sha256::digest(content.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    format!("pck_{}", &hex[..24])
+}
+
 fn prompt_cache_key_for(session: Option<&str>, instance_key: &str) -> String {
     session.map_or_else(|| instance_key.to_string(), |session| format!("factr-session-{session}"))
 }
@@ -1401,7 +1420,10 @@ impl OpenAIProvider {
         }
 
         // The reference clients also send the key on the ChatGPT backend; retention stays API-key-only.
-        if (!is_chatgpt_mode || shape.chatgpt_cache_key)
+        if is_chatgpt_mode && shape.chatgpt_cache_key && shape.content_cache_key {
+            request["prompt_cache_key"] =
+                serde_json::json!(content_cache_key(&request["instructions"], &request["tools"]));
+        } else if (!is_chatgpt_mode || shape.chatgpt_cache_key)
             && let Some(key) = prompt_cache_key
         {
             request["prompt_cache_key"] = serde_json::json!(key);
