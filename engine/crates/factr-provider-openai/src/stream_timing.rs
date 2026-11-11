@@ -205,6 +205,10 @@ impl StreamTiming {
             "reasoning_tokens": usage["output_tokens_details"]["reasoning_tokens"].as_u64(),
             "served_service_tier": response["service_tier"].as_str(),
             "response_model": response["model"].as_str(),
+            // A failed or incomplete response says why (codes only, never message text).
+            "status": response["status"].as_str(),
+            "error_code": response["error"]["code"].as_str(),
+            "incomplete_reason": response["incomplete_details"]["reason"].as_str(),
         });
         if let (Some(line), Some(fields)) = (line.as_object_mut(), self.request_fields.as_object())
         {
@@ -299,6 +303,7 @@ mod tests {
         assert_eq!(line["cache_key_sent"], true);
         assert_eq!(line["native_compaction_sent"], false);
         assert_eq!(line["reasoning_id_replayed"], true);
+        assert_eq!((line["status"].as_str(), line["error_code"].is_null()), (Some("completed"), true));
     }
 
     static UNFINISHED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
