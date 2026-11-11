@@ -57,6 +57,16 @@ pub struct SubReply {
     /// When the API refused the requested effort first: how long that refused request took (ms).
     pub refused_ms: Option<u64>,
 }
+/// One sub-model call under a per-call deadline (`None`: no deadline). Past it the call is dropped, which
+/// closes its connection, and fails as a timeout: `classify` asks a timed-out chunk again once, and
+/// `llm_query_batch` reports it as that item's error, so one stalled reply no longer holds the cell
+/// until its whole model-call wait runs out.
+pub async fn with_deadline<T>(deadline: Option<Duration>, call: impl Future<Output = Result<T>>) -> Result<T> {
+    let Some(limit) = deadline else { return call.await };
+    tokio::time::timeout(limit, call)
+        .await
+        .unwrap_or_else(|_| Err(anyhow!("sub-call timed out after {}s with no reply", limit.as_secs_f32())))
+}
 /// [`LlmQuery`] that also reports usage and latency.
 pub type LlmQueryMeta = Arc<dyn Fn(String) -> BoxFuture<Result<SubReply>> + Send + Sync>;
 /// `refine(op_json)` where `op_json` is `{"op":"run","instructions":...,"global":...}`
@@ -1083,6 +1093,29 @@ mod batch_tests {
 
     fn json_list(items: &[String]) -> String {
         serde_json::to_string(items).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_sub_call_past_its_deadline_is_dropped_and_fails_as_a_timeout() {
+        struct Held(Arc<AtomicUsize>);
+        impl Drop for Held {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let held = Held(dropped.clone());
+        let stalled = async move {
+            let _connection = held;
+            std::future::pending::<Result<()>>().await
+        };
+        let err = with_deadline(Some(Duration::from_millis(50)), stalled).await.unwrap_err().to_string();
+        assert!(err.contains("timed out"), "{err}");
+        assert_eq!(dropped.load(Ordering::SeqCst), 1, "the stalled call (and its connection) was dropped");
+        // No deadline: the call is awaited as before.
+        let off = tokio::time::timeout(Duration::from_millis(100), with_deadline(None, std::future::pending::<Result<()>>())).await;
+        assert!(off.is_err(), "without a deadline a stalled call still waits");
+        assert_eq!(with_deadline(Some(Duration::from_secs(5)), async { Ok(7) }).await.unwrap(), 7);
     }
 
     #[tokio::test]

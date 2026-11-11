@@ -158,6 +158,15 @@ mod sub_effort_tests {
     }
 
     #[test]
+    fn the_sub_call_deadline_is_off_at_zero_and_scales_with_the_effort() {
+        let secs = std::time::Duration::from_secs;
+        assert_eq!(sub_call_deadline(0, Some("high")), None);
+        assert_eq!(sub_call_deadline(90, None), Some(secs(90)));
+        assert_eq!(sub_call_deadline(90, Some("medium")), Some(secs(90)));
+        assert_eq!(sub_call_deadline(90, Some("high")), Some(secs(180)));
+    }
+
+    #[test]
     fn an_unknown_refused_or_inherited_effort_falls_back_to_the_main_effort() {
         for setting in [Ok(None), Err("repl sub-call effort 'minimal' is not supported".to_string())] {
             let fork = main_thread("medium").fork();
@@ -774,6 +783,12 @@ async fn call_with_fallback(
     }
 }
 
+/// `FACTR_REPL_SUBCALL_TIMEOUT_S` (0: none), scaled by the effort like the stream idle timeout, so a
+/// high-effort sub-call that thinks silently gets the same extra headroom as any other request.
+fn sub_call_deadline(secs: u64, effort: Option<&str>) -> Option<std::time::Duration> {
+    (secs > 0).then(|| std::time::Duration::from_secs(secs) * factr_base::provider::stream_idle_timeout_multiplier_for_effort(effort))
+}
+
 async fn sub_call_on(
     provider: Arc<dyn factr_provider_core::Provider>,
     session_id: &str,
@@ -784,7 +799,8 @@ async fn sub_call_on(
     let model = provider.model();
     let started = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
     let clock = std::time::Instant::now();
-    let result = provider.complete_simple_with_usage(prompt, SUBQUERY_SYSTEM).await;
+    let deadline = sub_call_deadline(factr_provider_core::request_shape::LoopShape::current().repl_subcall_timeout_s, effort.as_deref());
+    let result = factr_learn::host::with_deadline(deadline, provider.complete_simple_with_usage(prompt, SUBQUERY_SYSTEM)).await;
     let latency_ms = clock.elapsed().as_millis() as u64;
     match &result {
         Ok(reply) => super::report_aux_model_call("REPL subquery", session_id, provider_name, model, started, reply.usage, None),

@@ -99,6 +99,10 @@ pub struct LoopShape {
     pub compact_write_result: bool,
     /// Tool descriptions steer reads, searches and edits to the file tools instead of the shell.
     pub tool_steering: bool,
+    /// Deadline in seconds for one REPL sub-model call (`llm_query`, each `llm_query_batch` item,
+    /// each `classify` chunk); `0` is none. A call past it fails as a timeout, which `classify`
+    /// asks again once, instead of holding the cell until its whole wait runs out.
+    pub repl_subcall_timeout_s: u64,
 }
 
 impl LoopShape {
@@ -108,6 +112,7 @@ impl LoopShape {
         nudge_no_reread: false,
         compact_write_result: false,
         tool_steering: false,
+        repl_subcall_timeout_s: 0,
     };
     pub const VARIANT: Self = Self {
         sticky_nudges: true,
@@ -115,6 +120,7 @@ impl LoopShape {
         nudge_no_reread: true,
         compact_write_result: true,
         tool_steering: true,
+        repl_subcall_timeout_s: 90,
     };
 
     /// Same rules as [`RequestShape::resolve`].
@@ -138,6 +144,9 @@ impl LoopShape {
                 Some("1") => *field = true,
                 _ => {}
             }
+        }
+        if let Some(secs) = env("FACTR_REPL_SUBCALL_TIMEOUT_S").and_then(|v| v.parse().ok()) {
+            shape.repl_subcall_timeout_s = secs;
         }
         shape
     }
@@ -288,6 +297,18 @@ mod tests {
                 assert_eq!(resolve_loop(&[(name, junk)]), LoopShape::VARIANT, "{name}={junk:?}");
             }
         }
+    }
+
+    #[test]
+    fn the_sub_call_deadline_takes_seconds_and_baseline_has_none() {
+        assert_eq!(resolve_loop(&[]).repl_subcall_timeout_s, 90);
+        assert_eq!(resolve_loop(&[("FACTR_REPL_SUBCALL_TIMEOUT_S", "0")]).repl_subcall_timeout_s, 0);
+        assert_eq!(resolve_loop(&[("FACTR_REPL_SUBCALL_TIMEOUT_S", "45")]).repl_subcall_timeout_s, 45);
+        for junk in ["", "-1", "1.5", " 45"] {
+            assert_eq!(resolve_loop(&[("FACTR_REPL_SUBCALL_TIMEOUT_S", junk)]), LoopShape::VARIANT, "{junk:?}");
+        }
+        let master = [("FACTR_VARIANT_BASELINE", "1"), ("FACTR_REPL_SUBCALL_TIMEOUT_S", "45")];
+        assert_eq!(resolve_loop(&master), LoopShape::BASELINE);
     }
 
     #[test]
