@@ -1375,10 +1375,13 @@ impl OpenAIProvider {
         // request with no tools of its own (a REPL sub-call or another simple completion, which runs
         // where the session's tool policy is not visible) never gets it: a classification sub-call
         // that called it failed outright ("Complexity 'medium' is not supported for this image model").
+        // With `image_tool_skip_luna` gpt-6-luna never gets it: every image call there fails the same way
+        // whatever the effort or tool fields, and without it the model can still answer in text.
         if is_chatgpt_mode
             && image_generation_allowed
             && model_supports_image_generation(model_id)
             && !(shape.image_tool_needs_tools && api_tools.is_empty())
+            && !(shape.image_tool_skip_luna && model_id.to_ascii_lowercase().contains("gpt-6-luna"))
         {
             tools.push(serde_json::json!({ "type": "image_generation" }));
         }

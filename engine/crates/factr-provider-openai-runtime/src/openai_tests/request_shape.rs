@@ -522,3 +522,22 @@ fn the_hosted_image_tool_needs_tools_of_its_own() {
     assert!(has_image(&RequestShape::BASELINE, &[]));
     assert!(has_image(&RequestShape::BASELINE, &tools));
 }
+
+/// gpt-6-luna gets no hosted image tool with the switch on; other models keep it, and the baseline
+/// attaches it to gpt-6-luna as in v0.0.15.
+#[test]
+fn the_hosted_image_tool_is_not_sent_to_luna() {
+    let tools = build_tools_with_shape(&golden_tools(), &RequestShape::VARIANT);
+    let has_image = |shape: &RequestShape, model: &str| {
+        OpenAIProvider::build_response_request_with_shape(
+            model, "s".to_string(), &[], &tools, true, true, None, Some("low"), None, None, None, None, shape,
+        )["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["type"] == "image_generation")
+    };
+    assert!(!has_image(&RequestShape::VARIANT, "gpt-6-luna"));
+    assert!(has_image(&RequestShape::VARIANT, "gpt-5.4"));
+    assert!(has_image(&RequestShape::BASELINE, "gpt-6-luna"));
+}

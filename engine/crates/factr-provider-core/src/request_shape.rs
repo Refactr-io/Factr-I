@@ -21,6 +21,10 @@ pub struct RequestShape {
     /// The hosted `image_generation` tool is attached only to a request that carries tools of its
     /// own. A call with none (a REPL sub-call, a summary, any simple completion) gets no hosted tool.
     pub image_tool_needs_tools: bool,
+    /// The hosted `image_generation` tool is not attached for gpt-6-luna. There the backend passes
+    /// the reasoning effort to its image model as `complexity`, and the image model rejects every
+    /// value (none, low, medium, high), so each image call failed the turn.
+    pub image_tool_skip_luna: bool,
 }
 
 impl RequestShape {
@@ -32,6 +36,7 @@ impl RequestShape {
         content_cache_key: false,
         ws_failed_response_ends: false,
         image_tool_needs_tools: false,
+        image_tool_skip_luna: false,
     };
     pub const VARIANT: Self = Self {
         strict_tools: false,
@@ -41,6 +46,7 @@ impl RequestShape {
         content_cache_key: false,
         ws_failed_response_ends: true,
         image_tool_needs_tools: true,
+        image_tool_skip_luna: true,
     };
 
     /// `FACTR_VARIANT_BASELINE=1` wins over everything; otherwise each switch set to `0` or `1`
@@ -71,6 +77,10 @@ impl RequestShape {
             (
                 "FACTR_OPENAI_IMAGE_TOOL_NEEDS_TOOLS",
                 &mut shape.image_tool_needs_tools,
+            ),
+            (
+                "FACTR_OPENAI_IMAGE_TOOL_SKIP_LUNA",
+                &mut shape.image_tool_skip_luna,
             ),
         ] {
             match env(name).as_deref() {
@@ -260,6 +270,13 @@ mod tests {
                 "FACTR_OPENAI_IMAGE_TOOL_NEEDS_TOOLS",
                 RequestShape {
                     image_tool_needs_tools: !v.image_tool_needs_tools,
+                    ..v
+                },
+            ),
+            (
+                "FACTR_OPENAI_IMAGE_TOOL_SKIP_LUNA",
+                RequestShape {
+                    image_tool_skip_luna: !v.image_tool_skip_luna,
                     ..v
                 },
             ),
