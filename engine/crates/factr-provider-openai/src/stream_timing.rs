@@ -24,11 +24,17 @@ pub fn sink() -> Option<fn(&str)> {
         .then_some(print_line as fn(&str))
 }
 
-/// Timing for one model call attempt. Emits one JSON line when dropped, if the attempt reached a
-/// terminal response event.
+/// Whether the consumer of the call has gone (the call was cancelled, for example by a deadline).
+pub type CancelProbe = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// Timing for one model call attempt. Emits one JSON line when dropped: the timing line if the attempt
+/// reached a terminal response event, otherwise an unfinished-attempt line naming the phase it ended in.
 pub struct StreamTiming {
     sink: fn(&str),
+    begun: Instant,
     t0: Instant,
+    sent: bool,
+    cancelled: Option<CancelProbe>,
     transport: &'static str,
     request_fields: Value,
     first_event_ms: Option<u64>,
@@ -47,9 +53,13 @@ impl StreamTiming {
         shape: &RequestShape,
     ) -> Option<Self> {
         let sink = sink?;
+        let now = Instant::now();
         Some(Self {
             sink,
-            t0: Instant::now(),
+            begun: now,
+            t0: now,
+            sent: true,
+            cancelled: None,
             transport,
             request_fields: serde_json::json!({
                 "strict_tools": shape.strict_tools,
@@ -90,6 +100,55 @@ impl StreamTiming {
         }
     }
 
+    /// The request is not sent yet: [`Self::sending`] restarts `t0` just before it goes out and
+    /// [`Self::sent`] marks it gone. An attempt dropped before that is reported as `not_sent`.
+    pub fn not_sent_yet(&mut self) {
+        self.sent = false;
+    }
+
+    pub fn sending(&mut self) {
+        self.t0 = Instant::now();
+    }
+
+    pub fn sent(&mut self) {
+        self.sent = true;
+    }
+
+    /// An attempt dropped while `probe` says the consumer is gone is reported as `cancelled`.
+    pub fn watch(&mut self, probe: CancelProbe) {
+        self.cancelled = Some(probe);
+    }
+
+    /// Where an attempt with no terminal response ended.
+    fn phase(&self) -> &'static str {
+        if self.cancelled.as_ref().is_some_and(|gone| gone()) {
+            "cancelled"
+        } else if !self.sent {
+            "not_sent"
+        } else if self.first_event_ms.is_none() {
+            "no_first_event"
+        } else {
+            "cut_mid_stream"
+        }
+    }
+
+    /// `factr_stream_unfinished` (not `factr_stream_timing`, so call counts that grep for the timing
+    /// line are unchanged).
+    fn unfinished_line(&self) -> String {
+        let mut line = serde_json::json!({
+            "factr_stream_unfinished": 1,
+            "transport": self.transport,
+            "phase": self.phase(),
+            "elapsed_ms": self.begun.elapsed().as_millis() as u64,
+            "first_event_ms": self.first_event_ms,
+            "last_event_ms": self.last_event_ms,
+        });
+        if let (Some(line), Some(fields)) = (line.as_object_mut(), self.request_fields.as_object()) {
+            line.extend(fields.clone());
+        }
+        line.to_string()
+    }
+
     pub fn add_channel_wait(&mut self, waited: Duration) {
         self.channel_wait += waited;
     }
@@ -120,8 +179,9 @@ impl StreamTiming {
 
 impl Drop for StreamTiming {
     fn drop(&mut self) {
-        if let Some(response) = &self.terminal {
-            (self.sink)(&self.line(response));
+        match &self.terminal {
+            Some(response) => (self.sink)(&self.line(response)),
+            None => (self.sink)(&self.unfinished_line()),
         }
     }
 }
@@ -202,6 +262,35 @@ mod tests {
         assert_eq!(line["cache_key_sent"], true);
         assert_eq!(line["native_compaction_sent"], false);
         assert_eq!(line["reasoning_id_replayed"], true);
+    }
+
+    static UNFINISHED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    /// An attempt dropped before its terminal response prints one unfinished line naming where it ended.
+    #[test]
+    fn an_attempt_with_no_terminal_response_names_its_phase() {
+        let request = serde_json::json!({});
+        let start = || StreamTiming::start(Some(|line| UNFINISHED.lock().unwrap().push(line.to_string())), "websocket", &request, &RequestShape::VARIANT).unwrap();
+        let mut not_sent = start();
+        not_sent.not_sent_yet();
+        drop(not_sent);
+        drop(start());
+        let mut cut = start();
+        cut.observe(r#"{"type":"response.created"}"#, Instant::now());
+        drop(cut);
+        let mut cancelled = start();
+        cancelled.observe(r#"{"type":"response.created"}"#, Instant::now());
+        cancelled.watch(std::sync::Arc::new(|| true));
+        drop(cancelled);
+        let mut done = start();
+        done.observe(r#"{"type":"response.completed","response":{}}"#, Instant::now());
+        drop(done);
+        let lines: Vec<Value> = UNFINISHED.lock().unwrap().iter().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let phases: Vec<_> = lines.iter().filter_map(|l| l["phase"].as_str()).collect();
+        assert_eq!(phases, ["not_sent", "no_first_event", "cut_mid_stream", "cancelled"]);
+        assert!(lines[..4].iter().all(|l| l["factr_stream_unfinished"] == 1 && l.get("factr_stream_timing").is_none() && l["elapsed_ms"].is_u64()));
+        assert_eq!(lines.len(), 5);
+        assert_eq!(lines[4]["factr_stream_timing"], 1, "a finished attempt prints the timing line only");
     }
 
     #[test]

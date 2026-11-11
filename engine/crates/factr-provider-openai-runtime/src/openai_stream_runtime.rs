@@ -134,6 +134,7 @@ pub(super) async fn stream_response(
     request: Value,
     initial_status_detail: String,
     tx: mpsc::Sender<Result<StreamEvent>>,
+    cancelled: factr_provider_openai::stream_timing::CancelProbe,
 ) -> Result<(), OpenAIStreamFailure> {
     use factr_message_types::ConnectionPhase;
     let request_model = openai_request_model(&request);
@@ -184,12 +185,15 @@ pub(super) async fn stream_response(
     let connect_start = std::time::Instant::now();
     let idle_timeout = effective_https_idle_timeout(&request);
 
-    let timing = StreamTiming::start(
+    let mut timing = StreamTiming::start(
         factr_provider_openai::stream_timing::sink(),
         "https",
         &request,
         RequestShape::current(),
     );
+    if let Some(timing) = timing.as_mut() {
+        timing.watch(cancelled);
+    }
     let response = factr_provider_core::transport::send_with_initial_response_timeout(
         builder.json(&request),
         idle_timeout,
@@ -1252,8 +1256,21 @@ pub(super) async fn stream_response_websocket_persistent(
     tx: mpsc::Sender<Result<StreamEvent>>,
     persistent_ws: Arc<Mutex<Option<PersistentWsState>>>,
     input_item_count: usize,
+    cancelled: factr_provider_openai::stream_timing::CancelProbe,
 ) -> Result<(), OpenAIStreamFailure> {
     use factr_message_types::ConnectionPhase;
+    // Started before the token and the connect, so an attempt that never sends is reported; `t0` is
+    // restarted just before the send, so the timing line's times are unchanged.
+    let mut timing = StreamTiming::start(
+        factr_provider_openai::stream_timing::sink(),
+        "websocket",
+        &request,
+        RequestShape::current(),
+    );
+    if let Some(timing) = timing.as_mut() {
+        timing.not_sent_yet();
+        timing.watch(cancelled);
+    }
     let request_model = request
         .get("model")
         .and_then(|m| m.as_str())
@@ -1386,16 +1403,16 @@ pub(super) async fn stream_response_websocket_persistent(
     })?;
     let request_send_started_at = Instant::now();
     emit_connection_phase(&tx, ConnectionPhase::SendingRequest).await;
-    let mut timing = StreamTiming::start(
-        factr_provider_openai::stream_timing::sink(),
-        "websocket",
-        &request_event,
-        RequestShape::current(),
-    );
+    if let Some(timing) = timing.as_mut() {
+        timing.sending();
+    }
     ws_stream
         .send(WsMessage::Text(request_text))
         .await
         .map_err(|err| OpenAIStreamFailure::Other(anyhow::anyhow!(err)))?;
+    if let Some(timing) = timing.as_mut() {
+        timing.sent();
+    }
     emit_connection_phase(&tx, ConnectionPhase::WaitingForResponse).await;
     factr_base::logging::info(&format!(
         "Fresh WS request sent in {}ms ({})",

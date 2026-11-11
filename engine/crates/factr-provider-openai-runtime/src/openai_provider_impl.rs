@@ -284,6 +284,11 @@ impl Provider for OpenAIProvider {
         let model_for_transport = model_id.clone();
         let client = self.client.clone();
         let panic_tx = tx.clone();
+        // The stream-timing line says "cancelled" when the attempt ends because its reader went away.
+        let cancelled: factr_provider_openai::stream_timing::CancelProbe = {
+            let tx = tx.clone();
+            Arc::new(move || tx.is_closed())
+        };
 
         tokio::spawn(async move {
             let stream_task = async move {
@@ -473,6 +478,7 @@ impl Provider for OpenAIProvider {
                             attempt_tx,
                             Arc::clone(&persistent_ws),
                             input_item_count,
+                            Arc::clone(&cancelled),
                         )
                         .await
                     } else {
@@ -512,6 +518,7 @@ impl Provider for OpenAIProvider {
                                 "https".to_string()
                             },
                             attempt_tx,
+                            Arc::clone(&cancelled),
                         )
                         .await
                     };
