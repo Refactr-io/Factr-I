@@ -1568,6 +1568,10 @@ pub(super) async fn stream_response_websocket_persistent(
                                 )));
                             }
                         }
+                        // A failed response sends no response.completed: forward it once and end the attempt
+                        // (not saved for reuse), as a continuation does, instead of idling out the socket.
+                        let failed = RequestShape::current().ws_failed_response_ends
+                            && matches!(event, StreamEvent::Error { .. });
                         usage_recorder.observe(&event).await;
                         if send_event(&tx, event, timing.as_mut()).await.is_err() {
                             log_openai_stream_lifecycle(
@@ -1582,6 +1586,9 @@ pub(super) async fn stream_response_websocket_persistent(
                                     ),
                                 ],
                             );
+                            return Ok(());
+                        }
+                        if failed {
                             return Ok(());
                         }
                     }
@@ -1605,6 +1612,10 @@ pub(super) async fn stream_response_websocket_persistent(
                         if matches!(event, StreamEvent::MessageEnd { .. }) {
                             saw_response_completed = true;
                         }
+                        // A failed response sends no response.completed: forward it once and end the attempt
+                        // (not saved for reuse), as a continuation does, instead of idling out the socket.
+                        let failed = RequestShape::current().ws_failed_response_ends
+                            && matches!(event, StreamEvent::Error { .. });
                         usage_recorder.observe(&event).await;
                         if send_event(&tx, event, timing.as_mut()).await.is_err() {
                             log_openai_stream_lifecycle(
@@ -1619,6 +1630,9 @@ pub(super) async fn stream_response_websocket_persistent(
                                     ),
                                 ],
                             );
+                            return Ok(());
+                        }
+                        if failed {
                             return Ok(());
                         }
                     }

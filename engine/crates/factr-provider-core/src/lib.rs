@@ -526,6 +526,10 @@ pub trait Provider: Send + Sync {
                         cache_write: cache_creation_input_tokens.unwrap_or(0),
                     });
                 }
+                // A failed response is the call's error, not an empty reply.
+                Ok(StreamEvent::Error { message, .. }) if request_shape::RequestShape::current().ws_failed_response_ends => {
+                    return Err(anyhow::anyhow!("{message}"));
+                }
                 Ok(_) => {}
                 Err(err) => return Err(err),
             }

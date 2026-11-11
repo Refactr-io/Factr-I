@@ -13,6 +13,10 @@ pub struct RequestShape {
     /// the instructions and the sorted tools, with no session id, so sessions that share a
     /// prompt and tool set share a key. `session` (false) keeps the per-session key.
     pub content_cache_key: bool,
+    /// A fresh WebSocket attempt that gets `response.failed` (or an error event) forwards it and
+    /// ends, as a socket continuation already does, instead of waiting for a `response.completed`
+    /// that never comes; and a simple completion returns that error instead of empty text.
+    pub ws_failed_response_ends: bool,
 }
 
 impl RequestShape {
@@ -22,6 +26,7 @@ impl RequestShape {
         parallel_tool_calls: false,
         replay_reasoning_id: true,
         content_cache_key: false,
+        ws_failed_response_ends: false,
     };
     pub const VARIANT: Self = Self {
         strict_tools: false,
@@ -29,6 +34,7 @@ impl RequestShape {
         parallel_tool_calls: false,
         replay_reasoning_id: true,
         content_cache_key: false,
+        ws_failed_response_ends: true,
     };
 
     /// `FACTR_VARIANT_BASELINE=1` wins over everything; otherwise each switch set to `0` or `1`
@@ -51,6 +57,10 @@ impl RequestShape {
             (
                 "FACTR_OPENAI_REPLAY_REASONING_ID",
                 &mut shape.replay_reasoning_id,
+            ),
+            (
+                "FACTR_OPENAI_WS_FAILED_ENDS",
+                &mut shape.ws_failed_response_ends,
             ),
         ] {
             match env(name).as_deref() {
@@ -229,6 +239,13 @@ mod tests {
                     ..v
                 },
             ),
+            (
+                "FACTR_OPENAI_WS_FAILED_ENDS",
+                RequestShape {
+                    ws_failed_response_ends: !v.ws_failed_response_ends,
+                    ..v
+                },
+            ),
         ];
         // The cache-key mode takes words, not 0/1.
         let content = RequestShape {
@@ -326,6 +343,7 @@ mod tests {
             "FACTR_OPENAI_CHATGPT_CACHE_KEY",
             "FACTR_OPENAI_PARALLEL_TOOLS",
             "FACTR_OPENAI_REPLAY_REASONING_ID",
+            "FACTR_OPENAI_WS_FAILED_ENDS",
         ] {
             for junk in ["", "true", "yes", "2", " 1"] {
                 assert_eq!(
