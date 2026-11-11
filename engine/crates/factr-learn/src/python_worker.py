@@ -250,7 +250,9 @@ async def _ask_group(group):
         text = (error if CFG["legacy"] else None) if error else (r.get("t") or "")
         out[k] = {"text": text or "", "error": error, "in": r.get("i"), "out": r.get("o"), "cached": r.get("c"),
                   "reasoning": r.get("r"), "ms": r.get("ms"), "at": r.get("s"), "effort": r.get("f"),
-                  "requested": r.get("q"), "refused_ms": r.get("x")}
+                  "requested": r.get("q"), "refused_ms": r.get("x"),
+                  # An item cut off when the batch ran out of the cell's wait (kept-partial waves): a host failure.
+                  "host": bool(error) and "time budget" in error}
     return out
 
 
@@ -880,7 +882,10 @@ async def classify(items, labels, guidance=None, votes=1):
             labelled = gap.labelled if votes == 1 else {}
             out = [known[k] if k in known else labelled.get(occ_work[i]) for i, k in enumerate(keys)]
             log_end(out, "failed", gap.category, sum(v is None for v in out), spots)
-            raise RuntimeError(_incomplete_message(gap, work, keys, len(items), progressive)) from None
+            partial = bool(CFG.get("keep_partial")) and votes == 1 and not progressive and any(v is not None for v in out)
+            if partial:
+                namespace["classify_partial"] = out
+            raise RuntimeError(_incomplete_message(gap, work, keys, len(items), progressive, partial)) from None
         if CFG["dedupe"]:
             efforts = {w[2] for w in spots.values()}
             for j, ((k, _), label) in enumerate(zip(work, got)):
@@ -896,12 +901,14 @@ async def classify(items, labels, guidance=None, votes=1):
     return out
 
 
-def _incomplete_message(gap, work, keys, total, progressive):
+def _incomplete_message(gap, work, keys, total, progressive, partial=False):
     lost = {work[j][0] for j in gap.missing}
     positions = [i for i, k in enumerate(keys) if k in lost] if CFG["dedupe"] else [work[j][1] for j in gap.missing]
     shown = ", ".join(str(i) for i in positions[:20]) + (", ..." if len(positions) > 20 else "")
     kept = (f" The {total - len(positions)} labels already given are kept: calling classify again with the same items, labels "
-            "and guidance asks only for the missing ones." if progressive and len(positions) < total else "")
+            "and guidance asks only for the missing ones." if progressive and len(positions) < total else
+            f" The {total - len(positions)} labels already given are in `classify_partial` (a list aligned with your items, "
+            "None where missing): classify only the missing positions in a new cell and fill them in." if partial else "")
     return (f"classify: {len(positions)} of {total} items still without a valid label: {'; '.join(gap.details)}. "
             f"Items without a label (positions in your list): [{shown}].{kept}")
 
@@ -1074,9 +1081,14 @@ def _traceback_text(error):
     tb = error.__traceback__
     while tb is not None and tb.tb_frame.f_code.co_filename != "<repl>":
         tb = tb.tb_next
-    if tb is None:
-        return "".join(traceback.format_exception_only(type(error), error)).strip()
-    return "".join(traceback.format_exception(type(error), error, tb)).strip()
+    try:
+        if tb is None:
+            return "".join(traceback.format_exception_only(type(error), error)).strip()
+        return "".join(traceback.format_exception(type(error), error, tb)).strip()
+    except Exception:
+        # Formatting can itself fail (Python 3.15 lists every sys.path directory for an ImportError hint,
+        # and the sandbox may deny one): report the bare error instead of killing the worker.
+        return f"{type(error).__name__}: {error}"
 
 
 def _refresh_imports():

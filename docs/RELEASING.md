@@ -1,6 +1,6 @@
 # Releasing Factr-I
 
-Current version: `0.0.15`. Releases live at
+Current version: `0.0.16`. Releases live at
 https://github.com/Refactr-io/Factr-I/releases (the `publish` block of
 `desktop/app/package.json` and every update link in the app point there).
 
@@ -33,7 +33,7 @@ https://github.com/Refactr-io/Factr-I/releases (the `publish` block of
 
    | Runner | Artifact |
    | --- | --- |
-   | `macos-14` | `Factr-I-X.Y.Z-mac-arm64.dmg` and `.zip` (Apple Silicon only; ad-hoc signed and verified with `codesign --verify --deep --strict`) |
+   | `macos-15` | `Factr-I-X.Y.Z-mac-arm64.dmg` and `.zip` (Apple Silicon only; ad-hoc signed and verified with `codesign --verify --deep --strict`) |
    | `windows-latest` | `Factr-I-X.Y.Z-win-x64.exe` (NSIS installer) |
    | `ubuntu-latest` | `Factr-I-X.Y.Z-linux-*.AppImage` |
 

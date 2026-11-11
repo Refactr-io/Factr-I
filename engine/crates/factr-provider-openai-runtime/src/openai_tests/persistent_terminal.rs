@@ -266,3 +266,60 @@ async fn persistent_missing_tool_output_recovers_with_full_replay() {
 async fn persistent_failed_missing_tool_output_recovers_with_full_replay() {
     persistent_terminal_public_case("response.failed", None, false, true).await;
 }
+
+/// The live stall: a FRESH socket gets `response.created`, then `response.failed`, and the server keeps the
+/// socket open. With `ws_failed_response_ends` the attempt forwards the error once and ends, so a simple
+/// completion (a REPL sub-call) returns that error at once and the request is not sent again. Without it
+/// (the baseline) the attempt waits for a `response.completed` that never comes.
+#[tokio::test]
+async fn a_fresh_socket_failed_response_ends_the_call_instead_of_idling() {
+    let _env_lock = factr_base::storage::lock_test_env();
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let _base = EnvVarGuard::set("FACTR_OPENAI_API_BASE", &format!("http://{addr}/v1"));
+    let _transport = EnvVarGuard::set("FACTR_OPENAI_TRANSPORT", "websocket");
+    let _prewarm = EnvVarGuard::set("FACTR_OPENAI_PREWARM", "0");
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = requests.clone();
+    let server = tokio::spawn(async move {
+        loop {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let Ok(mut ws) = tokio_tungstenite::accept_async(tcp).await else { continue };
+            tokio::spawn({
+                let seen = seen.clone();
+                async move {
+                    while let Some(Ok(frame)) = ws.next().await {
+                        match frame {
+                            WsMessage::Text(_) => {
+                                seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                for event in [
+                                    serde_json::json!({"type":"response.created","response":{"id":"resp_failed","model":"gpt-5.6-sol"}}),
+                                    serde_json::json!({"type":"response.failed","response":{"id":"resp_failed","status":"failed","error":{"code":"invalid_prompt","message":"The prompt was rejected."}}}),
+                                ] {
+                                    ws.send(WsMessage::Text(event.to_string())).await.unwrap();
+                                }
+                                // Like the backend: no response.completed, socket left open.
+                            }
+                            WsMessage::Ping(p) => {
+                                let _ = ws.send(WsMessage::Pong(p)).await;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            });
+        }
+    });
+    let provider = prefix_test_provider().await;
+    let outcome = tokio::time::timeout(Duration::from_secs(3), provider.complete_simple_with_usage("label these", "fixture")).await;
+    server.abort();
+    if factr_provider_core::request_shape::RequestShape::current().ws_failed_response_ends {
+        let Err(error) = outcome.expect("the failed response ends the call") else { panic!("a failed response is not a reply") };
+        let error = error.to_string();
+        assert!(error.contains("The prompt was rejected"), "{error}");
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 1, "the failed request is not sent again");
+    } else {
+        assert!(outcome.is_err(), "baseline: the fresh socket still waits for response.completed");
+    }
+}

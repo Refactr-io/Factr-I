@@ -1289,7 +1289,7 @@ wheels = [
 
 [[package]]
 name = "factr-backend"
-version = "0.0.15"
+version = "0.0.16"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },

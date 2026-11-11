@@ -1242,3 +1242,41 @@ fn the_wide_chunk_prompt_fits_the_batch_and_prompt_limits() {
     assert!(prompts.iter().all(|p| p.len() < 60_000), "{:?}", prompts.iter().map(String::len).collect::<Vec<_>>());
     assert!(rows.iter().filter(|r| r["type"] == "call").all(|r| r["prompt_chars"].as_i64().unwrap() < 200_000));
 }
+
+const PARTIAL_CODE: &str = "items = [('a' if i % 2 else 'b') + str(i) for i in range(200)]
+try:
+    await classify(items, ['alpha ray', 'beta'])
+    msg = 'ok'
+except RuntimeError as e:
+    msg = str(e)
+p = globals().get('classify_partial')
+(msg, None if p is None else (len(p), sum(x is not None for x in p)))";
+
+/// A wave that ran out of the cell's wait with the switch on: the host returns the replies that came and marks the
+/// item that did not as a "time budget" failure. classify keeps the other chunks' labels in `classify_partial` and
+/// names exactly the items still missing; it does not ask again in this cell.
+#[test]
+fn classify_keeps_the_chunks_that_came_when_a_wave_runs_out_of_wait() {
+    let cut = "Error: host call time budget exhausted before this item's reply came; ask for it again in a new cell";
+    let cfg = json!({"dedupe": false, "format": "json", "keep_partial": true});
+    let Some((done, calls)) = classify_cfg_run(PARTIAL_CODE, cfg, |_, n, _| (n == 2).then(|| cut.to_string())) else { return };
+    let value = done["value"].as_str().unwrap();
+    assert!(value.contains("classify: 40 of 200 items still without a valid label"), "{done}");
+    assert!(value.contains("The 160 labels already given are in `classify_partial`"), "{done}");
+    assert!(value.ends_with("(200, 160))"), "{done}");
+    assert_eq!(batches(&calls), 1, "a host failure is not asked again in the same cell");
+}
+
+/// The switch off (today's behaviour): the whole batch call fails when the cell's wait runs out, every item is
+/// reported missing, and nothing is kept.
+#[test]
+fn without_kept_partial_waves_a_wave_out_of_wait_loses_every_label() {
+    let cfg = json!({"dedupe": false, "format": "json"});
+    let Some((done, _)) = run_cfg(PARTIAL_CODE, cfg, |name, _| match name {
+        "classify_log" | "sleep_ms" => Ok(String::new()),
+        _ => Err("host call time budget exhausted: the cell may wait 120s in total on model calls (more for a large batch); split the work across cells".into()),
+    }) else { return };
+    let value = done["value"].as_str().unwrap();
+    assert!(value.contains("classify: 200 of 200 items still without a valid label: the host call failed (host: wait)"), "{done}");
+    assert!(value.ends_with(", None)"), "{done}");
+}

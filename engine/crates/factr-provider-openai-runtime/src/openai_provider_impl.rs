@@ -25,6 +25,15 @@ pub(crate) fn is_text_only_openai_model(model: &str) -> bool {
         || id.contains("codex-spark")
 }
 
+/// The body of the explicit native-compaction request.
+pub(crate) fn native_compaction_request(model: &str, input: &[Value]) -> Value {
+    serde_json::json!({
+        "model": model,
+        "input": input,
+        "store": false,
+    })
+}
+
 #[async_trait]
 impl Provider for OpenAIProvider {
     /// The Responses API takes `input_image` parts. The trait default (false) made the engine
@@ -80,13 +89,8 @@ impl Provider for OpenAIProvider {
         let Ok(credentials) = self.credentials.try_read() else {
             return;
         };
-        let request = self.response_request_for_model(
-            model,
-            &[],
-            tools,
-            system,
-            Self::is_chatgpt_mode(&credentials),
-        );
+        let is_chatgpt_mode = Self::is_chatgpt_mode(&credentials);
+        let request = self.response_request_for_model(model, &[], tools, system, is_chatgpt_mode);
         drop(credentials);
         if matches!(mode, OpenAITransportMode::Auto)
             && websocket_cooldown_remaining(
@@ -98,7 +102,11 @@ impl Provider for OpenAIProvider {
         {
             return;
         }
-        self.prewarm.start(Arc::clone(&self.credentials), &request);
+        self.prewarm.start(
+            Arc::clone(&self.credentials),
+            &request,
+            RequestShape::current().prewarm_omits_cache_key(is_chatgpt_mode),
+        );
     }
 
     async fn complete(
@@ -108,7 +116,9 @@ impl Provider for OpenAIProvider {
         system: &str,
         _resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
-        let input = build_responses_input(messages);
+        use factr_provider_openai::stream_timing::CallStage;
+        let mut stage = CallStage::start(factr_provider_openai::stream_timing::sink());
+        let input = build_responses_input_with_shape(messages, RequestShape::current());
         let input_item_count = input.len();
         let request = self.response_request(&input, tools, system).await;
         let model_id = openai_request_model(&request);
@@ -129,9 +139,11 @@ impl Provider for OpenAIProvider {
             OpenAITransportMode::Auto => Self::should_prefer_websocket(&model_id),
         };
         if use_websocket_transport {
-            let warmed = self
-                .prewarm
-                .take_ready(&request, &*self.credentials.read().await);
+            let warmed = self.prewarm.take_ready(
+                &request,
+                &*self.credentials.read().await,
+                RequestShape::current().prewarm_omits_cache_key(is_chatgpt_mode),
+            );
             if let Some(state) = warmed {
                 let mut guard = persistent_ws.lock().await;
                 if guard.is_none() {
@@ -274,11 +286,19 @@ impl Provider for OpenAIProvider {
         let model_for_transport = model_id.clone();
         let client = self.client.clone();
         let panic_tx = tx.clone();
+        // The stream-timing line says "cancelled" when the attempt ends because its reader went away.
+        let cancelled: factr_provider_openai::stream_timing::CancelProbe = {
+            let tx = tx.clone();
+            Arc::new(move || tx.is_closed())
+        };
 
+        CallStage::set(&mut stage, "spawned");
         tokio::spawn(async move {
             let stream_task = async move {
+                let mut stage = stage;
                 // Attempt persistent WebSocket continuation first
                 if use_websocket_transport {
+                    CallStage::set(&mut stage, "continuation");
                     // Track output: a continuation that streams partial output
                     // and then fails falls through to a fresh-connection replay
                     // from the top, which must roll the partial output back.
@@ -297,8 +317,12 @@ impl Provider for OpenAIProvider {
                     let saw_output = attempt_guard.finish().await;
 
                     match continuation_result {
-                        PersistentWsResult::TerminalError => return,
+                        PersistentWsResult::TerminalError => {
+                            CallStage::set(&mut stage, "done");
+                            return;
+                        }
                         PersistentWsResult::Success => {
+                            CallStage::set(&mut stage, "done");
                             log_openai_stream_lifecycle(
                                 factr_base::logging::LogLevel::Info,
                                 "persistent_reuse_success",
@@ -365,6 +389,7 @@ impl Provider for OpenAIProvider {
                 let mut next_retry_delay = None;
 
                 for attempt in 0..MAX_RETRIES {
+                    CallStage::set(&mut stage, "retry_wait");
                     if attempt > 0 {
                         emit_connection_phase(
                             &tx,
@@ -390,6 +415,7 @@ impl Provider for OpenAIProvider {
                     }
                     skip_backoff_once = false;
 
+                    CallStage::set(&mut stage, "transport_choice");
                     let transport = if force_https_for_request {
                         OpenAITransport::HTTPS
                     } else {
@@ -428,6 +454,7 @@ impl Provider for OpenAIProvider {
 
                     let transport_label = transport.as_str();
                     let attempt_started = Instant::now();
+                    CallStage::set(&mut stage, "attempt");
                     log_openai_stream_lifecycle(
                         factr_base::logging::LogLevel::Info,
                         "attempt_start",
@@ -463,6 +490,7 @@ impl Provider for OpenAIProvider {
                             attempt_tx,
                             Arc::clone(&persistent_ws),
                             input_item_count,
+                            Arc::clone(&cancelled),
                         )
                         .await
                     } else {
@@ -502,6 +530,7 @@ impl Provider for OpenAIProvider {
                                 "https".to_string()
                             },
                             attempt_tx,
+                            Arc::clone(&cancelled),
                         )
                         .await
                     };
@@ -1145,7 +1174,10 @@ impl Provider for OpenAIProvider {
                 }]
             }));
         }
-        input.extend(build_responses_input(messages));
+        input.extend(build_responses_input_with_shape(
+            messages,
+            RequestShape::current(),
+        ));
 
         let mut builder = self
             .client
@@ -1161,11 +1193,7 @@ impl Provider for OpenAIProvider {
         }
 
         let response = builder
-            .json(&serde_json::json!({
-                "model": self.model_id().await,
-                "input": input,
-                "store": false,
-            }))
+            .json(&native_compaction_request(&self.model_id().await, &input))
             .send()
             .await
             .context("Failed to send OpenAI compact request")?;

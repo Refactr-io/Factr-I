@@ -109,6 +109,9 @@ def make_records(n=2000, seed=7):
     return out
 
 
+PARTIAL_WAVE_MARGIN_S = 0.25                     # host.rs PARTIAL_WAVE_MARGIN
+WAVE_ENDED = "host call time budget exhausted before this item's reply came; ask for it again in a new cell"
+
 # ---- the fake provider ----------------------------------------------------------------------------------------
 class Provider:
     def __init__(self, scenario, seed):
@@ -204,7 +207,7 @@ class Host:
             return None, 0.0, f"llm_query_batch: {total} bytes of input, the limit is {MAX_BATCH_BYTES}"
         slots = [0.0] * min(self.conc, self.s.get("queue_limit", self.conc))   # a provider that serialises calls
         heapq.heapify(slots)
-        active, out, makespan = [], [], 0.0
+        active, out, ends, makespan = [], [], [], 0.0
         for prompt in prompts:
             start = heapq.heappop(slots)
             active = [e for e in active if e > start]
@@ -216,16 +219,26 @@ class Host:
                 text, err, vis, rea, lat, eff, ref = None, f"llm_query: prompt is {len(prompt)} characters, the limit is {MAX_QUERY_CHARS}; split the input into smaller slices", 0, 0, 0.0, None, None
             elif (limit and len(active) >= limit) or (burst and burst[0] <= now < burst[1]):
                 text, err, vis, rea, lat, eff, ref = None, "429 Too Many Requests: rate limit reached", 0, 0, ERROR_LATENCY_S["429"], None, None
+            elif self.stats["calls"] == self.s.get("stall_call"):
+                # Accepted, then silent: no reply ever comes (the stall seen on the real backend).
+                text, err, vis, rea, lat, eff, ref = None, None, 0, 0, math.inf, None, None
             else:
                 text, err, vis, rea, lat, eff, ref = self.provider.reply(prompt, self.effort, now)
                 if ref is not None:
                     self.stats["calls"] += 1
+            deadline = self.s.get("subcall_timeout_s")
+            if deadline and lat > deadline:
+                # FACTR_REPL_SUBCALL_TIMEOUT_S: the engine drops the call and reports a timeout.
+                text, err, vis, rea, lat, eff, ref = None, f"sub-call timed out after {deadline}s with no reply", 0, 0, float(deadline), None, None
             end = start + lat
             heapq.heappush(slots, end)
             active.append(end)
             makespan = max(makespan, end)
+            ends.append(end)
             tin = math.ceil(len(prompt) * IN_TOKENS_PER_CHAR) if err is None else None
-            if err is None:
+            if err is None and text is None:
+                out.append(None)
+            elif err is None:
                 self.stats["in"] += tin
                 self.stats["out"] += vis + rea
                 self.stats["reasoning"] += rea
@@ -234,6 +247,12 @@ class Host:
             else:
                 self.stats["failed_calls"] += 1
                 out.append({"t": "", "e": "Error: " + err, "i": None, "o": None, "c": None, "r": None, "ms": int(lat * 1000), "s": int(start * 1000), "f": None})
+        if makespan > host_left and self.cfg.get("keep_partial"):
+            # FACTR_REPL_KEEP_PARTIAL_WAVE: the batch ends just before the cell's wait and keeps what came back.
+            cut = host_left - PARTIAL_WAVE_MARGIN_S
+            out = [o if e <= cut else {"t": "", "e": "Error: " + WAVE_ENDED, "i": None, "o": None, "c": None, "r": None, "ms": None, "s": None, "f": None}
+                   for o, e in zip(out, ends)]
+            return out, cut, None
         if makespan > host_left:
             return None, host_left, ("host call time budget exhausted: the cell may wait 120s in total on model calls "
                                      "(more for a large batch); split the work across cells")
@@ -422,6 +441,18 @@ def main():
     assert host.stats["calls"] == 2 * n_chunks(work_texts, 40), "every chunk asked twice (one transport re-ask), then a clear error"
     got, host, errors = run(records, {"name": "auth", "always": "401 Unauthorized: invalid api key"}, configs[2][1], max_cells=1)
     assert got is None and "asking again cannot help" in errors[0] and host.stats["calls"] == n_chunks(work_texts, 40), errors
+    # One sub-call accepted and then silent (the stall seen on the real backend), with the 0.0.4 defaults.
+    stall, default = {"name": "stall", "stall_call": 5}, configs[5][1]
+    got, host, errors = run(records, stall, default, max_cells=1)
+    assert got is None and "2000 of 2000 items still without a valid label" in errors[0] and "host: wait" in errors[0], errors
+    # With a per-call deadline the stalled chunk times out, is asked once more, and every item is labelled in one cell.
+    got, host, errors = run(records, dict(stall, subcall_timeout_s=90), default, max_cells=1)
+    assert got == belief and host.stats["cells"] == 1, errors
+    assert host.stats["calls"] == n_chunks(all_texts, 80, cap=48000) + 1, "only the stalled chunk is asked twice"
+    # Keeping a partial wave (no deadline): the chunks that came are kept and only the stalled chunk is named.
+    got, host, errors = run(records, stall, dict(default, keep_partial=True), max_cells=1)
+    lost = int(errors[0].split("classify: ", 1)[1].split(" of ", 1)[0])
+    assert got is None and 0 < lost <= 80 and f"{lost} of 2000 items" in errors[0] and "classify_partial" in errors[0], errors
     # A record the provider filters, in chunks of 80: halving isolates it alone; the other 1,999 are labelled.
     marked = list(records)
     marked[1234] = "Entry flagged-marker mentions fern"

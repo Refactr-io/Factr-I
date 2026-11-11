@@ -5,13 +5,24 @@ pub use factr_provider_openai::{
 };
 
 use crate::message::Message as ChatMessage;
+use factr_provider_core::request_shape::RequestShape;
 use factr_provider_openai::OpenAiRequestLogLevel;
 use serde_json::Value;
 
 pub fn build_responses_input(messages: &[ChatMessage]) -> Vec<Value> {
-    factr_provider_openai::build_responses_input_with_logger(messages, |level, message| match level
-    {
-        OpenAiRequestLogLevel::Info => crate::logging::info(message),
-        OpenAiRequestLogLevel::Warn => crate::logging::warn(message),
-    })
+    build_responses_input_with_shape(messages, &RequestShape::BASELINE)
+}
+
+pub fn build_responses_input_with_shape(
+    messages: &[ChatMessage],
+    shape: &RequestShape,
+) -> Vec<Value> {
+    factr_provider_openai::build_responses_input_with_logger_and_shape(
+        messages,
+        shape,
+        |level, message| match level {
+            OpenAiRequestLogLevel::Info => crate::logging::info(message),
+            OpenAiRequestLogLevel::Warn => crate::logging::warn(message),
+        },
+    )
 }

@@ -44,7 +44,7 @@ jobs:
       matrix:
         include:
           - name: mac-arm64
-            os: macos-14
+            os: macos-15
             # Ad-hoc identity: an Apple Silicon app with no signature at all reports as "damaged".
             dist: npm run dist:mac -- -c.mac.identity=-
           - name: win-x64

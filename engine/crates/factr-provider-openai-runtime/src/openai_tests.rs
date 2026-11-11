@@ -237,6 +237,8 @@ include!("openai_tests/websocket_prewarm.rs");
 include!("openai_tests/payloads.rs");
 include!("openai_tests/factr_refresh.rs");
 include!("openai_tests/parsing_tools.rs");
+include!("openai_tests/request_shape.rs");
+include!("openai_tests/stream_timing.rs");
 
 /// Mirror of the Anthropic round-trip guard: the runtime-provider identity that
 /// `set_credential_mode` writes for OpenAI must decode back to the same mode so
@@ -364,3 +366,5 @@ fn catalog_credential_identity_survives_token_refresh_but_changes_accounts() {
 include!("openai_tests/persistent_terminal.rs");
 
 include!("openai_tests/persistent_prefix.rs");
+
+include!("openai_tests/injected_message_continuation.rs");

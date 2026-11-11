@@ -70,6 +70,7 @@ impl Agent {
         stop_nudge.compute_tool &= self.registry.tool_names().await.iter().any(|t| t == "bash" || t == "repl");
         let mut deadline = super::turn_deadline::TurnDeadline::new();
         deadline.set_no_tools(stop_nudge.no_tools());
+        let mut injections = super::sticky_injections::StickyInjections::new(self.loop_shape.sticky_nudges);
         let mut usage_parks = super::usage_wait::UsageParks::default();
         let mut fallback_walk = super::provider_fallback::FallbackWalk::default();
         let mut iterations = 0u32;
@@ -111,6 +112,7 @@ impl Agent {
                 .prewarm(&tools, &split_prompt.static_part)
                 .await;
             let (messages, compaction_event) = self.messages_for_provider();
+            let compacted = compaction_event.is_some();
             if let Some(event) = compaction_event {
                 // Reset cache tracker and tool lock on compaction since the message history changes
                 self.cache_tracker.reset();
@@ -149,33 +151,41 @@ impl Agent {
             self.session.release_provider_messages_cache();
 
             // Inject memory as a user message at the end (preserves cache prefix)
-            let mut messages_with_memory: Vec<Message> = messages.iter().cloned().collect();
+            let mut messages_with_memory = injections.start_call(&messages, compacted);
+            if self.loop_shape.compact_write_result {
+                super::compact_tool_results::compact_write_results(&mut messages_with_memory);
+            }
             if let Some(memory) = memory_pending.as_ref() {
                 self.record_memory_injection_in_session(memory);
                 logging::info(&format!(
                     "Memory injected as message ({} chars)",
                     memory.prompt.len()
                 ));
-                let (memory_msg, _persisted) = self.prepare_memory_injection_message(memory);
-                messages_with_memory.push(memory_msg);
+                let (memory_msg, persisted) = self.prepare_memory_injection_message(memory);
+                if persisted {
+                    messages_with_memory.push(memory_msg);
+                } else {
+                    injections.push(&mut messages_with_memory, memory_msg);
+                }
             }
             if Self::should_inject_batch_nudge(
                 batch_nudge_pending,
                 tools.iter().any(|tool| tool.name == "batch"),
             ) {
-                messages_with_memory.push(Message::user(Self::BATCH_NUDGE));
+                injections.push(&mut messages_with_memory, Message::user(Self::BATCH_NUDGE));
                 batch_nudge_pending = false;
                 sequential_single_tool_rounds = 0;
             }
 
             if let Some(reminder) = repeat_guard.take_reminder() {
-                messages_with_memory.push(Message::user(&reminder));
+                injections.push(&mut messages_with_memory, Message::user(&reminder));
             }
             if let Some(nudge) = stop_nudge.take_pending() {
-                messages_with_memory.push(Message::user(&nudge));
+                injections.push(&mut messages_with_memory, Message::user(&nudge));
             }
+            deadline.set_no_run(self.current_check_ban() != factr_base::task_policy::CheckBan::None);
             if let Some(m) = deadline.poll(&self.session.id) {
-                messages_with_memory.push(Message::user(m));
+                injections.push(&mut messages_with_memory, Message::user(m));
             }
 
             logging::info(&format!(
@@ -952,6 +962,7 @@ impl Agent {
                     && {
                         stop_nudge.set_late(deadline.past_70());
                         stop_nudge.set_half(deadline.past_50());
+                        stop_nudge.check_ban = self.current_check_ban();
                         stop_nudge.on_text_only_stop(&self.session.id, &text_content)
                     }
                 {

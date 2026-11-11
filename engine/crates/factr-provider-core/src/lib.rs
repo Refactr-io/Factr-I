@@ -13,6 +13,7 @@ pub mod pricing;
 pub mod reasoning;
 pub mod rate_limits;
 pub mod refusal;
+pub mod request_shape;
 pub mod retry_after;
 pub mod selection;
 pub mod stream_lifetime;
@@ -524,6 +525,10 @@ pub trait Provider: Send + Sync {
                         cache_read: cache_read_input_tokens.unwrap_or(0),
                         cache_write: cache_creation_input_tokens.unwrap_or(0),
                     });
+                }
+                // A failed response is the call's error, not an empty reply.
+                Ok(StreamEvent::Error { message, .. }) if request_shape::RequestShape::current().ws_failed_response_ends => {
+                    return Err(anyhow::anyhow!("{message}"));
                 }
                 Ok(_) => {}
                 Err(err) => return Err(err),

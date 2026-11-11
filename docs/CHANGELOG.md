@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.16
+
+- **Fewer tokens and much less time on the benchmark gate.** On a final gate of 34 tasks across four suites with gpt-6-luna, the same build ran once per task with and without `FACTR_VARIANT_BASELINE=1`. The new behaviour passed 28 against 25 for the v0.0.15 behaviour, with 24% fewer input tokens (2.38M against 3.14M), 36% fewer model calls (584 against 916) and about a third of the wall time (2,057 s against 6,035 s).
+- **Long classify jobs no longer lose a whole wave.** Most of the gain is here. A sub-call that got a failed response used to idle for minutes, and the whole wave of results was lost. Now the failed response ends at once, finished results are kept, and the hosted image tool is no longer attached to sub-calls. On the 8 classify tasks of the gate: 7 passed against 5, with 54% fewer input tokens and 643 s against 5,002 s.
+- **Coding tasks are level with v0.0.15.** 14 of 15 against 15 of 15 on this run; an earlier run went the other way.
+- **Agent loop changes.** OpenAI requests now take the shape the reference clients send. Reminders stay in place for the rest of the turn so the connection can keep reusing its cached prefix; an instruction not to run or not to check the result is respected; there is no forced read-back after a file-tool write; and the model's copy of an edit result no longer repeats the whole diff (the app still shows it).
+- **Known issue: image generation does not work on gpt-6-luna with a ChatGPT login.** The backend rejects it, as it also did in v0.0.15. In this release the image tool is not offered on that model, so the request gets a text answer and the turn no longer fails.
+- Every change has its own switch, and `FACTR_VARIANT_BASELINE=1` restores the v0.0.15 behaviour; see `docs/ENGINE-SWITCHES.md`.
+
 ## v0.0.15
 
 - **Better at finishing coding tasks.** The agent now reproduces a reported bug with the exact example before editing and again after, checks sibling and alias code paths for the same flaw, reuses existing helpers and the request's own names, runs the tests of the modules it touched, never hides error output, and no longer edits an existing test just to make it pass (a test that passed before and now fails means the change is wrong, unless the request asks for the new behaviour).

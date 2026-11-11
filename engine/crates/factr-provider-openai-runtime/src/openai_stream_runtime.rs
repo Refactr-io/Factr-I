@@ -112,12 +112,29 @@ pub(super) async fn force_refresh_openai_token(
 }
 
 /// Stream the response from OpenAI API
+/// Sends one event downstream; with stream timing on, the time spent waiting on the bounded
+/// channel is added to the call's `channel_wait_ms`.
+async fn send_event(
+    tx: &mpsc::Sender<Result<StreamEvent>>,
+    event: StreamEvent,
+    timing: Option<&mut StreamTiming>,
+) -> Result<(), mpsc::error::SendError<Result<StreamEvent>>> {
+    let Some(timing) = timing else {
+        return tx.send(Ok(event)).await;
+    };
+    let started = Instant::now();
+    let sent = tx.send(Ok(event)).await;
+    timing.add_channel_wait(started.elapsed());
+    sent
+}
+
 pub(super) async fn stream_response(
     client: Client,
     credentials: Arc<RwLock<CodexCredentials>>,
     request: Value,
     initial_status_detail: String,
     tx: mpsc::Sender<Result<StreamEvent>>,
+    cancelled: factr_provider_openai::stream_timing::CancelProbe,
 ) -> Result<(), OpenAIStreamFailure> {
     use factr_message_types::ConnectionPhase;
     let request_model = openai_request_model(&request);
@@ -168,6 +185,15 @@ pub(super) async fn stream_response(
     let connect_start = std::time::Instant::now();
     let idle_timeout = effective_https_idle_timeout(&request);
 
+    let mut timing = StreamTiming::start(
+        factr_provider_openai::stream_timing::sink(),
+        "https",
+        &request,
+        RequestShape::current(),
+    );
+    if let Some(timing) = timing.as_mut() {
+        timing.watch(cancelled);
+    }
     let response = factr_provider_core::transport::send_with_initial_response_timeout(
         builder.json(&request),
         idle_timeout,
@@ -307,7 +333,7 @@ pub(super) async fn stream_response(
         .await;
 
     // Stream the response
-    let mut stream = OpenAIResponsesStream::new(response.bytes_stream());
+    let mut stream = OpenAIResponsesStream::new_with_timing(response.bytes_stream(), timing);
     let mut saw_message_end = false;
 
     // Idle timeout between streamed events. Without this, a silently dead
@@ -371,7 +397,7 @@ pub(super) async fn stream_response(
                     }
                 }
                 usage_recorder.observe(&event).await;
-                if tx.send(Ok(event)).await.is_err() {
+                if send_event(&tx, event, stream.timing_mut()).await.is_err() {
                     // Receiver dropped, stop streaming
                     log_openai_stream_lifecycle(
                         factr_base::logging::LogLevel::Warn,
@@ -456,6 +482,62 @@ pub(super) enum PersistentWsResult {
     Failed(String),
 }
 
+/// The WebSocket continuation request: the new items plus `previous_response_id`, with the
+/// settings copied from the full request.
+pub(super) fn build_continuation_request(
+    request: &Value,
+    previous_response_id: &str,
+    incremental_items: &[Value],
+) -> Value {
+    let mut continuation_request = serde_json::json!({
+        "type": "response.create",
+        "previous_response_id": previous_response_id,
+        "input": incremental_items,
+    });
+
+    // Copy over model, tools, and other settings from the original request
+    if let Some(model) = request.get("model") {
+        continuation_request["model"] = model.clone();
+    }
+    if let Some(tools) = request.get("tools") {
+        continuation_request["tools"] = tools.clone();
+    }
+    if let Some(tool_choice) = request.get("tool_choice") {
+        continuation_request["tool_choice"] = tool_choice.clone();
+    }
+    if let Some(instructions) = request.get("instructions") {
+        continuation_request["instructions"] = instructions.clone();
+    }
+    if let Some(max_output_tokens) = request.get("max_output_tokens") {
+        continuation_request["max_output_tokens"] = max_output_tokens.clone();
+    }
+    if let Some(reasoning) = request.get("reasoning") {
+        continuation_request["reasoning"] = reasoning.clone();
+    }
+    if let Some(context_management) = request.get("context_management") {
+        continuation_request["context_management"] = context_management.clone();
+    }
+    if let Some(include) = request.get("include") {
+        continuation_request["include"] = include.clone();
+    }
+    if let Some(service_tier) = request.get("service_tier") {
+        continuation_request["service_tier"] = service_tier.clone();
+    }
+    if let Some(prompt_cache_key) = request.get("prompt_cache_key") {
+        continuation_request["prompt_cache_key"] = prompt_cache_key.clone();
+    }
+    if let Some(prompt_cache_retention) = request.get("prompt_cache_retention") {
+        continuation_request["prompt_cache_retention"] = prompt_cache_retention.clone();
+    }
+    continuation_request["store"] = serde_json::json!(false);
+    // Same value as the full request, so a continuation never differs from it.
+    continuation_request["parallel_tool_calls"] = request
+        .get("parallel_tool_calls")
+        .cloned()
+        .unwrap_or(serde_json::json!(false));
+    continuation_request
+}
+
 /// Try to continue a conversation on an existing persistent WebSocket connection
 /// using `previous_response_id` to send only incremental input.
 pub(super) async fn try_persistent_ws_continuation(
@@ -474,6 +556,7 @@ pub(super) async fn try_persistent_ws_continuation(
         input,
         input_item_count,
         tx,
+        factr_provider_openai::stream_timing::sink(),
     )
     .await;
     // Invalidate under the same lock that protected the attempt. Clearing in
@@ -496,13 +579,14 @@ pub(super) async fn try_persistent_ws_continuation(
     result
 }
 
-async fn continue_persistent_ws_locked(
+pub(super) async fn continue_persistent_ws_locked(
     guard: &mut Option<PersistentWsState>,
     credentials: &Arc<RwLock<CodexCredentials>>,
     request: &Value,
     input: &[Value],
     input_item_count: usize,
     tx: &mpsc::Sender<Result<StreamEvent>>,
+    timing_sink: Option<fn(&str)>,
 ) -> PersistentWsResult {
     let request_model = openai_request_model(request);
     let state = match guard.as_mut() {
@@ -753,48 +837,8 @@ async fn continue_persistent_ws_locked(
     );
 
     // Build the incremental request - only include new items + previous_response_id
-    let mut continuation_request = serde_json::json!({
-        "type": "response.create",
-        "previous_response_id": previous_response_id,
-        "input": incremental_items,
-    });
-
-    // Copy over model, tools, and other settings from the original request
-    if let Some(model) = request.get("model") {
-        continuation_request["model"] = model.clone();
-    }
-    if let Some(tools) = request.get("tools") {
-        continuation_request["tools"] = tools.clone();
-    }
-    if let Some(tool_choice) = request.get("tool_choice") {
-        continuation_request["tool_choice"] = tool_choice.clone();
-    }
-    if let Some(instructions) = request.get("instructions") {
-        continuation_request["instructions"] = instructions.clone();
-    }
-    if let Some(max_output_tokens) = request.get("max_output_tokens") {
-        continuation_request["max_output_tokens"] = max_output_tokens.clone();
-    }
-    if let Some(reasoning) = request.get("reasoning") {
-        continuation_request["reasoning"] = reasoning.clone();
-    }
-    if let Some(context_management) = request.get("context_management") {
-        continuation_request["context_management"] = context_management.clone();
-    }
-    if let Some(include) = request.get("include") {
-        continuation_request["include"] = include.clone();
-    }
-    if let Some(service_tier) = request.get("service_tier") {
-        continuation_request["service_tier"] = service_tier.clone();
-    }
-    if let Some(prompt_cache_key) = request.get("prompt_cache_key") {
-        continuation_request["prompt_cache_key"] = prompt_cache_key.clone();
-    }
-    if let Some(prompt_cache_retention) = request.get("prompt_cache_retention") {
-        continuation_request["prompt_cache_retention"] = prompt_cache_retention.clone();
-    }
-    continuation_request["store"] = serde_json::json!(false);
-    continuation_request["parallel_tool_calls"] = serde_json::json!(false);
+    let continuation_request =
+        build_continuation_request(request, &previous_response_id, &incremental_items);
 
     let continuation_tools = continuation_request
         .get("tools")
@@ -905,6 +949,12 @@ async fn continue_persistent_ws_locked(
         return PersistentWsResult::NotAvailable;
     }
     let mut usage_recorder = OAuthUsageRecorder::capture(&send_credentials, request);
+    let mut timing = StreamTiming::start(
+        timing_sink,
+        "ws-continuation",
+        &continuation_request,
+        RequestShape::current(),
+    );
     if let Err(e) = state.ws_stream.send(WsMessage::Text(request_text)).await {
         return PersistentWsResult::Failed(format!("send error: {}", e));
     }
@@ -982,6 +1032,9 @@ async fn continue_persistent_ws_locked(
         match result {
             Ok(WsMessage::Text(text)) => {
                 let text = text.to_string();
+                if let Some(timing) = timing.as_mut() {
+                    timing.observe(&text, Instant::now());
+                }
                 if !logged_first_server_event {
                     emit_connection_phase(tx, factr_message_types::ConnectionPhase::Streaming)
                         .await;
@@ -1060,7 +1113,7 @@ async fn continue_persistent_ws_locked(
                         return PersistentWsResult::TerminalError;
                     }
                     usage_recorder.observe(&event).await;
-                    if tx.send(Ok(event)).await.is_err() {
+                    if send_event(tx, event, timing.as_mut()).await.is_err() {
                         consumer_dropped = true;
                         break;
                     }
@@ -1087,7 +1140,7 @@ async fn continue_persistent_ws_locked(
                         saw_response_completed = true;
                     }
                     usage_recorder.observe(&event).await;
-                    if tx.send(Ok(event)).await.is_err() {
+                    if send_event(tx, event, timing.as_mut()).await.is_err() {
                         consumer_dropped = true;
                         break;
                     }
@@ -1203,8 +1256,21 @@ pub(super) async fn stream_response_websocket_persistent(
     tx: mpsc::Sender<Result<StreamEvent>>,
     persistent_ws: Arc<Mutex<Option<PersistentWsState>>>,
     input_item_count: usize,
+    cancelled: factr_provider_openai::stream_timing::CancelProbe,
 ) -> Result<(), OpenAIStreamFailure> {
     use factr_message_types::ConnectionPhase;
+    // Started before the token and the connect, so an attempt that never sends is reported; `t0` is
+    // restarted just before the send, so the timing line's times are unchanged.
+    let mut timing = StreamTiming::start(
+        factr_provider_openai::stream_timing::sink(),
+        "websocket",
+        &request,
+        RequestShape::current(),
+    );
+    if let Some(timing) = timing.as_mut() {
+        timing.not_sent_yet();
+        timing.watch(cancelled);
+    }
     let request_model = request
         .get("model")
         .and_then(|m| m.as_str())
@@ -1337,10 +1403,16 @@ pub(super) async fn stream_response_websocket_persistent(
     })?;
     let request_send_started_at = Instant::now();
     emit_connection_phase(&tx, ConnectionPhase::SendingRequest).await;
+    if let Some(timing) = timing.as_mut() {
+        timing.sending();
+    }
     ws_stream
         .send(WsMessage::Text(request_text))
         .await
         .map_err(|err| OpenAIStreamFailure::Other(anyhow::anyhow!(err)))?;
+    if let Some(timing) = timing.as_mut() {
+        timing.sent();
+    }
     emit_connection_phase(&tx, ConnectionPhase::WaitingForResponse).await;
     factr_base::logging::info(&format!(
         "Fresh WS request sent in {}ms ({})",
@@ -1421,6 +1493,9 @@ pub(super) async fn stream_response_websocket_persistent(
             Ok(message) => match message {
                 WsMessage::Text(text) => {
                     let text = text.to_string();
+                    if let Some(timing) = timing.as_mut() {
+                        timing.observe(&text, Instant::now());
+                    }
                     if !logged_first_server_event {
                         emit_connection_phase(&tx, ConnectionPhase::Streaming).await;
                         factr_base::logging::info(&format!(
@@ -1493,8 +1568,12 @@ pub(super) async fn stream_response_websocket_persistent(
                                 )));
                             }
                         }
+                        // A failed response sends no response.completed: forward it once and end the attempt
+                        // (not saved for reuse), as a continuation does, instead of idling out the socket.
+                        let failed = RequestShape::current().ws_failed_response_ends
+                            && matches!(event, StreamEvent::Error { .. });
                         usage_recorder.observe(&event).await;
-                        if tx.send(Ok(event)).await.is_err() {
+                        if send_event(&tx, event, timing.as_mut()).await.is_err() {
                             log_openai_stream_lifecycle(
                                 factr_base::logging::LogLevel::Warn,
                                 "consumer_dropped",
@@ -1507,6 +1586,9 @@ pub(super) async fn stream_response_websocket_persistent(
                                     ),
                                 ],
                             );
+                            return Ok(());
+                        }
+                        if failed {
                             return Ok(());
                         }
                     }
@@ -1530,8 +1612,12 @@ pub(super) async fn stream_response_websocket_persistent(
                         if matches!(event, StreamEvent::MessageEnd { .. }) {
                             saw_response_completed = true;
                         }
+                        // A failed response sends no response.completed: forward it once and end the attempt
+                        // (not saved for reuse), as a continuation does, instead of idling out the socket.
+                        let failed = RequestShape::current().ws_failed_response_ends
+                            && matches!(event, StreamEvent::Error { .. });
                         usage_recorder.observe(&event).await;
-                        if tx.send(Ok(event)).await.is_err() {
+                        if send_event(&tx, event, timing.as_mut()).await.is_err() {
                             log_openai_stream_lifecycle(
                                 factr_base::logging::LogLevel::Warn,
                                 "consumer_dropped",
@@ -1544,6 +1630,9 @@ pub(super) async fn stream_response_websocket_persistent(
                                     ),
                                 ],
                             );
+                            return Ok(());
+                        }
+                        if failed {
                             return Ok(());
                         }
                     }

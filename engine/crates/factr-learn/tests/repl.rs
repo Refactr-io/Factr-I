@@ -745,3 +745,41 @@ async fn classify_logs_per_chunk_without_spending_host_calls_or_leaking_text() {
     assert!(chunk["call_id"].as_str().unwrap().starts_with(&format!("s/{}/", chunk["cell"])), "{chunk}");
     assert!(text.lines().any(|l| l.contains("\"type\":\"job\"") && l.contains("\"status\":\"ok\"")), "{text}");
 }
+
+/// A sub-model reply naming every item of the chunk "no"; the chunk that holds `stall_on` never answers its
+/// first ask. Each call runs under `deadline` exactly as the engine's sub-call does. Returns the meta and the
+/// number of times the stalling chunk was asked.
+fn stalling_meta(stall_on: &'static str, deadline: Option<std::time::Duration>) -> (factr_learn::host::LlmQueryMeta, Arc<std::sync::atomic::AtomicUsize>) {
+    let asks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = asks.clone();
+    let meta: factr_learn::host::LlmQueryMeta = Arc::new(move |prompt: String| {
+        let seen = seen.clone();
+        Box::pin(factr_learn::host::with_deadline(deadline, async move {
+            let rows: Vec<String> = prompt.split("Items:\n").nth(1).unwrap().lines().map(str::to_string).collect();
+            if rows.iter().any(|l| l.ends_with(stall_on)) && seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                std::future::pending::<()>().await;
+            }
+            let text = rows.iter().map(|l| l.split_once(". ").unwrap().0).map(|id| format!("\"{id}\":\"no\"")).collect::<Vec<_>>().join(",");
+            Ok(factr_learn::host::SubReply { text: format!("{{{text}}}"), ..Default::default() })
+        }))
+    });
+    (meta, asks)
+}
+
+/// With a per-call deadline, a chunk whose reply never comes fails as a timeout, is asked once more, and every
+/// item gets its label well inside the cell's wait; the other chunks are not asked again.
+#[tokio::test(flavor = "multi_thread")]
+async fn classify_asks_a_stalled_chunk_once_more_and_labels_everything() {
+    let h = host!();
+    let (meta, asks) = stalling_meta("record 150", Some(std::time::Duration::from_millis(500)));
+    let extra = factr_learn::host::ExtraHostFns { llm_query_meta: Some(meta), ..Default::default() };
+    let started = std::time::Instant::now();
+    let out = h
+        .run("s", "r = await classify([f'record {i}' for i in range(200)], ['yes', 'no'])\n(len(r), set(r))", None, upper(), no_refine(), extra, MEMORY_LIMIT)
+        .await
+        .unwrap();
+    assert_eq!(out.error, None);
+    assert_eq!(out.value.as_deref(), Some("(200, {'no'})"));
+    assert_eq!(asks.load(std::sync::atomic::Ordering::SeqCst), 2, "the stalled chunk was asked exactly twice");
+    assert!(started.elapsed() < std::time::Duration::from_secs(20), "{:?}", started.elapsed());
+}

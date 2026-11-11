@@ -15,7 +15,14 @@ use async_trait::async_trait;
 use futures::{FutureExt, SinkExt, StreamExt as FuturesStreamExt};
 use factr_base::auth::codex::CodexCredentials;
 use factr_base::auth::oauth;
-use factr_base::provider::openai_request::{build_responses_input, build_tools};
+use factr_base::provider::openai_request::build_responses_input_with_shape;
+#[cfg(test)]
+use factr_base::provider::openai_request::build_responses_input;
+#[cfg(test)]
+use factr_base::provider::openai_request::build_tools;
+use factr_provider_core::request_shape::RequestShape;
+use factr_provider_openai::build_tools_with_shape;
+use factr_provider_openai::stream_timing::StreamTiming;
 #[cfg(test)]
 use factr_message_types::TOOL_OUTPUT_MISSING_TEXT;
 use factr_message_types::{Message as ChatMessage, StreamEvent, ToolDefinition};
@@ -712,6 +719,25 @@ fn new_prompt_cache_key() -> String {
 
 /// The cache key for a request: the factr session it runs for, so a re-attached or restarted
 /// session (a new provider instance) keeps its cache hits; the instance key outside any session.
+/// Opt-in, off by default (`RequestShape::content_cache_key`): `pck_` + the first 24 hex chars of
+/// sha256(instructions, 0x00, tools sorted by name or type as compact JSON with sorted keys).
+/// The reference client hashes the same parts plus a session scope; this leaves the scope out, so
+/// every session with the same prompt and tool set shares one key.
+fn content_cache_key(instructions: &Value, tools: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let mut tools: Vec<&Value> = tools.as_array().into_iter().flatten().collect();
+    let sort_key = |t: &&Value| t.get("name").or(t.get("type")).and_then(Value::as_str).unwrap_or("").to_string();
+    tools.sort_by_key(sort_key);
+    // serde_json's map is ordered by key here (no `preserve_order`), so this is sorted-key JSON.
+    let content = format!(
+        "{}\0{}",
+        instructions.as_str().unwrap_or(""),
+        serde_json::to_string(&tools).unwrap_or_default()
+    );
+    let hex: String = Sha256::digest(content.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    format!("pck_{}", &hex[..24])
+}
+
 fn prompt_cache_key_for(session: Option<&str>, instance_key: &str) -> String {
     session.map_or_else(|| instance_key.to_string(), |session| format!("factr-session-{session}"))
 }
@@ -1237,7 +1263,8 @@ impl OpenAIProvider {
         system: &str,
         is_chatgpt_mode: bool,
     ) -> Value {
-        let api_tools = build_tools(tools);
+        let shape = RequestShape::current();
+        let api_tools = build_tools_with_shape(tools, shape);
         // The hosted image tool follows the run's tool policy (the session this turn is for).
         let image_generation_allowed = factr_base::tool_policy::tool_allowed(
             factr_base::logging::current_session().as_deref(),
@@ -1262,7 +1289,7 @@ impl OpenAIProvider {
             .unwrap_or_else(|poisoned| poisoned.into_inner().clone());
         let native_compaction_threshold =
             self.native_compaction_threshold_for_context_window(self.context_window());
-        Self::build_response_request(
+        Self::build_response_request_with_shape(
             model_id,
             system.to_string(),
             input,
@@ -1280,9 +1307,11 @@ impl OpenAIProvider {
             )),
             self.prompt_cache_retention.as_deref(),
             native_compaction_threshold,
+            shape,
         )
     }
 
+    #[cfg(test)]
     #[expect(
         clippy::too_many_arguments,
         reason = "request construction threads explicit per-request OpenAI settings without hidden state"
@@ -1301,13 +1330,59 @@ impl OpenAIProvider {
         prompt_cache_retention: Option<&str>,
         native_compaction_threshold: Option<usize>,
     ) -> Value {
+        Self::build_response_request_with_shape(
+            model_id,
+            instructions,
+            input,
+            api_tools,
+            is_chatgpt_mode,
+            image_generation_allowed,
+            max_output_tokens,
+            reasoning_effort,
+            service_tier,
+            prompt_cache_key,
+            prompt_cache_retention,
+            native_compaction_threshold,
+            &RequestShape::BASELINE,
+        )
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "request construction threads explicit per-request OpenAI settings without hidden state"
+    )]
+    fn build_response_request_with_shape(
+        model_id: &str,
+        instructions: String,
+        input: &[Value],
+        api_tools: &[Value],
+        is_chatgpt_mode: bool,
+        image_generation_allowed: bool,
+        max_output_tokens: Option<u32>,
+        reasoning_effort: Option<&str>,
+        service_tier: Option<&str>,
+        prompt_cache_key: Option<&str>,
+        prompt_cache_retention: Option<&str>,
+        native_compaction_threshold: Option<usize>,
+        shape: &RequestShape,
+    ) -> Value {
         let mut tools = api_tools.to_vec();
         // The hosted `image_generation` tool is only available to general
         // ChatGPT/GPT models on the Responses backend. Codex models
         // (`*-codex*`) reject unknown hosted tools, so don't attach it for them. It is also
         // left off when the run's tool policy (enabled/disabled toolsets) does not allow
-        // `image_generate`; with no policy it is attached as before.
-        if is_chatgpt_mode && image_generation_allowed && model_supports_image_generation(model_id) {
+        // `image_generate`; with no policy it is attached as before. With `image_tool_needs_tools` a
+        // request with no tools of its own (a REPL sub-call or another simple completion, which runs
+        // where the session's tool policy is not visible) never gets it: a classification sub-call
+        // that called it failed outright ("Complexity 'medium' is not supported for this image model").
+        // With `image_tool_skip_luna` gpt-6-luna never gets it: every image call there fails the same way
+        // whatever the effort or tool fields, and without it the model can still answer in text.
+        if is_chatgpt_mode
+            && image_generation_allowed
+            && model_supports_image_generation(model_id)
+            && !(shape.image_tool_needs_tools && api_tools.is_empty())
+            && !(shape.image_tool_skip_luna && model_id.to_ascii_lowercase().contains("gpt-6-luna"))
+        {
             tools.push(serde_json::json!({ "type": "image_generation" }));
         }
 
@@ -1320,7 +1395,8 @@ impl OpenAIProvider {
             // Deliberately serial: one tool call per model step. The agent loop, the approval
             // flow and the per-call tool policy checks all assume tool calls arrive one at a time,
             // and a run's tool order must stay reproducible. Do not flip this without those.
-            "parallel_tool_calls": false,
+            // The switch exists for measurement; several calls from one response still run one at a time, in order.
+            "parallel_tool_calls": shape.parallel_tool_calls,
             "stream": true,
             "store": false,
             "include": ["reasoning.encrypted_content"],
@@ -1353,15 +1429,20 @@ impl OpenAIProvider {
             ]);
         }
 
-        if !is_chatgpt_mode {
-            if let Some(key) = prompt_cache_key {
-                request["prompt_cache_key"] = serde_json::json!(key);
-            }
-            if let Some(retention) =
+        // The reference clients also send the key on the ChatGPT backend; retention stays API-key-only.
+        if is_chatgpt_mode && shape.chatgpt_cache_key && shape.content_cache_key {
+            request["prompt_cache_key"] =
+                serde_json::json!(content_cache_key(&request["instructions"], &request["tools"]));
+        } else if (!is_chatgpt_mode || shape.chatgpt_cache_key)
+            && let Some(key) = prompt_cache_key
+        {
+            request["prompt_cache_key"] = serde_json::json!(key);
+        }
+        if !is_chatgpt_mode
+            && let Some(retention) =
                 Self::effective_prompt_cache_retention(model_id, prompt_cache_retention)
-            {
-                request["prompt_cache_retention"] = serde_json::json!(retention);
-            }
+        {
+            request["prompt_cache_retention"] = serde_json::json!(retention);
         }
 
         request
