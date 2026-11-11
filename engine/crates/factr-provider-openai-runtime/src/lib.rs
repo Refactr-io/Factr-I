@@ -1371,8 +1371,15 @@ impl OpenAIProvider {
         // ChatGPT/GPT models on the Responses backend. Codex models
         // (`*-codex*`) reject unknown hosted tools, so don't attach it for them. It is also
         // left off when the run's tool policy (enabled/disabled toolsets) does not allow
-        // `image_generate`; with no policy it is attached as before.
-        if is_chatgpt_mode && image_generation_allowed && model_supports_image_generation(model_id) {
+        // `image_generate`; with no policy it is attached as before. With `image_tool_needs_tools` a
+        // request with no tools of its own (a REPL sub-call or another simple completion, which runs
+        // where the session's tool policy is not visible) never gets it: a classification sub-call
+        // that called it failed outright ("Complexity 'medium' is not supported for this image model").
+        if is_chatgpt_mode
+            && image_generation_allowed
+            && model_supports_image_generation(model_id)
+            && !(shape.image_tool_needs_tools && api_tools.is_empty())
+        {
             tools.push(serde_json::json!({ "type": "image_generation" }));
         }
 

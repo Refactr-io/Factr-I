@@ -17,6 +17,9 @@ pub struct RequestShape {
     /// ends, as a socket continuation already does, instead of waiting for a `response.completed`
     /// that never comes; and a simple completion returns that error instead of empty text.
     pub ws_failed_response_ends: bool,
+    /// The hosted `image_generation` tool is attached only to a request that carries tools of its
+    /// own. A call with none (a REPL sub-call, a summary, any simple completion) gets no hosted tool.
+    pub image_tool_needs_tools: bool,
 }
 
 impl RequestShape {
@@ -27,6 +30,7 @@ impl RequestShape {
         replay_reasoning_id: true,
         content_cache_key: false,
         ws_failed_response_ends: false,
+        image_tool_needs_tools: false,
     };
     pub const VARIANT: Self = Self {
         strict_tools: false,
@@ -35,6 +39,7 @@ impl RequestShape {
         replay_reasoning_id: true,
         content_cache_key: false,
         ws_failed_response_ends: true,
+        image_tool_needs_tools: true,
     };
 
     /// `FACTR_VARIANT_BASELINE=1` wins over everything; otherwise each switch set to `0` or `1`
@@ -61,6 +66,10 @@ impl RequestShape {
             (
                 "FACTR_OPENAI_WS_FAILED_ENDS",
                 &mut shape.ws_failed_response_ends,
+            ),
+            (
+                "FACTR_OPENAI_IMAGE_TOOL_NEEDS_TOOLS",
+                &mut shape.image_tool_needs_tools,
             ),
         ] {
             match env(name).as_deref() {
@@ -246,6 +255,13 @@ mod tests {
                     ..v
                 },
             ),
+            (
+                "FACTR_OPENAI_IMAGE_TOOL_NEEDS_TOOLS",
+                RequestShape {
+                    image_tool_needs_tools: !v.image_tool_needs_tools,
+                    ..v
+                },
+            ),
         ];
         // The cache-key mode takes words, not 0/1.
         let content = RequestShape {
@@ -344,6 +360,7 @@ mod tests {
             "FACTR_OPENAI_PARALLEL_TOOLS",
             "FACTR_OPENAI_REPLAY_REASONING_ID",
             "FACTR_OPENAI_WS_FAILED_ENDS",
+            "FACTR_OPENAI_IMAGE_TOOL_NEEDS_TOOLS",
         ] {
             for junk in ["", "true", "yes", "2", " 1"] {
                 assert_eq!(

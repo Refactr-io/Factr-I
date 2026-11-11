@@ -502,3 +502,23 @@ async fn content_key_prewarm_is_adopted_only_with_the_same_key() {
     let foreground = content_request("golden system", &tools, &input, "s", true);
     assert!(slot.take_ready(&foreground, &credentials, omit).is_none(), "mismatched content key");
 }
+
+/// A request with no tools of its own (a REPL sub-call) gets no hosted image tool when the switch is on;
+/// a request with tools keeps it, and the baseline attaches it to both.
+#[test]
+fn the_hosted_image_tool_needs_tools_of_its_own() {
+    let has_image = |shape: &RequestShape, api_tools: &[Value]| {
+        OpenAIProvider::build_response_request_with_shape(
+            "gpt-5.4", "s".to_string(), &[], api_tools, true, true, None, Some("medium"), None, None, None, None, shape,
+        )["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["type"] == "image_generation")
+    };
+    let tools = build_tools_with_shape(&golden_tools(), &RequestShape::VARIANT);
+    assert!(!has_image(&RequestShape::VARIANT, &[]));
+    assert!(has_image(&RequestShape::VARIANT, &tools));
+    assert!(has_image(&RequestShape::BASELINE, &[]));
+    assert!(has_image(&RequestShape::BASELINE, &tools));
+}
