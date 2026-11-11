@@ -103,6 +103,9 @@ pub struct LoopShape {
     /// each `classify` chunk); `0` is none. A call past it fails as a timeout, which `classify`
     /// asks again once, instead of holding the cell until its whole wait runs out.
     pub repl_subcall_timeout_s: u64,
+    /// A REPL batch (`llm_query_batch`, a `classify` wave) that runs out of the cell's model-call wait
+    /// returns the replies that came back and fails only the missing items, instead of failing whole.
+    pub repl_keep_partial_wave: bool,
 }
 
 impl LoopShape {
@@ -113,6 +116,7 @@ impl LoopShape {
         compact_write_result: false,
         tool_steering: false,
         repl_subcall_timeout_s: 0,
+        repl_keep_partial_wave: false,
     };
     pub const VARIANT: Self = Self {
         sticky_nudges: true,
@@ -121,6 +125,7 @@ impl LoopShape {
         compact_write_result: true,
         tool_steering: true,
         repl_subcall_timeout_s: 90,
+        repl_keep_partial_wave: true,
     };
 
     /// Same rules as [`RequestShape::resolve`].
@@ -138,6 +143,7 @@ impl LoopShape {
                 &mut shape.compact_write_result,
             ),
             ("FACTR_LOOP_TOOL_STEERING", &mut shape.tool_steering),
+            ("FACTR_REPL_KEEP_PARTIAL_WAVE", &mut shape.repl_keep_partial_wave),
         ] {
             match env(name).as_deref() {
                 Some("0") => *field = false,
@@ -259,12 +265,13 @@ mod tests {
         LoopShape::resolve(&|name| vars.get(name).cloned())
     }
 
-    const LOOP_SWITCHES: [&str; 5] = [
+    const LOOP_SWITCHES: [&str; 6] = [
         "FACTR_LOOP_STICKY_NUDGES",
         "FACTR_LOOP_RESPECT_NO_VERIFY",
         "FACTR_LOOP_NUDGE_NO_REREAD",
         "FACTR_LOOP_COMPACT_WRITE_RESULT",
         "FACTR_LOOP_TOOL_STEERING",
+        "FACTR_REPL_KEEP_PARTIAL_WAVE",
     ];
 
     /// VARIANT with only the field behind `name` flipped.
@@ -276,6 +283,7 @@ mod tests {
             "FACTR_LOOP_NUDGE_NO_REREAD" => &mut s.nudge_no_reread,
             "FACTR_LOOP_COMPACT_WRITE_RESULT" => &mut s.compact_write_result,
             "FACTR_LOOP_TOOL_STEERING" => &mut s.tool_steering,
+            "FACTR_REPL_KEEP_PARTIAL_WAVE" => &mut s.repl_keep_partial_wave,
             _ => unreachable!("{name}"),
         };
         *field = !*field;

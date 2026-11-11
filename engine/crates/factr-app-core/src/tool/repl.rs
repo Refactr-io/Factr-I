@@ -894,6 +894,7 @@ impl Tool for ReplTool {
             sub_effort: sub_setting.effective(SubKind::Classify).to_string(),
             sub_requested: sub_setting.configured(SubKind::Classify).unwrap_or_default().to_string(),
             sub_model: sub_setting.model.clone(),
+            keep_partial_wave: factr_provider_core::request_shape::LoopShape::current().repl_keep_partial_wave,
             goal,
             heartbeat,
             spawn_subagent: {

@@ -20,6 +20,11 @@ use tokio::sync::Mutex;
 const BATCH_WAVE_ALLOWANCE: Duration = Duration::from_secs(30);
 pub const COMPUTE_TIMEOUT: Duration = Duration::from_secs(20);
 const HOST_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
+/// A kept-partial batch ends this long before the cell's model-call wait, so its reply still gets through.
+const PARTIAL_WAVE_MARGIN: Duration = Duration::from_millis(250);
+/// The error of a batch item that had no reply when its wave ran out of the cell's wait. The worker reads
+/// "time budget" as a host failure: that item is missing and asking again in this cell cannot help.
+const WAVE_ENDED: &str = "host call time budget exhausted before this item's reply came; ask for it again in a new cell";
 const IDLE_REAP_AFTER: Duration = Duration::from_secs(10 * 60);
 /// After the interrupt (SIGINT) that ends an over-long cell, how long the worker gets to report
 /// the resulting `KeyboardInterrupt` before it is killed. Python raises it within one bytecode
@@ -89,6 +94,9 @@ pub struct ExtraHostFns {
     pub sub_requested: String,
     /// The provider/model id sub-calls run on, part of `classify`'s cache key (empty: unknown).
     pub sub_model: String,
+    /// When a batch runs out of the cell's model-call wait, return the replies that came back and fail only
+    /// the rest (`FACTR_REPL_KEEP_PARTIAL_WAVE`), instead of failing the whole host call.
+    pub keep_partial_wave: bool,
     pub goal: HostFn,
     pub heartbeat: HostFn,
     pub spawn_subagent: HostFn,
@@ -111,6 +119,7 @@ impl Default for ExtraHostFns {
             sub_effort: String::new(),
             sub_requested: String::new(),
             sub_model: String::new(),
+            keep_partial_wave: false,
             goal: unavailable("goal"),
             heartbeat: unavailable("heartbeat"),
             spawn_subagent: unavailable("spawn_subagent"),
@@ -379,6 +388,9 @@ impl ReplHost {
         let worker_pid = worker.pid;
         let mut cfg = classify_cfg(&|key| std::env::var(key).ok(), &extra.sub_effort, &extra.sub_model);
         cfg["requested_effort"] = json!(extra.sub_requested);
+        if extra.keep_partial_wave {
+            cfg["keep_partial"] = json!(true);
+        }
         let stamp = log_stamp(session, next_cell(session), std::env::var("FACTR_RUN_ID").ok().as_deref());
         let result = tokio::select! {
             result = drive(worker, code, workdir, &llm_query, &refine, &extra, &cfg, &stamp) => result,
@@ -608,15 +620,18 @@ async fn drive(
                 let started = Instant::now();
                 let is_batch = matches!(msg["fn"].as_str(), Some("llm_query_batch" | "llm_query_batch_meta"));
                 let allowance = if is_batch { batch_allowance(&arg, conc) } else { Duration::ZERO };
+                // Kept partial: the batch stops a little before the cell's wait would, so it can still answer.
+                let wave_end = (extra.keep_partial_wave && is_batch)
+                    .then(|| Instant::now() + (host_left + allowance).saturating_sub(PARTIAL_WAVE_MARGIN));
                 let call = async { match msg["fn"].as_str() {
                     Some("llm_query") => match within_query_cap(arg.clone()) {
                         Ok(prompt) => llm_query(prompt).await,
                         Err(err) => Err(err),
                     },
-                    Some("llm_query_batch") => llm_query_batch_with(llm_query, &arg, conc).await,
+                    Some("llm_query_batch") => llm_query_batch_with(llm_query, &arg, conc, wave_end).await,
                     Some("llm_query_batch_meta") => {
                         let meta = extra.llm_query_meta.clone().unwrap_or_else(|| meta_from_plain(llm_query.clone()));
-                        llm_query_batch_meta(&meta, &arg, conc).await
+                        llm_query_batch_meta(&meta, &arg, conc, wave_end).await
                     }
                     Some("load_path") => load_path(workdir, &arg).await,
                     Some("load") => load(workdir, &arg).await,
@@ -968,12 +983,12 @@ pub async fn load(workdir: Option<&Path>, path: &str) -> Result<String> {
 /// Runs up to [`batch_concurrency`] sub-queries at once and returns a JSON array of replies in
 /// order; a failed item becomes an error string, not a failure of the call.
 pub async fn llm_query_batch(llm_query: &LlmQuery, prompts_json: &str) -> Result<String> {
-    llm_query_batch_with(llm_query, prompts_json, batch_concurrency()).await
+    llm_query_batch_with(llm_query, prompts_json, batch_concurrency(), None).await
 }
 
-async fn llm_query_batch_with(llm_query: &LlmQuery, prompts_json: &str, concurrency: usize) -> Result<String> {
+async fn llm_query_batch_with(llm_query: &LlmQuery, prompts_json: &str, concurrency: usize, wave_end: Option<Instant>) -> Result<String> {
     let q = llm_query.clone();
-    let results = run_batch(prompts_json, concurrency, move |p| q(p)).await?;
+    let results = run_batch(prompts_json, concurrency, move |p| q(p), wave_end).await?;
     let replies: Vec<String> = results
         .into_iter()
         .map(|(_, _, r)| match r {
@@ -989,9 +1004,9 @@ async fn llm_query_batch_with(llm_query: &LlmQuery, prompts_json: &str, concurre
 /// batch started that the call got its concurrency slot, "f": effort the call ran at, "q": effort it asked
 /// for, "x": ms a first request took that the API refused for its effort, or null}` (a token count the
 /// provider did not report is null; a failed call's latency is the time it took to fail). Used by `classify`.
-pub async fn llm_query_batch_meta(meta: &LlmQueryMeta, prompts_json: &str, concurrency: usize) -> Result<String> {
+pub async fn llm_query_batch_meta(meta: &LlmQueryMeta, prompts_json: &str, concurrency: usize, wave_end: Option<Instant>) -> Result<String> {
     let m = meta.clone();
-    let results = run_batch(prompts_json, concurrency, move |p| m(p)).await?;
+    let results = run_batch(prompts_json, concurrency, move |p| m(p), wave_end).await?;
     let replies: Vec<Value> = results
         .into_iter()
         .map(|(at, took, r)| match r {
@@ -1015,11 +1030,13 @@ pub fn meta_from_plain(plain: LlmQuery) -> LlmQueryMeta {
 }
 
 /// Every prompt through `call`, at most `concurrency` at once, in order: (ms after the batch started that the
-/// call got its slot, ms it took, result).
+/// call got its slot, ms it took, result). At `wave_end` the calls still running are dropped (closing their
+/// connections) and fail with [`WAVE_ENDED`]; the replies already in are kept.
 async fn run_batch<T: Send + 'static>(
     prompts_json: &str,
     concurrency: usize,
     call: impl Fn(String) -> BoxFuture<Result<T>>,
+    wave_end: Option<Instant>,
 ) -> Result<Vec<(u64, u64, Result<T>)>> {
     let prompts: Vec<String> = serde_json::from_str(prompts_json)
         .context("llm_query_batch expects a JSON list of strings")?;
@@ -1054,11 +1071,21 @@ async fn run_batch<T: Send + 'static>(
         });
     }
     let mut replies: Vec<Option<(u64, u64, Result<T>)>> = (0..jobs.len()).map(|_| None).collect();
-    while let Some(done) = jobs.join_next().await {
+    loop {
+        let next = match wave_end {
+            Some(end) => match tokio::time::timeout_at(end.into(), jobs.join_next()).await {
+                Ok(next) => next,
+                Err(_) => break,
+            },
+            None => jobs.join_next().await,
+        };
+        let Some(done) = next else { break };
         let (index, at, took, result) = done.context("llm_query_batch task failed")?;
         replies[index] = Some((at, took, result));
     }
-    Ok(replies.into_iter().map(|r| r.expect("every job reported")).collect())
+    jobs.abort_all();
+    let took = batch_start.elapsed().as_millis() as u64;
+    Ok(replies.into_iter().map(|r| r.unwrap_or_else(|| (took, 0, Err(anyhow!(WAVE_ENDED))))).collect())
 }
 
 #[cfg(test)]
@@ -1116,6 +1143,32 @@ mod batch_tests {
         let off = tokio::time::timeout(Duration::from_millis(100), with_deadline(None, std::future::pending::<Result<()>>())).await;
         assert!(off.is_err(), "without a deadline a stalled call still waits");
         assert_eq!(with_deadline(Some(Duration::from_secs(5)), async { Ok(7) }).await.unwrap(), 7);
+    }
+
+    #[tokio::test]
+    async fn a_wave_that_runs_out_of_wait_keeps_the_replies_that_came() {
+        let stall: LlmQuery = Arc::new(|prompt: String| {
+            Box::pin(async move {
+                if prompt == "stuck" {
+                    std::future::pending::<()>().await;
+                }
+                Ok(prompt.to_uppercase())
+            })
+        });
+        let prompts = json_list(&["a".into(), "stuck".into(), "c".into()]);
+        let started = Instant::now();
+        let end = Some(Instant::now() + Duration::from_millis(200));
+        let out: Vec<String> = serde_json::from_str(&llm_query_batch_with(&stall, &prompts, 8, end).await.unwrap()).unwrap();
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(out[0], "A");
+        assert_eq!(out[2], "C");
+        assert_eq!(out[1], format!("Error: {WAVE_ENDED}"));
+        // The meta form carries the same error for the classify worker, which reads "time budget" as a host failure.
+        let meta = meta_from_plain(stall);
+        let end = Some(Instant::now() + Duration::from_millis(200));
+        let out: Vec<Value> = serde_json::from_str(&llm_query_batch_meta(&meta, &prompts, 8, end).await.unwrap()).unwrap();
+        assert_eq!((out[0]["t"].as_str(), out[0]["e"].is_null()), (Some("A"), true));
+        assert!(out[1]["e"].as_str().unwrap().contains("time budget"), "{}", out[1]);
     }
 
     #[tokio::test]
@@ -1201,7 +1254,7 @@ mod batch_tests {
     async fn batch_concurrency_is_a_parameter_and_the_wait_follows_it() {
         let (live, peak) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
         let prompts: Vec<String> = (0..20).map(|i| format!("p{i}")).collect();
-        let out = llm_query_batch_with(&counting(live, peak.clone()), &json_list(&prompts), 3).await.unwrap();
+        let out = llm_query_batch_with(&counting(live, peak.clone()), &json_list(&prompts), 3, None).await.unwrap();
         assert_eq!(serde_json::from_str::<Vec<String>>(&out).unwrap().len(), 20);
         assert_eq!(peak.load(Ordering::SeqCst), 3);
         assert_eq!(batch_allowance(&json_list(&vec!["x".to_string(); 64]), 16), BATCH_WAVE_ALLOWANCE * 8, "16-wide never earns less than 8-wide");
@@ -1219,7 +1272,7 @@ mod batch_tests {
                 Ok(SubReply { text: prompt.to_uppercase(), input_tokens: Some(10), output_tokens: Some(2), cached_tokens: Some(0), reasoning_tokens: None, latency_ms: 7, effort: Some("low".into()), ..Default::default() })
             })
         });
-        let out = llm_query_batch_meta(&meta, &json_list(&["a".into(), "bad".into(), "c".into()]), 2).await.unwrap();
+        let out = llm_query_batch_meta(&meta, &json_list(&["a".into(), "bad".into(), "c".into()]), 2, None).await.unwrap();
         let rows: Vec<Value> = serde_json::from_str(&out).unwrap();
         assert!(rows[0]["s"].is_u64(), "the slot time is reported: {}", rows[0]);
         assert_eq!(rows[0], json!({"t": "A", "e": null, "i": 10, "o": 2, "c": 0, "r": null, "ms": 7, "s": rows[0]["s"], "f": "low", "q": null, "x": null}));
@@ -1228,7 +1281,7 @@ mod batch_tests {
         assert_eq!(rows[2]["t"], "C");
         // Without a metered closure the plain query is timed and carries no usage.
         let plain = meta_from_plain(counting(Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0))));
-        let out = llm_query_batch_meta(&plain, &json_list(&["p1".into()]), 2).await.unwrap();
+        let out = llm_query_batch_meta(&plain, &json_list(&["p1".into()]), 2, None).await.unwrap();
         let rows: Vec<Value> = serde_json::from_str(&out).unwrap();
         assert_eq!((rows[0]["t"].as_str(), rows[0]["i"].is_null(), rows[0]["e"].is_null()), (Some("p1:2"), true, true));
     }
