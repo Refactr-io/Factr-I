@@ -70,6 +70,11 @@ async fn session_venv_is_made_once_bypassable_and_installs_reach_the_repl() {
     let cell = format!("import {PKG}\n{PKG}.MARK");
     let before = host.run("s", &cell, Some(&work), llm(), no_refine(), ExtraHostFns::default(), 2 << 30).await.unwrap();
     assert!(before.error.as_deref().is_some_and(|e| e.contains("No module named")), "{:?}", before.error);
+    // Every directory on the worker's sys.path is readable in the sandbox (Python 3.15 lists them all to
+    // format an ImportError; Homebrew's base site-packages resolves outside the interpreter's own paths).
+    let listing = "import os, sys\nbad = []\nfor p in sys.path:\n    try:\n        os.path.isdir(p) and os.listdir(p)\n    except OSError:\n        bad.append(p)\nbad";
+    let unreadable = host.run("s", listing, Some(&work), llm(), no_refine(), ExtraHostFns::default(), 2 << 30).await.unwrap();
+    assert_eq!(unreadable.value.as_deref(), Some("[]"), "{:?}", unreadable.error);
     let wheel = build_wheel(&base, &root.path().join("wheel"));
     let installed = Command::new(&venv_python)
         .args(["-m", "pip", "install", "--no-index", "--disable-pip-version-check", "-q"])
@@ -80,5 +85,12 @@ async fn session_venv_is_made_once_bypassable_and_installs_reach_the_repl() {
     let after = host.run("s", &cell, Some(&work), llm(), no_refine(), ExtraHostFns::default(), 2 << 30).await.unwrap();
     assert_eq!(after.value.as_deref(), Some("'probe-ok'"), "{:?}", after.error);
     assert_eq!(host.live_workers().await, 1, "same worker, no restart");
+
+    // A traceback that cannot be formatted is reported as the bare error; the worker and its variables survive.
+    let broken = "import traceback\ndef boom(*a, **k): raise PermissionError('denied')\ntraceback.format_exception = traceback.format_exception_only = boom\nraise ValueError('kept')";
+    let failed = host.run("s", broken, Some(&work), llm(), no_refine(), ExtraHostFns::default(), 2 << 30).await.unwrap();
+    assert_eq!(failed.error.as_deref(), Some("ValueError: kept"));
+    let alive = host.run("s", &format!("{PKG}.MARK"), Some(&work), llm(), no_refine(), ExtraHostFns::default(), 2 << 30).await.unwrap();
+    assert_eq!(alive.value.as_deref(), Some("'probe-ok'"), "{:?}", alive.error);
     let _ = std::fs::remove_dir_all(&venv);
 }

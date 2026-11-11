@@ -1081,9 +1081,14 @@ def _traceback_text(error):
     tb = error.__traceback__
     while tb is not None and tb.tb_frame.f_code.co_filename != "<repl>":
         tb = tb.tb_next
-    if tb is None:
-        return "".join(traceback.format_exception_only(type(error), error)).strip()
-    return "".join(traceback.format_exception(type(error), error, tb)).strip()
+    try:
+        if tb is None:
+            return "".join(traceback.format_exception_only(type(error), error)).strip()
+        return "".join(traceback.format_exception(type(error), error, tb)).strip()
+    except Exception:
+        # Formatting can itself fail (Python 3.15 lists every sys.path directory for an ImportError hint,
+        # and the sandbox may deny one): report the bare error instead of killing the worker.
+        return f"{type(error).__name__}: {error}"
 
 
 def _refresh_imports():

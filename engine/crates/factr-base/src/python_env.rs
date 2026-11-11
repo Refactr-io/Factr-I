@@ -482,7 +482,9 @@ pub fn session_venv_python() -> Option<PathBuf> {
 /// user site, `.pth` additions such as editable installs), resolved to real paths, plus the virtualenv
 /// root when `python` lives in one. A sandboxed worker needs read access to exactly these.
 pub fn read_roots(python: &Path) -> Vec<PathBuf> {
-    let code = "import sys, site, json\nprint(json.dumps([sys.path + [sys.prefix, sys.base_prefix], site.getusersitepackages() if site.ENABLE_USER_SITE else ''])) ";
+    // `getsitepackages()` too: the REPL worker adds those directories to `sys.path` before each cell, and on
+    // Homebrew the base one resolves outside `sys.path` (Cellar/.../lib/pythonX.Y/site-packages).
+    let code = "import sys, site, json\nsp = site.getsitepackages() if hasattr(site, 'getsitepackages') else []\nprint(json.dumps([sys.path + sp + [sys.prefix, sys.base_prefix], site.getusersitepackages() if site.ENABLE_USER_SITE else ''])) ";
     let output = std::process::Command::new(python)
         .args(["-E", "-c", code])
         .stdin(std::process::Stdio::null())
