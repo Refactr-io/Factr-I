@@ -24,6 +24,43 @@ pub fn sink() -> Option<fn(&str)> {
         .then_some(print_line as fn(&str))
 }
 
+/// Where one model call is before any of its attempts has its own [`StreamTiming`]. A call dropped
+/// there (by a deadline or a stopped turn) prints one unfinished line with `phase: before_attempt`
+/// and this `stage`; once an attempt starts, or the call ends, it prints nothing.
+pub struct CallStage {
+    sink: fn(&str),
+    begun: Instant,
+    stage: &'static str,
+}
+
+impl CallStage {
+    pub fn start(sink: Option<fn(&str)>) -> Option<Self> {
+        Some(Self { sink: sink?, begun: Instant::now(), stage: "build" })
+    }
+
+    /// `attempt` (the attempt reports itself) and `done` print nothing when dropped.
+    pub fn set(stage: &mut Option<Self>, name: &'static str) {
+        if let Some(stage) = stage {
+            stage.stage = name;
+        }
+    }
+}
+
+impl Drop for CallStage {
+    fn drop(&mut self) {
+        if !matches!(self.stage, "attempt" | "done") {
+            let line = serde_json::json!({
+                "factr_stream_unfinished": 1,
+                "transport": "none",
+                "phase": "before_attempt",
+                "stage": self.stage,
+                "elapsed_ms": self.begun.elapsed().as_millis() as u64,
+            });
+            (self.sink)(&line.to_string());
+        }
+    }
+}
+
 /// Whether the consumer of the call has gone (the call was cancelled, for example by a deadline).
 pub type CancelProbe = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
 
@@ -291,6 +328,26 @@ mod tests {
         assert!(lines[..4].iter().all(|l| l["factr_stream_unfinished"] == 1 && l.get("factr_stream_timing").is_none() && l["elapsed_ms"].is_u64()));
         assert_eq!(lines.len(), 5);
         assert_eq!(lines[4]["factr_stream_timing"], 1, "a finished attempt prints the timing line only");
+    }
+
+    static STAGES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    #[test]
+    fn a_call_dropped_before_any_attempt_names_its_stage() {
+        let sink: Option<fn(&str)> = Some(|line| STAGES.lock().unwrap().push(line.to_string()));
+        let mut waiting = CallStage::start(sink);
+        CallStage::set(&mut waiting, "cooldown");
+        drop(waiting);
+        for quiet in ["attempt", "done"] {
+            let mut call = CallStage::start(sink);
+            CallStage::set(&mut call, quiet);
+            drop(call);
+        }
+        assert!(CallStage::start(None).is_none());
+        let lines = STAGES.lock().unwrap();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let line: Value = serde_json::from_str(&lines[0]).unwrap();
+        assert_eq!((line["phase"].as_str(), line["stage"].as_str()), (Some("before_attempt"), Some("cooldown")));
     }
 
     #[test]

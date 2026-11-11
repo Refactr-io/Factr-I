@@ -116,6 +116,8 @@ impl Provider for OpenAIProvider {
         system: &str,
         _resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
+        use factr_provider_openai::stream_timing::CallStage;
+        let mut stage = CallStage::start(factr_provider_openai::stream_timing::sink());
         let input = build_responses_input_with_shape(messages, RequestShape::current());
         let input_item_count = input.len();
         let request = self.response_request(&input, tools, system).await;
@@ -290,10 +292,13 @@ impl Provider for OpenAIProvider {
             Arc::new(move || tx.is_closed())
         };
 
+        CallStage::set(&mut stage, "spawned");
         tokio::spawn(async move {
             let stream_task = async move {
+                let mut stage = stage;
                 // Attempt persistent WebSocket continuation first
                 if use_websocket_transport {
+                    CallStage::set(&mut stage, "continuation");
                     // Track output: a continuation that streams partial output
                     // and then fails falls through to a fresh-connection replay
                     // from the top, which must roll the partial output back.
@@ -312,8 +317,12 @@ impl Provider for OpenAIProvider {
                     let saw_output = attempt_guard.finish().await;
 
                     match continuation_result {
-                        PersistentWsResult::TerminalError => return,
+                        PersistentWsResult::TerminalError => {
+                            CallStage::set(&mut stage, "done");
+                            return;
+                        }
                         PersistentWsResult::Success => {
+                            CallStage::set(&mut stage, "done");
                             log_openai_stream_lifecycle(
                                 factr_base::logging::LogLevel::Info,
                                 "persistent_reuse_success",
@@ -380,6 +389,7 @@ impl Provider for OpenAIProvider {
                 let mut next_retry_delay = None;
 
                 for attempt in 0..MAX_RETRIES {
+                    CallStage::set(&mut stage, "retry_wait");
                     if attempt > 0 {
                         emit_connection_phase(
                             &tx,
@@ -405,6 +415,7 @@ impl Provider for OpenAIProvider {
                     }
                     skip_backoff_once = false;
 
+                    CallStage::set(&mut stage, "transport_choice");
                     let transport = if force_https_for_request {
                         OpenAITransport::HTTPS
                     } else {
@@ -443,6 +454,7 @@ impl Provider for OpenAIProvider {
 
                     let transport_label = transport.as_str();
                     let attempt_started = Instant::now();
+                    CallStage::set(&mut stage, "attempt");
                     log_openai_stream_lifecycle(
                         factr_base::logging::LogLevel::Info,
                         "attempt_start",
