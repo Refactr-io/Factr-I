@@ -14,9 +14,28 @@ The shape is read once per process (`RequestShape::current()` in `factr-provider
 | `FACTR_OPENAI_PARALLEL_TOOLS` | `parallel_tool_calls` | `0` | `0` | On: `parallel_tool_calls: true` on the full request and its continuation. Calls from one response still run one at a time, in order |
 | `FACTR_OPENAI_REPLAY_REASONING_ID` | `replay_reasoning_id` | `1` | `1` | Off: replayed reasoning items carry no `id` (full request and explicit native-compaction request) |
 
-Each switch takes `0` or `1`; any other value keeps the default. Native compaction already has its own switch: `FACTR_OPENAI_NATIVE_COMPACTION_MODE`.
+| `FACTR_OPENAI_CACHE_KEY_MODE` | `content_cache_key` | (no key) | `session` | Experiment. `content`: in ChatGPT mode the key is `pck_` + 24 hex chars of sha256(instructions, NUL, tools sorted by name as sorted-key JSON), with no session id, so sessions with the same prompt and tool set share it; the idle prewarm then sends and compares the key. `session`: the per-session key above. API-key mode always keeps its session key |
+
+Each switch takes `0` or `1` (the cache-key mode takes `session` or `content`); any other value keeps the default. Native compaction already has its own switch: `FACTR_OPENAI_NATIVE_COMPACTION_MODE`.
+
+The reference client's own key is content-addressed within one logical session (it hashes a session scope with the instructions and tools), so `content` mode is a separate experiment, not a copy of it.
+
+## Loop switches
+
+The agent loop around the requests has its own table, `LoopShape` (same file, same master switch, read once per process). These apply to every provider.
+
+| Env | Field | `main` (baseline) | Variant default | What it changes |
+|---|---|---|---|---|
+| `FACTR_LOOP_STICKY_NUDGES` | `sticky_nudges` | `0` | `1` | Messages injected into one call's request (stop nudges, the turn's system reminder, repeat-guard, deadline and batch reminders, unsaved memory) stay at the position they were first sent at for the rest of the turn, so the next input extends the last one and a socket chain can continue. Never written to the session; dropped at the end of the turn, and on compaction or a rewritten history |
+| `FACTR_LOOP_RESPECT_NO_VERIFY` | `respect_no_verify` | `0` | `1` | The newest user message that says so decides. "do not run it": no auto-verify gate run and no "verify" in the 70% deadline reminder (reading back stays allowed). "do not verify / check / review": also no verify nudge. Optional wording ("no need to test") bans nothing; quoted text and code are ignored |
+| `FACTR_LOOP_NUDGE_NO_REREAD` | `nudge_no_reread` | `0` | `1` | When every unexecuted write came from write/edit/apply_patch/replace, the verify nudge asks to check against the requirements without a read-back. A shell or repl write keeps the old text |
+| `FACTR_LOOP_COMPACT_WRITE_RESULT` | `compact_write_result` | `0` | `1` | The model's copy of a successful write/edit/apply_patch/replace result leaves out the appended full diff; a successful write adds "Saved as sent; no need to read it back just to confirm the save." Replace dry runs, failed results, batch results and any other text stay as they are. The session, `ToolDone` and the UI keep the full text |
+| `FACTR_LOOP_TOOL_STEERING` | `tool_steering` | `0` | `1` | Tool descriptions steer file reads, searches and edits to read/agentgrep/ls and edit/write/apply_patch instead of the shell, and say a write needs no read-back just to confirm the save. Built from the final tool list; SDK-supplied definitions are left as given. About 94 tokens on the full tool set |
 
 ## Unverified assumptions
+
+- That keeping injected messages in place turns the call after a nudge into a cached continuation is shown against a loopback socket (`injected_message_continuation.rs`), not against the backend.
+- That a content cache key gives cross-session cache hits on the ChatGPT backend is not shown locally.
 
 - That the backend accepts `strict: false` with the compatible schema is inferred from the reference clients; nothing local shows it.
 - That the ChatGPT backend accepts `prompt_cache_key` is inferred from the reference clients; nothing local shows it.
