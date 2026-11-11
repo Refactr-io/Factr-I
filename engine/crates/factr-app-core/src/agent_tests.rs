@@ -2712,3 +2712,6 @@ fn mcp_default_defer_threshold_is_a_multiple_of_the_fixed_surface() {
 
 #[path = "agent_tests/sticky_injections.rs"]
 mod sticky_injections;
+
+#[path = "agent_tests/compact_write_result.rs"]
+mod compact_write_result;

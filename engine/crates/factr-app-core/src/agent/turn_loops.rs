@@ -152,6 +152,9 @@ impl Agent {
 
             // Inject memory as a user message at the end (preserves cache prefix)
             let mut messages_with_memory = injections.start_call(&messages, compacted);
+            if self.loop_shape.compact_write_result {
+                super::compact_tool_results::compact_write_results(&mut messages_with_memory);
+            }
             if let Some(memory) = memory_pending.as_ref() {
                 self.record_memory_injection_in_session(memory);
                 logging::info(&format!(

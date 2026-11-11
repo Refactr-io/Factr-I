@@ -77,6 +77,9 @@ pub struct LoopShape {
     /// When every unexecuted write came from the edit tools, the verify nudge does not ask for a
     /// read-back (the content is already in context).
     pub nudge_no_reread: bool,
+    /// The model-facing copy of a successful write/edit/apply_patch/replace result leaves out
+    /// the appended full diff; the session and the UI keep it.
+    pub compact_write_result: bool,
 }
 
 impl LoopShape {
@@ -84,11 +87,13 @@ impl LoopShape {
         sticky_nudges: false,
         respect_no_verify: false,
         nudge_no_reread: false,
+        compact_write_result: false,
     };
     pub const VARIANT: Self = Self {
         sticky_nudges: true,
         respect_no_verify: true,
         nudge_no_reread: true,
+        compact_write_result: true,
     };
 
     /// Same rules as [`RequestShape::resolve`].
@@ -101,6 +106,10 @@ impl LoopShape {
             ("FACTR_LOOP_STICKY_NUDGES", &mut shape.sticky_nudges),
             ("FACTR_LOOP_RESPECT_NO_VERIFY", &mut shape.respect_no_verify),
             ("FACTR_LOOP_NUDGE_NO_REREAD", &mut shape.nudge_no_reread),
+            (
+                "FACTR_LOOP_COMPACT_WRITE_RESULT",
+                &mut shape.compact_write_result,
+            ),
         ] {
             match env(name).as_deref() {
                 Some("0") => *field = false,
@@ -202,10 +211,11 @@ mod tests {
         LoopShape::resolve(&|name| vars.get(name).cloned())
     }
 
-    const LOOP_SWITCHES: [&str; 3] = [
+    const LOOP_SWITCHES: [&str; 4] = [
         "FACTR_LOOP_STICKY_NUDGES",
         "FACTR_LOOP_RESPECT_NO_VERIFY",
         "FACTR_LOOP_NUDGE_NO_REREAD",
+        "FACTR_LOOP_COMPACT_WRITE_RESULT",
     ];
 
     /// VARIANT with only the field behind `name` flipped.
@@ -215,6 +225,7 @@ mod tests {
             "FACTR_LOOP_STICKY_NUDGES" => &mut s.sticky_nudges,
             "FACTR_LOOP_RESPECT_NO_VERIFY" => &mut s.respect_no_verify,
             "FACTR_LOOP_NUDGE_NO_REREAD" => &mut s.nudge_no_reread,
+            "FACTR_LOOP_COMPACT_WRITE_RESULT" => &mut s.compact_write_result,
             _ => unreachable!("{name}"),
         };
         *field = !*field;

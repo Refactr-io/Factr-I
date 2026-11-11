@@ -238,6 +238,9 @@ impl Agent {
 
             // Inject memory as a user message at the end (preserves cache prefix)
             let mut messages_with_memory = injections.start_call(&messages, compacted);
+            if self.loop_shape.compact_write_result {
+                super::compact_tool_results::compact_write_results(&mut messages_with_memory);
+            }
             injections.push_reminder(&mut messages_with_memory, self.turn_system_reminder_message());
             if let Some(reminder) = repeat_guard.take_reminder() {
                 injections.push(&mut messages_with_memory, Message::user(&reminder));
